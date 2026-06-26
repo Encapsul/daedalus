@@ -1,0 +1,20 @@
+[book]
+title = "x.bin"
+description = "Ship your web app like a binary. Run anywhere."
+authors = ["tedsig42"]
+language = "fr"
+src = "src"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = ""
+edit-url-template = ""
+copy-fonts = true
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.playground]
+runnable = false

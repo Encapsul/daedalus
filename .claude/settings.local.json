@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rustc --version)",
+      "Bash(rustup target *)",
+      "Bash(git --version)",
+      "Read(//proc/sys/kernel/**)",
+      "Read(//proc/sys/user/**)",
+      "Bash(git init *)",
+      "Bash(cargo build *)",
+      "Bash(ldd target/x86_64-unknown-linux-musl/release/xbin-stub)",
+      "Bash(PYTHONPATH=. python3 -m xbin build ../examples/hello-web -o ../hello-web.xbin)",
+      "Bash(PYTHONPATH=. python3 *)",
+      "Bash(mdbook --version)",
+      "Read(//home/mint/.cargo/bin/**)",
+      "Bash(cargo install *)",
+      "Bash(~/.cargo/bin/mdbook --version)",
+      "Bash(mdbook build *)",
+      "Bash(python3 -m pip --version)",
+      "Bash(python3 -c \"import venv; print\\('venv OK'\\)\")",
+      "Bash(timeout 5 python3 -c \"import urllib.request; urllib.request.urlopen\\('https://pypi.org', timeout=4\\); print\\('network OK'\\)\")",
+      "Bash(rm -rf venvtest)",
+      "Bash(python3 -m venv venvtest)",
+      "Bash(venvtest/bin/python -m pip --version)",
+      "Bash(venvtest/bin/pip install *)",
+      "Bash(venvtest/bin/python -c \"import bottle; print\\('bottle', bottle.__version__, 'at', bottle.__file__\\)\")",
+      "Bash(mkdir -p examples/bottle-web/.venv/lib/python3.12/site-packages)",
+      "Bash(python3 -c \"import urllib.request; urllib.request.urlretrieve\\('https://raw.githubusercontent.com/bottlepy/bottle/master/bottle.py', 'examples/bottle-web/.venv/lib/python3.12/site-packages/bottle.py'\\)\")",
+      "Bash(printf 'home = /usr/bin\\\\nversion = 3.12.3\\\\ninclude-system-site-packages = false\\\\n')",
+      "Bash(mkdir -p site-packages)",
+      "Bash(mv .venv/lib/python3.12/site-packages/bottle.py site-packages/bottle.py)",
+      "Bash(rm -rf .venv)"
+    ]
+  }
+}
