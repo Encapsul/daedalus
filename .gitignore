@@ -1,0 +1,19 @@
+# Rust
+stub/target/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Artefacts xbin
+*.xbin
+
+# mdbook
+docs/book/
+
+# Divers
+.DS_Store
