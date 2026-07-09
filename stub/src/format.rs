@@ -1,16 +1,41 @@
 //! `.xbin` format parser — see docs/src/reference/format.md.
 //!
-//! The launcher reads itself via /proc/self/exe and parses the 84-byte footer
-//! at end-of-file to locate the payload and metadata.
+//! The launcher reads itself via /proc/self/exe and parses the footer at end-of-file.
+//!
+//! Footer versions:
+//!   v1/v2 — 84 bytes at EOF-84.
+//!   v3    — 92 bytes at EOF-92.  The last 84 bytes are byte-identical to v2,
+//!           so a v2 launcher reading EOF-84 sees the correct magic + format_version
+//!           and reports "unsupported format" cleanly.  A v3 launcher reads 92 bytes
+//!           and picks sig_offset from the 8-byte prefix.
+//!
+//! Layout of the 92-byte v3 footer (little-endian):
+//!   [0-7]    sig_offset (u64)          offset of [`sig_size:u32le` + `sig:64 bytes`]
+//!   [8-12]   magic (5 bytes)           "XBIN\x01"
+//!   [13]     format_version (u8)       3
+//!   [14]     arch (u8)
+//!   [15]     flags (u8)                bit0=signed
+//!   [16-23]  payload_offset (u64)
+//!   [24-31]  payload_csize (u64)
+//!   [32-39]  payload_usize (u64)       unused in v2/v3 (per-layer sizes in metadata)
+//!   [40-71]  payload_sha256 (32 bytes) SHA-256(layers ‖ metadata)
+//!   [72-79]  meta_offset (u64)
+//!   [80-87]  meta_size (u64)
+//!   [88-91]  footer_magic (u32)        0xBEEFCAFE
 
 use std::io::{self, Read, Seek, SeekFrom};
 
 pub const MAGIC: &[u8; 5] = b"XBIN\x01";
 pub const FOOTER_MAGIC: u32 = 0xBEEF_CAFE;
-pub const FOOTER_SIZE: u64 = 84;
-pub const FORMAT_VERSION: u8 = 2;
+pub const FORMAT_VERSION: u8 = 3;
 
-/// Fixed 84-byte footer at the very end of a .xbin file.
+pub const V2_FOOTER_SIZE: u64 = 84;
+pub const V3_FOOTER_SIZE: u64 = 92;
+
+/// Fixed footer at the very end of a .xbin file.
+///
+/// `sig_offset` is meaningful only when `format_version >= 3 && flags & FLAG_SIGNED`.
+/// For v1/v2 it is always 0.
 #[derive(Debug)]
 pub struct Footer {
     pub format_version: u8,
@@ -22,6 +47,8 @@ pub struct Footer {
     pub payload_sha256: [u8; 32],
     pub meta_offset: u64,
     pub meta_size: u64,
+    /// v3+: absolute offset of the signature block (`[sig_size:u32le][sig:64 bytes]`).
+    pub sig_offset: u64,
 }
 
 fn u64_le(b: &[u8]) -> u64 {
@@ -30,18 +57,40 @@ fn u64_le(b: &[u8]) -> u64 {
 
 impl Footer {
     /// Read and validate the footer from a seekable file.
+    ///
+    /// Detection order: v3 footer (92 bytes @ EOF-92) → v2 footer (84 bytes @ EOF-84).
     pub fn read_from<R: Read + Seek>(r: &mut R) -> io::Result<Footer> {
         let total = r.seek(SeekFrom::End(0))?;
-        if total < FOOTER_SIZE {
-            return Err(err("file too small to be a .xbin"));
-        }
-        r.seek(SeekFrom::End(-(FOOTER_SIZE as i64)))?;
-        let mut buf = [0u8; FOOTER_SIZE as usize];
-        r.read_exact(&mut buf)?;
 
-        if &buf[0..5] != MAGIC {
+        // 1) Try v3/v2 footer (92 bytes).
+        if total >= V3_FOOTER_SIZE {
+            r.seek(SeekFrom::End(-(V3_FOOTER_SIZE as i64)))?;
+            let mut buf = [0u8; V3_FOOTER_SIZE as usize];
+            r.read_exact(&mut buf)?;
+
+            if &buf[8..13] == MAGIC {
+                let sig_offset = u64_le(&buf[0..8]);
+                return Self::parse(&buf[8..], V3_FOOTER_SIZE, sig_offset);
+            }
+        }
+
+        // 2) Fallback: v1/v2 footer (84 bytes).
+        if total >= V2_FOOTER_SIZE {
+            r.seek(SeekFrom::End(-(V2_FOOTER_SIZE as i64)))?;
+            let mut buf = [0u8; V2_FOOTER_SIZE as usize];
+            r.read_exact(&mut buf)?;
+
+            if &buf[0..5] == MAGIC {
+                return Self::parse(&buf, V2_FOOTER_SIZE, 0);
+            }
             return Err(err("bad magic: not a .xbin file"));
         }
+
+        Err(err("file too small to be a .xbin"))
+    }
+
+    /// Parse the 84-byte core footer (identical bytes for v1/v2/v3).
+    fn parse(buf: &[u8], _size: u64, sig_offset: u64) -> io::Result<Footer> {
         let footer_magic = u32::from_le_bytes(buf[80..84].try_into().unwrap());
         if footer_magic != FOOTER_MAGIC {
             return Err(err("bad footer sentinel"));
@@ -64,6 +113,7 @@ impl Footer {
             payload_sha256,
             meta_offset: u64_le(&buf[64..72]),
             meta_size: u64_le(&buf[72..80]),
+            sig_offset,
         })
     }
 
@@ -74,6 +124,17 @@ impl Footer {
         }
         s
     }
+}
+
+pub const FLAG_SIGNED: u8 = 0x01;
+pub const FLAG_ENCRYPTED: u8 = 0x02;
+
+/// Read `len` bytes at absolute offset `off`.
+pub fn read_at<R: Read + Seek>(f: &mut R, off: u64, len: usize) -> io::Result<Vec<u8>> {
+    f.seek(SeekFrom::Start(off))?;
+    let mut buf = vec![0u8; len];
+    f.read_exact(&mut buf)?;
+    Ok(buf)
 }
 
 fn err(msg: &str) -> io::Error {

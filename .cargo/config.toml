@@ -1,0 +1,4 @@
+# x.bin workspace uses /tmp for build artifacts because the repo lives on
+# a vfat filesystem (no executable bit support).
+[build]
+target-dir = "/tmp/xbin-stub-target"

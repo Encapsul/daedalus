@@ -1,15 +1,18 @@
 TARGET := x86_64-unknown-linux-musl
-STUB := stub/target/$(TARGET)/release/xbin-stub
+TOOLS := /tmp/xbin-stub-target
+STUB := $(TOOLS)/$(TARGET)/release/xbin-stub
+CRYPTO := $(TOOLS)/$(TARGET)/release/xbin-crypto
 XBIN := python3 -m xbin
 
 .PHONY: all stub install example run inspect docs docs-serve clean
 
 all: stub
 
-# Build the Rust launcher (statically linked musl ELF).
+# Build the Rust binaries (statically linked musl ELF).
 stub:
 	cd stub && cargo build --release --target $(TARGET)
-	@echo "stub: $$(ls -la $(STUB) | awk '{print $$5}') bytes"
+	@echo "stub:   $$(ls -la $(STUB) | awk '{print $$5}') bytes"
+	@echo "crypto: $$(ls -la $(CRYPTO) | awk '{print $$5}') bytes"
 
 # Install the CLI via pip editable install.
 install:

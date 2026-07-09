@@ -1,7 +1,7 @@
 //! xbin launcher stub.
 //!
 //! Embedded at the head of every .xbin file — this is the ELF the kernel runs.
-//! Flow: open /proc/self/exe → read footer → verify integrity →
+//! Flow: open /proc/self/exe → read footer → verify integrity (sig → SHA-256) →
 //! extract rootfs to ~/.cache/xbin/{sha256}/ (atomic) → exec the app.
 //!
 //! Level 0 isolation (MVP): LD_LIBRARY_PATH, no chroot. Levels 1/2
@@ -9,12 +9,13 @@
 
 mod format;
 
-use format::Footer;
+use format::{read_at, Footer};
 use serde::Deserialize;
 use std::ffi::CString;
 use std::fs::{self, File};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Write};
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 
@@ -28,13 +29,10 @@ struct Metadata {
     env: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     cwd: Option<String>,
-    /// Payload layers (format v2). Empty for v1 (monolithic payload).
     #[serde(default)]
     layers: Vec<Layer>,
 }
 
-/// A v2 payload layer: an independent zstd(tar) blob, stacked during extraction
-/// (later layers overwrite earlier ones — Docker-like layering model).
 #[derive(Deserialize)]
 struct Layer {
     #[serde(default)]
@@ -43,7 +41,6 @@ struct Layer {
     csize: u64,
     #[allow(dead_code)]
     usize: u64,
-    /// SHA-256 (hex) of the compressed blob — used as stable per-layer cache key.
     sha256: String,
 }
 
@@ -66,11 +63,18 @@ fn run() -> io::Result<()> {
     let meta: Metadata = serde_json::from_slice(&meta_bytes)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("bad metadata: {e}")))?;
 
-    // 3. Read the entire payload region (all layers, contiguous in v2).
+    // 3. Read the entire payload region (all layers, contiguous in v2/v3).
     let payload = read_at(&mut exe, footer.payload_offset, footer.payload_csize as usize)?;
 
-    // 4. Verify integrity.
-    //    v1: SHA-256(payload).        v2: SHA-256(layers || metadata).
+    // 4. Verify Ed25519 signature (v3+ only).
+    if footer.format_version >= 3 && footer.flags & format::FLAG_SIGNED != 0 {
+        verify_ed25519(&footer, &mut exe, &payload, &meta_bytes)?;
+        if verbose {
+            eprintln!("[xbin] Ed25519 signature verified");
+        }
+    }
+
+    // 5. Verify SHA-256 integrity.
     let layered = footer.format_version >= 2 && !meta.layers.is_empty();
     if layered {
         let mut buf = payload.clone();
@@ -80,10 +84,7 @@ fn run() -> io::Result<()> {
         verify_sha256(&payload, &footer.payload_sha256)?;
     }
 
-    // 5. Cache key.
-    //    v1: SHA-256 of the payload.  v2: SHA-256 of concatenated layer hashes
-    //    (stable as long as layer content doesn't change — so an app-only rebuild
-    //    keeps the runtime layer cached).
+    // 6. Cache key.
     let hash = if layered { cache_key_v2(&meta.layers) } else { footer.sha256_hex() };
 
     let base = cache_dir()?;
@@ -93,9 +94,6 @@ fn run() -> io::Result<()> {
     let ready_marker = cache_root.join(".ready");
 
     if !ready_marker.exists() {
-        // Serialize concurrent instances: one extracts, others wait on the lock
-        // then find the cache already ready. (Extraction is atomic via rename()
-        // even without this lock; flock just avoids duplicated work.)
         let lock = File::create(base.join(format!("{hash}.lock")))?;
         flock_exclusive(&lock)?;
 
@@ -103,20 +101,100 @@ fn run() -> io::Result<()> {
             if verbose {
                 eprintln!("[xbin] cold start: extracting {}", meta.name);
             }
-            // Split into layers (v2) or a single blob (v1).
             let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered);
             extract_atomic(&blobs, &cache_root, &rootfs)?;
         }
-        // Lock released when `lock` goes out of scope.
     } else if verbose {
         eprintln!("[xbin] warm start: cache hit {}", hash);
     }
 
-    // 6. Build argv + env and exec into the extracted rootfs.
+    // 7. Build argv + env and exec into the extracted rootfs.
     exec_app(&meta, &rootfs)
 }
 
-/// v2 cache key: SHA-256 of the concatenation of each layer's hex hash.
+// ---------------------------------------------------------------------------
+// Ed25519 signature verification
+// ---------------------------------------------------------------------------
+
+/// Verify Ed25519 signature: `Ed25519_verify(SHA256(payload‖meta), sig, public_key)`.
+///
+/// Trusted public keys are read from `~/.xbin/trusted-keys/` (or `$XBIN_TRUSTED_DIR`).
+/// The launcher accepts the file if **any** trusted key verifies the signature.
+fn verify_ed25519(footer: &Footer, exe: &mut File, payload: &[u8], meta_bytes: &[u8]) -> io::Result<()> {
+    // Read signature block: [sig_size: u32le][signature: 64 bytes]
+    let sig_data = read_at(exe, footer.sig_offset, 68)?;
+    let sig_size = u32::from_le_bytes(sig_data[0..4].try_into().unwrap()) as usize;
+    if sig_size != 64 {
+        return Err(err("invalid Ed25519 signature size"));
+    }
+    let sig_bytes: &[u8; 64] = sig_data[4..68].try_into().unwrap();
+
+    // Compute SHA-256(payload ‖ meta)
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(payload);
+    hasher.update(meta_bytes);
+    let hash = hasher.finalize();
+
+    // Load trusted public keys from directory.
+    let trusted_dir = trusted_keys_dir();
+    if !trusted_dir.exists() {
+        return Err(err(
+            "trusted keys directory not found; cannot verify signature",
+        ));
+    }
+
+    // Parse signature once.
+    use ed25519_dalek::Signature;
+    let sig = Signature::from_bytes(sig_bytes);
+
+    use ed25519_dalek::VerifyingKey;
+
+    let mut verified = false;
+    let rd = fs::read_dir(&trusted_dir)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("reading trusted keys: {e}")))?;
+    for entry in rd.flatten() {
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            let key_raw = match fs::read(entry.path()) {
+                Ok(b) if b.len() == 32 => b,
+                _ => continue,
+            };
+            let key_arr: [u8; 32] = match key_raw.try_into() {
+                Ok(a) => a,
+                Err(_) => continue,
+            };
+            let pub_key = match VerifyingKey::from_bytes(&key_arr) {
+                Ok(k) => k,
+                Err(_) => continue,
+            };
+            use ed25519_dalek::Verifier;
+            if pub_key.verify(&hash, &sig).is_ok() {
+                verified = true;
+                break;
+            }
+        }
+    }
+
+    if !verified {
+        return Err(err("Ed25519 signature verification failed"));
+    }
+    Ok(())
+}
+
+/// Return the directory where trusted Ed25519 public keys are stored.
+/// Override via `$XBIN_TRUSTED_DIR`; default `~/.xbin/trusted-keys/`.
+fn trusted_keys_dir() -> PathBuf {
+    if let Some(d) = std::env::var_os("XBIN_TRUSTED_DIR") {
+        return PathBuf::from(d);
+    }
+    let home = std::env::var_os("HOME").unwrap_or_default();
+    PathBuf::from(home).join(".xbin").join("trusted-keys")
+}
+
+// ---------------------------------------------------------------------------
+// Cache key (v2)
+// ---------------------------------------------------------------------------
+
 fn cache_key_v2(layers: &[Layer]) -> String {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
@@ -131,8 +209,6 @@ fn cache_key_v2(layers: &[Layer]) -> String {
     s
 }
 
-/// Split the payload region into compressed blobs, in stacking order.
-/// In v1, returns the entire payload as a single blob.
 fn slice_layers<'a>(
     payload: &'a [u8],
     region_offset: u64,
@@ -150,14 +226,6 @@ fn slice_layers<'a>(
             &payload[start..end]
         })
         .collect()
-}
-
-/// Read `len` bytes at absolute offset `off`.
-fn read_at(f: &mut File, off: u64, len: usize) -> io::Result<Vec<u8>> {
-    f.seek(SeekFrom::Start(off))?;
-    let mut buf = vec![0u8; len];
-    f.read_exact(&mut buf)?;
-    Ok(buf)
 }
 
 fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> {
@@ -183,20 +251,14 @@ fn cache_dir() -> io::Result<PathBuf> {
     Ok(PathBuf::from(home).join(".cache").join("xbin"))
 }
 
-/// Decompress one or more zstd(tar) layers into a unique temp directory
-/// (stacked in order), then atomic rename() to the final cache location.
-/// Prevents partial states (TOCTOU).
 fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
     let parent = cache_root.parent().unwrap_or(Path::new("/tmp"));
     fs::create_dir_all(parent)?;
 
-    // Unique temp dir (pid + nanos) on the same filesystem as the target
-    // (required for rename() to be atomic).
     let tmp = parent.join(format!(".tmp-{}-{}", std::process::id(), nanos()));
     let tmp_rootfs = tmp.join("rootfs");
     fs::create_dir_all(&tmp_rootfs)?;
 
-    // Each layer: zstd → tar → unpack on top of previous layers.
     for blob in blobs {
         let decoder = ruzstd::StreamingDecoder::new(io::Cursor::new(*blob))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("zstd: {e}")))?;
@@ -206,10 +268,8 @@ fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Resu
         archive.unpack(&tmp_rootfs)?;
     }
 
-    // Completion marker.
     File::create(tmp.join(".ready"))?.write_all(b"1")?;
 
-    // Atomic rename(). If another process won the race, discard our tmp.
     match fs::rename(&tmp, cache_root) {
         Ok(()) => Ok(()),
         Err(_) if rootfs.exists() => {
@@ -223,13 +283,11 @@ fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Resu
     }
 }
 
-/// Replace the current process with the embedded app.
 fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     if meta.entrypoint.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "empty entrypoint"));
     }
 
-    // Absolute entrypoint paths are relative to the extracted rootfs.
     let resolve = |p: &str| -> PathBuf {
         if let Some(stripped) = p.strip_prefix('/') {
             rootfs.join(stripped)
@@ -241,8 +299,6 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     let prog = resolve(&meta.entrypoint[0]);
     let prog_c = cstr(prog.as_os_str().as_bytes());
 
-    // argv: argv[0] = program path, then the rest of the entrypoint,
-    // then any extra arguments passed by the user on the command line.
     let mut argv: Vec<CString> = Vec::new();
     argv.push(prog_c.clone());
     for a in &meta.entrypoint[1..] {
@@ -252,8 +308,6 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         argv.push(cstr(a.as_bytes()));
     }
 
-    // env: inherit current environment, inject LD_LIBRARY_PATH into the rootfs
-    // libs, then overlay the manifest's env entries.
     let mut env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
     let lib_dirs = [
         rootfs.join("lib"),
@@ -276,10 +330,6 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     }
     env.insert("LD_LIBRARY_PATH".into(), ld);
 
-    // Apply manifest env vars. The ${ROOTFS} token is replaced with the actual
-    // rootfs path in the cache — known only at runtime. This lets the builder
-    // declare paths (e.g. PYTHONPATH=${ROOTFS}/app/site-packages) without knowing
-    // where the cache will be materialized.
     let rootfs_str = rootfs.to_string_lossy();
     for (k, v) in &meta.env {
         env.insert(k.clone(), v.replace("${ROOTFS}", &rootfs_str));
@@ -289,19 +339,16 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         .map(|(k, v)| cstr(format!("{k}={v}").as_bytes()))
         .collect();
 
-    // cwd
     if let Some(cwd) = &meta.cwd {
         let dir = resolve(cwd);
         std::env::set_current_dir(&dir).ok();
     }
 
-    // execve: replaces the process. If it succeeds, we never return.
     let argv_ptrs = to_ptr_vec(&argv);
     let env_ptrs = to_ptr_vec(&env_c);
     unsafe {
         libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
     }
-    // If we're here, execve failed.
     Err(io::Error::last_os_error())
 }
 
@@ -322,8 +369,6 @@ fn nanos() -> u128 {
         .unwrap_or(0)
 }
 
-/// Advisory exclusive lock on a file via flock(2). Blocks until acquired.
-/// Released automatically when the file descriptor is closed.
 fn flock_exclusive(f: &File) -> io::Result<()> {
     use std::os::unix::io::AsRawFd;
     const LOCK_EX: i32 = 2;
@@ -334,10 +379,13 @@ fn flock_exclusive(f: &File) -> io::Result<()> {
     Ok(())
 }
 
-// Avoid the `nix` crate to keep the stub minimal: just the externs we need.
 extern "C" {
     #[link_name = "execve"]
     fn libc_execve(path: *const i8, argv: *const *const i8, envp: *const *const i8) -> i32;
     #[link_name = "flock"]
     fn libc_flock(fd: i32, operation: i32) -> i32;
+}
+
+fn err(msg: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, msg)
 }

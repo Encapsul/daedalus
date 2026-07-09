@@ -7,6 +7,7 @@ import io
 import json
 import os
 import shutil
+import struct
 import subprocess
 import tarfile
 import tempfile
@@ -14,7 +15,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import format as fmt
+from . import crypto, format as fmt
 from .analyzer import ldd, runtime
 
 XBIN_VERSION = "0.1.0"
@@ -24,9 +25,12 @@ def find_stub() -> Path:
     """Locate the compiled launcher stub."""
     here = Path(__file__).resolve()
     repo = here.parents[2]  # cli/xbin/build.py -> repo root
+    tmp_target = Path("/tmp/xbin-stub-target")
     candidates = [
         repo / "stub/target/x86_64-unknown-linux-musl/release/xbin-stub",
         repo / "stub/target/release/xbin-stub",
+        tmp_target / "x86_64-unknown-linux-musl/release/xbin-stub",
+        tmp_target / "release/xbin-stub",
     ]
     env = os.environ.get("XBIN_STUB")
     if env:
@@ -191,10 +195,14 @@ def _compress_layer_cached(raw_tar: bytes, reuse: bool, verbose: bool,
     return comp
 
 
-def build(app_path: str, output: str | None, verbose: bool = True) -> str:
-    """Build a .xbin (v2 format, multi-layer). Returns the output path.
+def build(app_path: str, output: str | None, key_path: str | None = None,
+          verbose: bool = True) -> str:
+    """Build a .xbin (v3 format, multi-layer). Returns the output path.
 
     Layout: [stub][runtime layer][app layer][metadata][footer].
+    When key_path is given, signs inline:
+      [stub][payload][metadata][sig_block][v3 footer with FLAG_SIGNED].
+
     On rebuild, only the app layer is recompressed (runtime is cached).
     """
     app_dir = Path(app_path).resolve()
@@ -256,17 +264,18 @@ def build(app_path: str, output: str | None, verbose: bool = True) -> str:
     }
     meta_bytes = json.dumps(meta, separators=(",", ":")).encode()
 
-    # v2 integrity: SHA-256 of (layer region + metadata).
+    # Integrity: SHA-256 of (layer region + metadata).
     payload_csize = len(rt_comp) + len(app_comp)
-    integrity = hashlib.sha256(rt_comp + app_comp + meta_bytes).digest()
+    payload = rt_comp + app_comp
+    integrity = hashlib.sha256(payload + meta_bytes).digest()
 
     footer = fmt.Footer(
-        format_version=2,
+        format_version=3 if key_path else 2,
         arch=fmt.ARCH_X86_64,
         flags=0,
         payload_offset=rt_offset,
         payload_csize=payload_csize,
-        payload_usize=0,  # unused in v2 (sizes are per-layer)
+        payload_usize=0,  # unused in v2/v3 (sizes are per-layer)
         payload_sha256=integrity,
         meta_offset=meta_offset,
         meta_size=len(meta_bytes),
@@ -274,13 +283,24 @@ def build(app_path: str, output: str | None, verbose: bool = True) -> str:
 
     with open(out_path, "wb") as f:
         f.write(stub_bytes)
-        f.write(rt_comp)
-        f.write(app_comp)
+        f.write(payload)
         f.write(meta_bytes)
+
+        if key_path:
+            body_hash = hashlib.sha256(payload + meta_bytes).digest()
+            sig = crypto.sign(key_path, body_hash)
+            sig_block = struct.pack("<I", 64) + sig  # 68 bytes
+            sig_offset = f.tell()
+            f.write(sig_block)
+            footer.format_version = 3
+            footer.flags |= fmt.FLAG_SIGNED
+            footer.sig_offset = sig_offset
+
         f.write(footer.pack())
     os.chmod(out_path, 0o755)
 
     size = out_path.stat().st_size
     if verbose:
-        print(f"[xbin] wrote {out_path} ({size/1e6:.1f}MB) in {time.time()-t0:.1f}s")
+        label = "signed" if key_path else "unsigned"
+        print(f"[xbin] wrote {out_path} ({size/1e6:.1f}MB, {label}) in {time.time()-t0:.1f}s")
     return str(out_path)
