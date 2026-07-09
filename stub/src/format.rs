@@ -1,7 +1,7 @@
-//! Parsing du format `.xbin` — voir docs/FORMAT.md.
+//! `.xbin` format parser — see docs/src/reference/format.md.
 //!
-//! Le launcher se lit lui-même via /proc/self/exe et lit le footer de 84 bytes
-//! en fin de fichier pour localiser le payload et les métadonnées.
+//! The launcher reads itself via /proc/self/exe and parses the 84-byte footer
+//! at end-of-file to locate the payload and metadata.
 
 use std::io::{self, Read, Seek, SeekFrom};
 
@@ -10,7 +10,7 @@ pub const FOOTER_MAGIC: u32 = 0xBEEF_CAFE;
 pub const FOOTER_SIZE: u64 = 84;
 pub const FORMAT_VERSION: u8 = 2;
 
-/// Footer fixe de 84 bytes situé à la toute fin du fichier .xbin.
+/// Fixed 84-byte footer at the very end of a .xbin file.
 #[derive(Debug)]
 pub struct Footer {
     pub format_version: u8,
@@ -29,7 +29,7 @@ fn u64_le(b: &[u8]) -> u64 {
 }
 
 impl Footer {
-    /// Lit et valide le footer depuis un fichier seekable.
+    /// Read and validate the footer from a seekable file.
     pub fn read_from<R: Read + Seek>(r: &mut R) -> io::Result<Footer> {
         let total = r.seek(SeekFrom::End(0))?;
         if total < FOOTER_SIZE {

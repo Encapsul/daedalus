@@ -15,5 +15,9 @@ dist/
 # mdbook
 docs/book/
 
-# Divers
+# IDE / editors
 .DS_Store
+.claude/
+
+# OS
+Thumbs.db

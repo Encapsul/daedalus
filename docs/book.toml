@@ -8,8 +8,8 @@ src = "src"
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"
-git-repository-url = ""
-edit-url-template = ""
+git-repository-url = "https://github.com/tedsig42/xbin"
+edit-url-template = "https://github.com/tedsig42/xbin/edit/main/docs/src/{path}"
 copy-fonts = true
 
 [output.html.fold]

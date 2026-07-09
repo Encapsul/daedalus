@@ -1,7 +1,7 @@
-"""Détection des librairies dynamiques (.so) via ldd.
+"""Dynamic library (.so) detection via ldd.
 
-`ldd` résout déjà transitivement, donc une seule passe suffit pour obtenir
-l'ensemble des .so nécessaires + le dynamic loader (ld-linux).
+`ldd` already resolves transitively, so a single pass gets all the required
+.so files + the dynamic loader (ld-linux).
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ _DIRECT = re.compile(r"^\s*(/\S+)\s+\(0x[0-9a-f]+\)")
 
 
 def shared_libs(binary: Path) -> set[Path]:
-    """Retourne l'ensemble des chemins absolus des .so dont dépend `binary`.
+    """Return the set of absolute .so paths that `binary` depends on.
 
-    Inclut le dynamic loader (ld-linux). Retourne un set vide si le binaire est
-    statique ou si ldd échoue (on ne fait pas planter le build pour ça).
+    Includes the dynamic loader (ld-linux). Returns an empty set if the binary
+    is static or if ldd fails (we don't crash the build for this).
     """
     try:
         out = subprocess.run(
@@ -43,5 +43,5 @@ def shared_libs(binary: Path) -> set[Path]:
         m = _DIRECT.match(line)
         if m:
             libs.add(Path(m.group(1)))
-    # Ne garder que ce qui existe réellement.
+    # Only keep paths that actually exist on disk.
     return {p for p in libs if p.exists()}

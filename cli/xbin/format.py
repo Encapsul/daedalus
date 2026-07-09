@@ -1,7 +1,7 @@
-"""Spec du format .xbin — DOIT rester synchronisé avec stub/src/format.rs.
+""".xbin format spec — MUST stay in sync with stub/src/format.rs.
 
-Voir docs/FORMAT.md. Le footer fait 84 bytes en fin de fichier.
-"""
+See docs/src/reference/format.md. The footer is 84 bytes at end-of-file.
+"""""
 
 from __future__ import annotations
 

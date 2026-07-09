@@ -1,1 +1,1 @@
-"""Analyzer : détection du runtime et des dépendances dynamiques."""
+"""Analyzer: runtime detection and dynamic dependency resolution."""
