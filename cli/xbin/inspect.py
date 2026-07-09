@@ -1,4 +1,4 @@
-"""xbin inspect : affiche le contenu d'un .xbin sans l'extraire."""
+"""xbin inspect: display .xbin contents without extracting."""
 
 from __future__ import annotations
 

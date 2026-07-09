@@ -1,11 +1,11 @@
 //! xbin launcher stub.
 //!
-//! Embarqué en tête du fichier .xbin (c'est l'ELF que le kernel exécute).
-//! Flux : se lit via /proc/self/exe → lit le footer → vérifie l'intégrité →
-//! extrait le rootfs dans ~/.cache/xbin/{sha256}/ (atomique) → exec l'app.
+//! Embedded at the head of every .xbin file — this is the ELF the kernel runs.
+//! Flow: open /proc/self/exe → read footer → verify integrity →
+//! extract rootfs to ~/.cache/xbin/{sha256}/ (atomic) → exec the app.
 //!
-//! Isolation niveau 0 (MVP) : LD_LIBRARY_PATH, pas de chroot. Les niveaux 1/2
-//! (chroot, user namespaces) arrivent en Phase 2 — voir docs/ROADMAP.md.
+//! Level 0 isolation (MVP): LD_LIBRARY_PATH, no chroot. Levels 1/2
+//! (chroot, user namespaces) in Phase 2 — see docs/src/roadmap.md.
 
 mod format;
 
@@ -28,13 +28,13 @@ struct Metadata {
     env: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     cwd: Option<String>,
-    /// Couches du payload (format v2). Vide en v1 (payload monolithique).
+    /// Payload layers (format v2). Empty for v1 (monolithic payload).
     #[serde(default)]
     layers: Vec<Layer>,
 }
 
-/// Une couche du payload v2 : un blob zstd(tar) indépendant, empilé sur les
-/// précédents à l'extraction (les couches suivantes écrasent les précédentes).
+/// A v2 payload layer: an independent zstd(tar) blob, stacked during extraction
+/// (later layers overwrite earlier ones — Docker-like layering model).
 #[derive(Deserialize)]
 struct Layer {
     #[serde(default)]
@@ -43,7 +43,7 @@ struct Layer {
     csize: u64,
     #[allow(dead_code)]
     usize: u64,
-    /// SHA-256 (hex) du blob compressé — sert de clé de cache stable par couche.
+    /// SHA-256 (hex) of the compressed blob — used as stable per-layer cache key.
     sha256: String,
 }
 
@@ -57,20 +57,20 @@ fn main() {
 fn run() -> io::Result<()> {
     let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
 
-    // 1. Se localiser de manière fiable (pas argv[0], contrôlable par l'appelant).
+    // 1. Locate ourselves reliably (not argv[0] — caller-controlled).
     let mut exe = File::open("/proc/self/exe")?;
     let footer = Footer::read_from(&mut exe)?;
 
-    // 2. Lire les métadonnées JSON.
+    // 2. Read JSON metadata.
     let meta_bytes = read_at(&mut exe, footer.meta_offset, footer.meta_size as usize)?;
     let meta: Metadata = serde_json::from_slice(&meta_bytes)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("bad metadata: {e}")))?;
 
-    // 3. Lire la région du payload (toutes les couches, contiguës en v2).
+    // 3. Read the entire payload region (all layers, contiguous in v2).
     let payload = read_at(&mut exe, footer.payload_offset, footer.payload_csize as usize)?;
 
-    // 4. Vérifier l'intégrité.
-    //    v1 : SHA-256(payload).        v2 : SHA-256(couches || metadata).
+    // 4. Verify integrity.
+    //    v1: SHA-256(payload).        v2: SHA-256(layers || metadata).
     let layered = footer.format_version >= 2 && !meta.layers.is_empty();
     if layered {
         let mut buf = payload.clone();
@@ -80,10 +80,10 @@ fn run() -> io::Result<()> {
         verify_sha256(&payload, &footer.payload_sha256)?;
     }
 
-    // 5. Clé de cache.
-    //    v1 : SHA-256 du payload.  v2 : SHA-256 de la concaténation des hash de
-    //    couches (stable tant que le contenu des couches ne change pas — donc un
-    //    rebuild qui ne touche que la couche app garde la couche runtime cachée).
+    // 5. Cache key.
+    //    v1: SHA-256 of the payload.  v2: SHA-256 of concatenated layer hashes
+    //    (stable as long as layer content doesn't change — so an app-only rebuild
+    //    keeps the runtime layer cached).
     let hash = if layered { cache_key_v2(&meta.layers) } else { footer.sha256_hex() };
 
     let base = cache_dir()?;
@@ -93,10 +93,9 @@ fn run() -> io::Result<()> {
     let ready_marker = cache_root.join(".ready");
 
     if !ready_marker.exists() {
-        // Sérialise les instances concurrentes : une seule extrait, les autres
-        // attendent le verrou puis trouvent le cache déjà prêt. (L'extraction
-        // reste atomique via rename(), donc correcte même sans ce verrou ; le
-        // flock évite juste le travail dupliqué.)
+        // Serialize concurrent instances: one extracts, others wait on the lock
+        // then find the cache already ready. (Extraction is atomic via rename()
+        // even without this lock; flock just avoids duplicated work.)
         let lock = File::create(base.join(format!("{hash}.lock")))?;
         flock_exclusive(&lock)?;
 
@@ -104,20 +103,20 @@ fn run() -> io::Result<()> {
             if verbose {
                 eprintln!("[xbin] cold start: extracting {}", meta.name);
             }
-            // Découpe la région en couches (v2) ou en un seul blob (v1).
+            // Split into layers (v2) or a single blob (v1).
             let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered);
             extract_atomic(&blobs, &cache_root, &rootfs)?;
         }
-        // verrou relâché à la fermeture de `lock` (fin de scope).
+        // Lock released when `lock` goes out of scope.
     } else if verbose {
         eprintln!("[xbin] warm start: cache hit {}", hash);
     }
 
-    // 6. Construire argv + env et exec dans le rootfs.
+    // 6. Build argv + env and exec into the extracted rootfs.
     exec_app(&meta, &rootfs)
 }
 
-/// Clé de cache v2 : SHA-256 de la concaténation des hash hex de chaque couche.
+/// v2 cache key: SHA-256 of the concatenation of each layer's hex hash.
 fn cache_key_v2(layers: &[Layer]) -> String {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
@@ -132,8 +131,8 @@ fn cache_key_v2(layers: &[Layer]) -> String {
     s
 }
 
-/// Découpe la région payload en blobs compressés, dans l'ordre d'empilement.
-/// En v1, retourne le payload entier comme unique blob.
+/// Split the payload region into compressed blobs, in stacking order.
+/// In v1, returns the entire payload as a single blob.
 fn slice_layers<'a>(
     payload: &'a [u8],
     region_offset: u64,
@@ -153,7 +152,7 @@ fn slice_layers<'a>(
         .collect()
 }
 
-/// Lit `len` bytes à l'offset absolu `off`.
+/// Read `len` bytes at absolute offset `off`.
 fn read_at(f: &mut File, off: u64, len: usize) -> io::Result<Vec<u8>> {
     f.seek(SeekFrom::Start(off))?;
     let mut buf = vec![0u8; len];
@@ -184,20 +183,20 @@ fn cache_dir() -> io::Result<PathBuf> {
     Ok(PathBuf::from(home).join(".cache").join("xbin"))
 }
 
-/// Décompresse une ou plusieurs couches zstd(tar) dans un répertoire temporaire
-/// unique (empilées dans l'ordre), puis rename() atomique vers le cache final.
-/// Évite les états intermédiaires (TOCTOU).
+/// Decompress one or more zstd(tar) layers into a unique temp directory
+/// (stacked in order), then atomic rename() to the final cache location.
+/// Prevents partial states (TOCTOU).
 fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
     let parent = cache_root.parent().unwrap_or(Path::new("/tmp"));
     fs::create_dir_all(parent)?;
 
-    // Répertoire temp unique (pid + nanos) dans le même filesystem que la cible
-    // (obligatoire pour que rename() soit atomique).
+    // Unique temp dir (pid + nanos) on the same filesystem as the target
+    // (required for rename() to be atomic).
     let tmp = parent.join(format!(".tmp-{}-{}", std::process::id(), nanos()));
     let tmp_rootfs = tmp.join("rootfs");
     fs::create_dir_all(&tmp_rootfs)?;
 
-    // Chaque couche : zstd → tar → unpack par-dessus la précédente.
+    // Each layer: zstd → tar → unpack on top of previous layers.
     for blob in blobs {
         let decoder = ruzstd::StreamingDecoder::new(io::Cursor::new(*blob))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("zstd: {e}")))?;
@@ -207,10 +206,10 @@ fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Resu
         archive.unpack(&tmp_rootfs)?;
     }
 
-    // Marqueur de complétude.
+    // Completion marker.
     File::create(tmp.join(".ready"))?.write_all(b"1")?;
 
-    // rename() atomique. Si un autre process a gagné la course, on jette notre tmp.
+    // Atomic rename(). If another process won the race, discard our tmp.
     match fs::rename(&tmp, cache_root) {
         Ok(()) => Ok(()),
         Err(_) if rootfs.exists() => {
@@ -224,13 +223,13 @@ fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Resu
     }
 }
 
-/// Remplace le processus courant par l'app embarquée.
+/// Replace the current process with the embedded app.
 fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     if meta.entrypoint.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "empty entrypoint"));
     }
 
-    // Les chemins absolus de l'entrypoint sont relatifs au rootfs.
+    // Absolute entrypoint paths are relative to the extracted rootfs.
     let resolve = |p: &str| -> PathBuf {
         if let Some(stripped) = p.strip_prefix('/') {
             rootfs.join(stripped)
@@ -242,8 +241,8 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     let prog = resolve(&meta.entrypoint[0]);
     let prog_c = cstr(prog.as_os_str().as_bytes());
 
-    // argv : argv[0] = chemin du programme, puis le reste de l'entrypoint,
-    // puis les arguments passés par l'utilisateur sur la ligne de commande.
+    // argv: argv[0] = program path, then the rest of the entrypoint,
+    // then any extra arguments passed by the user on the command line.
     let mut argv: Vec<CString> = Vec::new();
     argv.push(prog_c.clone());
     for a in &meta.entrypoint[1..] {
@@ -253,8 +252,8 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         argv.push(cstr(a.as_bytes()));
     }
 
-    // env : on hérite de l'environnement courant, on injecte LD_LIBRARY_PATH
-    // vers les libs du rootfs, puis on applique l'env du manifest.
+    // env: inherit current environment, inject LD_LIBRARY_PATH into the rootfs
+    // libs, then overlay the manifest's env entries.
     let mut env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
     let lib_dirs = [
         rootfs.join("lib"),
@@ -277,10 +276,10 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     }
     env.insert("LD_LIBRARY_PATH".into(), ld);
 
-    // Applique l'env du manifest. Le token ${ROOTFS} est remplacé par le chemin
-    // réel du rootfs dans le cache — connu seulement à l'exécution. C'est ainsi
-    // que le builder déclare des chemins (ex: PYTHONPATH=${ROOTFS}/app/site-packages)
-    // sans connaître à l'avance où le cache sera matérialisé.
+    // Apply manifest env vars. The ${ROOTFS} token is replaced with the actual
+    // rootfs path in the cache — known only at runtime. This lets the builder
+    // declare paths (e.g. PYTHONPATH=${ROOTFS}/app/site-packages) without knowing
+    // where the cache will be materialized.
     let rootfs_str = rootfs.to_string_lossy();
     for (k, v) in &meta.env {
         env.insert(k.clone(), v.replace("${ROOTFS}", &rootfs_str));
@@ -296,13 +295,13 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         std::env::set_current_dir(&dir).ok();
     }
 
-    // execve : remplace le process. Si ça réussit, on ne revient jamais.
+    // execve: replaces the process. If it succeeds, we never return.
     let argv_ptrs = to_ptr_vec(&argv);
     let env_ptrs = to_ptr_vec(&env_c);
     unsafe {
         libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
     }
-    // Si on est là, execve a échoué.
+    // If we're here, execve failed.
     Err(io::Error::last_os_error())
 }
 
@@ -323,8 +322,8 @@ fn nanos() -> u128 {
         .unwrap_or(0)
 }
 
-/// Verrou exclusif (advisory) sur un fichier via flock(2). Bloque jusqu'à
-/// obtention. Relâché automatiquement à la fermeture du descripteur.
+/// Advisory exclusive lock on a file via flock(2). Blocks until acquired.
+/// Released automatically when the file descriptor is closed.
 fn flock_exclusive(f: &File) -> io::Result<()> {
     use std::os::unix::io::AsRawFd;
     const LOCK_EX: i32 = 2;
@@ -335,7 +334,7 @@ fn flock_exclusive(f: &File) -> io::Result<()> {
     Ok(())
 }
 
-// On évite la crate `nix` pour garder le stub minimal : juste les externs utiles.
+// Avoid the `nix` crate to keep the stub minimal: just the externs we need.
 extern "C" {
     #[link_name = "execve"]
     fn libc_execve(path: *const i8, argv: *const *const i8, envp: *const *const i8) -> i32;

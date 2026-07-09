@@ -6,24 +6,28 @@ XBIN := python3 -m xbin
 
 all: stub
 
+# Build the Rust launcher (statically linked musl ELF).
 stub:
 	cd stub && cargo build --release --target $(TARGET)
 	@echo "stub: $$(ls -la $(STUB) | awk '{print $$5}') bytes"
 
+# Install the CLI via pip editable install.
 install:
 	cd cli && pip install -e .
 
-# Build l'app d'exemple en .xbin (nécessite `stub`).
+# Build the hello-web example .xbin (requires `stub`).
 example: stub
 	cd cli && PYTHONPATH=. $(XBIN) build ../examples/hello-web -o ../hello-web.xbin
 
+# Run the hello-web .xbin.
 run:
 	./hello-web.xbin
 
+# Inspect the hello-web .xbin.
 inspect:
 	cd cli && PYTHONPATH=. $(XBIN) inspect ../hello-web.xbin
 
-# Documentation (mdbook).
+# Build mdbook documentation.
 docs:
 	cd docs && mdbook build
 

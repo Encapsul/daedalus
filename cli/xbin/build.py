@@ -1,4 +1,4 @@
-"""xbin build : analyse une app, construit le rootfs, assemble le .xbin."""
+"""xbin build: analyze an app, build the rootfs, assemble the .xbin."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ XBIN_VERSION = "0.1.0"
 
 
 def find_stub() -> Path:
-    """Localise le launcher stub compilé."""
+    """Locate the compiled launcher stub."""
     here = Path(__file__).resolve()
     repo = here.parents[2]  # cli/xbin/build.py -> repo root
     candidates = [
@@ -41,10 +41,10 @@ def find_stub() -> Path:
 
 
 def _copy_into_rootfs(host_path: Path, rootfs: Path) -> None:
-    """Copie un fichier hôte dans le rootfs en préservant son chemin absolu.
+    """Copy a host file into the rootfs, preserving its absolute path.
 
-    Ex: /usr/lib/x86_64-linux-gnu/libc.so.6 -> rootfs/usr/lib/x86_64-linux-gnu/libc.so.6
-    Résout les symlinks vers leur cible réelle mais recrée le symlink.
+    E.g. /usr/lib/x86_64-linux-gnu/libc.so.6 -> rootfs/usr/lib/x86_64-linux-gnu/libc.so.6
+    Resolves symlinks to real targets but re-creates the symlink itself.
     """
     rel = str(host_path).lstrip("/")
     dest = rootfs / rel
@@ -52,7 +52,7 @@ def _copy_into_rootfs(host_path: Path, rootfs: Path) -> None:
     if dest.exists() or dest.is_symlink():
         return
     if host_path.is_symlink():
-        # Recrée le symlink ET embarque la cible.
+        # Recreate the symlink AND embed the target.
         target = os.readlink(host_path)
         real = host_path.resolve()
         _copy_into_rootfs(real, rootfs)
@@ -65,7 +65,7 @@ def _copy_into_rootfs(host_path: Path, rootfs: Path) -> None:
 
 
 def _write_etc(rootfs: Path) -> None:
-    """/etc minimal pour les apps qui résolvent users/DNS."""
+    """Minimal /etc for apps that need user/DNS resolution."""
     etc = rootfs / "etc"
     etc.mkdir(parents=True, exist_ok=True)
     (etc / "passwd").write_text("root:x:0:0:root:/root:/bin/sh\n")
@@ -76,15 +76,14 @@ def _write_etc(rootfs: Path) -> None:
 
 def _build_runtime_layer(app_dir: Path, plan: runtime.RuntimePlan, layer: Path,
                          verbose: bool) -> None:
-    """Couche RUNTIME : interpréteur + stdlib + .so + /etc.
+    """RUNTIME layer: interpreter + stdlib + .so + /etc.
 
-    Volontairement **indépendante du code de l'app** : éditer `app.py` ne change
-    pas cette couche, donc elle est réutilisée tel quel au rebuild (cache de
-    build). Elle ne change que si l'interpréteur ou les dépendances binaires
-    changent.
+    Intentionally **independent of app code**: editing `app.py` does not change
+    this layer, so it is reused as-is on rebuild (build cache). It only changes
+    when the interpreter or binary dependencies change.
     """
-    # Binaires à analyser pour leurs .so : interpréteur, binaire natif, et les
-    # extensions C des site-packages (on lit les .so depuis la SOURCE hôte).
+    # Binaries to analyze for .so deps: interpreter, native binary, and C
+    # extensions from site-packages (we read .so from the HOST source).
     binaries: list[Path] = []
     if plan.interpreter_host:
         _copy_into_rootfs(plan.interpreter_host, layer)
@@ -104,7 +103,7 @@ def _build_runtime_layer(app_dir: Path, plan: runtime.RuntimePlan, layer: Path,
     if verbose:
         print(f"  runtime layer: {len(all_libs)} shared libraries")
 
-    # Dossiers de runtime (ex: stdlib python).
+    # Runtime directories (e.g. Python stdlib).
     for d in plan.extra_dirs_host:
         dest = layer / str(d).lstrip("/")
         if not dest.exists():
@@ -118,7 +117,7 @@ def _build_runtime_layer(app_dir: Path, plan: runtime.RuntimePlan, layer: Path,
 
 def _build_app_layer(app_dir: Path, plan: runtime.RuntimePlan, layer: Path,
                      verbose: bool) -> None:
-    """Couche APP : code de l'application + site-packages. Petite et volatile."""
+    """APP layer: application code + site-packages. Small and volatile."""
     app_dest = layer / "app"
     shutil.copytree(
         app_dir, app_dest, symlinks=True, dirs_exist_ok=True,
@@ -136,8 +135,8 @@ def _build_app_layer(app_dir: Path, plan: runtime.RuntimePlan, layer: Path,
 
 
 def _tar_deterministic(root: Path) -> bytes:
-    """tar reproductible du contenu de `root` (mtime/uid/gid normalisés, entrées
-    triées). Même contenu → mêmes bytes → même hash → cache de build réutilisable.
+    """Deterministic tar of `root` content (normalized mtime/uid/gid, sorted entries).
+    Same content → same bytes → same hash → reusable build cache.
     """
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w", format=tarfile.GNU_FORMAT) as tf:
@@ -170,8 +169,8 @@ def _build_cache_dir() -> Path:
 
 def _compress_layer_cached(raw_tar: bytes, reuse: bool, verbose: bool,
                            label: str) -> bytes:
-    """Compresse une couche, en réutilisant le blob compressé du cache de build
-    si une couche au contenu identique a déjà été compressée (clé = hash du tar).
+    """Compress a layer, reusing the compressed blob from the build cache
+    if an identical layer was already compressed (key = tar hash).
     """
     if not reuse:
         comp = _zstd(raw_tar)
@@ -193,10 +192,10 @@ def _compress_layer_cached(raw_tar: bytes, reuse: bool, verbose: bool,
 
 
 def build(app_path: str, output: str | None, verbose: bool = True) -> str:
-    """Construit un .xbin (format v2, multi-couches). Retourne le chemin.
+    """Build a .xbin (v2 format, multi-layer). Returns the output path.
 
-    Format produit : [stub][couche runtime][couche app][metadata][footer].
-    Au rebuild, seule la couche app est recompressée si le runtime est inchangé.
+    Layout: [stub][runtime layer][app layer][metadata][footer].
+    On rebuild, only the app layer is recompressed (runtime is cached).
     """
     app_dir = Path(app_path).resolve()
     if not app_dir.is_dir():
@@ -225,14 +224,14 @@ def build(app_path: str, output: str | None, verbose: bool = True) -> str:
         rt_tar = _tar_deterministic(rt_dir)
         app_tar = _tar_deterministic(app_dir_layer)
 
-    # La couche runtime est stable → réutilisable depuis le cache de build.
-    # La couche app est petite et volatile → toujours recompressée.
+    # Runtime layer is stable → reusable from build cache.
+    # App layer is small and volatile → always recompressed.
     rt_comp = _compress_layer_cached(rt_tar, reuse=True, verbose=verbose,
                                      label="runtime layer")
     app_comp = _compress_layer_cached(app_tar, reuse=False, verbose=verbose,
                                       label="app layer")
 
-    # Offsets absolus dans le fichier final.
+    # Absolute offsets within the final file.
     stub_bytes = stub.read_bytes()
     rt_offset = len(stub_bytes)
     app_offset = rt_offset + len(rt_comp)
@@ -257,7 +256,7 @@ def build(app_path: str, output: str | None, verbose: bool = True) -> str:
     }
     meta_bytes = json.dumps(meta, separators=(",", ":")).encode()
 
-    # Intégrité v2 : SHA-256 sur (région des couches + metadata).
+    # v2 integrity: SHA-256 of (layer region + metadata).
     payload_csize = len(rt_comp) + len(app_comp)
     integrity = hashlib.sha256(rt_comp + app_comp + meta_bytes).digest()
 
@@ -267,7 +266,7 @@ def build(app_path: str, output: str | None, verbose: bool = True) -> str:
         flags=0,
         payload_offset=rt_offset,
         payload_csize=payload_csize,
-        payload_usize=0,  # inutilisé en v2 (les tailles sont par couche)
+        payload_usize=0,  # unused in v2 (sizes are per-layer)
         payload_sha256=integrity,
         meta_offset=meta_offset,
         meta_size=len(meta_bytes),

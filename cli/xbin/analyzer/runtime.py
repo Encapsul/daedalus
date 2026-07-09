@@ -1,7 +1,7 @@
-"""Détection du runtime d'une application + résolution de l'entrypoint.
+"""Application runtime detection + entrypoint resolution.
 
-MVP : python, node (détection), binaire ELF natif. Best-effort, surchargeable
-par un manifest (xbin.toml) — voir build.py.
+MVP: python, node (detection only), native ELF binary. Best-effort, overridable
+via a manifest (xbin.toml) — see build.py.
 """
 
 from __future__ import annotations
@@ -13,20 +13,20 @@ from pathlib import Path
 
 @dataclass
 class RuntimePlan:
-    """Plan d'exécution résolu pour une app.
+    """Resolved execution plan for an app.
 
-    Tous les chemins `*_host` sont des chemins absolus sur la machine de build.
-    Les chemins de l'entrypoint sont relatifs au rootfs (commencent par '/').
+    All `*_host` paths are absolute paths on the build machine.
+    Entrypoint paths are relative to the rootfs (start with '/').
     """
 
     runtime: str  # "python" | "node" | "binary"
-    interpreter_host: Path | None  # binaire du runtime à embarquer (None si natif)
+    interpreter_host: Path | None  # runtime binary to embed (None for native)
     entrypoint: list[str]  # argv relatif au rootfs
     cwd: str = "/app"
     env: dict[str, str] = field(default_factory=dict)
     extra_dirs_host: list[Path] = field(default_factory=list)  # ex: stdlib python
-    # site-packages tiers à embarquer : (source_hôte, chemin_dans_le_rootfs).
-    # Le chemin rootfs est ajouté à PYTHONPATH du launcher via ${ROOTFS}.
+    # Third-party site-packages to embed: (host_source, path_in_rootfs).
+    # The rootfs path is added to PYTHONPATH by the launcher via ${ROOTFS}.
     site_packages: list[tuple[Path, str]] = field(default_factory=list)
 
 
@@ -38,10 +38,10 @@ def _first_existing(app_dir: Path, names: list[str]) -> str | None:
 
 
 def detect(app_dir: Path) -> RuntimePlan:
-    """Détecte le runtime. Lève ValueError si rien de reconnaissable."""
+    """Detect the runtime. Raises ValueError if nothing is recognizable."""
     app_dir = app_dir.resolve()
 
-    # 1. App Python : présence d'un point d'entrée .py
+    # 1. Python app: presence of a .py entry point
     py_entry = _first_existing(app_dir, ["app.py", "main.py", "__main__.py", "server.py"])
     if py_entry:
         py = shutil.which("python3") or shutil.which("python")
@@ -55,7 +55,7 @@ def detect(app_dir: Path) -> RuntimePlan:
         sp_host = _find_site_packages(app_dir)
         if sp_host:
             # On embarque les site-packages sous /app/site-packages dans le rootfs
-            # et on l'ajoute à PYTHONPATH (résolu à l'exécution via ${ROOTFS}).
+            # and add it to PYTHONPATH (resolved at runtime via ${ROOTFS}).
             site_packages.append((sp_host, "/app/site-packages"))
             env["PYTHONPATH"] = "${ROOTFS}/app/site-packages"
 
@@ -69,7 +69,7 @@ def detect(app_dir: Path) -> RuntimePlan:
             site_packages=site_packages,
         )
 
-    # 2. App Node : package.json
+    # 2. Node app: package.json
     if (app_dir / "package.json").is_file():
         node = shutil.which("node")
         if not node:
@@ -83,7 +83,7 @@ def detect(app_dir: Path) -> RuntimePlan:
             cwd="/app",
         )
 
-    # 3. Binaire natif : un seul exécutable ELF
+    # 3. Native binary: single ELF executable
     elf = _single_elf(app_dir)
     if elf:
         return RuntimePlan(
@@ -100,24 +100,24 @@ def detect(app_dir: Path) -> RuntimePlan:
 
 
 def _rootfs_rel(host_path: Path) -> str:
-    """Chemin de `host_path` une fois copié dans le rootfs (on préserve l'arbo)."""
+    """Path of `host_path` once copied into the rootfs (tree is preserved)."""
     return str(host_path).lstrip("/")
 
 
 def _find_site_packages(app_dir: Path) -> Path | None:
-    """Localise les dépendances tierces Python à embarquer.
+    """Locate third-party Python dependencies to embed.
 
-    Cherche, dans l'ordre :
-      1. un virtualenv `.venv/` ou `venv/`  → son lib/pythonX.Y/site-packages
-      2. un dossier `site-packages/` vendu à la racine de l'app
+    Looks, in order:
+      1. a `.venv/` or `venv/` virtualenv → its lib/pythonX.Y/site-packages
+      2. a vendored `site-packages/` directory at the app root
 
-    Retourne None si l'app n'utilise que la stdlib.
+    Returns None if the app uses stdlib only.
     """
     for venv_name in (".venv", "venv"):
         venv = app_dir / venv_name
         lib = venv / "lib"
         if lib.is_dir():
-            # lib/pythonX.Y/site-packages (on prend le premier pythonX.Y trouvé)
+            # lib/pythonX.Y/site-packages (take the first pythonX.Y found)
             for pyd in sorted(lib.glob("python*")):
                 sp = pyd / "site-packages"
                 if sp.is_dir():
@@ -129,7 +129,7 @@ def _find_site_packages(app_dir: Path) -> Path | None:
 
 
 def _python_stdlib(interp: Path) -> Path | None:
-    """Localise la stdlib python (ex: /usr/lib/python3.12) à embarquer."""
+    """Locate the Python stdlib (e.g. /usr/lib/python3.12) to embed."""
     import sys
 
     candidate = Path(sys.base_prefix) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}"
@@ -155,6 +155,7 @@ def _node_entry(app_dir: Path) -> str:
 
 
 def _single_elf(app_dir: Path) -> Path | None:
+    """Detect a single native ELF binary in the app directory."""
     elves = []
     for p in app_dir.iterdir():
         if p.is_file() and p.stat().st_mode & 0o111:

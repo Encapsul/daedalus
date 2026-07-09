@@ -1,4 +1,4 @@
-"""xbin clean : nettoie le cache d'extraction local."""
+"""xbin clean: remove local extraction cache entries."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def cache_dir() -> Path:
-    """Même logique que le launcher (stub/src/main.rs::cache_dir)."""
+    """Same logic as the launcher (stub/src/main.rs::cache_dir)."""
     xdg = os.environ.get("XDG_CACHE_HOME")
     if xdg:
         return Path(xdg) / "xbin"
@@ -35,15 +35,15 @@ def clean(all_entries: bool = False) -> None:
         print(f"[xbin] removed entire cache ({size/1e6:.1f}MB) at {cache}")
         return
 
-    # Sans --all : supprime les entrées extraites (dossiers {sha256}/) et les
-    # verrous orphelins, mais conserve le cache de build (`build/`, qui accélère
-    # les rebuilds) et le répertoire de cache lui-même.
+    # Without --all: remove extracted entries ({sha256}/ dirs) and orphaned
+    # locks, but keep the build cache (`build/`, which speeds up rebuilds)
+    # and the cache dir itself.
     removed = 0
     freed = 0
     for entry in cache.iterdir():
         if entry.is_dir():
             if entry.name == "build":
-                continue  # cache de build préservé (utiliser --all pour le vider)
+                continue  # preserve build cache (use --all to wipe)
             freed += _dir_size(entry)
             shutil.rmtree(entry, ignore_errors=True)
             removed += 1
