@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import struct
 
 from . import format as fmt
 
@@ -20,6 +22,15 @@ def inspect(path: str) -> None:
     print(f"format version:  {footer.format_version}")
     print(f"architecture:    {arch}")
     print(f"signed:          {signed}")
+    if signed and footer.sig_offset:
+        with open(path, "rb") as f:
+            sig_data = fmt.read_at(f, footer.sig_offset, 68)
+        sig_size = struct.unpack_from("<I", sig_data, 0)[0]
+        sig = sig_data[4:68]
+        fp = hashlib.sha256(sig[:32]).hexdigest()
+        print(f"sig offset:      {footer.sig_offset}")
+        print(f"sig size:        {sig_size} bytes")
+        print(f"signer fp:       {fp}")
     print(f"name:            {meta.get('name')}")
     print(f"runtime:         {meta.get('runtime')}")
     print(f"isolation level: {meta.get('isolation')}")
