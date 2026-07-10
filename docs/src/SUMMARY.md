@@ -1,29 +1,30 @@
-# Sommaire
+# Summary
 
 [Introduction](./introduction.md)
 
 # Concepts
 
-- [Le problème](./concepts/probleme.md)
-- [Positionnement](./concepts/positionnement.md)
+- [The Problem](./concepts/problem.md)
+- [Positioning](./concepts/positioning.md)
 - [Architecture](./concepts/architecture.md)
 
-# Référence technique
+# Technical Reference
 
-- [Format .xbin](./reference/format.md)
-- [Le launcher (stub)](./reference/launcher.md)
-- [Le builder](./reference/builder.md)
-- [Le cache](./reference/cache.md)
+- [`.xbin` Format](./reference/format.md)
+- [The Launcher (stub)](./reference/launcher.md)
+- [The Builder](./reference/builder.md)
+- [Cache](./reference/cache.md)
 - [Isolation](./reference/isolation.md)
 
 # Guides
 
-- [Démarrage rapide](./guides/quickstart.md)
-- [Construire une app Python](./guides/python.md)
-- [Détection des dépendances](./guides/dependances.md)
+- [Quickstart](./guides/quickstart.md)
+- [Building a Python App](./guides/python.md)
+- [Building a Node.js App](./guides/node.md)
+- [Dependency Detection](./guides/dependencies.md)
 
-# Projet
+# Project
 
 - [Roadmap](./roadmap.md)
-- [Sécurité](./securite.md)
-- [Comparaison](./comparaison.md)
+- [Security](./security.md)
+- [Comparison](./comparison.md)

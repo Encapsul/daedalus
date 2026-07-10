@@ -31,6 +31,8 @@ struct Metadata {
     cwd: Option<String>,
     #[serde(default)]
     layers: Vec<Layer>,
+    #[serde(default)]
+    isolation: u8,
 }
 
 #[derive(Deserialize)]
@@ -288,8 +290,20 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "empty entrypoint"));
     }
 
+    // Capture the original CWD BEFORE pivot_root changes the root.
+    let orig_cwd = std::env::current_dir().ok();
+
+    let use_pivot = meta.isolation >= 2;
+
+    if use_pivot {
+        enter_userns()?;
+        pivot_root_into(rootfs)?;
+    }
+
     let resolve = |p: &str| -> PathBuf {
-        if let Some(stripped) = p.strip_prefix('/') {
+        if use_pivot {
+            PathBuf::from(p)
+        } else if let Some(stripped) = p.strip_prefix('/') {
             rootfs.join(stripped)
         } else {
             PathBuf::from(p)
@@ -309,26 +323,36 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     }
 
     let mut env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
-    let lib_dirs = [
-        rootfs.join("lib"),
-        rootfs.join("lib64"),
-        rootfs.join("usr/lib"),
-        rootfs.join("usr/lib64"),
-        rootfs.join("usr/lib/x86_64-linux-gnu"),
-    ];
-    let mut ld = lib_dirs
-        .iter()
-        .filter(|p| p.exists())
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
-        .join(":");
-    if let Some(existing) = env.get("LD_LIBRARY_PATH") {
-        if !existing.is_empty() {
-            ld.push(':');
-            ld.push_str(existing);
+    if use_pivot {
+        env.insert("LD_LIBRARY_PATH".into(),
+                   "/lib:/lib64:/usr/lib:/usr/lib64:/usr/lib/x86_64-linux-gnu".into());
+    } else {
+        let lib_dirs = [
+            rootfs.join("lib"),
+            rootfs.join("lib64"),
+            rootfs.join("usr/lib"),
+            rootfs.join("usr/lib64"),
+            rootfs.join("usr/lib/x86_64-linux-gnu"),
+        ];
+        let mut ld = lib_dirs
+            .iter()
+            .filter(|p| p.exists())
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join(":");
+        if let Some(existing) = env.get("LD_LIBRARY_PATH") {
+            if !existing.is_empty() {
+                ld.push(':');
+                ld.push_str(existing);
+            }
         }
+        env.insert("LD_LIBRARY_PATH".into(), ld);
     }
-    env.insert("LD_LIBRARY_PATH".into(), ld);
+
+    // XBIN_ORIG_CWD was captured before pivot_root above.
+    if let Some(cwd) = orig_cwd.as_ref() {
+        env.insert("XBIN_ORIG_CWD".into(), cwd.to_string_lossy().into_owned());
+    }
 
     let rootfs_str = rootfs.to_string_lossy();
     for (k, v) in &meta.env {
@@ -350,6 +374,67 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
     }
     Err(io::Error::last_os_error())
+}
+
+/// Enter a new user + mount namespace (unprivileged).
+fn enter_userns() -> io::Result<()> {
+    let uid = unsafe { libc::getuid() };
+    let gid = unsafe { libc::getgid() };
+
+    unsafe {
+        let rc = libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNS);
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+
+    write_proc("/proc/self/uid_map", &format!("0 {uid} 1"))?;
+    write_proc("/proc/self/setgroups", "deny")?;
+    write_proc("/proc/self/gid_map", &format!("0 {gid} 1"))?;
+
+    Ok(())
+}
+
+/// Switch root to `rootfs` via pivot_root(2).
+/// The old root is mounted at `rootfs/.old_root` and immediately detached.
+fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
+    let new_root = std::fs::canonicalize(rootfs)?;
+    let new_root_c = cstr(new_root.as_os_str().as_bytes());
+
+    // Bind-mount rootfs onto itself so pivot_root(2) accepts it as a mount point.
+    unsafe {
+        let rc = libc::mount(new_root_c.as_ptr(), new_root_c.as_ptr(),
+                             std::ptr::null(), libc::MS_BIND | libc::MS_REC,
+                             std::ptr::null());
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+
+    let put_old = new_root.join(".old_root");
+    std::fs::create_dir_all(&put_old)?;
+    let put_old_c = cstr(put_old.as_os_str().as_bytes());
+
+    let old_root_c = cstr(b"/.old_root");
+    unsafe {
+        // SYS_pivot_root = 155 on x86_64
+        let rc = libc::syscall(libc::SYS_pivot_root,
+                               new_root_c.as_ptr(), put_old_c.as_ptr());
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let rc = libc::umount2(old_root_c.as_ptr(), libc::MNT_DETACH);
+        if rc != 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
+fn write_proc(path: &str, contents: &str) -> io::Result<()> {
+    let mut f = File::create(path)?;
+    f.write_all(contents.as_bytes())?;
+    Ok(())
 }
 
 fn cstr(bytes: &[u8]) -> CString {

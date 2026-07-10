@@ -1,77 +1,76 @@
-# Le cache
+# Cache
 
-Extraire le rootfs à chaque lancement serait lent. `xbin` extrait **une seule
-fois** puis réutilise.
+Extracting the rootfs on every launch would be slow. `xbin` extracts **once**
+and reuses.
 
 ## Layout
 
 ```
 ~/.cache/xbin/
-  {sha256-du-payload}/
-    rootfs/      ← filesystem extrait, prêt à l'emploi
-    .ready       ← marqueur : l'extraction est complète et valide
+  {sha256-of-payload}/
+    rootfs/      ← extracted filesystem, ready to use
+    .ready       ← marker: extraction is complete and valid
 ```
 
-La clé du cache est le **SHA-256 du payload compressé**. Deux `.xbin` au contenu
-identique partagent le même cache ; un changement d'un seul byte produit une
-nouvelle clé. (`.lock` pour l'accès concurrent et `last_used` pour le nettoyage
-LRU arrivent — voir [Roadmap](../roadmap.md).)
+The cache key is the **SHA-256 of the compressed payload**. Two `.xbin` with
+identical content share the same cache; changing a single byte produces a new
+key. (`.lock` for concurrent access and `last_used` for LRU cleanup are
+planned — see [Roadmap](../roadmap.md).)
 
-## Extraction atomique (anti-TOCTOU)
+## Atomic extraction (anti-TOCTOU)
 
-Le danger : entre le moment où on vérifie que le cache existe et le moment où on
-l'utilise, un attaquant pourrait y injecter du contenu (attaque *Time Of Check To
-Time Of Use*). La parade est de ne **jamais** exposer un état intermédiaire :
+The danger: between checking that the cache exists and using it, an attacker
+could inject content (Time Of Check To Time Of Use attack). The defense is
+to **never** expose an intermediate state:
 
 ```
-1. extraire dans  ~/.cache/xbin/.tmp-{pid}-{nanos}/   ← répertoire unique
-2. écrire .ready une fois l'extraction terminée
-3. rename() vers ~/.cache/xbin/{sha256}/              ← atomique sur Linux
-4. si une autre instance a gagné la course → jeter notre tmp
+1. extract to  ~/.cache/xbin/.tmp-{pid}-{nanos}/   ← unique directory
+2. write .ready once extraction is complete
+3. rename() to ~/.cache/xbin/{sha256}/              ← atomic on Linux
+4. if another instance won the race → discard our tmp
 ```
 
-`rename()` est **atomique** sur un même filesystem : soit le répertoire final
-existe et est complet, soit il n'existe pas. Pas d'état à moitié écrit. C'est
-pour ça que le tmp est créé dans le **même** dossier parent que la cible.
+`rename()` is **atomic** on the same filesystem: either the final directory
+exists and is complete, or it doesn't. No half-written state. This is why the
+tmp directory is created in the **same** parent directory as the target.
 
 ## Cold start vs warm start
 
-| | Première exécution | Exécutions suivantes |
+| | First execution | Subsequent executions |
 |---|---|---|
-| Cache | absent → extraction | présent (`.ready`) → réutilisé |
-| Message | `cold start: extracting…` | `warm start: cache hit {hash}` |
-| Coût | décompression zstd + écriture disque | quasi nul côté xbin |
+| Cache | missing → extraction | present (`.ready`) → reused |
+| Message | `cold start: extracting...` | `warm start: cache hit {hash}` |
+| Cost | zstd decompression + disk write | near-zero from xbin side |
 
-> Aujourd'hui le « temps jusqu'au premier byte HTTP » en warm est dominé par le
-> **boot du runtime embarqué** (démarrage de l'interpréteur Python, imports), pas
-> par `xbin`. L'overhead propre du launcher est de l'ordre de la milliseconde.
-> L'objectif < 100 ms de bout en bout passera par squashfs+mmap (pas
-> d'extraction) en Phase 3.
+> Today, warm "time to first HTTP byte" is dominated by the **embedded
+> runtime boot** (Python interpreter startup, imports), not by `xbin`. The
+> launcher's own overhead is on the order of milliseconds. The < 100 ms
+> end-to-end goal will require squashfs+mmap (no extraction) in Phase 3.
 
-## Deux caches distincts
+## Two separate caches
 
-| | Cache d'extraction | Cache de build |
+| | Extraction cache | Build cache |
 |---|---|---|
-| Chemin | `~/.cache/xbin/{sha256}/` | `~/.cache/xbin/build/{hash}.zst` |
-| Côté | machine **cible** (au `run`) | machine **de build** (au `build`) |
-| Contenu | rootfs extrait, prêt à l'emploi | couches **compressées** réutilisables |
-| Rôle | éviter de ré-extraire à chaque lancement | éviter de recompresser au rebuild |
+| Path | `~/.cache/xbin/{sha256}/` | `~/.cache/xbin/build/{hash}.zst` |
+| Side | **target** machine (at `run`) | **build** machine (at `build`) |
+| Content | extracted rootfs, ready to use | **compressed** reusable layers |
+| Role | avoid re-extracting on every launch | avoid recompressing on rebuild |
 
-Le cache de build est ce qui fait passer un rebuild de ~25 s à ~1 s (couche
-runtime réutilisée). Voir [Format .xbin](./format.md#les-couches-v2).
+The build cache is what makes a rebuild go from ~25 s to ~1 s (runtime layer
+reused). See [`.xbin` Format](./format.md#layers-v2).
 
-## Clé de cache d'extraction en v2
+## Extraction cache key in v2
 
-En v2, la clé n'est plus le hash du payload mais le **SHA-256 de la concaténation
-des hash de couches**. Tant que les couches sont identiques, l'entrée extraite
-est réutilisée. (La réutilisation *par couche* — extraire la couche runtime une
-seule fois et superposer des couches app via overlayfs — viendra avec
-l'isolation niveau 2 ; aujourd'hui un changement de couche app ré-extrait
-l'ensemble côté cible, mais le gain au **build** est déjà acquis.)
+In v2, the key is not the payload hash but the **SHA-256 of the concatenation
+of all layer hashes**. As long as the layers are identical, the extracted
+entry is reused. (Per-layer reuse — extracting the runtime layer once and
+overlaying app layers via overlayfs — will come with isolation level 2;
+today an app layer change re-extracts everything on the target side, but the
+build-time gain is already achieved.)
 
-## Nettoyage
+## Cleanup
 
 ```bash
-xbin clean        # vide les entrées extraites, CONSERVE le cache de build
-xbin clean --all  # vide tout ~/.cache/xbin (build cache inclus)
+xbin clean        # clear extracted cache entries, KEEP build cache
+xbin clean --all  # wipe all ~/.cache/xbin (build cache included)
 ```

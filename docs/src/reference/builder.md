@@ -1,77 +1,84 @@
-# Le builder
+# The Builder
 
-Le builder analyse une application et produit le `.xbin`. Il est écrit en
-**Python** (stdlib pure pour le MVP — zéro friction d'installation).
+The builder analyzes an application and produces the `.xbin`. It's written in
+**pure Python** (stdlib only for the MVP — zero installation friction).
 
-- **Code** : `cli/xbin/build.py`, `cli/xbin/analyzer/`
-- **Pourquoi Python** : le builder est de la logique métier (parcourir des
-  répertoires, appeler `ldd`, manipuler des chemins, assembler des bytes). Python
-  est rapide à écrire et à modifier, et le futur Analyzer IA s'y branche
-  naturellement.
+- **Code**: `cli/xbin/build.py`, `cli/xbin/analyzer/`
+- **Why Python**: the builder is business logic (walking directories,
+  parsing ELF headers, manipulating paths, assembling bytes). Python is fast
+  to write and modify, and the future AI Analyzer naturally integrates with
+  it.
 
-## Les trois étapes
+## The three steps
 
-### 1. Analyse — `analyzer/`
+### 1. Analysis — `analyzer/`
 
-- **`runtime.py`** détecte le runtime et résout l'entrypoint :
-  - `app.py` / `main.py` / `server.py` → **python** ;
-  - `package.json` → **node** ;
-  - un seul exécutable ELF → **binaire natif**.
-  - Renvoie un `RuntimePlan` : interpréteur à embarquer, entrypoint (relatif au
-    rootfs), `cwd`, `env`, dossiers supplémentaires (ex : la stdlib Python).
-- **`ldd.py`** liste les `.so` nécessaires via `ldd` (qui résout déjà
-  transitivement) et inclut le dynamic loader `ld-linux`.
+- **`runtime.py`** detects the runtime and resolves the entrypoint:
+  - `app.py` / `main.py` / `server.py` → **python**;
+  - `package.json` → **node**;
+  - a single ELF executable → **native binary**.
+  - Returns a `RuntimePlan`: interpreter to embed, entrypoint (relative to
+    rootfs), `cwd`, `env`, extra directories (e.g. Python stdlib).
+- **`elf.py`** analyzes ELF64 binaries directly (without calling `ldd`):
+  reads `PT_DYNAMIC` headers, extracts `DT_NEEDED`, `DT_RUNPATH`, `PT_INTERP`,
+  and resolves transitive dependencies in standard system search paths
+  (`/lib`, `/usr/lib`, `/lib64`, etc.). Includes the dynamic loader
+  `ld-linux`.
+- **`ldd.py`** is a thin facade that calls `elf.shared_libs()`. Either
+  module can be swapped without changing the rest of the builder.
+- **Deduplication**: if a library is found via a symlink (e.g.
+  `/lib64/ld-linux-x86-64.so.2`) and also via its real path
+  (`/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2`), the duplicate is removed to
+  keep the rootfs clean.
 
-### 2. Construction du rootfs — `_build_rootfs()`
+### 2. Rootfs construction — `_build_runtime_layer()`
 
-Assemble un mini-filesystem qui contient **exactement** le nécessaire :
+Assembles a mini-filesystem containing **exactly** what's needed:
 
 ```
 rootfs/
-  app/                          ← le code de l'application
-  usr/bin/python3.12            ← l'interpréteur
-  usr/lib/python3.12/           ← la stdlib
-  usr/lib/x86_64-linux-gnu/     ← les .so (libc, etc.)
-  lib64/ld-linux-x86-64.so.2    ← le dynamic loader
-  etc/{passwd,group,resolv.conf}← config minimale
+  app/                          ← application code
+  usr/bin/python3.12            ← interpreter
+  usr/lib/python3.12/           ← stdlib
+  usr/lib/x86_64-linux-gnu/     ← .so files (libc, etc.)
+  lib64/ld-linux-x86-64.so.2    ← dynamic loader
+  etc/{passwd,group,hosts,resolv.conf,nsswitch.conf}
 ```
 
-Point clé : on **préserve l'arborescence absolue** des fichiers copiés
-(`/usr/lib/...` → `rootfs/usr/lib/...`). C'est ce qui permet à l'interpréteur
-Python embarqué de retrouver sa stdlib par détection de *landmark* relative à son
-propre chemin.
+Key point: we **preserve the absolute tree** of copied files
+(`/usr/lib/...` → `rootfs/usr/lib/...`). This lets the embedded Python
+interpreter find its stdlib via landmark detection relative to its own path.
 
-### 3. Découpage en couches + compression — `build()`
+### 3. Layer splitting + compression — `build()`
 
-Le builder construit **deux couches** séparées (format v2) :
+The builder constructs **two layers** (v2 format):
 
-- **couche runtime** (`_build_runtime_layer`) : interpréteur + stdlib + `.so` +
-  `/etc`. Indépendante du code de l'app.
-- **couche app** (`_build_app_layer`) : code de l'app + site-packages. Petite et
+- **runtime layer** (`_build_runtime_layer`): interpreter + stdlib + `.so` +
+  `/etc`. Independent of app code.
+- **app layer** (`_build_app_layer`): app code + site-packages. Small and
   volatile.
 
-Chaque couche est `tar`-isée de façon **déterministe** (`_tar_deterministic` :
-mtime/uid/gid normalisés, entrées triées) pour que *même contenu → mêmes bytes →
-même hash*. Puis compressée en `zstd -19`.
+Each layer is `tar`'ed **deterministically** (`_tar_deterministic`:
+normalized mtime/uid/gid, sorted entries) so *same content → same bytes →
+same hash*. Then compressed with `zstd -19`.
 
-**Cache de build** (`~/.cache/xbin/build/{hash}.zst`) : la couche runtime est
-recherchée par le hash de son tar. Si un blob identique existe déjà, il est
-**réutilisé sans recompression** — c'est ce qui rend les rebuilds (et les builds
-d'apps partageant le même runtime) quasi instantanés.
+**Build cache** (`~/.cache/xbin/build/{hash}.zst`): the runtime layer is
+looked up by its tar hash. If an identical blob already exists, it's
+**reused without recompression** — this is what makes rebuilds (and builds
+of apps sharing the same runtime) near-instant.
 
-Assemblage final, puis `chmod +x` :
+Final assembly, then `chmod +x`:
 
 ```
-[ stub ELF ][ couche runtime ][ couche app ][ metadata JSON ][ footer 84B ]
-^0          ^payload_offset                  ^meta_offset      ^EOF-84
+[ ELF stub ][ runtime layer ][ app layer ][ JSON metadata ][ 84B footer ]
+^0          ^payload_offset               ^meta_offset      ^EOF-84
 ```
 
-Voir [Format .xbin](./format.md#les-couches-v2) pour le détail de la table des
-couches.
+See [`.xbin` Format](./format.md#layers-v2) for the layer table details.
 
-## Sortie typique
+## Typical output
 
-Premier build (cache de build froid) :
+First build (cold build cache):
 
 ```
 $ xbin build ./examples/bottle-web
@@ -79,14 +86,19 @@ $ xbin build ./examples/bottle-web
   runtime: python
   entrypoint: /usr/bin/python3.12 /app/app.py
   runtime layer: 5 shared libraries
+    /lib/x86_64-linux-gnu/libc.so.6
+    /lib/x86_64-linux-gnu/libexpat.so.1
+    /lib/x86_64-linux-gnu/libm.so.6
+    /lib/x86_64-linux-gnu/libz.so.1
+    /lib64/ld-linux-x86-64.so.2
   runtime layer: embedded /usr/lib/python3.12
   app layer: site-packages from .../bottle-web/site-packages
-  runtime layer: 25.7MB -> 6.4MB (zstd, cached)
+  runtime layer: 54.0MB -> 11.9MB (zstd, cached)
   app layer: 0.2MB -> 0.0MB (zstd)
 [xbin] wrote ./bottle-web.xbin (7.1MB) in 25.1s
 ```
 
-Rebuild après modification du code (couche runtime réutilisée) :
+Rebuild after code change (runtime layer reused):
 
 ```
   runtime layer: reused from build cache (no recompression) ✓
@@ -94,11 +106,28 @@ Rebuild après modification du code (couche runtime réutilisée) :
 [xbin] wrote ./bottle-web.xbin (7.1MB) in 1.2s
 ```
 
-## Limite connue (honnête)
+The resolved libraries (5) include the dynamic linker (`ld-linux`) and are
+deduplicated: if `/lib64/ld-linux-x86-64.so.2` is a symlink to
+`/lib/.../ld-linux-x86-64.so.2`, only one path is kept (the symlink, so
+`_copy_into_rootfs` recreates the chain in the rootfs).
 
-En isolation **niveau 0**, l'ELF de l'interpréteur garde son interpreter path
-codé en dur (`/lib64/ld-linux-x86-64.so.2`), résolu sur l'hôte. Le binaire tourne
-donc parfaitement sur une machine **compatible** (même famille glibc), mais la
-portabilité totale entre distributions exige le **niveau 2** (user namespaces +
-`pivot_root`), où `/lib64/ld-linux` résout *dans* le rootfs. Voir
-[Isolation](./isolation.md) et la [Roadmap](../roadmap.md).
+## Dependency evolution
+
+The pure-Python ELF analyzer (`elf.py`) replaces the system `ldd` call. It
+works on any machine with Python ≥ 3.10, without depending on a specific
+`ldd`. It handles ELF64, symlinks, `DT_RUNPATH`, `LD_LIBRARY_PATH`, and
+transitive resolution.
+
+**Cross-distro portability**: isolation **level 2** (user namespaces +
+`pivot_root`) ensures `/lib64/ld-linux` resolves *inside* the rootfs, not on
+the host. See [Isolation](./isolation.md).
+
+## pip install at build time
+
+If the app has a `requirements.txt` with content (non-empty), the builder
+automatically creates a temporary venv, pip-installs dependencies, and
+embeds them as an additional site-packages entry in `PYTHONPATH`:
+
+```
+[xbin] pip install: ./my_app/requirements.txt → /app/site-packages
+```
