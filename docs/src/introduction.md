@@ -2,42 +2,41 @@
 
 > *Ship your web app like a binary. Run anywhere.*
 
-**x.bin** — le `x` pour *n'importe quelle app*, le `.bin` pour *un binaire*.
-La commande en ligne de commande s'appelle `xbin` et les fichiers produits
-portent l'extension `.xbin` (un point ne peut pas figurer dans un nom de
-commande shell).
+**x.bin** — the `x` for *any app*, the `.bin` for *a binary*.
+The CLI tool is called `xbin` and the output files use the `.xbin`
+extension (a dot cannot appear in a shell command name).
 
-`x.bin` transforme n'importe quelle application **web / serveur / outil headless**
-en **un seul fichier exécutable autonome**. L'utilisateur final n'installe rien :
+`x.bin` turns any **web / server / headless** application into **a single
+self-contained executable file**. The end user installs nothing:
 
 ```bash
-chmod +x mon_app.xbin && ./mon_app.xbin
+chmod +x my_app.xbin && ./my_app.xbin
 # [xbin] starting app...
 # Server listening on http://127.0.0.1:8080
 ```
 
-Pas de runtime à installer. Pas de `node` ni `python` sur la machine cible. Pas
-de Docker. Un fichier, on le rend exécutable, on le lance.
+No runtime to install. No `node` or `python` on the target machine. No
+Docker. One file, make it executable, run it.
 
-## En une phrase
+## In one sentence
 
-`xbin` est à une app serveur ce qu'un binaire Go statique est à un programme
-compilé : **tout est dedans, ça tourne partout.**
+`xbin` is to a server app what a Go static binary is to a compiled program:
+**everything is inside, it runs everywhere.**
 
-## Ce qui est différent
+## What's different
 
-AppImage, Snap et Flatpak résolvent ce problème pour les applications **desktop
-GUI** (elles ont besoin de X11, d'intégration au bureau, d'icônes…). `xbin` vise
-l'angle opposé et largement ignoré : les **apps web et serveur headless** — un
-serveur Next.js, une API FastAPI, un outil de build CLI. Tu lances le binaire,
-le serveur démarre, tu ouvres ton navigateur.
+AppImage, Snap and Flatpak solve this for **desktop GUI** apps (they need
+X11, desktop integration, icons...). `xbin` targets the opposite and widely
+ignored angle: **web and server headless** apps — a Next.js server, a FastAPI
+API, a CLI build tool. You launch the binary, the server starts, you open
+your browser.
 
-Et contrairement à `vercel/pkg` ou `nexe` (Node uniquement), `xbin` est
-**language-agnostic** : Python, Node, Go, binaires natifs.
+And unlike `vercel/pkg` or `nexe` (Node only), `xbin` is **language-agnostic**:
+Python, Node, Go, native binaries.
 
-## État du projet
+## Project status
 
-MVP fonctionnel — Phase 1. Le pipeline complet tourne de bout en bout :
-`build` → `.xbin` → exécution avec auto-extraction et cache. Voir la
-[Roadmap](./roadmap.md) pour la suite (signature Ed25519, user namespaces,
+MVP functional — Phase 1 complete. The full pipeline runs end-to-end:
+`build` → `.xbin` → execution with self-extraction and cache. See the
+[Roadmap](./roadmap.md) for what's next (Ed25519 signatures, user namespaces,
 squashfs+mmap).

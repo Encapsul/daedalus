@@ -1,12 +1,12 @@
 # Architecture
 
-`xbin` est découpé en 4 couches avec des interfaces claires entre elles, pour
-qu'on puisse faire évoluer chaque couche (ex : passer de l'extraction tar à
-squashfs+mmap) sans tout réécrire.
+`xbin` is split into 4 layers with clear interfaces between them, allowing
+each layer to evolve independently (e.g. switching from tar extraction to
+squashfs+mmap) without rewriting everything.
 
 ```
 ┌──────────────────────────────────────┐
-│            CLI (xbin)                 │  build · run · inspect · clean
+│            CLI (xbin)                │  build · run · inspect · clean
 ├──────────────────────────────────────┤
 │            Builder                    │  Analyzer + Packager
 │   ┌──────────────┬──────────────┐     │
@@ -18,86 +18,85 @@ squashfs+mmap) sans tout réécrire.
 │   │    Cache     │   Executor   │     │
 │   └──────────────┴──────────────┘     │
 ├──────────────────────────────────────┤
-│            Format .xbin               │  spec binaire partagée
+│            Format .xbin               │  shared binary spec
 └──────────────────────────────────────┘
 ```
 
-Chaque couche ne connaît que celle du dessous. Le **format `.xbin`** est le
-contrat partagé : le builder (Python) l'écrit, le launcher (Rust) le lit. Tant
-que le format est respecté, les deux côtés évoluent indépendamment.
+Each layer only knows the one below it. The **`.xbin` format** is the shared
+contract: the builder (Python) writes it, the launcher (Rust) reads it. As
+long as the format is respected, both sides evolve independently.
 
-## Le schéma d'architecture (esquisse initiale)
+## Architecture diagram (initial sketch)
 
-Voici l'architecture telle qu'esquissée au départ du projet. C'est **une
-architecture cible possible** — elle décrit l'état visé en fin de Phase 2/3, pas
-l'état actuel du MVP.
+The diagram below is the **target architecture** envisioned for end of
+Phase 2/3, not the current MVP state.
 
-![Architecture xbin](../images/architecture.png)
+![xbin Architecture](../images/architecture.png)
 
-### Lecture du schéma
+### Reading the diagram
 
-Le schéma se lit de haut en bas, comme un flux :
+The diagram flows top to bottom:
 
-1. **CLI** (`xbin ./my_app`) — quatre commandes : *Build · Run · Inspect ·
-   Clean*. C'est la surface utilisateur.
+1. **CLI** (`xbin ./my_app`) — four commands: *Build · Run · Inspect ·
+   Clean*. This is the user surface.
 
-2. **Builder** — deux sous-composants :
-   - **Analyzer** : `ldd` récursif sur les `.so`, détection du runtime
-     (python/node/binaire), et détection des dépendances cachées
-     (sous-processus, `dlopen`) — voir l'annotation *AI* à droite.
-   - **Packager** : construit le rootfs, compresse en zstd, assemble le `.xbin`
-     final.
-   - L'annotation **AI** (en haut à droite) marque le rôle ciblé de l'IA :
-     *analyser le code source, détecter les sous-processus et les `dlopen`
-     invisibles à `ldd`*. C'est la différenciation du projet — voir
-     [Détection des dépendances](../guides/dependances.md).
+2. **Builder** — two sub-components:
+   - **Analyzer**: pure-Python ELF parser (DT_NEEDED, DT_RUNPATH, transitive
+     resolution), runtime detection, and hidden dependency detection
+     (subprocess, `dlopen`) — see the *AI* annotation on the right.
+   - **Packager**: builds the rootfs, compresses with zstd, assembles the
+     final `.xbin`.
+   - The **AI** annotation (top right) marks the intended role of AI:
+     *analyze source code, detect subprocess and dlopen calls invisible to
+     static analysis*. This is the project's differentiator — see
+     [Dependency detection](../guides/dependencies.md).
 
-3. **`.xbin` Format** — la couche centrale : *ELF Launcher · Payload zstd ·
-   Metadata JSON · Magic + SHA-256*. C'est le format de fichier décrit en
-   [référence](../reference/format.md).
+3. **`.xbin` Format** — the central layer: *ELF Launcher · zstd Payload ·
+   JSON Metadata · Magic + SHA-256*. This is the file format described in
+   [reference](../reference/format.md).
 
-4. **Runtime** — deux sous-composants :
-   - **Cache** : `~/.cache/xbin/{sha256}/`, extraction unique, `flock()` pour
-     l'accès concurrent, nettoyage LRU.
-   - **Executor** : *user namespaces Linux · pivot_root (isolation) · filtre
-     seccomp · fallback LD_LIBRARY_PATH*.
+4. **Runtime** — two sub-components:
+   - **Cache**: `~/.cache/xbin/{sha256}/`, single extraction, `flock()` for
+     concurrent access, LRU cleanup.
+   - **Executor**: *Linux user namespaces · pivot_root (isolation) · seccomp
+     filter · LD_LIBRARY_PATH fallback*.
 
-5. **Objectif** (en bas) : *single binaries · warm start < 100 ms · 0
-   dépendance*.
+5. **Goal** (bottom): *single binaries · warm start < 100 ms · 0
+   dependencies*.
 
-### Écart entre le schéma cible et le MVP actuel
+### Gap between target diagram and current MVP
 
-Le schéma décrit l'**ambition**. Voici honnêtement où on en est :
+The diagram describes the **ambition**. Here is the honest current state:
 
-| Élément du schéma | Cible | MVP actuel |
+| Element | Target | Current |
 |---|---|---|
-| CLI build/run/inspect | ✅ | ✅ implémenté |
-| Analyzer `ldd` + runtime | ✅ | ✅ implémenté |
-| Analyzer IA (deps cachées) | ✅ | ⏳ Phase 2 |
-| Format ELF + zstd + meta + SHA-256 | ✅ | ✅ implémenté |
-| Cache `{sha256}` + extraction atomique | ✅ | ✅ implémenté (le `flock()` arrive) |
-| Executor `LD_LIBRARY_PATH` (niveau 0) | ✅ | ✅ implémenté |
-| Executor user namespaces + pivot_root + seccomp | ✅ | ⏳ Phase 2 |
-| Signature Ed25519 | ✅ | ⏳ Phase 2 |
-| warm start < 100 ms | ✅ | ⏳ (limité aujourd'hui par le boot du runtime embarqué, pas par xbin) |
+| CLI build/run/inspect | ✅ | ✅ implemented |
+| Pure-Python ELF analyzer | ✅ | ✅ implemented (replaces host `ldd`) |
+| AI analyzer (hidden deps) | ✅ | ⏳ Phase 3 |
+| ELF + zstd + meta + SHA-256 format | ✅ | ✅ implemented |
+| `{sha256}` cache + atomic extraction | ✅ | ✅ implemented (`flock()` included) |
+| Level 0 executor (`LD_LIBRARY_PATH`) | ✅ | ✅ implemented |
+| User namespaces + pivot_root + seccomp | ✅ | ✅ pivot_root implemented (Phase 2) |
+| Ed25519 signatures | ✅ | ✅ implemented (Phase 2) |
+| warm start < 100 ms | ✅ | ⏳ (currently limited by embedded runtime boot, not by xbin) |
 
-> **Note de conception.** Le schéma place l'isolation (namespaces, seccomp) au
-> cœur du runtime. En pratique on a choisi de **démarrer au niveau 0**
-> (`LD_LIBRARY_PATH`, aucune isolation) parce que l'isolation est une *feature*,
-> pas le cœur de la proposition de valeur. La valeur, c'est *« un fichier, ça
-> tourne »*. L'isolation se monte en puissance ensuite, sans changer le format.
+> **Design note.** The diagram places isolation (namespaces, seccomp) at the
+> core of the runtime. In practice we chose to **start at level 0**
+> (`LD_LIBRARY_PATH`, no isolation) because isolation is a *feature*, not the
+> core value proposition. The value is *"one file, it runs"*. Isolation is
+> added incrementally, without changing the format.
 
-## Le flux complet en une image
+## The full flow in one picture
 
 ```
-MACHINE DE DEV                          MACHINE CIBLE
+DEV MACHINE                          TARGET MACHINE
 
-mon_app/
+my_app/
   app.py
-  requirements.txt   →  xbin build  →   mon_app.xbin   →  ./mon_app.xbin  →  ça tourne
-+ python3                              (1 fichier)
-+ libs .so
+  requirements.txt   →  xbin build  →   my_app.xbin   →  ./my_app.xbin  →  it runs
++ python3                              (1 file)
++ .so libs
 ```
 
-Le `xbin build` fait le travail difficile **une fois**. L'utilisateur final ne
-voit qu'un fichier simple.
+`xbin build` does the hard work **once**. The end user only sees a single
+file.

@@ -1,34 +1,34 @@
-# Construire une app Python
+# Building a Python App
 
-## Structure attendue
+## Expected structure
 
-`xbin` détecte une app Python à la présence d'un point d'entrée à la racine :
-`app.py`, `main.py`, `server.py` ou `__main__.py`.
+`xbin` detects a Python app by the presence of an entry point at the root:
+`app.py`, `main.py`, `server.py` or `__main__.py`.
 
 ```
-mon_app/
-  app.py            ← point d'entrée détecté automatiquement
-  ...               ← autres modules, templates, assets
+my_app/
+  app.py            ← entry point, auto-detected
+  ...               ← other modules, templates, assets
 ```
 
-## Construire
+## Build
 
 ```bash
-xbin build ./mon_app -o mon_app.xbin
+xbin build ./my_app -o my_app.xbin
 ```
 
-Le builder :
+The builder:
 
-1. détecte le runtime `python` et l'entrypoint (`/app/app.py`) ;
-2. embarque l'interpréteur `python3` de la machine de build ;
-3. embarque la **stdlib** (`/usr/lib/pythonX.Y`) ;
-4. résout les `.so` via `ldd` (libc, etc.) ;
-5. compresse et assemble le `.xbin`.
+1. detects the `python` runtime and entrypoint (`/app/app.py`);
+2. embeds the build machine's `python3` interpreter;
+3. embeds the **stdlib** (`/usr/lib/pythonX.Y`);
+4. resolves `.so` dependencies via the pure-Python ELF analyzer (libc, etc.);
+5. compresses and assembles the `.xbin`.
 
-## Variables d'environnement
+## Environment variables
 
-Le builder injecte par défaut `PYTHONUNBUFFERED=1` (logs en temps réel) et
-`PYTHONDONTWRITEBYTECODE=1`. Ton app lit ses propres variables normalement :
+The builder injects `PYTHONUNBUFFERED=1` (real-time logs) and
+`PYTHONDONTWRITEBYTECODE=1` by default. Your app reads its own variables normally:
 
 ```python
 import os
@@ -36,46 +36,53 @@ PORT = int(os.environ.get("PORT", "8080"))
 ```
 
 ```bash
-PORT=9000 ./mon_app.xbin
+PORT=9000 ./my_app.xbin
 ```
 
-## Dépendances tierces (site-packages)
+## Third-party dependencies (site-packages)
 
-`xbin` embarque automatiquement les dépendances tierces. Il cherche, dans
-l'ordre :
+`xbin` automatically embeds third-party dependencies. It looks, in order:
 
-1. un virtualenv `.venv/` ou `venv/` à la racine de l'app → ses
-   `lib/pythonX.Y/site-packages` ;
-2. un dossier `site-packages/` vendu à la racine.
+1. a virtualenv `.venv/` or `venv/` at the app root → its
+   `lib/pythonX.Y/site-packages`;
+2. a vendored `site-packages/` directory at the app root.
 
 ```
-mon_app/
+my_app/
   app.py
-  .venv/                ← détecté automatiquement, site-packages embarqués
+  .venv/                ← auto-detected, site-packages embedded
     lib/python3.12/site-packages/
       bottle.py
 ```
 
-Le builder :
+The builder:
 
-- copie les site-packages sous `/app/site-packages` dans le rootfs ;
-- déclare `PYTHONPATH=${ROOTFS}/app/site-packages` (le token `${ROOTFS}` est
-  résolu par le launcher à l'exécution — voir [Launcher](../reference/launcher.md)) ;
-- passe `ldd` sur les `.so` des extensions C (numpy, pillow…) pour embarquer
-  leurs dépendances système.
+- copies site-packages to `/app/site-packages` in the rootfs;
+- declares `PYTHONPATH=${ROOTFS}/app/site-packages` (the `${ROOTFS}` token is
+  resolved by the launcher at runtime — see [Launcher](../reference/launcher.md));
+- runs the ELF analyzer on `.so` files from C extensions (numpy, pillow...) to
+  embed their system dependencies.
 
-L'exemple `examples/bottle-web` démontre ce cas : il sert du HTTP avec `bottle`,
-un framework web qui n'est **pas** dans la stdlib.
+The example `examples/bottle-web` demonstrates this: it serves HTTP with
+`bottle`, a web framework **not** in the stdlib.
 
 ```bash
 xbin build ./examples/bottle-web -o bottle-web.xbin
-./bottle-web.xbin   # → Hello from bottle, packagé par xbin
+./bottle-web.xbin   # → Hello from bottle, packaged by xbin
 ```
 
-## Limites actuelles du MVP
+## Requirements.txt → pip install at build time
 
-- **`requirements.txt` sans venv** : le pip-install automatique au build (créer
-  un venv temporaire et installer dedans) est la prochaine étape. Aujourd'hui,
-  prépare un `.venv` (ou un dossier `site-packages/` vendu) à côté de ton app.
-- **Portabilité inter-distribution** : voir [Isolation](../reference/isolation.md)
-  — garantie complète au niveau 2 (user namespaces).
+If your app has a `requirements.txt` with non-empty content, the builder
+automatically creates a temporary venv, pip-installs the dependencies, and
+embeds them:
+
+```bash
+xbin build ./my_app -o my_app.xbin
+# [xbin] pip install: ./my_app/requirements.txt → /app/site-packages
+```
+
+## Current MVP limitations
+
+- **Cross-distro portability**: see [Isolation](../reference/isolation.md)
+  — fully guaranteed at level 2 (user namespaces).

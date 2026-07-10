@@ -1,70 +1,60 @@
 # Isolation
 
-`xbin` prévoit trois niveaux d'isolation, du plus simple au plus complet. Le MVP
-implémente le niveau 0 ; les niveaux 1 et 2 sont la Phase 2.
+`xbin` offers three isolation levels. Levels 0 and 2 are available;
+level 1 is skipped because level 2 makes it redundant.
 
-## Niveau 0 — `LD_LIBRARY_PATH` (MVP actuel)
+## Level 0 — `LD_LIBRARY_PATH` (available)
 
-On extrait le rootfs et on lance l'app avec les bonnes variables d'environnement
-pour qu'elle trouve ses libs :
+Extract the rootfs and launch the app with the right environment variables
+to find its libs:
 
 ```
 LD_LIBRARY_PATH = rootfs/lib:rootfs/lib64:rootfs/usr/lib:...
 ```
 
-- ✅ Simple, portable, aucun privilège requis.
-- ✅ Suffit quand la machine cible est compatible (même famille glibc).
-- ⚠️ L'app voit tout le filesystem de l'hôte (aucune isolation).
-- ⚠️ L'interpreter path de l'ELF (`/lib64/ld-linux…`) reste résolu sur l'hôte →
-  portabilité inter-distribution non garantie.
+- ✅ Simple, portable, no privileges required.
+- ✅ Sufficient when the target machine is compatible (same glibc family).
+- ⚠️ The app sees the entire host filesystem (no isolation).
+- ⚠️ The ELF interpreter path (`/lib64/ld-linux...`) still resolves on the
+  host → cross-distro portability not guaranteed.
 
-## Niveau 1 — chroot
+## Level 2 — User namespaces ✅ (implemented, recommended)
 
-On fait croire à l'app que le rootfs extrait *est* la racine du système. Elle ne
-voit que ses propres libs. Limite : `chroot()` requiert classiquement d'être
-root, ce qu'on ne veut **pas** demander.
+A Linux kernel feature that allows chroot-like isolation **without root
+privileges**. This is what Docker uses in rootless mode.
 
-## Niveau 2 — User namespaces (cible)
+Mechanism (implemented in `stub/src/main.rs`):
 
-La fonctionnalité du kernel Linux qui permet de faire un chroot et d'isoler
-l'environnement **sans être root**. C'est ce qu'utilise Docker en mode rootless.
+1. `unshare(CLONE_NEWUSER | CLONE_NEWNS)` — new user + mount namespaces
+2. UID/GID mapping: write to `/proc/self/uid_map`, `setgroups`, `gid_map`
+3. Bind-mount the rootfs onto itself (`MS_BIND | MS_REC`, required by `pivot_root`)
+4. `pivot_root(rootfs, rootfs/.old_root)` + `umount2("/.old_root", MNT_DETACH)`
+5. `std::env::set_current_dir("/")` — CWD in the new root
+6. `execve(entrypoint)` — the app sees only its rootfs
 
-```rust
-// 1. Créer user + mount + PID namespaces (sans root)
-unshare(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID)?;
-
-// 2. Mapper l'UID courant vers "root" dans le namespace
-write("/proc/self/uid_map", "0 1000 1")?;
-write("/proc/self/setgroups", "deny")?;
-write("/proc/self/gid_map", "0 1000 1")?;
-
-// 3. pivot_root vers le rootfs, puis démonter l'ancienne racine
-pivot_root(rootfs, rootfs + "/old_root")?;
-umount2("/old_root", MNT_DETACH)?;
-
-// 4. (optionnel) filtre seccomp, puis exec
-execve(entrypoint, argv, env)?;
+Usage:
+```
+xbin build my-app/ -o my-app.xbin --isolation 2
 ```
 
-Avantage décisif : après `pivot_root` + `umount2`, l'app ne peut
-**physiquement** plus accéder au filesystem hôte, et `/lib64/ld-linux` résout
-**dans** le rootfs → portabilité réelle entre distributions.
+**Implementation details:**
+- The builder preserves symbolic links (e.g. `/lib64/ld-linux-x86-64.so.2`)
+  in the rootfs so `pivot_root` resolves them correctly.
+- The ELF analyzer deduplicates `.so` files that point to the same real file
+  via different symlinks, avoiding duplicates in the rootfs.
+- `/etc/hosts` is created in the rootfs (`127.0.0.1 localhost`) to prevent
+  the DNS PTR lookup hang that blocked app startup.
 
-## Décision de conception
+## Level 1 — chroot (skipped)
 
-> L'isolation est une **feature**, pas le cœur du produit. La proposition de
-> valeur de `xbin`, c'est *« un fichier, ça tourne »*. On démarre donc au niveau
-> 0 (qui prouve le pipeline complet) et on monte en isolation **sans changer le
-> format `.xbin`** : seul le champ `isolation` des métadonnées et le
-> comportement du launcher évoluent.
+Make the app think the extracted rootfs *is* the system root. It only sees
+its own libs. Limitation: `chroot()` traditionally requires root, which we
+don't want to ask for → skip directly to level 2.
 
-## Stratégie de fallback (à trancher)
+## Design decision
 
-Quand les user namespaces ne sont pas disponibles (certains serveurs corporate
-les désactivent : `kernel.unprivileged_userns_clone=0`), deux écoles :
-
-- **fail-safe (sécurité d'abord)** : refuser et expliquer pourquoi ;
-- **fallback (UX d'abord)** : retomber sur le niveau 0 avec un avertissement.
-
-Le choix dépend du marché visé (entreprise vs développeur). C'est documenté comme
-une décision ouverte — voir [Sécurité](../securite.md).
+> Isolation is a **feature**, not the core product. `xbin`'s value
+> proposition is *"one file, it runs"*. We start at level 0 (which proves
+> the full pipeline) and add isolation **without changing the `.xbin`
+> format**: only the `isolation` metadata field and the launcher's behavior
+> change.

@@ -1,103 +1,111 @@
-# Le launcher (stub)
+# The Launcher (stub)
 
-Le launcher (« stub ») est le petit programme embarqué en tête du `.xbin`. C'est
-l'ELF que le kernel exécute quand l'utilisateur lance `./mon_app.xbin`.
+The launcher ("stub") is the small program embedded at the head of every
+`.xbin`. It's the ELF the kernel runs when the user executes
+`./my_app.xbin`.
 
-- **Code** : `stub/src/main.rs` + `stub/src/format.rs`
-- **Langage** : Rust, compilé statiquement avec la cible
-  `x86_64-unknown-linux-musl` → aucune dépendance dynamique, tourne partout.
-- **Taille** : ~600 KB (objectif < 200 KB en optimisant les dépendances).
+- **Code**: `stub/src/main.rs` + `stub/src/format.rs`
+- **Language**: Rust, statically compiled for `x86_64-unknown-linux-musl` →
+  zero dynamic dependencies, runs everywhere.
+- **Size**: ~600 KB (target < 200 KB after dependency optimization).
 
-## Pourquoi Rust + musl ?
+## Why Rust + musl?
 
-**Rust** : le launcher s'exécute avant toute vérification, manipule des fichiers
-binaires et fait des appels système. Une erreur mémoire ici = faille. Rust
-élimine par construction les use-after-free, buffer overflows et null
-dereferences, sans runtime ni GC.
+**Rust**: the launcher executes before any verification, manipulates binary
+files and makes system calls. A memory error here = vulnerability. Rust
+eliminates use-after-free, buffer overflows and null dereferences by
+construction, with no runtime or GC.
 
-**musl** : `glibc` est liée dynamiquement et ses versions varient d'une distrib à
-l'autre (`GLIBC_2.35 not found`…). Un binaire musl statique n'a **aucune**
-dépendance dynamique — il tourne sur tout kernel Linux ≥ 3.8. C'est justement ce
-que `xbin` doit garantir pour son propre launcher.
+**musl**: `glibc` is dynamically linked and its versions vary between distros
+(`GLIBC_2.35 not found`...). A static musl binary has **zero** dynamic
+dependencies — it runs on any Linux kernel ≥ 3.8. This is exactly what `xbin`
+must guarantee for its own launcher.
 
 ```bash
 ldd stub/target/x86_64-unknown-linux-musl/release/xbin-stub
 # → statically linked
 ```
 
-## Le flux d'exécution
+## Execution flow
 
 ```
-./mon_app.xbin
+./my_app.xbin
    │
-   1. open("/proc/self/exe")          ← se localiser de façon fiable
-   2. lire le footer (84 derniers bytes), valider magic
-   3. lire les métadonnées JSON
-   4. lire le payload, vérifier SHA-256       ← intégrité
-   5. cache hit ? → ~/.cache/xbin/{sha256}/.ready
-        oui → réutiliser
-        non → extraire (zstd → tar) dans tmp, rename() atomique
-   6. construire argv + env (injecter LD_LIBRARY_PATH)
-   7. execve(entrypoint)              ← remplace le process
+   1. open("/proc/self/exe")          ← reliable self-location
+   2. read footer (last 84 bytes), validate magic
+   3. read JSON metadata
+   4. read payload, verify SHA-256         ← integrity
+   5. cache hit? → ~/.cache/xbin/{sha256}/.ready
+        yes → reuse
+        no  → extract (zstd → tar) to tmp, atomic rename()
+   6. build argv + env (inject LD_LIBRARY_PATH)
+   7. execve(entrypoint)              ← replaces the process
 ```
 
-## Pourquoi `/proc/self/exe` et pas `argv[0]` ?
+## Why `/proc/self/exe` and not `argv[0]`?
 
-`argv[0]` est contrôlé par l'appelant : un process malveillant peut lancer le
-launcher avec un `argv[0]` mensonger. `/proc/self/exe` est fourni par le kernel
-et pointe **toujours** vers le vrai exécutable en cours. On lit donc toujours le
-bon fichier.
+`argv[0]` is caller-controlled: a malicious process could launch the launcher
+with a fake `argv[0]`. `/proc/self/exe` is provided by the kernel and
+**always** points to the real running executable. We always read the correct
+file.
 
-## Décompression : pourquoi `ruzstd` et pas le crate `zstd` ?
+## Decompression: why `ruzstd` and not the `zstd` crate?
 
-Le crate `zstd` lie la bibliothèque C `libzstd`, ce qui nécessite un compilateur
-C pour la cible musl. `ruzstd` est un décompresseur zstd **100 % Rust** : pas de
-toolchain C, build musl statique trivial. Le launcher ne fait que **décompresser**
-— c'est exactement le périmètre de `ruzstd`. La **compression** (qui demande plus
-de CPU) reste côté builder, via le CLI `zstd`.
+The `zstd` crate binds the C library `libzstd`, requiring a C compiler for
+the musl target. `ruzstd` is a **100% Rust** zstd decompressor: no C
+toolchain, trivial static musl build. The launcher only **decompresses** —
+that's exactly `ruzstd`'s scope. **Compression** (more CPU-intensive) stays
+on the builder side via the `zstd` CLI.
 
-## Le token `${ROOTFS}` dans l'environnement
+## The `${ROOTFS}` token in the environment
 
-Le builder ne connaît pas à l'avance où le cache sera matérialisé
-(`~/.cache/xbin/{sha256}/rootfs`). Pour qu'il puisse quand même déclarer des
-chemins (ex : `PYTHONPATH`), il écrit le token `${ROOTFS}` dans les variables
-d'environnement du manifest, et le launcher le remplace par le chemin réel au
-moment de l'`exec` :
+The builder doesn't know in advance where the cache will be materialized
+(`~/.cache/xbin/{sha256}/rootfs`). To still declare paths (e.g. `PYTHONPATH`),
+it writes the `${ROOTFS}` token in the manifest's environment variables, and
+the launcher replaces it with the real path at `exec` time:
 
 ```
 manifest :  PYTHONPATH = ${ROOTFS}/app/site-packages
-exécution :  PYTHONPATH = /home/user/.cache/xbin/f342…/rootfs/app/site-packages
+execution:  PYTHONPATH = /home/user/.cache/xbin/f342.../rootfs/app/site-packages
 ```
 
-`LD_LIBRARY_PATH` n'a pas besoin de ce token : le launcher le calcule
-directement à partir des répertoires `lib*` présents dans le rootfs.
+`LD_LIBRARY_PATH` doesn't need this token: the launcher computes it directly
+from the `lib*` directories present in the rootfs.
 
-## Accès concurrent : `flock()`
+## CWD handling after pivot_root
 
-Si deux instances du même `.xbin` démarrent en même temps sur un cache froid, un
-verrou exclusif `flock()` (sur `~/.cache/xbin/{hash}.lock`) garantit qu'une
-seule fait l'extraction ; l'autre attend puis trouve le cache prêt. L'extraction
-reste de toute façon atomique via `rename()` — le `flock` évite simplement le
-travail dupliqué.
+When isolation level 2 is active, after `pivot_root + umount2`, the process's
+current working directory still points to the old root — which was just
+detached. The launcher calls `set_current_dir("/")` just before `execve()`
+so the app process starts in the new root, ensuring correct resolution of
+relative paths and symlinks.
 
-## Ce que le launcher fait à l'exécution (annoté)
+## Concurrent access: `flock()`
 
-Extrait de `main.rs` — la séquence est volontairement linéaire et lisible :
+If two instances of the same `.xbin` start simultaneously on a cold cache,
+an exclusive `flock()` (on `~/.cache/xbin/{hash}.lock`) guarantees only one
+performs the extraction; the other waits and then finds the cache ready.
+Extraction is already atomic via `rename()` — `flock` simply avoids duplicated
+work.
+
+## What the launcher does at runtime (annotated)
+
+Excerpt from `main.rs` — the sequence is deliberately linear and readable:
 
 ```rust
-// 1. Se localiser de manière fiable (pas argv[0], contrôlable par l'appelant).
+// 1. Locate ourselves reliably (not argv[0], which is caller-controlled).
 let mut exe = File::open("/proc/self/exe")?;
 let footer = Footer::read_from(&mut exe)?;
 
-// 2-3. Métadonnées puis payload, avec vérification d'intégrité.
+// 2-3. Metadata then payload, with integrity verification.
 let meta: Metadata = serde_json::from_slice(&meta_bytes)?;
 verify_sha256(&payload, &footer.payload_sha256)?;
 
-// 4. Cache : extraire une seule fois, atomiquement.
+// 4. Cache: extract once, atomically.
 if !ready_marker.exists() {
     extract_atomic(&payload, &cache_root, &rootfs)?;
 }
 
-// 5. Remplacer le process courant par l'app.
+// 5. Replace the current process with the app.
 exec_app(&meta, &rootfs)
 ```

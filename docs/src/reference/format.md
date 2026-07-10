@@ -1,62 +1,62 @@
-# Format `.xbin`
+# `.xbin` Format
 
-Un fichier `.xbin` est un **ELF exécutable valide** auquel on a concaténé un
-payload, des métadonnées, et un **footer** à la toute fin du fichier.
+A `.xbin` file is a **valid ELF executable** with a payload, metadata, and
+a **footer** appended to the very end of the file.
 
-Le format est **versionné** (`format_version` dans le footer). La v1 utilise un
-payload monolithique ; la **v2** (actuelle) découpe le payload en **couches**
-(voir plus bas). Le launcher lit les deux.
+The format is **versioned** (`format_version` in the footer). v1 uses a
+single monolithic payload; **v2** (current) splits the payload into **layers**
+(see below). The launcher reads both.
 
-## Pourquoi un footer à la fin, et pas un header au début ?
+## Why a footer at the end, not a header at the beginning?
 
-C'est le point de conception le plus important du format.
+This is the most important design decision in the format.
 
-Le kernel Linux exige que le magic ELF (`\x7fELF`) soit à **l'offset 0** pour
-exécuter le fichier. On ne peut donc **pas** mettre nos propres magic bytes au
-début sans casser l'exécutabilité.
+The Linux kernel requires the ELF magic (`\x7fELF`) at **offset 0** to
+execute the file. We **cannot** put our own magic bytes at the start without
+breaking executability.
 
-La solution (celle de `makeself`, AppImage, des `.exe` auto-extractibles) :
+The solution (used by `makeself`, AppImage, self-extracting `.exe`):
 
-- l'**ELF du launcher** occupe le début du fichier — le kernel l'exécute ;
-- nos données sont **collées après** ;
-- un **footer de taille fixe** est placé en toute fin de fichier ;
-- au démarrage, le launcher s'ouvre via `/proc/self/exe`, fait un `seek` depuis
-  la fin, lit le footer, et y trouve les offsets de tout le reste.
+- the **ELF launcher** occupies the start of the file — the kernel executes it;
+- our data is **appended after**;
+- a **fixed-size footer** is placed at the very end of the file;
+- at startup, the launcher opens itself via `/proc/self/exe`, `seek`s from
+  the end, reads the footer, and finds the offsets for everything else.
 
 ```
 offset 0    ┌─────────────────────────┐
-            │   ELF launcher (musl)   │  ← exécuté par le kernel
+            │   ELF launcher (musl)   │  ← executed by the kernel
             ├─────────────────────────┤
-payload_off │   payload = zstd(tar)   │  ← rootfs compressé
+payload_off │   payload = zstd(tar)   │  ← compressed rootfs
             ├─────────────────────────┤
-meta_off    │   metadata (JSON utf8)  │  ← entrypoint, env, runtime…
+meta_off    │   metadata (JSON utf8)  │  ← entrypoint, env, runtime...
             ├─────────────────────────┤
-EOF - 84    │   FOOTER (84 bytes)     │  ← lu à l'envers par le launcher
+EOF - 84    │   FOOTER (84 bytes)     │  ← read backwards by the launcher
             └─────────────────────────┘
 ```
 
-## Le footer (84 bytes fixes)
+## Footer (84 bytes, fixed)
 
-Tous les entiers sont en little-endian.
+All integers are little-endian.
 
-| champ            | type  | taille | description                              |
-|------------------|-------|--------|------------------------------------------|
-| `magic`          | bytes | 5      | `"XBIN\x01"`                             |
-| `format_version` | u8    | 1      | version du format (= 1)                  |
-| `arch`           | u8    | 1      | `0x01`=x86_64, `0x02`=aarch64            |
-| `flags`          | u8    | 1      | bit0=signé, bit1=chiffré (0 en MVP)      |
-| `payload_offset` | u64   | 8      | offset absolu du payload                 |
-| `payload_csize`  | u64   | 8      | taille compressée                        |
-| `payload_usize`  | u64   | 8      | taille décompressée (tar)                |
-| `payload_sha256` | bytes | 32     | SHA-256 du payload compressé             |
-| `meta_offset`    | u64   | 8      | offset absolu des métadonnées            |
-| `meta_size`      | u64   | 8      | taille des métadonnées                   |
-| `footer_magic`   | u32   | 4      | `0xBEEFCAFE` — sentinelle de fin         |
+| Field            | Type  | Size | Description                             |
+|------------------|-------|------|-----------------------------------------|
+| `magic`          | bytes | 5    | `"XBIN\x01"`                            |
+| `format_version` | u8    | 1    | format version (= 1)                    |
+| `arch`           | u8    | 1    | `0x01`=x86_64, `0x02`=aarch64           |
+| `flags`          | u8    | 1    | bit0=signed, bit1=encrypted (0 in MVP)  |
+| `payload_offset` | u64   | 8    | absolute offset of payload              |
+| `payload_csize`  | u64   | 8    | compressed size                         |
+| `payload_usize`  | u64   | 8    | uncompressed size (tar)                 |
+| `payload_sha256` | bytes | 32   | SHA-256 of compressed payload           |
+| `meta_offset`    | u64   | 8    | absolute offset of metadata             |
+| `meta_size`      | u64   | 8    | metadata size                           |
+| `footer_magic`   | u32   | 4    | `0xBEEFCAFE` — end sentinel             |
 
-Total : **84 bytes**. La spec est partagée entre `stub/src/format.rs` (lecture)
-et `cli/xbin/format.py` (écriture) — les deux **doivent** rester synchronisés.
+Total: **84 bytes**. The spec is shared between `stub/src/format.rs` (read)
+and `cli/xbin/format.py` (write) — both **must** stay synchronized.
 
-## Métadonnées JSON
+## JSON metadata
 
 ```json
 {
@@ -66,77 +66,78 @@ et `cli/xbin/format.py` (écriture) — les deux **doivent** rester synchronisé
   "runtime": "python",
   "isolation": 0,
   "entrypoint": ["/usr/bin/python3.12", "/app/app.py"],
-  "env": { "PYTHONUNBUFFERED": "1" },
-  "cwd": "/app"
+  "env": { "PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1" },
+  "layers": [...]
 }
 ```
 
-- `entrypoint` : argv exécuté par le launcher. Les chemins absolus sont
-  **relatifs au rootfs** (le launcher les préfixe avec le chemin réel du cache).
-- `env` : variables ajoutées (le launcher injecte `LD_LIBRARY_PATH` en plus).
-- `cwd` : working directory dans le rootfs.
-- `isolation` : 0 = `LD_LIBRARY_PATH`, 1 = chroot, 2 = user namespaces.
+- `entrypoint`: argv executed by the launcher. Absolute paths are
+  **relative to the rootfs** (the launcher prefixes them with the real cache
+  path, or resolves them after pivot_root).
+- `env`: additional variables (the launcher injects `LD_LIBRARY_PATH` separately).
+- `isolation`: 0 = `LD_LIBRARY_PATH`, 1 = chroot (skipped), 2 = user namespaces.
+- `layers`: table of compressed layer blobs (v2+ only).
 
-## Les couches (v2)
+## Layers (v2)
 
-En v2, le payload n'est pas un bloc unique mais une suite de **couches**, chacune
-un blob `zstd(tar)` indépendant, empilées à l'extraction (les couches suivantes
-écrasent les précédentes — modèle proche des layers Docker) :
+In v2, the payload is a sequence of **layers**, each an independent
+`zstd(tar)` blob, stacked at extraction (later layers overwrite earlier
+ones — similar to Docker layers):
 
 ```
-[ stub ][ couche runtime ][ couche app ][ metadata ][ footer ]
-         ^                  ^
-         python+stdlib+.so  code de l'app + site-packages
-         stable             volatil
+[ stub ][ runtime layer ][ app layer ][ metadata ][ footer ]
+         ^                 ^
+         python+stdlib+.so app code + site-packages
+         stable            volatile
 ```
 
-Le **footer** garde la même structure de 84 bytes ; sa sémantique s'adapte :
+The **footer** keeps the same 84-byte structure; its semantics adapt:
 
-| champ            | v1                    | v2                                  |
+| Field            | v1                    | v2                                  |
 |------------------|-----------------------|-------------------------------------|
-| `payload_offset` | début du payload      | début de la **région des couches**  |
-| `payload_csize`  | taille du payload     | taille totale des couches           |
-| `payload_usize`  | taille décompressée   | inutilisé (tailles par couche)      |
-| `payload_sha256` | SHA-256(payload)      | SHA-256(**couches ‖ metadata**)     |
+| `payload_offset` | start of payload      | start of **layer region**           |
+| `payload_csize`  | payload size          | total compressed size of all layers |
+| `payload_usize`  | uncompressed size     | unused (per-layer sizes in meta)    |
+| `payload_sha256` | SHA-256(payload)      | SHA-256(**layers ‖ metadata**)      |
 
-La **table des couches** vit dans les métadonnées JSON :
+The **layer table** lives in the JSON metadata:
 
 ```json
 "layers": [
   {"kind": "runtime", "offset": 614960, "csize": 6710886, "usize": 26953728,
-   "sha256": "168a7279b815…"},
+   "sha256": "168a7279b815..."},
   {"kind": "app",     "offset": 7325846, "csize": 12044,   "usize": 204800,
-   "sha256": "9e61cd65ed9e…"}
+   "sha256": "9e61cd65ed9e..."}
 ]
 ```
 
-`offset` est l'offset **absolu** dans le fichier. Le `sha256` de chaque couche
-(du blob compressé) sert de **clé de cache stable** : tant que le contenu d'une
-couche ne change pas, son extraction est réutilisable.
+`offset` is the **absolute** offset in the file. Each layer's SHA-256 (of the
+compressed blob) serves as a **stable cache key**: as long as a layer's
+content doesn't change, its extraction is reusable.
 
-### Pourquoi des couches : le rebuild incrémental
+### Why layers: incremental rebuild
 
-C'est la raison d'être de la v2. La couche **runtime** (interpréteur + stdlib +
-`.so`) est **indépendante du code de l'app** : éditer `app.py` ne la change pas.
-Au rebuild, le builder la **réutilise telle quelle** depuis son cache de build
-(`~/.cache/xbin/build/`) — pas de recompression. Seule la petite couche **app**
-est refaite.
+This is the reason v2 exists. The **runtime** layer (interpreter + stdlib +
+`.so`) is **independent of app code**: editing `app.py` doesn't change it.
+On rebuild, the builder **reuses** it from its build cache
+(`~/.cache/xbin/build/`) — no recompression. Only the small **app** layer
+is rebuilt.
 
 ```
-build initial  : ~25 s  (compression de la couche runtime, ~26 MB)
-rebuild (code)  : ~1 s   (couche runtime réutilisée, seule l'app recompresse)
+initial build  : ~25 s  (compressing runtime layer, ~54 MB)
+rebuild (code)  : ~1 s   (runtime layer reused, only app recompresses)
 ```
 
-Bonus : deux apps qui partagent le même runtime (même interpréteur + libs)
-partagent la **même couche runtime** dans le cache de build — la seconde app se
-build en ~1 s elle aussi. Voir [Le builder](./builder.md).
+Bonus: two apps sharing the same runtime (same interpreter + libs) share the
+**same runtime layer** in the build cache — the second app also builds in
+~1 s. See [The builder](./builder.md).
 
-## Pourquoi le format survit aux évolutions
+## Why the format survives evolution
 
-- Le footer est **versionné** (`format_version`). Un launcher refuse proprement
-  un fichier de version supérieure à ce qu'il sait lire.
-- Les champs réservés (`flags`, et l'ajout d'un bloc signature en Phase 2)
-  permettent d'étendre sans casser la compatibilité.
-- La signature Ed25519 s'insérera entre `metadata` et `footer`, avec un bit
-  `flags` et un offset dédié dans un footer v2 — les fichiers v1 restent
-  lisibles.
+- The footer is **versioned** (`format_version`). A launcher gracefully
+  rejects a file with a version higher than it understands.
+- Reserved fields (`flags`, and the signature block added in Phase 2) allow
+  extension without breaking compatibility.
+- Ed25519 signatures are inserted between `metadata` and `footer`, with a
+  `flags` bit and a dedicated offset in the v2 footer — v1 files remain
+  readable.

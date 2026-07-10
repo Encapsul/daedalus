@@ -93,7 +93,7 @@ my_app/         xbin build    my_app.xbin      ./my_app.xbin    ça tourne
 
 **At build time**, `xbin build`:
 1. Detects the runtime (Python, Node, or native binary)
-2. Resolves shared libraries via `ldd` (transitive)
+2. Resolves shared libraries via a pure-Python ELF parser (no host `ldd` needed)
 3. Packages interpreter + stdlib + `.so` into a **runtime layer**
 4. Packages app code + site-packages into an **app layer**
 5. Compresses each layer with `zstd -19`, assembles the `.xbin`
@@ -145,11 +145,12 @@ See the full [architecture docs](/docs/src/concepts/architecture.md) (French) fo
 ## CLI reference
 
 ```bash
-xbin build ./my_app -o my_app.xbin   # analyze + produce .xbin
-xbin run   my_app.xbin               # launch (= ./my_app.xbin)
-xbin inspect my_app.xbin             # show contents without extracting
-xbin clean                           # remove extracted cache entries
-xbin clean --all                     # wipe everything (including build cache)
+xbin build ./my_app -o my_app.xbin            # analyze + produce .xbin
+xbin build ./my_app --isolation 2             # with user namespaces + pivot_root
+xbin run   my_app.xbin                        # launch (= ./my_app.xbin)
+xbin inspect my_app.xbin                      # show contents without extracting
+xbin clean                                    # remove extracted cache entries
+xbin clean --all                              # wipe everything (including build cache)
 ```
 
 Debug: `XBIN_VERBOSE=1 ./my_app.xbin` shows cold/warm start info.
@@ -179,13 +180,19 @@ xbin build ./examples/bottle-web -o bottle-web.xbin
 - Incremental rebuild (runtime layer cached, ~25s → ~1s)
 - CLI: `build`, `run`, `inspect`, `clean`
 
-### 🔜 Phase 2 — Robustness
+### ✅ Phase 2 — Robustness
 - Ed25519 signatures (`xbin keygen` / `sign` / `verify`)
+- Trust model (`~/.xbin/trusted-keys/` keyring)
 - Isolation level 2 (user namespaces + `pivot_root`)
-- AI dependency analyzer (detects `subprocess`, `dlopen`, hidden deps)
-- `requirements.txt` → auto pip-install at build time
+- Pure-Python ELF parser (no host `ldd` dependency)
+- `requirements.txt` → auto pip-install at build time (temp venv)
 - Node.js end-to-end support
+- Self-hosting: `self/` → `xbin build self/` → `./xbin build ...`
+
+### 🔜 Phase 3 — Production
+- AI dependency analyzer (detects `subprocess`, `dlopen`, hidden deps)
 - Manifest mode (`xbin.toml`)
+- squashfs + mmap (cold start < 100ms)
 
 ### 🔜 Phase 3 — Production
 - squashfs + mmap (cold start < 100ms)
@@ -209,7 +216,8 @@ xbin/
 │       ├── format.py  footer writer (sync'd with Rust)
 │       ├── inspect.py
 │       └── analyzer/
-│           ├── ldd.py       shared library detection
+│           ├── elf.py       pure-Python ELF parser (replaces host `ldd`)
+│           ├── ldd.py       thin facade calling `elf.py`
 │           └── runtime.py   runtime detection + entrypoint
 ├── examples/          demo apps
 ├── docs/              mdbook documentation (French)

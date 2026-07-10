@@ -1,42 +1,50 @@
 # Roadmap
 
-## Phase 1 — MVP fonctionnel ✅ (en cours, l'essentiel est fait)
+## Phase 1 — MVP functional ✅
 
-- [x] Format `.xbin` défini et stable (footer 84B versionné)
-- [x] Launcher Rust/musl statique : self-read, intégrité SHA-256, exec
-- [x] Cache avec extraction atomique (`rename()`)
-- [x] Builder Python : détection runtime + `ldd`, construction rootfs, assemblage
-- [x] CLI : `build`, `run`, `inspect`, `clean`
-- [x] Support Python (stdlib) — exemple `hello-web` fonctionnel
-- [x] `flock()` sur le cache pour l'accès concurrent
+- [x] `.xbin` format defined and stable (versioned 84B footer)
+- [x] Rust/musl static launcher: self-read, SHA-256 integrity, exec
+- [x] Atomic cache extraction (`rename()`)
+- [x] Python builder: runtime detection + rootfs construction + assembly
+- [x] CLI: `build`, `run`, `inspect`, `clean`
+- [x] Python support (stdlib) — `hello-web` example
+- [x] `flock()` for concurrent cache access
 - [x] `xbin clean`
-- [x] Support des `site-packages` / `.venv` Python — exemple `bottle-web`
-- [x] **Format v2 en couches + rebuild incrémental** (runtime réutilisé,
-      rebuild ~25s → ~1s ; cache de build partagé entre apps)
-- [ ] `requirements.txt` → pip install au build (venv temporaire)
-- [ ] Support Node.js de bout en bout
+- [x] Python `site-packages` / `.venv` support — `bottle-web` example
+- [x] **v2 layered format + incremental rebuild** (runtime reused,
+      rebuild ~25s → ~1s; shared build cache between apps)
+- [x] `requirements.txt` → pip install at build time (temp venv)
+- [x] Node.js end-to-end support (stdlib + node_modules)
 
-## Phase 2 — Robustesse
+## Phase 2 — Robustness ✅
 
-- [ ] **Signature Ed25519** (footer v2, `xbin keygen` / `sign` / `verify`)
-- [ ] **Trust model** : keyring `~/.xbin/trusted-keys/`, niveaux trusted/unknown/unsigned
-- [ ] **Isolation niveau 2** : user namespaces + `pivot_root` (portabilité réelle)
-- [ ] **Filtre seccomp** minimal
-- [ ] **Mode manifest** (`xbin.toml`) pour les dépendances complexes
-- [ ] **Analyzer IA** : génération de `xbin.toml` (deps cachées : subprocess, dlopen)
-- [ ] Cache LRU (nettoyage au-delà d'un seuil)
+- [x] **Pure-Python ELF analyzer** (no host `ldd` dependency, works on any
+      machine with Python)
+- [x] **Ed25519 signatures** (v3 footer, `xbin keygen` / `sign` / `verify` / `trust`)
+- [x] **Trust model**: `~/.xbin/trusted-keys/` keyring, `xbin trust` subcommand
+- [x] **Level 2 isolation**: user namespaces + `pivot_root` (real portability)
+- [x] **Smart `.so` deduplication** (if `ld-linux` is found via `/lib64`
+      (symlink) and `/lib/x86_64-linux-gnu` (real file), the duplicate is
+      automatically removed)
+- [x] `/etc/hosts` in rootfs (prevents DNS PTR lookup hang)
+- [x] **Self-hosting**: `self/` → `xbin build self/` → `./xbin build ...`
+      (full cycle: CLI → `xbin-v2` → `xbin-v3` → `xbin-v4`)
+- [ ] Minimal seccomp filter
+- [ ] Manifest mode (`xbin.toml`) for complex dependencies
+- [ ] AI analyzer: generate `xbin.toml` (hidden deps: subprocess, dlopen)
+- [ ] LRU cache cleanup (evict beyond threshold)
 
-## Phase 3 — Produit fini
+## Phase 3 — Production
 
-- [ ] **squashfs + mmap** : lecture directe, plus d'extraction
-- [ ] **Cold/warm start < 100 ms** de bout en bout
-- [ ] Support de tous les runtimes (Java/GraalVM, Ruby, etc.)
+- [ ] **squashfs + mmap**: direct read, no extraction
+- [ ] **Cold/warm start < 100 ms** end-to-end
+- [ ] All runtime support (Java/GraalVM, Ruby, etc.)
 - [ ] Cross-arch (aarch64)
-- [ ] Distribution / découverte (registry léger, voire P2P)
+- [ ] Distribution / discovery (lightweight registry, even P2P)
 
-## Principe directeur
+## Guiding principle
 
-Chaque phase doit pouvoir s'ajouter **sans réécrire** la précédente. C'est
-pourquoi le format est versionné et les couches découplées : passer de
-l'extraction tar à squashfs+mmap, ou du niveau 0 au niveau 2, ne change pas le
-contrat entre builder et launcher.
+Each phase must be addable **without rewriting** the previous one. This is
+why the format is versioned and the layers are decoupled: switching from tar
+extraction to squashfs+mmap, or from level 0 to level 2, doesn't change the
+contract between builder and launcher.

@@ -68,7 +68,7 @@ impl Footer {
             let mut buf = [0u8; V3_FOOTER_SIZE as usize];
             r.read_exact(&mut buf)?;
 
-            if &buf[8..13] == MAGIC {
+            if &buf[8..13] == MAGIC && buf[13] >= 3 {
                 let sig_offset = u64_le(&buf[0..8]);
                 return Self::parse(&buf[8..], V3_FOOTER_SIZE, sig_offset);
             }
