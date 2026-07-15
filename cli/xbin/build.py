@@ -133,10 +133,20 @@ def _build_runtime_layer(app_dir: Path, plan: runtime.RuntimePlan, layer: Path,
             print(f"    {lib}{arrow}")
 
     # Runtime directories (e.g. Python stdlib).
+    # Exclude site-packages (belongs in app layer, not runtime), test dirs,
+    # idlelib, ensurepip, turtledemo, pydoc_data, and build config.
+    # NOTE: we intentionally INCLUDE __pycache__/ and *.pyc so Python can
+    # load pre-compiled bytecode instead of re-compiling on every startup.
+    _RT_IGNORE = shutil.ignore_patterns(
+        "test", "tests",
+        "site-packages",
+        "idlelib", "ensurepip", "turtledemo", "pydoc_data",
+        "config-*",
+    )
     for d in plan.extra_dirs_host:
         dest = layer / str(d).lstrip("/")
         shutil.copytree(d, dest, symlinks=True, dirs_exist_ok=True,
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "test", "tests"))
+                        ignore=_RT_IGNORE)
         if verbose:
             print(f"  runtime layer: embedded {d}")
 
@@ -151,14 +161,13 @@ def _build_app_layer(app_dir: Path, plan: runtime.RuntimePlan, layer: Path,
         app_dir, app_dest, symlinks=True, dirs_exist_ok=True,
         ignore=shutil.ignore_patterns(
             ".venv", "venv", "site-packages", "node_modules",
-            "__pycache__", "*.pyc", ".git"
+            ".git"
         ),
     )
     for src, rootfs_rel in plan.site_packages:
         dest = layer / rootfs_rel.lstrip("/")
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(src, dest, symlinks=True,
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        shutil.copytree(src, dest, symlinks=True)
         if verbose:
             print(f"  app layer: {src.name} from {src}")
 
