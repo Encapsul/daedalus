@@ -56,37 +56,15 @@ fn main() {
 fn run() -> io::Result<()> {
     let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
 
-    // 1. Locate ourselves reliably (not argv[0] — caller-controlled).
+    // 1. Read footer + metadata (small, fast).
     let mut exe = File::open("/proc/self/exe")?;
     let footer = Footer::read_from(&mut exe)?;
-
-    // 2. Read JSON metadata.
     let meta_bytes = read_at(&mut exe, footer.meta_offset, footer.meta_size as usize)?;
     let meta: Metadata = serde_json::from_slice(&meta_bytes)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("bad metadata: {e}")))?;
 
-    // 3. Read the entire payload region (all layers, contiguous in v2/v3).
-    let payload = read_at(&mut exe, footer.payload_offset, footer.payload_csize as usize)?;
-
-    // 4. Verify Ed25519 signature (v3+ only).
-    if footer.format_version >= 3 && footer.flags & format::FLAG_SIGNED != 0 {
-        verify_ed25519(&footer, &mut exe, &payload, &meta_bytes)?;
-        if verbose {
-            eprintln!("[xbin] Ed25519 signature verified");
-        }
-    }
-
-    // 5. Verify SHA-256 integrity.
+    // 2. Compute cache key and check hit BEFORE reading the payload.
     let layered = footer.format_version >= 2 && !meta.layers.is_empty();
-    if layered {
-        let mut buf = payload.clone();
-        buf.extend_from_slice(&meta_bytes);
-        verify_sha256(&buf, &footer.payload_sha256)?;
-    } else {
-        verify_sha256(&payload, &footer.payload_sha256)?;
-    }
-
-    // 6. Cache key.
     let hash = if layered { cache_key_v2(&meta.layers) } else { footer.sha256_hex() };
 
     let base = cache_dir()?;
@@ -95,22 +73,48 @@ fn run() -> io::Result<()> {
     let rootfs = cache_root.join("rootfs");
     let ready_marker = cache_root.join(".ready");
 
-    if !ready_marker.exists() {
-        let lock = File::create(base.join(format!("{hash}.lock")))?;
-        flock_exclusive(&lock)?;
-
-        if !ready_marker.exists() {
-            if verbose {
-                eprintln!("[xbin] cold start: extracting {}", meta.name);
-            }
-            let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered);
-            extract_atomic(&blobs, &cache_root, &rootfs)?;
+    if ready_marker.exists() {
+        // Warm path: cache exists, skip payload read entirely.
+        if verbose {
+            eprintln!("[xbin] warm start: cache hit {}", hash);
         }
-    } else if verbose {
-        eprintln!("[xbin] warm start: cache hit {}", hash);
+        return exec_app(&meta, &rootfs);
     }
 
-    // 7. Build argv + env and exec into the extracted rootfs.
+    // 3. Cold path: read payload + verify + extract.
+    if verbose {
+        eprintln!("[xbin] cold start: extracting {}", meta.name);
+    }
+
+    let payload = read_at(&mut exe, footer.payload_offset, footer.payload_csize as usize)?;
+
+    // Verify Ed25519 signature (v3+ only).
+    if footer.format_version >= 3 && footer.flags & format::FLAG_SIGNED != 0 {
+        verify_ed25519(&footer, &mut exe, &payload, &meta_bytes)?;
+        if verbose {
+            eprintln!("[xbin] Ed25519 signature verified");
+        }
+    }
+
+    // Verify SHA-256 integrity.
+    if layered {
+        let mut buf = payload.clone();
+        buf.extend_from_slice(&meta_bytes);
+        verify_sha256(&buf, &footer.payload_sha256)?;
+    } else {
+        verify_sha256(&payload, &footer.payload_sha256)?;
+    }
+
+    // Extract atomically.
+    let lock = File::create(base.join(format!("{hash}.lock")))?;
+    flock_exclusive(&lock)?;
+
+    if !ready_marker.exists() {
+        let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered);
+        extract_atomic(&blobs, &cache_root, &rootfs)?;
+    }
+
+    // 4. Exec into the extracted rootfs.
     exec_app(&meta, &rootfs)
 }
 

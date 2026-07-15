@@ -252,22 +252,28 @@ run_baseline() {
         return 1
     fi
 
-    # Install from repo if it exists, otherwise use install_extra
+    # Build pip install command: always include install_extra (e.g. --extra-index-url)
+    local pip_extra_args=""
+    if [ -n "$install_extra" ]; then
+        pip_extra_args="$install_extra"
+    fi
+
     if [ -d "$REPOS_DIR/$name" ] && [ -f "$REPOS_DIR/$name/pyproject.toml" ]; then
         log "Installing from $REPOS_DIR/$name..."
+        # shellcheck disable=SC2086
         if ! timeout "$TIMEOUT_VENV_INSTALL" "$venv/bin/pip" install \
-            --quiet --no-cache-dir "$REPOS_DIR/$name" 2>&1 | tail -20; then
+            --quiet --no-cache-dir $pip_extra_args "$REPOS_DIR/$name" 2>&1 | tail -20; then
             fail "pip install from repo failed"
             echo "{\"app\":\"$name\",\"phase\":\"baseline\",\"error\":\"pip install failed\"}" \
                 > "$RESULTS_DIR/${name}-baseline.json"
             return 1
         fi
-    elif [ -n "$install_extra" ]; then
-        log "Installing: $install_extra..."
+    elif [ -n "$pip_extra_args" ]; then
+        log "Installing: $pip_extra_args..."
         if ! timeout "$TIMEOUT_VENV_INSTALL" "$venv/bin/pip" install \
-            --quiet --no-cache-dir $install_extra 2>&1 | tail -20; then
+            --quiet --no-cache-dir $pip_extra_args 2>&1 | tail -20; then
             fail "pip install failed"
-            echo "{\"app\":\"$name\",\"phase\":\"baseline\",\"error\":\"pip install failed: $install_extra\"}" \
+            echo "{\"app\":\"$name\",\"phase\":\"baseline\",\"error\":\"pip install failed: $pip_extra_args\"}" \
                 > "$RESULTS_DIR/${name}-baseline.json"
             return 1
         fi
