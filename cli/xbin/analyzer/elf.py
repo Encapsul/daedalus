@@ -156,7 +156,10 @@ class ELFParser:
                         resolved.append(name)
             needed = resolved
 
-            # Resolve RUNPATH strings
+            # Resolve RUNPATH/RPATH strings.
+            # $ORIGIN is a dynamic linker token meaning "the directory
+            # containing this ELF binary" — same semantics as ld.so.
+            origin = str(self.path.parent)
             resolved_rp: list[str] = []
             for rp_off_str in runpaths:
                 rp_off = int(rp_off_str)
@@ -165,7 +168,7 @@ class ELFParser:
                 if s_file_off is not None:
                     name = self._read_str(s_file_off)
                     if name:
-                        resolved_rp.append(name)
+                        resolved_rp.append(name.replace("$ORIGIN", origin))
             runpaths = resolved_rp
 
         return needed, runpaths, strtab_addr

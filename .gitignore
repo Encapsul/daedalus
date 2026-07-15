@@ -11,6 +11,26 @@ dist/
 
 # Artefacts xbin
 *.xbin
+*.xbin.*
+
+# Benchmarks (generated)
+benchmarks/results/
+benchmarks/report.md
+benchmarks/results.json
+benchmarks/apps/
+
+# Repo (extracted source trees)
+repo/
+
+# Demo / recording
+*.cast
+*.mp4
+demo/
+
+# Generated HTML / misc
+*.html
+file.md
+ideaaa
 
 # mdbook
 docs/book/

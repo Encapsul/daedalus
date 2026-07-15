@@ -99,8 +99,10 @@ def _build_runtime_layer(app_dir: Path, plan: runtime.RuntimePlan, layer: Path,
     this layer, so it is reused as-is on rebuild (build cache). It only changes
     when the interpreter or binary dependencies change.
     """
-    # Binaries to analyze for .so deps: interpreter, native binary, and C
-    # extensions from site-packages (we read .so from the HOST source).
+    # Binaries to analyze for .so deps: interpreter, native binary, C
+    # extensions from site-packages, and stdlib extensions (e.g. _ssl, _lzma).
+    # Stdlib lib-dynload/ .so files are the most common source of version
+    # mismatches (e.g. Python bundled OpenSSL vs system OpenSSL).
     binaries: list[Path] = []
     if plan.interpreter_host:
         _copy_into_rootfs(plan.interpreter_host, layer)
@@ -111,6 +113,12 @@ def _build_runtime_layer(app_dir: Path, plan: runtime.RuntimePlan, layer: Path,
             binaries.append(native)
     for src, _ in plan.site_packages:
         binaries.extend(src.rglob("*.so"))
+    # Scan stdlib lib-dynload/ for C extensions (_ssl, _lzma, _sqlite3, etc.)
+    # that may link against bundled libs (e.g. OpenSSL) via $ORIGIN RPATH.
+    for d in plan.extra_dirs_host:
+        lib_dynload = d / "lib-dynload"
+        if lib_dynload.is_dir():
+            binaries.extend(lib_dynload.glob("*.so"))
 
     all_libs: set[Path] = set()
     for b in binaries:
@@ -127,11 +135,10 @@ def _build_runtime_layer(app_dir: Path, plan: runtime.RuntimePlan, layer: Path,
     # Runtime directories (e.g. Python stdlib).
     for d in plan.extra_dirs_host:
         dest = layer / str(d).lstrip("/")
-        if not dest.exists():
-            shutil.copytree(d, dest, symlinks=True,
-                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "test", "tests"))
-            if verbose:
-                print(f"  runtime layer: embedded {d}")
+        shutil.copytree(d, dest, symlinks=True, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "test", "tests"))
+        if verbose:
+            print(f"  runtime layer: embedded {d}")
 
     _write_etc(layer)
 
@@ -223,8 +230,10 @@ def _pip_install_requirements(app_dir: Path, work_dir: Path, plan: runtime.Runti
                    capture_output=True)
     pip = str(venv_dir / "bin" / "pip")
     req = app_dir / "requirements.txt"
-    subprocess.run([pip, "install", "-r", str(req), "--quiet"], check=True,
-                   capture_output=True)
+    result = subprocess.run([pip, "install", "-r", str(req), "--quiet"], capture_output=True)
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace").strip()
+        raise RuntimeError(f"pip install failed (exit {result.returncode}): {stderr}")
     py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
     sp = venv_dir / "lib" / py_ver / "site-packages"
     if not sp.is_dir():
