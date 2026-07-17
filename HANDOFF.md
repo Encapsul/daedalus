@@ -201,3 +201,12 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - Failure handling: warn and continue, never hard-fail. Summary report at end.
 - Uncertain-confidence deps (from AST scanner) are never fetched — reported as SKIP.
 - `xbin clean` covers stage cleanup (already removes `~/.cache/xbin/`).
+
+## Launcher PATH injection (2026-07-17)
+
+- **File**: `stub/src/main.rs` — committed `1c7544a`.
+- Added `const BIN_PATHS: &[&str] = &["usr/bin", "bin", "usr/local/bin"]` alongside existing `LD_PATHS`.
+- `setup_env()` now injects PATH with rootfs bin dirs prepended (before system PATH), mirroring the LD_LIBRARY_PATH logic exactly.
+- Pivot mode: `PATH` = `usr/bin:bin:usr/local/bin` (relative, rootfs IS `/`).
+- Non-pivot mode: `PATH` = `{rootfs}/usr/bin:{rootfs}/bin:{rootfs}/usr/local/bin:{existing_PATH}`.
+- Bundled binaries take priority over system equivalents — intentional: the app uses the version we packaged.
