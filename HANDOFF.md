@@ -227,3 +227,12 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - **Build integration** (`cli/xbin/build.py`): lockfile check inserted after app_dir resolution, before the xbin.toml manifest check. Detection deps are recorded but not yet wired into rootfs building (that's a future layer).
 - **CLI integration** (`cli/xbin/cli.py`): `--redetect` flag added to build subcommand.
 - **Verified paths**: fresh build (no lock), fresh lock (skip), stale lock (re-detect), --redetect (force), no-Dockerfile app (lock always fresh).
+
+## Docker-compose multi-service warning (2026-07-17)
+
+- **File**: `cli/xbin/cli.py` — `_parse_compose_services()` + `_warn_multi_service_compose()`.
+- **Parser**: regex-based, no YAML dependency (stdlib only). Finds `services:` at indent 0, extracts service names at indent 2, checks for `build:` or `image:` at indent 4.
+- **Warning** printed to stderr when >1 service detected: names all services, flags which use `build:` (packageable) vs `image:` (dependencies), states xbin packages one process.
+- **Informational only** — does not block the build, does not affect return code. User sees warning then normal build output.
+- **Silent when**: no compose file, single service, unparseable file, or `-q` flag.
+- **Verified**: multi-service (build+image), single service, no file, multiple build services, all image services, .yaml extension, comments, quiet mode.

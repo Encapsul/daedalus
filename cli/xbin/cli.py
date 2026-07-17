@@ -8,7 +8,120 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
+from pathlib import Path
+
+
+def _parse_compose_services(app_dir: Path) -> list[dict[str, str]] | None:
+    """Parse docker-compose.yml for service names and their kind (build/image).
+
+    Returns None if no compose file, only one service, or file is unparseable.
+    Each dict has keys 'name' and 'kind' ('build', 'image', or 'unknown').
+    """
+    for name in ("docker-compose.yml", "docker-compose.yaml"):
+        compose_path = app_dir / name
+        if compose_path.is_file():
+            break
+    else:
+        return None
+
+    try:
+        lines = compose_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+
+    services: list[dict[str, str]] = []
+    in_services = False
+    current_service: str | None = None
+    current_kind: str = "unknown"
+
+    for line in lines:
+        if not line or line.lstrip().startswith("#"):
+            continue
+
+        indent = len(line) - len(line.lstrip())
+
+        if indent == 0 and line.strip() == "services:":
+            in_services = True
+            continue
+
+        if in_services:
+            if indent == 0 and line.strip():
+                break  # left the services block
+
+            if indent == 2:
+                # Save previous service if any.
+                if current_service is not None:
+                    services.append({"name": current_service, "kind": current_kind})
+                # New service name.
+                m = re.match(r"^\s{2}(\S+)\s*:\s*$", line)
+                if m:
+                    current_service = m.group(1)
+                    current_kind = "unknown"
+                else:
+                    current_service = None
+                continue
+
+            if indent == 4 and current_service is not None:
+                stripped = line.strip()
+                if stripped.startswith("build:") or stripped == "build: >":
+                    current_kind = "build"
+                elif stripped.startswith("image:"):
+                    current_kind = "image"
+
+    # Save last service.
+    if current_service is not None:
+        services.append({"name": current_service, "kind": current_kind})
+
+    if len(services) <= 1:
+        return None
+
+    return services
+
+
+def _warn_multi_service_compose(app_dir: Path, *, verbose: bool) -> None:
+    """Warn if docker-compose.yml defines multiple services. Informational only."""
+    services = _parse_compose_services(app_dir)
+    if services is None:
+        return
+
+    names = ", ".join(s["name"] for s in services)
+    build_services = [s["name"] for s in services if s["kind"] == "build"]
+    image_services = [s["name"] for s in services if s["kind"] == "image"]
+
+    if verbose:
+        print(
+            f"[xbin] warning: docker-compose.yml defines multiple services: {names}",
+            file=sys.stderr,
+        )
+        print(
+            "[xbin]          xbin packages a single process per .xbin file",
+            file=sys.stderr,
+        )
+        if len(build_services) == 1:
+            print(
+                f"[xbin]          service '{build_services[0]}' uses build: "
+                "(may be independently packageable)",
+                file=sys.stderr,
+            )
+        elif len(build_services) > 1:
+            bnames = ", ".join(f"'{n}'" for n in build_services)
+            print(
+                f"[xbin]          services {bnames} use build: "
+                "(may be independently packageable)",
+                file=sys.stderr,
+            )
+        if image_services:
+            inames = ", ".join(f"'{n}'" for n in image_services)
+            print(
+                f"[xbin]          services {inames} use image: (likely dependencies)",
+                file=sys.stderr,
+            )
+        print(
+            "[xbin]          continuing build — xbin will only analyze the app directory",
+            file=sys.stderr,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -90,6 +203,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build":
             from .build import build
 
+            _warn_multi_service_compose(
+                Path(args.app).resolve(), verbose=not args.quiet
+            )
             build(
                 args.app,
                 args.output,
