@@ -18,10 +18,17 @@
 //!   [16-23]  payload_offset (u64)
 //!   [24-31]  payload_csize (u64)
 //!   [32-39]  payload_usize (u64)       unused in v2/v3 (per-layer sizes in metadata)
-//!   [40-71]  payload_sha256 (32 bytes) SHA-256(layers ‖ metadata)
+//!   [40-71]  payload_sha256 (32 bytes) SHA-256(payload ‖ metadata)
 //!   [72-79]  meta_offset (u64)
 //!   [80-87]  meta_size (u64)
 //!   [88-91]  footer_magic (u32)        0xBEEFCAFE
+//!
+//! Integrity hash contract (MUST match across Rust + Python):
+//!   integrity = SHA-256(compressed_payload_bytes ‖ metadata_json_bytes)
+//!   This is stored in payload_sha256 and verified on every cold start.
+//!   The same hash is signed by Ed25519 (v3+): sign(integrity, private_key).
+//!   Implemented: Rust → main.rs:verify_sha256(), verify_ed25519()
+//!               Python → build.py:build(), sign.py:sign()
 
 use std::io::{self, Read, Seek, SeekFrom};
 
@@ -62,7 +69,7 @@ impl Footer {
     pub fn read_from<R: Read + Seek>(r: &mut R) -> io::Result<Footer> {
         let total = r.seek(SeekFrom::End(0))?;
 
-        // 1) Try v3/v2 footer (92 bytes).
+        // Try v3/v2 footer (92 bytes).
         if total >= V3_FOOTER_SIZE {
             r.seek(SeekFrom::End(-(V3_FOOTER_SIZE as i64)))?;
             let mut buf = [0u8; V3_FOOTER_SIZE as usize];
@@ -74,7 +81,7 @@ impl Footer {
             }
         }
 
-        // 2) Fallback: v1/v2 footer (84 bytes).
+        // Fallback: v1/v2 footer (84 bytes).
         if total >= V2_FOOTER_SIZE {
             r.seek(SeekFrom::End(-(V2_FOOTER_SIZE as i64)))?;
             let mut buf = [0u8; V2_FOOTER_SIZE as usize];
