@@ -4,7 +4,7 @@ STUB := $(TOOLS)/$(TARGET)/release/xbin-stub
 CRYPTO := $(TOOLS)/$(TARGET)/release/xbin-crypto
 XBIN := python3 -m xbin
 
-.PHONY: all stub install example run inspect docs docs-serve clean
+.PHONY: all stub install example run inspect docs docs-serve lint lint-rust lint-python fmt fmt-rust fmt-python clean
 
 all: stub
 
@@ -36,6 +36,24 @@ docs:
 
 docs-serve:
 	cd docs && mdbook serve --open
+
+lint: lint-rust lint-python
+
+lint-rust:
+	cd stub && cargo clippy -- -D warnings
+
+lint-python:
+	cd cli && python -m ruff check xbin/
+	cd cli && python -m black --check xbin/
+
+fmt: fmt-rust fmt-python
+
+fmt-rust:
+	cd stub && cargo fmt
+
+fmt-python:
+	cd cli && python -m black xbin/
+	cd cli && python -m ruff check --fix xbin/
 
 clean:
 	cd stub && cargo clean
