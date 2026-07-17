@@ -25,6 +25,10 @@ const LD_PATHS: &[&str] = &[
     "lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/x86_64-linux-gnu",
 ];
 
+/// Binary search paths for PATH, mirroring LD_PATHS for executables.
+/// Bundled binaries (e.g. ffmpeg, gitleaks) land here via the rootfs.
+const BIN_PATHS: &[&str] = &["usr/bin", "bin", "usr/local/bin"];
+
 #[derive(Deserialize)]
 struct Metadata {
     name: String,
@@ -351,6 +355,23 @@ fn setup_env(
             }
         }
         env.insert("LD_LIBRARY_PATH".into(), paths.join(":"));
+    }
+
+    // PATH: bundled binaries (usr/bin, bin, usr/local/bin) before system PATH.
+    if use_pivot {
+        env.insert("PATH".into(), BIN_PATHS.join(":"));
+    } else {
+        let mut paths: Vec<String> = BIN_PATHS.iter()
+            .map(|p| rootfs.join(p))
+            .filter(|p| p.exists())
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        if let Some(existing) = env.get("PATH") {
+            if !existing.is_empty() {
+                paths.push(existing.clone());
+            }
+        }
+        env.insert("PATH".into(), paths.join(":"));
     }
 
     if let Some(cwd) = orig_cwd {
