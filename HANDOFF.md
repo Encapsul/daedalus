@@ -236,3 +236,12 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - **Informational only** — does not block the build, does not affect return code. User sees warning then normal build output.
 - **Silent when**: no compose file, single service, unparseable file, or `-q` flag.
 - **Verified**: multi-service (build+image), single service, no file, multiple build services, all image services, .yaml extension, comments, quiet mode.
+
+## README rewrite (2026-07-17)
+
+- **File**: `README.md` — full rewrite modeled after Bun's README style.
+- **Structure**: centered logo placeholder → title → badges → nav links → "What is x.bin?" → Install → Quick links (4 categories) → Guides (4 categories) → How it works → Example apps → Contributing → License.
+- **Logo**: references `logo.png` in repo root — user will create their own.
+- **Install**: git clone + `make stub` + `pip install -e ./cli` — no curl installer, no brew.
+- **Quick links**: organized by Build, Runtime, Security, CLI — all link to mdbook docs.
+- **Guides**: organized by Python, Node.js, Deployment, Security.

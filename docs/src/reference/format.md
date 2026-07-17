@@ -1,60 +1,124 @@
 # `.xbin` Format
 
-A `.xbin` file is a **valid ELF executable** with a payload, metadata, and
-a **footer** appended to the very end of the file.
-
-The format is **versioned** (`format_version` in the footer). v1 uses a
-single monolithic payload; **v2** (current) splits the payload into **layers**
-(see below). The launcher reads both.
-
-## Why a footer at the end, not a header at the beginning?
-
-This is the most important design decision in the format.
-
-The Linux kernel requires the ELF magic (`\x7fELF`) at **offset 0** to
-execute the file. We **cannot** put our own magic bytes at the start without
-breaking executability.
-
-The solution (used by `makeself`, AppImage, self-extracting `.exe`):
-
-- the **ELF launcher** occupies the start of the file — the kernel executes it;
-- our data is **appended after**;
-- a **fixed-size footer** is placed at the very end of the file;
-- at startup, the launcher opens itself via `/proc/self/exe`, `seek`s from
-  the end, reads the footer, and finds the offsets for everything else.
+A `.xbin` file is a **valid ELF executable** with a compressed payload,
+JSON metadata, and a **footer** at the very end of the file. The launcher
+reads itself via `/proc/self/exe`, seeks to the end, reads the footer, and
+finds everything else from the offsets stored there.
 
 ```
 offset 0    ┌─────────────────────────┐
-            │   ELF launcher (musl)   │  ← executed by the kernel
+            │   ELF launcher (musl)   │  ← kernel executes this
             ├─────────────────────────┤
 payload_off │   payload = zstd(tar)   │  ← compressed rootfs
             ├─────────────────────────┤
 meta_off    │   metadata (JSON utf8)  │  ← entrypoint, env, runtime...
             ├─────────────────────────┤
-EOF - 84    │   FOOTER (84 bytes)     │  ← read backwards by the launcher
+EOF - 92    │   FOOTER (92 bytes)     │  ← read backwards by launcher
             └─────────────────────────┘
 ```
 
-## Footer (84 bytes, fixed)
+The format is versioned (`format_version` in the footer). v1 uses a single
+monolithic payload; v2 splits the payload into layers; v3 adds Ed25519
+signatures. The launcher reads all versions.
 
-All integers are little-endian.
+## Footer layout (v3, 92 bytes)
 
-| Field            | Type  | Size | Description                             |
-|------------------|-------|------|-----------------------------------------|
-| `magic`          | bytes | 5    | `"XBIN\x01"`                            |
-| `format_version` | u8    | 1    | format version (= 1)                    |
-| `arch`           | u8    | 1    | `0x01`=x86_64, `0x02`=aarch64           |
-| `flags`          | u8    | 1    | bit0=signed, bit1=encrypted (0 in MVP)  |
-| `payload_offset` | u64   | 8    | absolute offset of payload              |
-| `payload_csize`  | u64   | 8    | compressed size                         |
-| `payload_usize`  | u64   | 8    | uncompressed size (tar)                 |
-| `payload_sha256` | bytes | 32   | SHA-256 of compressed payload           |
-| `meta_offset`    | u64   | 8    | absolute offset of metadata             |
-| `meta_size`      | u64   | 8    | metadata size                           |
-| `footer_magic`   | u32   | 4    | `0xBEEFCAFE` — end sentinel             |
+All integers are little-endian. The v3 footer is a 92-byte block: an 8-byte
+prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
 
-Total: **84 bytes**. The spec is shared between `stub/src/format.rs` (read)
-and `cli/xbin/format.py` (write) — both **must** stay synchronized.
+| Field            | Offset | Type  | Size | Description                                  |
+|------------------|--------|-------|------|----------------------------------------------|
+| `sig_offset`     | 0      | u64   | 8    | absolute offset of signature block (0 if unsigned) |
+| `magic`          | 8      | bytes | 5    | `"XBIN\x01"`                                 |
+| `format_version` | 13     | u8    | 1    | format version (currently 3)                 |
+| `arch`           | 14     | u8    | 1    | `0x01`=x86_64, `0x02`=aarch64                |
+| `flags`          | 15     | u8    | 1    | bit0=signed                                  |
+| `payload_offset` | 16     | u64   | 8    | absolute offset of payload                   |
+| `payload_csize`  | 24     | u64   | 8    | compressed size of all layers                |
+| `payload_usize`  | 32     | u64   | 8    | unused (per-layer sizes in metadata)         |
+| `payload_sha256` | 40     | bytes | 32   | `SHA-256(payload ‖ metadata)`                |
+| `meta_offset`    | 72     | u64   | 8    | absolute offset of metadata                  |
+| `meta_size`      | 80     | u64   | 8    | metadata size in bytes                       |
+| `footer_magic`   | 88     | u32   | 4    | `0xBEEFCAFE` end sentinel                    |
+
+The spec is shared between `stub/src/format.rs` (read) and
+`cli/xbin/format.py` (write). Both **must** stay synchronized.
+
+### Design decision: footer at end, not header at start
+
+**Constraint:** The Linux kernel requires ELF magic (`\x7fELF`) at offset 0
+to execute the file. We cannot put our own bytes at the start without
+breaking `chmod +x && ./my_app.xbin`.
+
+**Options considered:**
+1. Custom header before ELF — rejected. The kernel would refuse to execute
+   the file. `binfmt_misc` could work but requires root on every target
+   machine.
+2. Embed metadata inside ELF sections — rejected. The kernel loads ELF
+   sections into memory; our metadata would consume address space and
+   confuse debuggers.
+3. Footer at end of file — chosen. Used by `makeself`, AppImage, and
+   self-extracting `.exe`. The launcher opens itself via `/proc/self/exe`,
+   seeks from the end, reads the fixed-size footer, and finds everything
+   from the stored offsets.
+
+### Design decision: v3 8-byte prefix for signatures
+
+**Constraint:** Ed25519 signatures need to be stored between metadata and
+the footer. But the footer is at a fixed position (EOF-84 for v2), and
+v2 launchers read exactly 84 bytes from the end. We cannot change the
+footer size without breaking backward compatibility.
+
+**Options considered:**
+1. Grow the footer to 92 bytes (add `sig_offset` field) — rejected. A v2
+   launcher reading 84 bytes would see truncated data and likely crash or
+   silently misparse.
+2. Append the signature block after the footer — rejected. The launcher
+   reads backwards from EOF; data after the footer is invisible to it.
+3. 8-byte prefix before the 84-byte core — chosen. The last 92 bytes are:
+   `[8-byte sig_offset][84-byte v2 core]`. A v2 launcher reads the last 84
+   bytes and sees valid v2 data (the prefix is invisible). A v3 launcher
+   reads 92 bytes and picks up `sig_offset` from the prefix. No breaking
+   change.
+
+```
+v2 launcher reads:          v3 launcher reads:
+   ┌──────────────┐            ┌──────────────────────┐
+   │ 84-byte core │            │ 8B prefix │ 84B core │
+   └──────────────┘            └──────────────────────┘
+   EOF-84 → EOF                EOF-92 → EOF
+```
+
+## Integrity hash
+
+The `payload_sha256` field stores:
+
+```
+SHA-256(compressed_payload_bytes ‖ metadata_json_bytes)
+```
+
+The launcher recomputes this hash on every cold start and compares it to the
+stored value **before** extracting anything. On mismatch: `exit(1)`, nothing
+written to disk.
+
+For signed files (v3), the same hash is also signed by Ed25519:
+
+```
+Ed25519_sign(SHA-256(payload ‖ metadata), private_key)
+```
+
+See [Security](../security.md) for why SHA-256 alone is insufficient.
+
+## Signature block (v3, 68 bytes)
+
+Inserted between metadata and footer when `flags & FLAG_SIGNED`:
+
+| Field      | Type  | Size | Description              |
+|------------|-------|------|--------------------------|
+| `sig_size` | u32le | 4    | always 64 (Ed25519 sig)  |
+| `signature`| bytes | 64   | Ed25519 signature        |
+
+The footer's `sig_offset` field points to the start of this block.
 
 ## JSON metadata
 
@@ -66,41 +130,32 @@ and `cli/xbin/format.py` (write) — both **must** stay synchronized.
   "runtime": "python",
   "isolation": 0,
   "entrypoint": ["/usr/bin/python3.12", "/app/app.py"],
-  "env": { "PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1" },
+  "env": { "PYTHONUNBUFFERED": "1" },
   "layers": [...]
 }
 ```
 
-- `entrypoint`: argv executed by the launcher. Absolute paths are
-  **relative to the rootfs** (the launcher prefixes them with the real cache
-  path, or resolves them after pivot_root).
-- `env`: additional variables (the launcher injects `LD_LIBRARY_PATH` separately).
-- `isolation`: 0 = `LD_LIBRARY_PATH`, 1 = chroot (skipped), 2 = user namespaces.
-- `layers`: table of compressed layer blobs (v2+ only).
+- `entrypoint`: argv executed by the launcher. Paths are relative to the
+  rootfs — the launcher resolves them to real cache paths at exec time.
+- `env`: additional variables. The launcher injects `LD_LIBRARY_PATH`
+  separately and resolves `${ROOTFS}` tokens to the real cache path.
+- `isolation`: 0 = `LD_LIBRARY_PATH`, 1 = chroot (skipped), 2 = user
+  namespaces + `pivot_root`.
+- `layers`: array of compressed layer objects (v2+ only).
 
-## Layers (v2)
+## Layers (v2+)
 
-In v2, the payload is a sequence of **layers**, each an independent
-`zstd(tar)` blob, stacked at extraction (later layers overwrite earlier
-ones — similar to Docker layers):
+The payload is a sequence of **layers**, each an independent `zstd(tar)`
+blob. Layers stack at extraction (later layers overwrite earlier ones):
 
 ```
-[ stub ][ runtime layer ][ app layer ][ metadata ][ footer ]
+[ stub ][ runtime layer ][ app layer ][ metadata ][ sig? ][ footer ]
          ^                 ^
          python+stdlib+.so app code + site-packages
          stable            volatile
 ```
 
-The **footer** keeps the same 84-byte structure; its semantics adapt:
-
-| Field            | v1                    | v2                                  |
-|------------------|-----------------------|-------------------------------------|
-| `payload_offset` | start of payload      | start of **layer region**           |
-| `payload_csize`  | payload size          | total compressed size of all layers |
-| `payload_usize`  | uncompressed size     | unused (per-layer sizes in meta)    |
-| `payload_sha256` | SHA-256(payload)      | SHA-256(**layers ‖ metadata**)      |
-
-The **layer table** lives in the JSON metadata:
+The layer table lives in the JSON metadata:
 
 ```json
 "layers": [
@@ -111,33 +166,40 @@ The **layer table** lives in the JSON metadata:
 ]
 ```
 
-`offset` is the **absolute** offset in the file. Each layer's SHA-256 (of the
-compressed blob) serves as a **stable cache key**: as long as a layer's
-content doesn't change, its extraction is reusable.
+`offset` is the absolute byte offset in the file. Each layer's SHA-256 (of
+the compressed blob) is a **stable cache key** — if the content doesn't
+change, its extraction is reusable.
 
 ### Why layers: incremental rebuild
 
-This is the reason v2 exists. The **runtime** layer (interpreter + stdlib +
-`.so`) is **independent of app code**: editing `app.py` doesn't change it.
-On rebuild, the builder **reuses** it from its build cache
-(`~/.cache/xbin/build/`) — no recompression. Only the small **app** layer
-is rebuilt.
+The runtime layer (interpreter + stdlib + `.so`) is independent of app code.
+Editing `app.py` doesn't change it. On rebuild, the builder reuses it from
+the build cache (`~/.cache/xbin/build/`) — no recompression. Only the app
+layer is rebuilt.
 
+```bash
+# First build: ~25s (compressing runtime layer, ~54 MB)
+$ xbin build ./my_app
+[xbin] wrote my_app.xbin (7.1MB) in 25.1s
+
+# Rebuild after code change: ~1s (runtime layer reused)
+$ xbin build ./my_app
+[xbin] wrote my_app.xbin (7.1MB) in 1.2s
 ```
-initial build  : ~25 s  (compressing runtime layer, ~54 MB)
-rebuild (code)  : ~1 s   (runtime layer reused, only app recompresses)
+
+Two apps sharing the same runtime share the same runtime layer in the build
+cache — the second app also builds in ~1 s.
+
+## Version evolution
+
+The footer is versioned (`format_version`). A launcher rejects a file with
+a version higher than it understands:
+
+```bash
+$ ./old-xbin new-format.xbin
+[xbin] error: unsupported .xbin format version (binary newer than launcher)
 ```
 
-Bonus: two apps sharing the same runtime (same interpreter + libs) share the
-**same runtime layer** in the build cache — the second app also builds in
-~1 s. See [The builder](./builder.md).
-
-## Why the format survives evolution
-
-- The footer is **versioned** (`format_version`). A launcher gracefully
-  rejects a file with a version higher than it understands.
-- Reserved fields (`flags`, and the signature block added in Phase 2) allow
-  extension without breaking compatibility.
-- Ed25519 signatures are inserted between `metadata` and `footer`, with a
-  `flags` bit and a dedicated offset in the v2 footer — v1 files remain
-  readable.
+Reserved fields (`flags`, `sig_offset`) allow extension without breaking
+compatibility. Ed25519 signatures are inserted between metadata and footer
+with a `flags` bit and a dedicated offset — v2 files remain readable.
