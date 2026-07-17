@@ -29,9 +29,13 @@
 - [x] `/etc/hosts` in rootfs (prevents DNS PTR lookup hang)
 - [x] **Self-hosting**: `self/` → `xbin build self/` → `./xbin build ...`
       (full cycle: CLI → `xbin-v2` → `xbin-v3` → `xbin-v4`)
+- [x] **Dockerfile dependency detection** (apt/apk/pip/npm packages +
+      external binary fetch chains)
+- [x] **Python AST scanner** (subprocess/os.system call detection)
+- [x] **Dependency fetcher** (isolated staging, non-invasive)
+- [x] **PATH injection** (bundled binaries found at runtime)
 - [ ] Minimal seccomp filter
 - [ ] Manifest mode (`xbin.toml`) for complex dependencies
-- [ ] AI analyzer: generate `xbin.toml` (hidden deps: subprocess, dlopen)
 - [ ] LRU cache cleanup (evict beyond threshold)
 
 ## Phase 3 — Production

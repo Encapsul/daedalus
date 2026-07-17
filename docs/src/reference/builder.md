@@ -24,6 +24,22 @@ The builder analyzes an application and produces the `.xbin`. It's written in
   and resolves transitive dependencies in standard system search paths
   (`/lib`, `/usr/lib`, `/lib64`, etc.). Includes the dynamic loader
   `ld-linux`.
+- **`dockerfile.py`** parses Dockerfile `RUN` instructions to extract
+  declared dependencies: apt/apk system packages, pip packages, npm global
+  packages, and external binary fetches (wget/curl → tar/unzip → chmod +x
+  chains with URL and version). Handles multi-line commands (`\`
+  continuations) and `&&`/`;` chains. No Dockerfile → returns `[]`.
+- **`python_ast.py`** scans Python source via AST walking to detect
+  external binary calls (`subprocess.run`, `os.system`, etc.) that the
+  Dockerfile might miss. Extracts literal binary names; dynamic/unresolvable
+  names are flagged as `confidence="uncertain"`.
+- **`fetch.py`** takes detected dependencies and fetches them into an
+  isolated staging directory (`~/.cache/xbin/stage/{hash}/`) without
+  touching the real system. Each kind has a dedicated fetcher:
+  pip (`pip download --no-deps`), npm (`--prefix`), apt (`apt-get download` +
+  `dpkg-deb -x`), apk (`apk fetch --simulate`), external (urllib + extract).
+  Records SHA-256 per file in `manifest.json` for auditability. Warns on
+  failure but never hard-fails the build.
 - **`ldd.py`** is a thin facade that calls `elf.shared_libs()`. Either
   module can be swapped without changing the rest of the builder.
 - **Deduplication**: if a library is found via a symlink (e.g.

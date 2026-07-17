@@ -72,10 +72,14 @@ The diagram describes the **ambition**. Here is the honest current state:
 |---|---|---|
 | CLI build/run/inspect | ✅ | ✅ implemented |
 | Pure-Python ELF analyzer | ✅ | ✅ implemented (replaces host `ldd`) |
+| Dockerfile dependency detection | ✅ | ✅ implemented (apt/apk/pip/npm + external fetches) |
+| Python AST scanner (subprocess) | ✅ | ✅ implemented (subprocess/os.system calls) |
+| Dependency fetcher (staging) | ✅ | ✅ implemented (isolated, non-invasive) |
+| PATH injection (bundled binaries) | ✅ | ✅ implemented (rootfs usr/bin prepended) |
 | AI analyzer (hidden deps) | ✅ | ⏳ Phase 3 |
 | ELF + zstd + meta + SHA-256 format | ✅ | ✅ implemented |
 | `{sha256}` cache + atomic extraction | ✅ | ✅ implemented (`flock()` included) |
-| Level 0 executor (`LD_LIBRARY_PATH`) | ✅ | ✅ implemented |
+| Level 0 executor (`LD_LIBRARY_PATH` + `PATH`) | ✅ | ✅ implemented |
 | User namespaces + pivot_root + seccomp | ✅ | ✅ pivot_root implemented (Phase 2) |
 | Ed25519 signatures | ✅ | ✅ implemented (Phase 2) |
 | warm start < 100 ms | ✅ | ⏳ (currently limited by embedded runtime boot, not by xbin) |
