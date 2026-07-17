@@ -12,7 +12,7 @@ import sys
 import tarfile
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 try:
@@ -20,9 +20,17 @@ try:
 except ImportError:
     import tomli as tomllib  # type: ignore[no-redef]
 
-from . import crypto, format as fmt
+from . import crypto
+from . import format as fmt
 from ._util import find_binary
 from .analyzer import elf, runtime
+from .analyzer.dockerfile import detect_from_dockerfile
+from .analyzer.fetch import fetch_deps
+from .analyzer.lockfile import (
+    detect_or_read_lock,
+    write_lock_from_results,
+)
+from .analyzer.python_ast import detect_from_python_source, merge_deps
 
 XBIN_VERSION = "0.1.0"
 
@@ -354,7 +362,7 @@ def _build_meta_json(
     meta: dict = {
         "name": name,
         "xbin_version": XBIN_VERSION,
-        "created": datetime.now(timezone.utc).isoformat(),
+        "created": datetime.now(UTC).isoformat(),
         "runtime": runtime,
         "isolation": isolation,
         "entrypoint": entrypoint,
@@ -602,6 +610,7 @@ def build(
     key_path: str | None = None,
     isolation: int = 0,
     verbose: bool = True,
+    redetect: bool = False,
 ) -> str:
     """Build a .xbin (v3 format, multi-layer). Returns the output path.
 
@@ -620,6 +629,22 @@ def build(
         if verbose:
             print(f"[xbin] building '{app_dir.name}' (manifest mode)")
         return _build_manifest(app_dir, manifest, output, key_path, verbose)
+
+    # --- Dependency detection (Features A/B/C) + lockfile ---
+    locked_deps = detect_or_read_lock(app_dir, redetect=redetect, verbose=verbose)
+    if locked_deps is not None:
+        # Lock is fresh — use locked deps, skip detection.
+        dep_list = locked_deps
+    else:
+        # No lock or stale — run full detection pipeline.
+        dockerfile_deps = detect_from_dockerfile(app_dir)
+        ast_deps = detect_from_python_source(app_dir)
+        dep_list = merge_deps(dockerfile_deps, ast_deps)
+        if dep_list:
+            _, results = fetch_deps(dep_list, verbose=verbose)
+            write_lock_from_results(app_dir, dep_list, results, verbose=verbose)
+        elif verbose:
+            print("[xbin] no external dependencies detected")
 
     name = app_dir.name
     out_path = Path(output) if output else Path.cwd() / f"{name}.xbin"

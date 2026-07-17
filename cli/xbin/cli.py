@@ -30,6 +30,11 @@ def main(argv: list[str] | None = None) -> int:
         help="isolation level: 0=LD_LIBRARY_PATH, 1=chroot, 2=user namespaces (default: 0)",
     )
     p_build.add_argument("-q", "--quiet", action="store_true")
+    p_build.add_argument(
+        "--redetect",
+        action="store_true",
+        help="force re-detection of dependencies (overwrite xbin.lock)",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     p_run.add_argument("file", help=".xbin file")
@@ -91,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
                 key_path=args.key,
                 isolation=args.isolation,
                 verbose=not args.quiet,
+                redetect=args.redetect,
             )
             return 0
 
