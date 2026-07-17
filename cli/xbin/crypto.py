@@ -1,35 +1,18 @@
 from __future__ import annotations
 
-import os
 import subprocess
-import sys
 from pathlib import Path
+
+from ._util import find_binary
 
 
 def find_crypto() -> Path:
     """Locate the compiled xbin-crypto binary."""
-    here = Path(__file__).resolve()
-    repo = here.parents[2]
-    tmp_target = Path("/tmp/xbin-stub-target")
-    candidates = [
-        repo / "stub/target/x86_64-unknown-linux-musl/release/xbin-crypto",
-        repo / "stub/target/release/xbin-crypto",
-        repo / "stub/target/x86_64-unknown-linux-musl/debug/xbin-crypto",
-        repo / "stub/target/debug/xbin-crypto",
-        tmp_target / "x86_64-unknown-linux-musl/release/xbin-crypto",
-        tmp_target / "release/xbin-crypto",
-        tmp_target / "x86_64-unknown-linux-musl/debug/xbin-crypto",
-        tmp_target / "debug/xbin-crypto",
-    ]
-    env = os.environ.get("XBIN_CRYPTO")
-    if env:
-        candidates.insert(0, Path(env))
-    for c in candidates:
-        if c.is_file():
-            return c
-    raise FileNotFoundError(
+    return find_binary(
+        "xbin-crypto",
+        "XBIN_CRYPTO",
         "xbin-crypto not found. Build it first:\n"
-        "  cd stub && cargo build --release --target x86_64-unknown-linux-musl"
+        "  cd stub && cargo build --release --target x86_64-unknown-linux-musl",
     )
 
 
@@ -41,7 +24,9 @@ def keygen(key_dir: str) -> str:
     binary = find_crypto()
     result = subprocess.run(
         [str(binary), "keygen", "--key-dir", key_dir],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     fp = result.stdout.strip()
     if not fp:
@@ -57,7 +42,8 @@ def sign(keyfile: str, hash_bytes: bytes) -> bytes:
     binary = find_crypto()
     result = subprocess.run(
         [str(binary), "sign", keyfile],
-        input=hash_bytes, capture_output=True,
+        input=hash_bytes,
+        capture_output=True,
     )
     if result.returncode != 0:
         msg = result.stderr.decode().strip()
@@ -75,7 +61,8 @@ def verify(pubkey: str, hash_and_sig: bytes) -> int:
     binary = find_crypto()
     result = subprocess.run(
         [str(binary), "verify", pubkey],
-        input=hash_and_sig, capture_output=True,
+        input=hash_and_sig,
+        capture_output=True,
     )
     if result.returncode in (0, 1):
         return result.returncode
