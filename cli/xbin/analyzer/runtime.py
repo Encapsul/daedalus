@@ -22,9 +22,9 @@ class RuntimePlan:
 
     runtime: str  # "python" | "node" | "binary"
     interpreter_host: Path | None  # runtime binary to embed (None for native)
-    entrypoint: list[str]  # argv relatif au rootfs
-    cwd: str = "/app"   # the launcher chdir's here before exec; "/app" is the
-                         # app directory inside the rootfs
+    entrypoint: list[str]  # argv relative to rootfs
+    cwd: str = "/app"  # the launcher chdir's here before exec; "/app" is the
+    # app directory inside the rootfs
     env: dict[str, str] = field(default_factory=dict)
     extra_dirs_host: list[Path] = field(default_factory=list)  # ex: stdlib python
     # Third-party site-packages to embed: (host_source, path_in_rootfs).
@@ -43,69 +43,74 @@ def detect(app_dir: Path) -> RuntimePlan:
     """Detect the runtime. Raises ValueError if nothing is recognizable."""
     app_dir = app_dir.resolve()
 
-    # 1. Python app: presence of a .py entry point
-    py_entry = _first_existing(app_dir, ["app.py", "main.py", "__main__.py", "server.py"])
+    py_entry = _first_existing(
+        app_dir, ["app.py", "main.py", "__main__.py", "server.py"]
+    )
     if py_entry:
-        py = shutil.which("python3") or shutil.which("python")
-        if not py:
-            py = sys.executable  # fallback: use self (self-hosting)
-        interp = Path(py).resolve()
-        stdlib = _python_stdlib(interp)
+        return _detect_python(app_dir, py_entry)
 
-        env = {"PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1"}
-        site_packages: list[tuple[Path, str]] = []
-        sp_host = _find_site_packages(app_dir)
-        if sp_host:
-            # On embarque les site-packages sous /app/site-packages dans le rootfs
-            # and add it to PYTHONPATH (resolved at runtime via ${ROOTFS}).
-            site_packages.append((sp_host, "/app/site-packages"))
-            env["PYTHONPATH"] = "${ROOTFS}/app/site-packages"
-
-        return RuntimePlan(
-            runtime="python",
-            interpreter_host=interp,
-            entrypoint=[f"/{_rootfs_rel(interp)}", f"/app/{py_entry}"],
-            cwd="/app",
-            env=env,
-            extra_dirs_host=[stdlib] if stdlib else [],
-            site_packages=site_packages,
-        )
-
-    # 2. Node app: package.json
     if (app_dir / "package.json").is_file():
-        node = shutil.which("node")
-        if not node:
-            raise ValueError("node app detected (package.json) but no node on PATH to embed")
-        interp = Path(node).resolve()
-        entry = _node_entry(app_dir)
-        env = {}
-        site_packages: list[tuple[Path, str]] = []
-        nm = _find_node_modules(app_dir)
-        if nm:
-            site_packages.append((nm, "/app/node_modules"))
-            env["NODE_PATH"] = "${ROOTFS}/app/node_modules"
-        return RuntimePlan(
-            runtime="node",
-            interpreter_host=interp,
-            entrypoint=[f"/{_rootfs_rel(interp)}", f"/app/{entry}"],
-            cwd="/app",
-            env=env,
-            site_packages=site_packages,
-        )
+        return _detect_node(app_dir)
 
-    # 3. Native binary: single ELF executable
-    elf = _single_elf(app_dir)
-    if elf:
+    elf_path = _single_elf(app_dir)
+    if elf_path:
         return RuntimePlan(
             runtime="binary",
             interpreter_host=None,
-            entrypoint=[f"/app/{elf.name}"],
+            entrypoint=[f"/app/{elf_path.name}"],
             cwd="/app",
         )
 
     raise ValueError(
         "could not detect runtime: no app.py/main.py, no package.json, "
         "no single ELF binary. Use a manifest (xbin.toml) to declare entrypoint."
+    )
+
+
+def _detect_python(app_dir: Path, py_entry: str) -> RuntimePlan:
+    py = shutil.which("python3") or shutil.which("python") or sys.executable
+    interp = Path(py).resolve()
+    stdlib = _python_stdlib(interp)
+
+    env = {"PYTHONUNBUFFERED": "1", "PYTHONDONTWRITEBYTECODE": "1"}
+    site_packages: list[tuple[Path, str]] = []
+    sp_host = _find_site_packages(app_dir)
+    if sp_host:
+        site_packages.append((sp_host, "/app/site-packages"))
+        env["PYTHONPATH"] = "${ROOTFS}/app/site-packages"
+
+    return RuntimePlan(
+        runtime="python",
+        interpreter_host=interp,
+        entrypoint=[f"/{_rootfs_rel(interp)}", f"/app/{py_entry}"],
+        cwd="/app",
+        env=env,
+        extra_dirs_host=[stdlib] if stdlib else [],
+        site_packages=site_packages,
+    )
+
+
+def _detect_node(app_dir: Path) -> RuntimePlan:
+    node = shutil.which("node")
+    if not node:
+        raise ValueError(
+            "node app detected (package.json) but no node on PATH to embed"
+        )
+    interp = Path(node).resolve()
+    entry = _node_entry(app_dir)
+    env: dict[str, str] = {}
+    site_packages: list[tuple[Path, str]] = []
+    nm = _find_node_modules(app_dir)
+    if nm:
+        site_packages.append((nm, "/app/node_modules"))
+        env["NODE_PATH"] = "${ROOTFS}/app/node_modules"
+    return RuntimePlan(
+        runtime="node",
+        interpreter_host=interp,
+        entrypoint=[f"/{_rootfs_rel(interp)}", f"/app/{entry}"],
+        cwd="/app",
+        env=env,
+        site_packages=site_packages,
     )
 
 
@@ -140,7 +145,11 @@ def _find_site_packages(app_dir: Path) -> Path | None:
 
 def _python_stdlib(interp: Path) -> Path | None:
     """Locate the Python stdlib (e.g. /usr/lib/python3.12) to embed."""
-    candidate = Path(sys.base_prefix) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}"
+    candidate = (
+        Path(sys.base_prefix)
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+    )
     if candidate.is_dir():
         return candidate
     return None
