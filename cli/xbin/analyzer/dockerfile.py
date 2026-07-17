@@ -20,14 +20,16 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class DetectedDep:
-    """A dependency detected in a Dockerfile.
+    """A dependency detected in a Dockerfile or source code scan.
 
     Attributes:
         kind: One of "pip", "npm", "apt", "apk", "external".
         name: Package name, or filename for "external" fetches.
         version: Pinned version if determinable, else None.
         url: Download URL, only for kind="external".
-        source: Where this was detected (currently always "Dockerfile").
+        source: Where this was detected ("Dockerfile" or "python-ast").
+        confidence: "high" for literal values, "uncertain" for dynamic/
+            unresolvable names that need manual review.
     """
 
     kind: str
@@ -35,6 +37,7 @@ class DetectedDep:
     version: str | None = None
     url: str | None = None
     source: str = "Dockerfile"
+    confidence: str = "high"
 
 
 # ---------------------------------------------------------------------------
