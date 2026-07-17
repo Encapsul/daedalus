@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
-import struct
 import sys
 
 from . import crypto, format as fmt
@@ -14,8 +13,7 @@ def verify(args: argparse.Namespace) -> None:
 
     footer = fmt.read_footer(path)
     if not (footer.flags & fmt.FLAG_SIGNED):
-        print(f"[xbin] {path} is not signed", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError(f"{path} is not signed")
 
     with open(path, "rb") as f:
         payload = fmt.read_at(f, footer.payload_offset, footer.payload_csize)
@@ -23,18 +21,12 @@ def verify(args: argparse.Namespace) -> None:
 
     body_hash = hashlib.sha256(payload + meta).digest()
 
-    # Read signature block.
     with open(path, "rb") as f:
-        sig_data = fmt.read_at(f, footer.sig_offset, 68)
-    sig_size = struct.unpack_from("<I", sig_data, 0)[0]
-    if sig_size != 64:
-        print(f"[xbin] error: unexpected signature size {sig_size}", file=sys.stderr)
-        sys.exit(2)
-    sig = sig_data[4:68]
+        sig_data = fmt.read_at(f, footer.sig_offset, fmt.SIG_BLOCK_SIZE)
+    sig = fmt.unpack_sig_block(sig_data)
 
     hash_and_sig = body_hash + sig  # 96 bytes
 
-    # Determine trusted keys directory.
     trusted_dir = args.trusted_dir
     if trusted_dir:
         trusted_dir = os.path.abspath(trusted_dir)
@@ -42,9 +34,7 @@ def verify(args: argparse.Namespace) -> None:
         trusted_dir = os.path.expanduser("~/.xbin/trusted-keys")
 
     if not os.path.isdir(trusted_dir):
-        print(f"[xbin] error: trusted keys directory not found: {trusted_dir}",
-              file=sys.stderr)
-        sys.exit(2)
+        raise ValueError(f"trusted keys directory not found: {trusted_dir}")
 
     verified = False
     for entry in sorted(os.listdir(trusted_dir)):
@@ -62,7 +52,5 @@ def verify(args: argparse.Namespace) -> None:
     if verified:
         if not args.quiet:
             print(f"[xbin] signature verified for {path}", file=sys.stderr)
-        sys.exit(0)
     else:
-        print(f"[xbin] signature verification FAILED for {path}", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError(f"signature verification FAILED for {path}")
