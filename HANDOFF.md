@@ -210,3 +210,20 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - Pivot mode: `PATH` = `usr/bin:bin:usr/local/bin` (relative, rootfs IS `/`).
 - Non-pivot mode: `PATH` = `{rootfs}/usr/bin:{rootfs}/bin:{rootfs}/usr/local/bin:{existing_PATH}`.
 - Bundled binaries take priority over system equivalents — intentional: the app uses the version we packaged.
+
+## xbin.lock lockfile: Feature D (2026-07-17)
+
+- **File**: `cli/xbin/analyzer/lockfile.py` — written and tested (not yet committed).
+- **Public API**: `detect_or_read_lock(app_dir, redetect, verbose) -> list[DetectedDep] | None`
+- **Lockfile**: `xbin.lock` in app directory — human-readable TOML, never edited by hand.
+- **Staleness check**: SHA-256 of Dockerfile content vs `dockerfile_sha256` in lock.
+  - No Dockerfile → hash is `"none"`, lock always fresh (useful for pure-Python apps).
+  - Hash mismatch → stale, triggers re-detection.
+- **Flow**:
+  1. `build()` calls `detect_or_read_lock(app_dir, redetect=args.redetect)`
+  2. Fresh lock → returns deps, detection skipped.
+  3. No lock or stale → runs Dockerfile + AST detection, fetches, writes lock.
+  4. `--redetect` flag forces re-detection regardless of lock freshness.
+- **Build integration** (`cli/xbin/build.py`): lockfile check inserted after app_dir resolution, before the xbin.toml manifest check. Detection deps are recorded but not yet wired into rootfs building (that's a future layer).
+- **CLI integration** (`cli/xbin/cli.py`): `--redetect` flag added to build subcommand.
+- **Verified paths**: fresh build (no lock), fresh lock (skip), stale lock (re-detect), --redetect (force), no-Dockerfile app (lock always fresh).
