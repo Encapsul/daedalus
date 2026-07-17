@@ -184,3 +184,20 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - Skips builtins (python, node, bash, sh, etc.).
 - Dedup merge: Dockerfile wins over AST for same binary name.
 - Python only for now. Node.js gap documented (requires JS parser).
+
+## Feature C: dependency fetcher into staging (2026-07-17)
+
+- **File**: `cli/xbin/analyzer/fetch.py` — committed next.
+- **Public API**: `fetch_deps(deps, verbose) -> (stage_dir, list[FetchResult])`
+- **FetchResult** dataclass: `dep`, `ok`, `error`, `sha256`.
+- Staging directory: `~/.cache/xbin/stage/{SHA-256 of sorted dep list}/` with subdirs per kind.
+- Fetchers per dependency type:
+  - **pip**: `pip download --no-deps --dest {stage}/pip/` (never installs globally)
+  - **npm**: `npm install --prefix {stage}/npm/ --save=false` (never touches global node_modules)
+  - **apt**: `apt-get download` + `dpkg-deb -x` into staging (never `apt-get install`)
+  - **apk**: `apk fetch --simulate --stdout` + write/extract .apk into staging
+  - **external**: `urllib.request.urlretrieve` + extract archive into staging
+- Checksum handling: SHA-256 recorded in `manifest.json` for auditability; no upstream verification (no signatures to check against).
+- Failure handling: warn and continue, never hard-fail. Summary report at end.
+- Uncertain-confidence deps (from AST scanner) are never fetched — reported as SKIP.
+- `xbin clean` covers stage cleanup (already removes `~/.cache/xbin/`).
