@@ -38,7 +38,7 @@ ldd stub/target/x86_64-unknown-linux-musl/release/xbin-stub
    5. cache hit? → ~/.cache/xbin/{sha256}/.ready
         yes → reuse
         no  → extract (zstd → tar) to tmp, atomic rename()
-   6. build argv + env (inject LD_LIBRARY_PATH)
+   6. build argv + env (inject LD_LIBRARY_PATH + PATH)
    7. execve(entrypoint)              ← replaces the process
 ```
 
@@ -71,6 +71,19 @@ execution:  PYTHONPATH = /home/user/.cache/xbin/f342.../rootfs/app/site-packages
 
 `LD_LIBRARY_PATH` doesn't need this token: the launcher computes it directly
 from the `lib*` directories present in the rootfs.
+
+## PATH injection for bundled binaries
+
+The launcher also injects `PATH` with rootfs binary directories, using the
+same logic as `LD_LIBRARY_PATH`:
+
+- **Pivot mode** (isolation ≥ 2): `PATH` = `usr/bin:bin:usr/local/bin`
+- **Non-pivot mode**: `PATH` = `{rootfs}/usr/bin:{rootfs}/bin:{rootfs}/usr/local/bin:{existing_PATH}`
+
+Bundled entries go **before** the existing `PATH`. This is intentional: if
+the builder packages `ffmpeg 6.1` into the rootfs but the host has
+`ffmpeg 4.4`, the app uses the bundled version. The same priority logic
+applies to `LD_LIBRARY_PATH` — rootfs libs come first.
 
 ## CWD handling after pivot_root
 
