@@ -173,6 +173,14 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - `docs/src/guides/quickstart.md`, `python.md`, `node.md`, `dependencies.md` — already English, no changes needed.
 - mdbook builds clean. `.github/workflows/docs.yml` added for GitHub Pages deploy.
 
-## Feature B: Python source AST scanner (proposed, not yet implemented)
+## Feature B: Python source AST scanner (2026-07-17)
 
-See conversation for design proposal. Will scan Python source for `subprocess.run`/`Popen`/`os.system`/`os.popen` calls to detect external binaries not declared in Dockerfile.
+- **File**: `cli/xbin/analyzer/python_ast.py` — committed `638b868`.
+- **Public API**: `detect_from_python_source(app_dir: Path) -> list[DetectedDep]`
+- **Merge utility**: `merge_deps(dockerfile_deps, ast_deps) -> list[DetectedDep]`
+- Walks `ast.Call` nodes for `subprocess.run/Popen/call/check_call/check_output/getoutput/getstatusoutput` and `os.system/os.popen`.
+- Extracts literal binary names from string args (`"ffmpeg -i ..."`) and list args (`["ffmpeg", ...]`).
+- Variables/expressions flagged as `confidence="uncertain"`.
+- Skips builtins (python, node, bash, sh, etc.).
+- Dedup merge: Dockerfile wins over AST for same binary name.
+- Python only for now. Node.js gap documented (requires JS parser).
