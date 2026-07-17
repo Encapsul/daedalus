@@ -260,23 +260,26 @@ def _resolve_recursive(
     search_dirs: list[Path],
     found: set[Path],
 ) -> None:
+    """Resolve DT_NEEDED entries, using each library's own runpaths for its deps."""
     seen_names: set[str] = set()
-    queue = list(names)
+    # Each queue entry carries its own search_dirs (inherited from the parent
+    # that loaded it, plus the library's own DT_RUNPATH/DT_RPATH).
+    queue: list[tuple[str, list[Path]]] = [(n, search_dirs) for n in names]
     while queue:
-        name = queue.pop(0)
+        name, dirs = queue.pop(0)
         if name in seen_names:
             continue
         seen_names.add(name)
-        resolved = _find_lib(name, search_dirs)
+        resolved = _find_lib(name, dirs)
         if resolved and resolved not in found:
             found.add(resolved)
-            # Recurse into the library's own dependencies
             try:
                 sub = ELFParser(resolved)
-                sub_needed, _, _ = sub._parse_dynamic()
+                sub_needed, sub_runpaths, _ = sub._parse_dynamic()
+                sub_dirs = sub._search_dirs(sub_runpaths)
                 for n in sub_needed:
                     if n not in seen_names:
-                        queue.append(n)
+                        queue.append((n, sub_dirs))
             except (ValueError, OSError):
                 pass
 
