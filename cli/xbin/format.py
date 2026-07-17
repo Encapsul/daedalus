@@ -16,10 +16,17 @@ Layout of the 92-byte v3 footer (little-endian):
   [16-23]  payload_offset (u64)
   [24-31]  payload_csize (u64)
   [32-39]  payload_usize (u64)       unused in v2/v3 (per-layer sizes in metadata)
-  [40-71]  payload_sha256 (32 bytes) SHA-256(layers ‖ metadata)
+  [40-71]  payload_sha256 (32 bytes) SHA-256(payload ‖ metadata)
   [72-79]  meta_offset (u64)
   [80-87]  meta_size (u64)
   [88-91]  footer_magic (u32)        0xBEEFCAFE
+
+Integrity hash contract (MUST match across Rust + Python):
+  integrity = SHA-256(compressed_payload_bytes ‖ metadata_json_bytes)
+  This is stored in payload_sha256 and verified on every cold start.
+  The same hash is signed by Ed25519 (v3+): sign(integrity, private_key).
+  Implemented: Rust -> main.rs:verify_sha256(), verify_ed25519()
+              Python -> build.py:build(), sign.py:sign()
 """
 
 from __future__ import annotations
@@ -53,6 +60,33 @@ ARCH_AARCH64 = 0x02
 
 FLAG_SIGNED = 0x01
 FLAG_ENCRYPTED = 0x02
+
+# Signature block layout (v3+): [sig_size:u32le][signature:64 bytes]
+# Kept in sync with stub/src/main.rs verify_ed25519().
+SIG_BLOCK_SIZE = 68  # 4 bytes size field + 64 bytes signature
+SIG_BLOCK_SIZE_FIELD = 64  # expected value written into the sig_size field
+
+
+def pack_sig_block(sig: bytes) -> bytes:
+    """Pack a 64-byte Ed25519 signature into the on-disk sig_block format."""
+    if len(sig) != SIG_BLOCK_SIZE_FIELD:
+        raise ValueError(
+            f"signature must be {SIG_BLOCK_SIZE_FIELD} bytes, got {len(sig)}"
+        )
+    return struct.pack("<I", SIG_BLOCK_SIZE_FIELD) + sig
+
+
+def unpack_sig_block(data: bytes) -> bytes:
+    """Unpack a sig_block, returning the 64-byte signature.
+
+    Raises ValueError if the block is malformed.
+    """
+    if len(data) != SIG_BLOCK_SIZE:
+        raise ValueError(f"sig_block must be {SIG_BLOCK_SIZE} bytes, got {len(data)}")
+    sig_size = struct.unpack_from("<I", data, 0)[0]
+    if sig_size != SIG_BLOCK_SIZE_FIELD:
+        raise ValueError(f"unexpected sig_size field: {sig_size}")
+    return data[4 : 4 + SIG_BLOCK_SIZE_FIELD]
 
 
 @dataclass

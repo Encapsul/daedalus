@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import struct
 
@@ -24,13 +23,11 @@ def inspect(path: str) -> None:
     print(f"signed:          {'yes' if signed else 'no'}")
     if signed:
         with open(path, "rb") as f:
-            sig_data = fmt.read_at(f, footer.sig_offset, 68)
+            sig_data = fmt.read_at(f, footer.sig_offset, fmt.SIG_BLOCK_SIZE)
         sig_size = struct.unpack_from("<I", sig_data, 0)[0]
-        sig = sig_data[4:68]
-        fp = hashlib.sha256(sig[:32]).hexdigest()
         print(f"sig offset:      {footer.sig_offset}")
         print(f"sig size:        {sig_size} bytes")
-        print(f"signer fp:       {fp}")
+        print("signer:          (run 'xbin verify' with trusted keys to identify)")
     print(f"name:            {meta.get('name')}")
     print(f"runtime:         {meta.get('runtime')}")
     print(f"isolation level: {meta.get('isolation')}")
@@ -46,9 +43,13 @@ def inspect(path: str) -> None:
     if layers:
         print("layers:")
         for layer in layers:
-            print(f"  - {layer['kind']:<8} {layer['csize']/1e6:5.1f}MB compressed "
-                  f"/ {layer['usize']/1e6:5.1f}MB raw  sha256:{layer['sha256'][:12]}…")
+            print(
+                f"  - {layer['kind']:<8} {layer['csize']/1e6:5.1f}MB compressed "
+                f"/ {layer['usize']/1e6:5.1f}MB raw  sha256:{layer['sha256'][:12]}…"
+            )
     else:
-        print(f"payload:         {footer.payload_csize/1e6:.1f}MB compressed "
-              f"/ {footer.payload_usize/1e6:.1f}MB raw")
+        print(
+            f"payload:         {footer.payload_csize/1e6:.1f}MB compressed "
+            f"/ {footer.payload_usize/1e6:.1f}MB raw"
+        )
     print(f"integrity sha256:{footer.payload_sha256.hex()}")
