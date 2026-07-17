@@ -2,202 +2,193 @@
 
 # x.bin &nbsp;·&nbsp; `xbin`
 
-**Ship your web app like a binary. Run anywhere.**
+**Ship your app as one file.**
 
-[![Status](https://img.shields.io/badge/status-MVP%20functional-brightgreen)](/docs/src/roadmap.md)
-[![Python](https://img.shields.io/badge/python-%3E%3D3.10-3670A0?logo=python&logoColor=ffdd54)](/cli)
-[![Rust](https://img.shields.io/badge/rust-1.80%2B-000000?logo=rust&logoColor=white)](/stub)
 [![License](https://img.shields.io/badge/license-MIT-blue)](/LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.80%2B-000000?logo=rust&logoColor=white)](/stub)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.10-3670A0?logo=python&logoColor=ffdd54)](/cli)
+[![Status](https://img.shields.io/badge/status-MVP%20functional-brightgreen)](/docs/src/roadmap.md)
 [![Contributing](https://img.shields.io/badge/PRs-welcome-brightgreen)](/CONTRIBUTING.md)
-[![Built for](https://img.shields.io/badge/built%20for-YC-green)](#)
-
-```bash
-chmod +x myapp.xbin && ./myapp.xbin
-# Server listening on http://127.0.0.1:8080
-```
-
-Zero runtime to install. Zero Docker. One file that runs everywhere.
 
 </div>
 
+```bash
+xbin build ./my-app -o my-app.xbin
+chmod +x my-app.xbin && ./my-app.xbin
+# → serving on :8080
+```
+
+No runtime to install. No Docker. No dependency resolution on the target
+machine — the file just runs.
+
 ---
 
-## The Problem
+## What it is
 
-Distributing a server app is broken. Every deployment is a gamble:
+`xbin` packages a Python or Node.js web/server/CLI app — code, runtime,
+shared libraries, and metadata — into a **single self-extracting ELF
+executable**. The launcher (~615KB, Rust, static musl) reads itself,
+verifies integrity, extracts to a local cache, and execs the app. One file,
+any compatible Linux machine.
+
+## See it work
+
+A real terminal session — build a Python app, run it, inspect it, build a
+Node.js app with the same CLI, do an incremental rebuild, then sign and
+verify:
+
+```
+$ xbin build examples/hello-web -o hello-web.xbin
+[xbin] building 'hello-web'
+  runtime: python
+  runtime layer: reused from build cache (no recompression) ✓
+[xbin] wrote hello-web.xbin (7.1MB, unsigned) in 0.6s
+
+$ ./hello-web.xbin
+Server listening on http://127.0.0.1:8080
+
+$ xbin build examples/hello-node -o hello-node.xbin      # same CLI, different runtime
+[xbin] building 'hello-node'
+  runtime: node
+[xbin] wrote hello-node.xbin (27.5MB, unsigned) in 0.8s
+
+$ xbin keygen --key-dir ~/.xbin/keys -q
+bf68e4e5471d...
+
+$ xbin sign hello-web.xbin --key ~/.xbin/keys/bf68e4e5.key
+[xbin] signed hello-web.xbin
+
+$ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
+[xbin] signature verified for hello-web.xbin
+```
+
+*(Full recording: [`demo.cast`](demo.cast) — play with
+[asciinema](https://asciinema.org): `asciinema play demo.cast`)*
+
+## The problem
+
+Distributing a server app is a gamble every time:
 
 - Wrong Python/Node version on the target machine
 - Missing `.so` shared libraries
 - Different distro, different paths
-- Docker drags in a daemon, root access, and a whole ceremony
+- Docker drags in a daemon, root access, and a whole ceremony for
+  something that isn't a service
 
 The result is the oldest problem in software: *"it works on my machine."*
 
-## The Solution
-
-`xbin` takes the opposite approach: it packages your app **and everything it needs** (runtime, shared libraries, packages, config) into a single self-extracting ELF executable. The user downloads one file, `chmod +x` it, and runs it. That's it.
-
-```
-┌──────────────────────────────────────────────────┐
-│  xbin build ./my_app → produces my_app.xbin      │
-│                                                   │
-│  my_app.xbin:  [ELF launcher][payload][meta][ftr] │
-│                ├─ Rust/musl static (~600KB)       │
-│                ├─ zstd(tar) rootfs with runtime   │
-│                ├─ JSON metadata + SHA-256 footer  │
-│                └─ 84-byte versioned footer        │
-└──────────────────────────────────────────────────┘
-```
-
-### Key differentiators
+## How xbin is different
 
 | vs | xbin wins on |
 |---|---|
-| **AppImage** | targets **web/server headless**, not desktop GUI |
+| **AppImage / Snap / Flatpak** | targets **headless web/server/CLI**, not desktop GUI |
 | **Docker** | **no daemon, no root, one file** — not an orchestrator |
-| **pkg/PyInstaller** | **language-agnostic** — Python, Node, Go, native binary |
-| **Go static binary** | same UX for **scripted runtimes** (Python, Node, etc.) |
-
-## Quick start
-
-```bash
-# Prerequisites: Linux x86_64, Rust musl target, Python ≥3.10, zstd
-make stub           # compile the Rust launcher (musl static)
-make example        # build examples/hello-web → ./hello-web.xbin (7 MB)
-./hello-web.xbin    # starts an HTTP server, zero host dependencies
-```
-
-Visit `http://127.0.0.1:8080` in your browser.
-
-```bash
-xbin inspect hello-web.xbin
-# name:            hello-web
-# runtime:         python
-# entrypoint:      /usr/bin/python3.12 /app/app.py
-# payload:         6.4MB compressed / 26.4MB raw
-```
+| **pkg / PyInstaller / nexe** | **language-agnostic** — packages a rootfs, not one language runtime |
+| **Go static binaries** | same single-file UX, but for **scripted runtimes** (Python, Node) too |
 
 ## How it works
 
 ```
-MACHINE DE DEV                        MACHINE CIBLE
-
-my_app/         xbin build    my_app.xbin      ./my_app.xbin    ça tourne
-  app.py       ───────────→  (1 file)        ─────────────→
-  .venv/                     ┌──────────┐                    ┌──────────┐
-  requirements.txt           │xbin-stub │  /proc/self/exe     │  cache   │
-+ python3                    │payload ⊳─┼──────────────────→  │ + execve │
-+ libs .so                   │footer    │                    └──────────┘
-                             └──────────┘
+┌──────────────────────────────────────────────────────┐
+│  my-app.xbin =                                        │
+│    [ ELF launcher ][ zstd layers ][ metadata ][ footer ]│
+│      Rust/musl        runtime + app    JSON      92B    │
+│      ~615KB            layers          entrypoint  v3   │
+└──────────────────────────────────────────────────────┘
 ```
 
 **At build time**, `xbin build`:
 1. Detects the runtime (Python, Node, or native binary)
-2. Resolves shared libraries via a pure-Python ELF parser (no host `ldd` needed)
-3. Packages interpreter + stdlib + `.so` into a **runtime layer**
-4. Packages app code + site-packages into an **app layer**
-5. Compresses each layer with `zstd -19`, assembles the `.xbin`
+2. Scans Dockerfile for declared system/pip/npm packages and external binary fetches
+3. Resolves shared libraries via a pure-Python ELF parser (no host `ldd` needed)
+4. Packages interpreter + stdlib + `.so` into a **runtime layer**
+5. Packages app code + dependencies into an **app layer**
+6. Compresses each layer with `zstd`, assembles the `.xbin`
 
-Both layers are `tar`'ed deterministically (normalized mtime/uid/gid, sorted entries) so identical content produces identical bytes — enabling the build cache.
+Both layers are `tar`'ed deterministically (normalized mtime/uid/gid, sorted
+entries), so identical content produces identical bytes — this is what
+makes the build cache and incremental rebuilds possible.
 
 **At runtime**, the launcher:
 1. Opens `/proc/self/exe` (not `argv[0]` — more reliable)
-2. Reads the 84-byte footer at end-of-file, validates magic
-3. Reads metadata JSON, verifies SHA-256 integrity
-4. Checks `~/.cache/xbin/{hash}/` — extracts if missing (atomic `rename()`)
-5. Builds argv/env with `LD_LIBRARY_PATH` pointing into the extracted rootfs
+2. Reads the versioned footer at end-of-file, validates magic
+3. If signed: verifies the Ed25519 signature — **before anything touches disk**
+4. Verifies SHA-256 integrity of the payload
+5. Checks the local cache — extracts if missing (atomic `rename()`)
 6. `execve()` — replaces itself with the embedded app
 
-### Layered format (v2) + incremental rebuild
+### Layered format + incremental rebuild
 
-The format splits the payload into independent **layers**, similar to Docker:
+The payload splits into independent **layers**, similar to Docker:
 
 ```
 [ stub ][ runtime layer (stable) ][ app layer (volatile) ][ metadata ][ footer ]
 ```
 
-- The **runtime layer** (interpreter + stdlib + `.so`) rarely changes — it's cached in `~/.cache/xbin/build/{hash}.zst`
-- The **app layer** (code + site-packages) is small and rebuilt every time
+The **runtime layer** (interpreter + stdlib + `.so`) rarely changes and is
+cached separately. Editing app code only rebuilds the small **app layer**.
 
 ```
-Initial build : ~25 s  (compressing runtime layer, ~26 MB)
-Rebuild (code): ~1 s   (runtime layer reused from build cache — no recompression)
+Initial build : ~25s   (compressing runtime layer, ~26MB)
+Rebuild (code): ~1.2s  (runtime layer reused from cache — no recompression)
 ```
 
-Two apps sharing the same runtime share the build cache entry. See the [format spec](/docs/src/reference/format.md).
-
-## Architecture
-
-```
-CLI (xbin)            build · run · inspect · clean
-   │
-Builder               Analyzer (ldd + runtime) · Packager (rootfs + zstd)
-   │
-Format .xbin          [ ELF launcher ][ payload zstd ][ metadata JSON ][ footer ]
-   │
-Runtime (launcher)    /proc/self/exe · atomic cache · execve
-
-Four decoupled layers, joined by the .xbin format — the shared contract.
-```
-
-See the full [architecture docs](/docs/src/concepts/architecture.md) (French) for details.
+Two apps sharing the same runtime share the same build-cache entry.
+See the [format spec](/docs/src/reference/format.md).
 
 ## CLI reference
 
 ```bash
-xbin build ./my_app -o my_app.xbin            # analyze + produce .xbin
-xbin build ./my_app --isolation 2             # with user namespaces + pivot_root
-xbin run   my_app.xbin                        # launch (= ./my_app.xbin)
-xbin inspect my_app.xbin                      # show contents without extracting
-xbin clean                                    # remove extracted cache entries
-xbin clean --all                              # wipe everything (including build cache)
+xbin build ./my-app -o my-app.xbin       # analyze + produce .xbin
+xbin build ./my-app --isolation 2        # with user namespaces + pivot_root
+xbin run   my-app.xbin                   # launch (= ./my-app.xbin)
+xbin inspect my-app.xbin                 # show contents without extracting
+xbin keygen --key-dir <dir>              # generate an Ed25519 keypair
+xbin sign my-app.xbin --key <keyfile>    # sign in place
+xbin verify my-app.xbin --trusted-dir <dir>  # verify before you trust it
+xbin clean                               # remove extracted cache entries
+xbin clean --all                         # wipe everything (incl. build cache)
 ```
 
-Debug: `XBIN_VERBOSE=1 ./my_app.xbin` shows cold/warm start info.
+Debug: `XBIN_VERBOSE=1 ./my-app.xbin` shows cold/warm start info.
 
 ## Example apps
 
 | Example | What it demonstrates |
 |---|---|
 | [`hello-web`](/examples/hello-web) | Python stdlib HTTP server — zero dependencies |
-| [`bottle-web`](/examples/bottle-web) | Python app with a third-party dependency (bottle) from `.venv` |
+| [`bottle-web`](/examples/bottle-web) | Third-party dependency vendored in `.venv` |
+| [`bottle-web-pip`](/examples/bottle-web-pip) | `requirements.txt` installed automatically at build time |
+| [`hello-node`](/examples/hello-node) | Same CLI, Node.js runtime |
 
-Build them yourself:
 ```bash
-make example          # hello-web
-xbin build ./examples/bottle-web -o bottle-web.xbin
+make example      # builds hello-web
 ```
 
 ## Status
 
-**MVP functional** — Phase 1. The full pipeline works end-to-end.
+**Phase 1 (MVP) — shipped.** Full pipeline works end-to-end: format,
+launcher, builder, CLI, incremental rebuilds.
 
-### ✅ Done
-- Format `.xbin` versioned (v1 → v2 layered), 84-byte footer
-- Rust/musl static launcher: self-read, SHA-256 integrity, `execve`
-- Atomic cache extraction (`rename()` + `flock()`)
-- Python: stdlib + site-packages (`.venv` / `site-packages/`)
-- Incremental rebuild (runtime layer cached, ~25s → ~1s)
-- CLI: `build`, `run`, `inspect`, `clean`
+**Phase 2 (robustness) — nearly done.**
+- ✅ Ed25519 signatures (`keygen` / `sign` / `verify`), verified before extraction
+- ✅ Trust model (`~/.xbin/trusted-keys/` keyring)
+- ✅ Isolation level 2 (user namespaces + `pivot_root`)
+- ✅ Pure-Python ELF parser (no host `ldd` dependency)
+- ✅ `requirements.txt` → automatic pip-install at build time
+- ✅ Node.js end-to-end
+- ✅ Self-hosting — `xbin` packages its own CLI using `xbin`
+- ✅ Dockerfile dependency detection (apt/apk/pip/npm packages + external binary fetches)
+- ✅ CODE_STYLE.md enforcement (ruff/black/clippy configs, `make lint`/`make fmt`)
+- ✅ mdbook documentation (rewritten to English)
+- 🔜 Seccomp syscall filter (last piece)
 
-### ✅ Phase 2 — Robustness
-- Ed25519 signatures (`xbin keygen` / `sign` / `verify`)
-- Trust model (`~/.xbin/trusted-keys/` keyring)
-- Isolation level 2 (user namespaces + `pivot_root`)
-- Pure-Python ELF parser (no host `ldd` dependency)
-- `requirements.txt` → auto pip-install at build time (temp venv)
-- Node.js end-to-end support
-- Self-hosting: `self/` → `xbin build self/` → `./xbin build ...`
-
-### 🔜 Phase 3 — Production
-- AI dependency analyzer (detects `subprocess`, `dlopen`, hidden deps)
-- Manifest mode (`xbin.toml`)
-- squashfs + mmap (cold start < 100ms)
-
-### 🔜 Phase 3 — Production
-- squashfs + mmap (cold start < 100ms)
-- Cross-arch (aarch64)
-- Multi-runtime (Ruby, Java/GraalVM, Deno)
+**Phase 3 (product) — next.**
+- 🔜 Python source AST scanner (detects `subprocess`/`os.system` calls not in Dockerfile)
+- 🔜 AI dependency analyzer (combines Dockerfile + AST results)
+- 🔜 Manifest mode (`xbin.toml`)
+- 🔜 squashfs + mmap (cold start < 100ms)
+- 🔜 Cross-arch (aarch64), more runtimes (Ruby, Java/GraalVM, Deno)
 
 See the [full roadmap](/docs/src/roadmap.md) (French).
 
@@ -205,48 +196,46 @@ See the [full roadmap](/docs/src/roadmap.md) (French).
 
 ```
 xbin/
-├── stub/              Rust launcher (musl static)
+├── stub/              Rust launcher (musl static) + crypto helper
 │   └── src/
 │       ├── main.rs    self-read → verify → cache → exec
 │       └── format.rs  footer parser (sync'd with Python)
-├── cli/               Python CLI + builder (stdlib only)
+├── cli/               Python CLI + builder (stdlib-first)
 │   └── xbin/
-│       ├── cli.py     build / run / inspect / clean
+│       ├── cli.py     build / run / inspect / sign / verify / clean
 │       ├── build.py   rootfs construction + assembly
 │       ├── format.py  footer writer (sync'd with Rust)
-│       ├── inspect.py
-│       └── analyzer/
-│           ├── elf.py       pure-Python ELF parser (replaces host `ldd`)
-│           ├── ldd.py       thin facade calling `elf.py`
-│           └── runtime.py   runtime detection + entrypoint
-├── examples/          demo apps
-├── docs/              mdbook documentation (French)
+│       └── analyzer/  detection + dependency resolution
+│           ├── runtime.py      runtime detection (Python, Node, binary)
+│           ├── elf.py          pure-Python ELF shared library parser
+│           └── dockerfile.py   Dockerfile dependency extraction
+├── examples/          demo apps (Python, Node.js)
+├── docs/              mdbook documentation
+├── CODE_STYLE.md      coding conventions (42 Norm + Linux kernel style)
 └── Makefile
 ```
 
-## Documentation
-
-Full documentation (concepts, reference, guides, roadmap) is available as an mdbook:
-
-```bash
-make docs          # build → docs/book/
-make docs-serve    # serve on http://localhost:3000 with live-reload
-```
-
-The documentation is in **French** (the builder's native language). Code comments and this README are in English.
-
 ## Why now?
 
-Three converging trends make `xbin` timely:
+- **Local AI is exploding.** Distributing `llama.cpp` + a model + a serving
+  layer as one file has no clean solution today — Docker is overkill,
+  AppImage is desktop-only, PyInstaller can't handle native binaries.
+- **Node has built-in SEA, but it's Node-only.** The industry needs a
+  language-agnostic equivalent.
+- **Rootless containers are mainstream.** User namespaces make real
+  filesystem isolation possible without privileges — exactly what `xbin`
+  needs for cross-distro portability.
 
-1. **Local AI is exploding** — distributing `llama.cpp` + a model + a web UI + an inference server as a single file has no clean solution today. Docker is overkill, AppImage is desktop-only, PyInstaller can't handle native C binaries.
-2. **Node 21+ has built-in SEA** but it's Node-only. The industry needs a **language-agnostic** equivalent.
-3. **Rootless containers are mainstream** — user namespaces, available since Linux 3.8, finally make real filesystem isolation possible without privileges. That unlocks what `xbin` needs for cross-distro portability.
+## Why this team
 
-## Why this team?
-
-<!-- TODO: Add your background. For YC, focus on: domain expertise, 
-     past open-source work, and why you're the right person to build this. -->
+Solo founder. Low-level developer and independent cybersecurity researcher
+— finished 42 School in 2025, since then contributing to open-source
+security tooling ([Exegol](https://github.com/ThePorgs/Exegol),
+[Caido](https://github.com/caido/caido),
+[Payloads All The Things](https://github.com/swisskyrepo/PayloadsAllTheThings))
+and building [Toboggan](https://github.com/TednoobOneBinary/Toboggan), a
+cross-platform systems tool in Rust. `xbin` sits directly in that space:
+systems programming, binary formats, and trust boundaries.
 
 ---
 
