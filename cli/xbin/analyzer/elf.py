@@ -7,7 +7,6 @@ can run Python (Linux, macOS, Windows WSL).
 
 from __future__ import annotations
 
-import os
 import struct
 from pathlib import Path
 
@@ -82,8 +81,16 @@ class ELFParser:
     def _program_headers(self):
         for i in range(self.e_phnum):
             off = self.e_phoff + i * self.e_phentsize
-            (p_type, p_flags, p_offset, p_vaddr, p_paddr,
-             p_filesz, p_memsz, p_align) = struct.unpack_from("<IIQQQQQQ", self.data, off)
+            (
+                p_type,
+                p_flags,
+                p_offset,
+                p_vaddr,
+                p_paddr,
+                p_filesz,
+                p_memsz,
+                p_align,
+            ) = struct.unpack_from("<IIQQQQQQ", self.data, off)
             yield {
                 "type": p_type,
                 "flags": p_flags,
@@ -96,7 +103,7 @@ class ELFParser:
     def _interp(self) -> str | None:
         for ph in self._program_headers():
             if ph["type"] == PT_INTERP:
-                raw = self.data[ph["offset"]:ph["offset"] + ph["filesz"]]
+                raw = self.data[ph["offset"] : ph["offset"] + ph["filesz"]]
                 return raw.rstrip(b"\x00").decode("utf-8", errors="replace")
         return None
 
@@ -266,12 +273,10 @@ def _resolve_recursive(
             # Recurse into the library's own dependencies
             try:
                 sub = ELFParser(resolved)
-                sub_needed, sub_runpaths, _ = sub._parse_dynamic()
-                if sub_needed:
-                    sub_dirs = sub._search_dirs(sub_runpaths)
-                    for n in sub_needed:
-                        if n not in seen_names:
-                            queue.append(n)
+                sub_needed, _, _ = sub._parse_dynamic()
+                for n in sub_needed:
+                    if n not in seen_names:
+                        queue.append(n)
             except (ValueError, OSError):
                 pass
 
@@ -315,7 +320,9 @@ def _fallback_ldd(binary: Path) -> set[Path]:
     try:
         out = subprocess.run(
             ["ldd", str(binary)],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
         ).stdout
     except (FileNotFoundError, OSError):
         return set()
