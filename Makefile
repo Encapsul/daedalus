@@ -28,9 +28,12 @@ stub:
 	@echo "stub:   $$(ls -la $(STUB) | awk '{print $$5}') bytes"
 	@echo "crypto: $$(ls -la $(CRYPTO) | awk '{print $$5}') bytes"
 
-# Install the CLI via pip editable install.
+# Install the CLI via pip editable install (user-local, no sudo needed).
 install:
-	cd cli && pip install -e .
+	cd cli && pip install --user -e .
+	@echo ""
+	@echo "NOTE: if 'xbin' is not found, add ~/.local/bin to PATH:"
+	@echo "  export PATH=\"\$$HOME/.local/bin:\$$PATH\""
 
 # Build the hello-web example .xbin (requires `stub`).
 example: stub

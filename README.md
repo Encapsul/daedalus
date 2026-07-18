@@ -42,7 +42,8 @@ Linux x86_64. Kernel 5.6+ recommended. User namespace isolation requires 5.11+.
 git clone https://github.com/Tednoob17/x.bin.git && cd x.bin
 make preflight     # verify all prerequisites
 make stub          # build Rust launcher + crypto binaries
-pip install -e ./cli
+make install       # pip install --user -e ./cli
+export PATH="$HOME/.local/bin:$PATH"  # add xbin to PATH (once per shell)
 ```
 
 <details>
