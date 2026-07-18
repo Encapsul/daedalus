@@ -147,10 +147,10 @@ $ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│  my-app.xbin =                                             │
-│    [ ELF launcher ][ zstd layers ][ metadata ][ footer ]   │
-│      Rust/musl        runtime + app    JSON      92B       │
-│      ~615KB            layers          entrypoint  v3      │
+│  my-app.xbin =                                            │
+│    [ ELF launcher ][ zstd layers ][ metadata ][ footer ]  │
+│      Rust/musl        runtime + app    JSON      92B      │
+│      ~615KB            layers          entrypoint  v3     │
 └───────────────────────────────────────────────────────────┘
 ```
 
