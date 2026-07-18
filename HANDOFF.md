@@ -1,12 +1,46 @@
 # HANDOFF.md — x.bin project status
 
-## Format: v3 (implemented)
+## Current state
 
-- `stub/src/format.rs` and `cli/xbin/format.py` both implement the **v3 footer**:
-  92 bytes total, with `sig_offset` (u64) as an 8-byte PREFIX before the 84-byte
-  v2-compatible core. v2 readers see unknown magic at EOF-84 and report cleanly.
-- Layout: `[0-7] sig_offset (u64) | [8-12] magic "XBIN\\x01" | [13] version=3 | ...`
-- `Footer.sig_offset` is the absolute offset of `[sig_size:u32le][signature:64 bytes]`.
+- **Format**: v5 (SquashFS support)
+- **Status**: Phase 2 complete, Phase 3 partially done
+- **Build**: `make stub` + `pip install -e ./cli`
+- **Health check**: `xbin doctor` or `make preflight`
+- **Last commit**: `538f0de` — cross-compilation, dependency checks, squashfs, selftest fix
+
+## Cross-compilation (`--target aarch64`) — 2026-07-18
+
+- **File**: `cli/xbin/cross.py`
+- `download_vendored_python(runtime, arch)`: downloads prebuilt Python/Node from `python-build-standalone` (astral-sh) or Node.js official, extracts to `~/.cache/xbin/vendor/{runtime}-{arch}/`
+- `pip_download_target(app_dir, requirements, venv_dir, target_arch)`: runs `pip download --only-binary=:all: --platform {manylinux tag} --python-version {ver}` to fetch wheels for target arch
+- `_vendored_python_version(vendored_root)`: detects Python version from vendored `lib/pythonX.Y/` directory
+- `_unpack_wheel(wheel_path, site_packages_dir)`: extracts wheel `.zip` into site-packages for cross-build
+- **File**: `cli/xbin/build.py`
+- `build()` rejects non-Python runtimes for cross-build (`node`/`deno` → clear error message)
+- `_pip_install_requirements()` accepts `target_arch`: uses `pip_download_target()` when cross-building, falls back to normal pip when native
+- `_build_runtime_layer()` / `_build_layers()` / `_build_layers_squashfs()` pass `target_arch` through for cross-build pip
+- `_build_runtime_layer()` skips `.so` resolution when using vendored cross-python (no host libs to resolve)
+
+## Dependency checks — 2026-07-18
+
+- **File**: `cli/xbin/doctor.py`
+- `xbin doctor` subcommand: checks Python, pip, cargo, rustc, musl target, C compiler, zstd, mksquashfs, node, deno, cryptography, ruff, black, xbin-stub, xbin-crypto
+- Each check returns (ok, detail). Required vs optional. Returns exit 1 if any required check fails.
+- **File**: `Makefile`
+- `make preflight`: quick prerequisite check (python3, pip, cargo, rustc, musl target, cc, zstd). Exit 1 on failure.
+- **File**: `cli/pyproject.toml`
+- Added `[project.optional-dependencies]`: `encrypt` (cryptography), `python310` (tomli), `dev` (ruff, black), `all`
+- **File**: `stub/Cargo.toml`
+- Fixed misleading comment: `backhand` (squashfs) requires C compiler via `zstd-sys` — project is not purely pure-Rust
+
+## SquashFS support — 2026-07-18
+
+- **File**: `stub/src/format.rs` — format v5, `PAYLOAD_FORMAT_SQUASHFS = 2`
+- **File**: `stub/src/main.rs` — squashfs extraction via `squashfs_extract::extract()`, uses backhand crate
+- **File**: `stub/src/squashfs_extract.rs` — backhand-based squashfs reader (gzip/lz4/zstd support)
+- **File**: `cli/xbin/build.py` — `--squashfs` flag, `mksquashfs` build, tar→squashfs conversion
+- **File**: `docs/src/reference/format.md` — v5 format documented
+- Metadata `"payload_format": "squashfs"` tells launcher to use squashfs extraction instead of zstd(tar)
 
 ## Ed25519 verification: implemented
 
@@ -116,11 +150,13 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 
 ## Next steps (future)
 
+- Cross-compile aarch64 stub: `rustup target add aarch64-unknown-linux-musl`, build stub for target
 - `xbin sign` with automatic key lookup in `~/.xbin/keys/` (without `--key`).
-- `xbin verify` using launcher embedded logic (via `$XBIN_TRUSTED_DIR`).
-- Support for `--key-dir` default in `xbin keygen`.
-- Possibly a `trust` subcommand to manage trusted keys.
-- Run full end-to-end build+sign+verify cycle once `cargo` is available to confirm Rust changes compile.
+- `squashfs + mmap` direct read (kernel mount, Linux 5.12+, no extraction needed)
+- LRU cache cleanup (evict beyond threshold)
+- Cold/warm start < 100 ms end-to-end
+- Distribution / discovery (lightweight registry)
+- Run full end-to-end build+sign+verify cycle for aarch64 once stub is compiled
 
 ## Seccomp BPF denylist (2026-07-17)
 

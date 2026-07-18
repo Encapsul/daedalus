@@ -6,7 +6,14 @@
 - Rust with musl target: `rustup target add x86_64-unknown-linux-musl`
 - Python >= 3.10
 - `zstd` (available on most distributions)
+- C compiler (`gcc` or `musl-tools`) — required by `backhand` (squashfs)
 - No `ldd` required — pure-Python ELF analyzer is built-in
+
+Verify all prerequisites in one command:
+
+```bash
+make preflight      # or: xbin doctor
+```
 
 ## 1. Build the launcher stub
 
