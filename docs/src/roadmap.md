@@ -15,6 +15,7 @@
       rebuild ~25s → ~1s; shared build cache between apps)
 - [x] `requirements.txt` → pip install at build time (temp venv)
 - [x] Node.js end-to-end support (stdlib + node_modules)
+- [x] Deno support (deno.json detection, `--allow-all`, tasks-based entrypoint)
 
 ## Phase 2 — Robustness ✅
 

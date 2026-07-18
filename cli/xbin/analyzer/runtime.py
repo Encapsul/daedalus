@@ -1,7 +1,7 @@
 """Application runtime detection + entrypoint resolution.
 
-MVP: python, node (detection only), native ELF binary. Best-effort, overridable
-via a manifest (xbin.toml) — see build.py.
+Supported: python, deno, node (detection only), native ELF binary.
+Best-effort, overridable via a manifest (xbin.toml) — see build.py.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ class RuntimePlan:
     Entrypoint paths are relative to the rootfs (start with '/').
     """
 
-    runtime: str  # "python" | "node" | "binary"
+    runtime: str  # "python" | "deno" | "node" | "binary"
     interpreter_host: Path | None  # runtime binary to embed (None for native)
     entrypoint: list[str]  # argv relative to rootfs
     cwd: str = "/app"  # the launcher chdir's here before exec; "/app" is the
@@ -49,6 +49,10 @@ def detect(app_dir: Path) -> RuntimePlan:
     if py_entry:
         return _detect_python(app_dir, py_entry)
 
+    deno_cfg = _first_existing(app_dir, ["deno.json", "deno.jsonc"])
+    if deno_cfg:
+        return _detect_deno(app_dir, deno_cfg)
+
     if (app_dir / "package.json").is_file():
         return _detect_node(app_dir)
 
@@ -62,7 +66,7 @@ def detect(app_dir: Path) -> RuntimePlan:
         )
 
     raise ValueError(
-        "could not detect runtime: no app.py/main.py, no package.json, "
+        "could not detect runtime: no app.py/main.py, no deno.json/package.json, "
         "no single ELF binary. Use a manifest (xbin.toml) to declare entrypoint."
     )
 
@@ -88,6 +92,52 @@ def _detect_python(app_dir: Path, py_entry: str) -> RuntimePlan:
         extra_dirs_host=[stdlib] if stdlib else [],
         site_packages=site_packages,
     )
+
+
+def _detect_deno(app_dir: Path, cfg_name: str) -> RuntimePlan:
+    deno = shutil.which("deno")
+    if not deno:
+        raise ValueError(
+            f"deno app detected ({cfg_name}) but no deno on PATH to embed"
+        )
+    interp = Path(deno).resolve()
+    entry = _deno_entry(app_dir, cfg_name)
+    env: dict[str, str] = {}
+    return RuntimePlan(
+        runtime="deno",
+        interpreter_host=interp,
+        entrypoint=[f"/{_rootfs_rel(interp)}", "run", "--allow-all", f"/app/{entry}"],
+        cwd="/app",
+        env=env,
+    )
+
+
+def _deno_entry(app_dir: Path, cfg_name: str) -> str:
+    """Read entrypoint from deno.json tasks, or fall back to common names."""
+    import json
+
+    try:
+        raw = (app_dir / cfg_name).read_text()
+        if cfg_name.endswith(".jsonc"):
+            # Strip single-line comments for jsonc.
+            lines = [ln for ln in raw.splitlines() if not ln.strip().startswith("//")]
+            raw = "\n".join(lines)
+        cfg = json.loads(raw)
+        # Check "tasks" for a default/start task.
+        tasks = cfg.get("tasks", {})
+        for key in ("start", "dev", "default"):
+            cmd = tasks.get(key, {}).get("command") if isinstance(tasks.get(key), dict) else tasks.get(key)
+            if cmd and isinstance(cmd, str):
+                # Extract the last arg that looks like a .ts file.
+                for part in cmd.split():
+                    if part.endswith(".ts") and (app_dir / part).is_file():
+                        return part
+    except (ValueError, OSError):
+        pass
+    for cand in ("main.ts", "mod.ts", "server.ts", "app.ts", "index.ts"):
+        if (app_dir / cand).is_file():
+            return cand
+    return "main.ts"
 
 
 def _detect_node(app_dir: Path) -> RuntimePlan:
