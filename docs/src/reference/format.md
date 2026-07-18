@@ -19,9 +19,10 @@ EOF - 92    │   FOOTER (92 bytes)     │  ← read backwards by launcher
 
 The format is versioned (`format_version` in the footer). v1 uses a single
 monolithic payload; v2 splits the payload into layers; v3 adds Ed25519
-signatures. The launcher reads all versions.
+signatures; v4 adds AES-256-GCM encryption; v5 adds SquashFS layer support.
+The launcher reads all versions.
 
-## Footer layout (v3, 92 bytes)
+## Footer layout (v3/v4/v5, 92 bytes)
 
 All integers are little-endian. The v3 footer is a 92-byte block: an 8-byte
 prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
@@ -30,12 +31,12 @@ prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
 |------------------|--------|-------|------|----------------------------------------------|
 | `sig_offset`     | 0      | u64   | 8    | absolute offset of signature block (0 if unsigned) |
 | `magic`          | 8      | bytes | 5    | `"XBIN\x01"`                                 |
-| `format_version` | 13     | u8    | 1    | format version (currently 3)                 |
+| `format_version` | 13     | u8    | 1    | format version (3, 4, or 5)                  |
 | `arch`           | 14     | u8    | 1    | `0x01`=x86_64, `0x02`=aarch64                |
-| `flags`          | 15     | u8    | 1    | bit0=signed                                  |
+| `flags`          | 15     | u8    | 1    | bit0=signed, bit1=encrypted                 |
 | `payload_offset` | 16     | u64   | 8    | absolute offset of payload                   |
 | `payload_csize`  | 24     | u64   | 8    | compressed size of all layers                |
-| `payload_usize`  | 32     | u64   | 8    | unused (per-layer sizes in metadata)         |
+| `payload_usize`  | 32     | u64   | 8    | v2/v3: unused; v4/v5: crypto_suite (0=none, 1=AES-256-GCM) |
 | `payload_sha256` | 40     | bytes | 32   | `SHA-256(payload ‖ metadata)`                |
 | `meta_offset`    | 72     | u64   | 8    | absolute offset of metadata                  |
 | `meta_size`      | 80     | u64   | 8    | metadata size in bytes                       |
@@ -145,8 +146,8 @@ The footer's `sig_offset` field points to the start of this block.
 
 ## Layers (v2+)
 
-The payload is a sequence of **layers**, each an independent `zstd(tar)`
-blob. Layers stack at extraction (later layers overwrite earlier ones):
+The payload is a sequence of **layers**, each an independent compressed blob.
+Layers stack at extraction (later layers overwrite earlier ones):
 
 ```
 [ stub ][ runtime layer ][ app layer ][ metadata ][ sig? ][ footer ]
@@ -154,6 +155,10 @@ blob. Layers stack at extraction (later layers overwrite earlier ones):
          python+stdlib+.so app code + site-packages
          stable            volatile
 ```
+
+**v2–v4** uses `zstd(tar)` blobs. **v5** uses SquashFS images (better
+compression ratio). The layer format is indicated by the `"payload_format"`
+field in metadata: `"zstd-tar"` (default) or `"squashfs"`.
 
 The layer table lives in the JSON metadata:
 
@@ -199,6 +204,14 @@ a version higher than it understands:
 $ ./old-xbin new-format.xbin
 [xbin] error: unsupported .xbin format version (binary newer than launcher)
 ```
+
+| Version | Changes                                            |
+|---------|----------------------------------------------------|
+| v1      | Monolithic zstd(tar) payload                       |
+| v2      | Layered payload (runtime + app), incremental rebuild |
+| v3      | Ed25519 signatures (92-byte footer with sig_offset) |
+| v4      | AES-256-GCM payload encryption (crypto_suite in footer) |
+| v5      | SquashFS layer support (payload_format in metadata) |
 
 Reserved fields (`flags`, `sig_offset`) allow extension without breaking
 compatibility. Ed25519 signatures are inserted between metadata and footer

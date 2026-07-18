@@ -3,7 +3,13 @@ name = "xbin"
 version = "0.1.0"
 description = "Ship your web app like a binary. Run anywhere."
 requires-python = ">=3.10"
-dependencies = []  # MVP: stdlib only
+dependencies = []  # core: stdlib only
+
+[project.optional-dependencies]
+encrypt = ["cryptography>=41.0"]   # needed for --encrypt (AES-256-GCM)
+python310 = ["tomli>=2.0"]         # tomllib is stdlib in 3.11+, needed as fallback for 3.10
+dev = ["ruff>=0.1", "black>=24.0"] # linting and formatting
+all = ["xbin[encrypt,python310,dev]"]
 
 [project.scripts]
 xbin = "xbin.cli:main"

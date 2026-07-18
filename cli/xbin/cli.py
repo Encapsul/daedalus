@@ -152,6 +152,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="encrypt payload with AES-256-GCM (requires --key for signing seed)",
     )
+    p_build.add_argument(
+        "--squashfs",
+        action="store_true",
+        help="use squashfs images instead of zstd(tar) for payload layers (v5 format, better compression)",
+    )
+    p_build.add_argument(
+        "--target",
+        choices=["aarch64", "x86_64"],
+        help="cross-compile for this architecture (downloads vendored Python, "
+        "rejects compiled extensions; stub must be pre-built for target)",
+    )
     p_build.add_argument("-q", "--quiet", action="store_true")
     p_build.add_argument(
         "--redetect",
@@ -230,6 +241,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_selftest.add_argument("-q", "--quiet", action="store_true")
 
+    p_doctor = sub.add_parser(
+        "doctor", help="check that all prerequisites are installed"
+    )
+    p_doctor.add_argument("-q", "--quiet", action="store_true")
+
     args = parser.parse_args(argv)
 
     try:
@@ -246,8 +262,10 @@ def main(argv: list[str] | None = None) -> int:
                 isolation=args.isolation,
                 seccomp=args.seccomp,
                 encrypt=args.encrypt,
+                squashfs=args.squashfs,
                 verbose=not args.quiet,
                 redetect=args.redetect,
+                target=args.target,
             )
             return 0
 
@@ -302,6 +320,11 @@ def main(argv: list[str] | None = None) -> int:
                 probe=args.probe,
                 verbose=not args.quiet,
             )
+
+        if args.command == "doctor":
+            from .doctor import doctor
+
+            return doctor(verbose=not args.quiet)
     except (
         FileNotFoundError,
         NotADirectoryError,

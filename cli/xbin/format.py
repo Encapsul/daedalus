@@ -10,16 +10,20 @@ Footer versions:
           repurposed as crypto_suite: 0x00=none, 0x01=AES-256-GCM.
           When crypto_suite=1, metadata contains "crypto" with nonce_hex and
           signing_seed_hex for AES-256-GCM decryption.
+  v5    — 92 bytes at EOF-92 (same physical size as v3/v4).  Footer identical
+          to v4.  Metadata gains "payload_format" field: "zstd-tar" (default,
+          backward-compatible) or "squashfs".  Launcher checks payload_format
+          to choose extraction strategy (zstd+tar vs squashfs parse+extract).
 
-Layout of the 92-byte v3/v4 footer (little-endian):
+Layout of the 92-byte v3/v4/v5 footer (little-endian):
   [0-7]    sig_offset (u64)          offset of [sig_size:u32le][sig:64 bytes]
   [8-12]   magic (5 bytes)           "XBIN\x01"
-  [13]     format_version (u8)       3
+  [13]     format_version (u8)       3, 4, or 5
   [14]     arch (u8)
-  [15]     flags (u8)                bit0=signed
+  [15]     flags (u8)                bit0=signed, bit1=encrypted
   [16-23]  payload_offset (u64)
   [24-31]  payload_csize (u64)
-  [32-39]  payload_usize (u64)       unused in v2/v3 (per-layer sizes in metadata)
+  [32-39]  payload_usize (u64)       v2/v3: unused; v4/v5: crypto_suite
   [40-71]  payload_sha256 (32 bytes) SHA-256(payload ‖ metadata)
   [72-79]  meta_offset (u64)
   [80-87]  meta_size (u64)
@@ -40,13 +44,17 @@ from dataclasses import dataclass
 
 MAGIC = b"XBIN\x01"
 FOOTER_MAGIC = 0xBEEFCAFE
-FORMAT_VERSION = 3
+FORMAT_VERSION = 5
 V2_FOOTER_SIZE = 84
 V3_FOOTER_SIZE = 92
 
 # Crypto suite IDs (stored in payload_usize when format_version >= 4)
 CRYPTO_NONE = 0x00
 CRYPTO_AES_256_GCM = 0x01
+
+# Payload format IDs (metadata JSON "payload_format" field, format_version >= 5)
+PAYLOAD_FORMAT_ZSTD_TAR = "zstd-tar"
+PAYLOAD_FORMAT_SQUASHFS = "squashfs"
 
 # little-endian pack/unpack for the 84-byte core (identical across all versions):
 #   5s  magic

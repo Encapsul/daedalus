@@ -117,11 +117,11 @@ def _wait_and_observe(
     probe: str | None,
     verbose: bool,
 ) -> int:
-    crash_deadline = 2.0
+    crash_deadline = time.monotonic() + 2.0
     end = time.monotonic() + timeout
 
     # Phase 1: crash check (0-2s).
-    while time.monotonic() - crash_deadline < 0:
+    while time.monotonic() < crash_deadline:
         rc = proc.poll()
         if rc is not None:
             if rc != 0:
