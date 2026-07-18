@@ -142,6 +142,11 @@ def main(argv: list[str] | None = None) -> int:
         choices=[0, 1, 2],
         help="isolation level: 0=LD_LIBRARY_PATH, 1=chroot, 2=user namespaces (default: 0)",
     )
+    p_build.add_argument(
+        "--seccomp",
+        action="store_true",
+        help="install seccomp-bpf denylist (blocks dangerous syscalls, requires --isolation 2)",
+    )
     p_build.add_argument("-q", "--quiet", action="store_true")
     p_build.add_argument(
         "--redetect",
@@ -211,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.output,
                 key_path=args.key,
                 isolation=args.isolation,
+                seccomp=args.seccomp,
                 verbose=not args.quiet,
                 redetect=args.redetect,
             )

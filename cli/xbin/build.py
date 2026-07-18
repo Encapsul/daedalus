@@ -357,6 +357,7 @@ def _build_meta_json(
     env: dict[str, str],
     layers: list[dict],
     services: list[dict] | None = None,
+    seccomp: bool = False,
 ) -> bytes:
     """Build the metadata JSON bytes for the .xbin footer."""
     meta: dict = {
@@ -369,6 +370,8 @@ def _build_meta_json(
         "env": env,
         "layers": layers,
     }
+    if seccomp:
+        meta["seccomp"] = True
     if services:
         meta["services"] = services
     return json.dumps(meta, separators=(",", ":")).encode()
@@ -419,6 +422,7 @@ def _build_manifest(
     """Build a multi-service .xbin from xbin.toml manifest."""
     name = manifest.get("app", {}).get("name", app_dir.name)
     isolation = manifest.get("app", {}).get("isolation", 0)
+    seccomp = manifest.get("app", {}).get("seccomp", False)
     services = manifest.get("services", [])
     if not services:
         raise ValueError("xbin.toml has no [[services]]")
@@ -478,6 +482,7 @@ def _build_manifest(
         env={},
         layers=layers,
         services=meta_services,
+        seccomp=seccomp,
     )
     payload = rt_comp + app_comp
     size = _assemble_xbin(out_path, stub, payload, meta_bytes, key_path)
@@ -609,6 +614,7 @@ def build(
     output: str | None,
     key_path: str | None = None,
     isolation: int = 0,
+    seccomp: bool = False,
     verbose: bool = True,
     redetect: bool = False,
 ) -> str:
@@ -687,6 +693,7 @@ def build(
         entrypoint=plan.entrypoint,
         env=plan.env,
         layers=layers,
+        seccomp=seccomp,
     )
     payload = rt_comp + app_comp
     size = _assemble_xbin(out_path, stub, payload, meta_bytes, key_path)
