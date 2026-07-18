@@ -6,7 +6,9 @@
 - **Status**: Phase 2 complete, Phase 3 partially done
 - **Build**: `make stub` + `pip install -e ./cli`
 - **Health check**: `xbin doctor` or `make preflight`
-- **Last commit**: `d3cb199` — docs update (HANDOFF, README, mdbook)
+- **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
+- **Release**: `./scripts/release.sh 0.1.0` → CI builds multi-arch binaries → GitHub Release
+- **Last commit**: `4593a33` — branching strategy, release CI
 
 ---
 
