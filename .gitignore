@@ -27,8 +27,7 @@ repo/
 *.mp4
 demo/
 
-# Generated HTML / misc
-*.html
+# Generated misc
 file.md
 ideaaa
 

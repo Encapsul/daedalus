@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>x.bin — your app, one file</title>
+<meta name="description" content="x.bin packages any web, server, or CLI app into a single self-contained executable. No runtime to install. No Docker. Just run it.">
+<meta property="og:title" content="x.bin — your app, one file">
+<meta property="og:description" content="Package any web, server, or CLI app into a single self-extracting executable.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="topbar">
+  <div class="wrap">
+    <div class="tb-logo">x<span>.bin</span></div>
+    <div class="tb-nav">
+      <a href="#problem">Why</a>
+      <a href="#features">How it works</a>
+      <a href="#layers">Layers</a>
+      <a href="#format">Format</a>
+      <a href="#roadmap">Roadmap</a>
+    </div>
+    <div class="tb-right">
+      <a class="btn btn-line" href="https://github.com/Tednoob17/x.bin" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="btn btn-primary" href="https://github.com/Tednoob17/x.bin" target="_blank" rel="noopener">Get started</a>
+    </div>
+    <button class="tb-menu" id="menu-btn" aria-label="Menu">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+  <nav class="mobile-nav" id="mobile-nav">
+    <a href="#problem">Why</a>
+    <a href="#features">How it works</a>
+    <a href="#layers">Layers</a>
+    <a href="#format">Format</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="https://github.com/Tednoob17/x.bin" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+</nav>
+
+<header class="hero">
+  <div class="hero-blob"></div>
+  <div class="wrap">
+    <div class="eyebrow">Rust launcher &middot; Python builder &middot; v3 format</div>
+    <h1>Ship your app<br>as <span>one file</span>.</h1>
+    <p class="hero-sub">x.bin packages any web, server, or CLI app into a single self-contained executable. No runtime to install. No Docker. Just run it.</p>
+    <div class="hero-ctas">
+      <a class="btn btn-primary" href="https://github.com/Tednoob17/x.bin" target="_blank" rel="noopener">View on GitHub</a>
+      <a class="btn btn-line" href="#format">See the format</a>
+    </div>
+
+    <div class="hero-term">
+      <div class="term-topbar"><div class="term-dot"></div><div class="term-dot"></div><div class="term-dot"></div><span>terminal</span></div>
+      <div class="hero-term-body">
+        <div class="ln"><span class="p">$ </span>xbin build ./my-app -o my-app.xbin</div>
+        <div class="ln"><span class="p">$ </span>./my-app.xbin</div>
+        <div class="ln"><span class="ok">&rarr; serving on :8080</span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="stats">
+  <div class="wrap">
+    <div class="stat"><b>92 bytes</b><span>footer describes the entire file format</span></div>
+    <div class="stat"><b>25s &rarr; 1.2s</b><span>initial build vs. incremental rebuild</span></div>
+    <div class="stat"><b>0 bytes</b><span>written before signature verification</span></div>
+  </div>
+</div>
+
+<section id="problem">
+  <div class="wrap">
+    <div class="sec-head center">
+      <div class="eyebrow">The problem</div>
+      <h2 class="sec-title">Deploying something simple<br>shouldn't feel like this.</h2>
+    </div>
+    <div class="compare">
+      <div class="cmp-card bad">
+        <h4>Today</h4>
+        <ul>
+          <li><span class="cmp-mark">&ndash;</span>Install a matching runtime on the target machine</li>
+          <li><span class="cmp-mark">&ndash;</span>Resolve dependencies, hope the versions line up</li>
+          <li><span class="cmp-mark">&ndash;</span>Reach for Docker for something that isn't a service</li>
+          <li><span class="cmp-mark">&ndash;</span>Tools that only work for one language (pkg, PyInstaller, nexe)</li>
+        </ul>
+      </div>
+      <div class="cmp-card good">
+        <h4>With x.bin</h4>
+        <ul>
+          <li><span class="cmp-mark">&check;</span><code>chmod +x app.xbin &amp;&amp; ./app.xbin</code></li>
+          <li><span class="cmp-mark">&check;</span>The runtime ships inside the file</li>
+          <li><span class="cmp-mark">&check;</span>Works for Python, Node, native binaries &mdash; any headless app</li>
+          <li><span class="cmp-mark">&check;</span>Ed25519 signed &mdash; verified before a byte hits disk</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head center">
+      <div class="eyebrow">How it works</div>
+      <h2 class="sec-title">Three things it actually gets right.</h2>
+    </div>
+
+    <div class="feat-row">
+      <div class="feat-text">
+        <span class="feat-tag tag-blue">Language-agnostic</span>
+        <h3>Not tied to one runtime.</h3>
+        <p>x.bin packages a rootfs, not a language ecosystem. It detects <code>app.py</code>, <code>package.json</code>, or a native ELF binary, then bundles the interpreter, shared libraries, and your code together. A pure-Python ELF analyzer resolves <code>DT_NEEDED</code> chains recursively &mdash; no host <code>ldd</code> required.</p>
+      </div>
+      <div class="feat-visual">
+        <div class="fv-code">
+          <div class="ln"><span class="p">$ </span><span class="cmd">xbin build ./app -o app.xbin</span></div>
+          <div class="ln out">detecting runtime: python3.12</div>
+          <div class="ln out">resolving .so via ELF parser (DT_NEEDED)</div>
+          <div class="ln out">packaging 2 layers &middot; zstd -19</div>
+          <div class="ln"><span class="ok">&check; app.xbin ready (7.1 MB)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="feat-row rev">
+      <div class="feat-text">
+        <span class="feat-tag tag-teal">Incremental rebuilds</span>
+        <h3>Only what changed gets rebuilt.</h3>
+        <p>The payload is split into two independent layers: a <strong>runtime layer</strong> (interpreter, stdlib, shared libraries) and an <strong>app layer</strong> (your code + site-packages). Each layer is a <code>zstd(tar)</code> blob with its own SHA-256. Editing your code doesn't recompress the whole rootfs &mdash; only the small app layer rebuilds.</p>
+      </div>
+      <div class="feat-visual">
+        <div class="fv-code">
+          <div class="ln"><span class="dim">initial build (cold cache)</span></div>
+          <div class="ln">runtime layer: 54 MB raw &rarr; 11.9 MB zstd <span class="dim">25.1s</span></div>
+          <div class="ln"><span class="ok">&check; done in 25.1s</span></div>
+          <div class="ln" style="margin-top:14px"><span class="dim">rebuild &mdash; app code changed</span></div>
+          <div class="ln">runtime layer: <span class="ok">cached (SHA-256 match)</span></div>
+          <div class="ln">app layer: 0.2 MB &rarr; 0.0 MB</div>
+          <div class="ln"><span class="ok">&check; done in 1.2s</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="feat-row">
+      <div class="feat-text">
+        <span class="feat-tag tag-violet">Signed before extraction</span>
+        <h3>Verified before a byte hits disk.</h3>
+        <p>The v3 footer carries a <code>sig_offset</code> pointing to a 68-byte Ed25519 signature block. The Rust launcher reads the footer, verifies the signature against trusted keys in <code>~/.xbin/trusted-keys/</code>, validates SHA-256 integrity, and only then extracts. An invalid or missing signature means nothing gets written.</p>
+      </div>
+      <div class="feat-visual">
+        <div class="fv-code">
+          <div class="ln"><span class="p">$ </span><span class="cmd">xbin verify app.xbin</span></div>
+          <div class="ln"><span class="ok">&check; Ed25519 signature verified</span></div>
+          <div class="ln out">trusted key a3f9&hellip;21be</div>
+          <div class="ln" style="margin-top:14px"><span class="p">$ </span><span class="cmd">xbin verify tampered.xbin</span></div>
+          <div class="ln" style="color:#ff8a8a">&times; signature invalid &mdash; refused</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="layers" style="background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+  <div class="wrap">
+    <div class="sec-head center">
+      <div class="eyebrow">Layer system</div>
+      <h2 class="sec-title">Two layers. One cache key each.</h2>
+      <p class="sec-sub" style="max-width:64ch;margin-left:auto;margin-right:auto;text-align:center">Each layer is a self-contained <code>zstd(tar)</code> blob. The runtime layer is keyed by SHA-256 of its uncompressed tar &mdash; if the hash matches, the compressed blob is reused from <code>~/.cache/xbin/build/</code>. The app layer always recompresses.</p>
+    </div>
+
+    <div class="feat-row" style="border-top:none;padding-top:8px">
+      <div class="feat-visual">
+        <div class="fv-bytes">
+          <div class="byte-seg bs-elf"><span class="lbl">ELF launcher</span><span class="sz">musl static, ~600 KB</span></div>
+          <div class="byte-seg bs-layer"><span class="lbl">runtime layer</span><span class="sz">zstd(tar) &mdash; interpreter + .so + stdlib</span></div>
+          <div class="byte-seg bs-app"><span class="lbl">app layer</span><span class="sz">zstd(tar) &mdash; code + site-packages</span></div>
+          <div class="byte-seg bs-meta"><span class="lbl">metadata</span><span class="sz">JSON (entrypoint, env, layers[])</span></div>
+          <div class="byte-seg bs-sig"><span class="lbl">signature block</span><span class="sz">68 bytes (v3 only)</span></div>
+          <div class="byte-seg bs-footer"><span class="lbl">footer</span><span class="sz">92 bytes &mdash; the whole format spec</span></div>
+        </div>
+      </div>
+      <div class="feat-text">
+        <h3>What goes in each layer</h3>
+        <p style="color:var(--text2);font-size:15.5px;line-height:1.75"><strong>Runtime layer</strong> contains the interpreter binary (<code>/usr/bin/python3.12</code>), Python stdlib (<code>/usr/lib/python3.12/</code>), all shared libraries discovered by the ELF analyzer, and minimal <code>/etc</code> files.<br><br>
+        <strong>App layer</strong> contains your source code in <code>/app/</code> and third-party packages in <code>/app/site-packages/</code>. Both layers are deterministically tarred (sorted entries, mtime=0, uid=0) so identical content produces identical bytes.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="format">
+  <div class="wrap">
+    <div class="sec-head center">
+      <div class="eyebrow">The format</div>
+      <h2 class="sec-title">A 92-byte footer<br>describes the whole file.</h2>
+      <p class="sec-sub" style="max-width:60ch;margin-left:auto;margin-right:auto;text-align:center">The footer sits at EOF and is versioned &mdash; a v2 launcher reads the last 84 bytes, sees <code>format_version = 3</code>, and cleanly reports an unsupported version. <code>format.rs</code> and <code>format.py</code> stay byte-for-byte in sync.</p>
+    </div>
+
+    <div class="feat-row" style="border-top:none;padding-top:8px">
+      <div class="feat-visual">
+        <table class="fmt-table">
+          <thead><tr><th>Offset</th><th>Size</th><th>Field</th></tr></thead>
+          <tbody>
+            <tr><td class="fmt-off">0</td><td class="fmt-off">8</td><td class="fmt-new">sig_offset</td></tr>
+            <tr><td class="fmt-off">8</td><td class="fmt-off">5</td><td>magic <code>XBIN\x01</code></td></tr>
+            <tr><td class="fmt-off">13</td><td class="fmt-off">1</td><td>format_version</td></tr>
+            <tr><td class="fmt-off">14</td><td class="fmt-off">1</td><td>arch <span class="fmt-new">(x86_64 / aarch64)</span></td></tr>
+            <tr><td class="fmt-off">15</td><td class="fmt-off">1</td><td>flags <span class="fmt-new">(signed / encrypted)</span></td></tr>
+            <tr><td class="fmt-off">16</td><td class="fmt-off">8</td><td>payload_offset</td></tr>
+            <tr><td class="fmt-off">24</td><td class="fmt-off">8</td><td>payload_csize</td></tr>
+            <tr><td class="fmt-off">40</td><td class="fmt-off">32</td><td>payload_sha256</td></tr>
+            <tr><td class="fmt-off">72</td><td class="fmt-off">8</td><td>meta_offset</td></tr>
+            <tr><td class="fmt-off">80</td><td class="fmt-off">8</td><td>meta_size</td></tr>
+            <tr><td class="fmt-off">88</td><td class="fmt-off">4</td><td>footer_magic <code>0xBEEFCAFE</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="feat-text">
+        <h3>Designed for backwards compatibility</h3>
+        <p style="color:var(--text2);font-size:15.5px;line-height:1.75">The last 84 bytes of a v3 footer are <strong>byte-identical</strong> to v2. A v2 launcher reading <code>EOF-84</code> sees the correct magic and version number, and cleanly rejects the file. The 8-byte <code>sig_offset</code> prefix is only read by v3-aware launchers.<br><br>
+        The footer sentinel <code>0xBEEFCAFE</code> acts as a validation marker &mdash; the launcher reads backwards from EOF, finds the sentinel, then parses forward.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="security">
+  <div class="wrap">
+    <div class="sec-head center">
+      <div class="eyebrow">Security</div>
+      <h2 class="sec-title">Nothing touches disk<br>before integrity is verified.</h2>
+    </div>
+    <div class="grid3">
+      <div class="ben-card">
+        <div class="ben-icon" style="background:var(--violet-tint);color:var(--violet)">Ed25519</div>
+        <h3>Cryptographic signatures</h3>
+        <p>Keygen, sign, verify. The launcher checks Ed25519 signatures against trusted keys in <code>~/.xbin/trusted-keys/</code> before extraction. 64-byte signatures, 32-byte public keys.</p>
+      </div>
+      <div class="ben-card">
+        <div class="ben-icon" style="background:var(--teal-tint);color:var(--teal)">SHA-256</div>
+        <h3>Payload integrity</h3>
+        <p>The footer stores a SHA-256 hash of layers + metadata. The launcher recomputes it on every run. Corrupted or tampered files are rejected before extraction begins.</p>
+      </div>
+      <div class="ben-card">
+        <div class="ben-icon" style="background:var(--accent-tint);color:var(--accent)">pivot_root</div>
+        <h3>Filesystem isolation</h3>
+        <p>Run with <code>--isolation 2</code> for user namespaces + pivot_root + seccomp. The app sees only its own rootfs. No root required &mdash; unprivileged, kernel-enforced.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="wrap">
+    <div class="sec-head center">
+      <div class="eyebrow">Where it's at</div>
+      <h2 class="sec-title">Built in the open, one phase at a time.</h2>
+    </div>
+    <div class="phases">
+      <div class="phase-card done">
+        <span class="ph-status">Shipped</span>
+        <h4>Phase 1 &mdash; MVP</h4>
+        <p>Layered v2 format, incremental rebuilds, Python + Node support, pure-Python ELF analyzer, atomic cache extraction with flock.</p>
+      </div>
+      <div class="phase-card done">
+        <span class="ph-status">Shipped</span>
+        <h4>Phase 2 &mdash; Robustness</h4>
+        <p>Ed25519 signatures (v3 format), trust model, self-hosting, user-namespace isolation with pivot_root, .so deduplication, seccomp denylist.</p>
+      </div>
+      <div class="phase-card active">
+        <span class="ph-status">Active</span>
+        <h4>Phase 3 &mdash; Product</h4>
+        <p>squashfs + mmap execution, sub-100ms cold start, cross-arch (aarch64), multi-runtime (Ruby, Deno, GraalVM).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="cta-band">
+    <h2>Package your first app in a minute.</h2>
+    <p>x.bin is in active development, built in the open on GitHub.</p>
+    <a class="btn btn-primary" href="https://github.com/Tednoob17/x.bin" target="_blank" rel="noopener">View on GitHub</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-row">
+      <div class="foot-logo">x<span>.bin</span></div>
+      <div class="foot-links">
+        <a href="https://github.com/Tednoob17/x.bin" target="_blank" rel="noopener">GitHub</a>
+        <a href="#format">Format spec</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="https://github.com/Tednoob17/x.bin/blob/main/docs/src/SUMMARY.md">Docs</a>
+      </div>
+    </div>
+    <div class="foot-note">&copy; 2026 x.bin contributors. x.bin is an independent, in-development project. The format is versioned so every phase adds capability without breaking what came before.</div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
