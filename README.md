@@ -36,9 +36,7 @@ x.bin packages a Python or Node.js web/server/CLI app — code, runtime, shared 
 
 ## Install
 
-Linux (x64 & arm64) and macOS (x64 & Apple Silicon).
-
-> **Linux users** — Kernel 5.6+ is recommended. User namespace isolation requires 5.11+.
+Linux x86_64. Kernel 5.6+ recommended. User namespace isolation requires 5.11+.
 
 ```sh
 git clone https://github.com/Tednoob17/x.bin.git && cd x.bin
@@ -48,11 +46,6 @@ pip install -e ./cli
 
 <details>
 <summary>Other installation options</summary>
-
-- **Docker** (no host toolchain needed)
-  ```sh
-  docker build -t xbin .
-  ```
 
 - **pipx** (isolated CLI install)
   ```sh
@@ -109,7 +102,6 @@ $ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
   - [Dockerfile dependency detection](https://github.com/Tednoob17/x.bin/blob/main/docs/src/guides/dependencies.md)
   - [Python source AST scanning](https://github.com/Tednoob17/x.bin/blob/main/docs/src/guides/dependencies.md)
   - [Dependency fetcher (pip/npm/apt)](https://github.com/Tednoob17/x.bin/blob/main/docs/src/guides/dependencies.md)
-  - [Manifest mode (`xbin.toml`)](https://github.com/Tednoob17/x.bin/blob/main/docs/src/reference/builder.md)
   - [Incremental rebuilds](https://github.com/Tednoob17/x.bin/blob/main/docs/src/reference/format.md)
   - [Layered format (v3)](https://github.com/Tednoob17/x.bin/blob/main/docs/src/reference/format.md)
 
@@ -128,7 +120,6 @@ $ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
 
 - CLI
   - [`xbin build`](https://github.com/Tednoob17/x.bin/blob/main/docs/src/reference/builder.md)
-  - [`xbin run`](https://github.com/Tednoob17/x.bin/blob/main/docs/src/reference/launcher.md)
   - [`xbin inspect`](https://github.com/Tednoob17/x.bin/blob/main/docs/src/reference/builder.md)
   - [`xbin sign` / `verify`](https://github.com/Tednoob17/x.bin/blob/main/docs/src/security.md)
   - [`xbin keygen`](https://github.com/Tednoob17/x.bin/blob/main/docs/src/security.md)
@@ -147,7 +138,6 @@ $ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
 
 - Deployment
   - [Single-binary deployment](https://github.com/Tednoob17/x.bin/blob/main/docs/src/guides/quickstart.md)
-  - [CI/CD integration](https://github.com/Tednoob17/x.bin/blob/main/docs/src/guides/quickstart.md)
 
 - Security
   - [Signing and verification workflow](https://github.com/Tednoob17/x.bin/blob/main/docs/src/security.md)
@@ -178,7 +168,9 @@ $ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
 3. If signed: verifies the Ed25519 signature — **before anything touches disk**
 4. Verifies SHA-256 integrity of the payload
 5. Checks the local cache — extracts if missing (atomic `rename()`)
-6. `execve()` — replaces itself with the embedded app
+6. Enters user namespace + `pivot_root` (isolation level 2)
+7. Installs seccomp-bpf denylist (blocks dangerous syscalls)
+8. `execve()` — replaces itself with the embedded app
 
 ## Example apps
 
