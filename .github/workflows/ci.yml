@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  preflight:
+    name: Preflight checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make preflight
+
+  rust:
+    name: Rust build + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: stub
+      - run: cargo build --release --target x86_64-unknown-linux-musl
+        working-directory: stub
+      - run: cargo clippy -- -D warnings
+        working-directory: stub
+
+  python:
+    name: Python lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff black
+      - run: ruff check xbin/
+        working-directory: cli
+      - run: black --check xbin/
+        working-directory: cli
+
+  build:
+    name: End-to-end build test
+    runs-on: ubuntu-latest
+    needs: [rust, python]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: stub
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y zstd
+      - run: make stub
+      - run: pip install -e ./cli
+      - run: xbin doctor
+      - run: xbin build examples/hello-web -o /tmp/hello-web.xbin
+      - run: xbin inspect /tmp/hello-web.xbin
+      - run: xbin keygen --key-dir /tmp/xbin-keys
+      - run: xbin sign /tmp/hello-web.xbin --key /tmp/xbin-keys/*.key
+      - run: mkdir -p /tmp/xbin-trusted && cp /tmp/xbin-keys/*.pub /tmp/xbin-trusted/
+      - run: xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted

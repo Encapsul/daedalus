@@ -6,7 +6,58 @@
 - **Status**: Phase 2 complete, Phase 3 partially done
 - **Build**: `make stub` + `pip install -e ./cli`
 - **Health check**: `xbin doctor` or `make preflight`
-- **Last commit**: `538f0de` — cross-compilation, dependency checks, squashfs, selftest fix
+- **Last commit**: `d3cb199` — docs update (HANDOFF, README, mdbook)
+
+---
+
+## LLM Verification Loop (MANDATORY)
+
+**Every time you modify code, before finishing your turn, run this checklist:**
+
+### 1. Did the code change?
+If you edited any `.py`, `.rs`, `.toml`, or `.yml` file → continue. Otherwise skip.
+
+### 2. Does it compile / import?
+```bash
+cd stub && cargo check 2>&1          # Rust
+cd cli && python3 -c "import xbin" 2>&1  # Python
+```
+
+### 3. Does the app work?
+```bash
+cd cli && PYTHONPATH=. python3 -m xbin build ../examples/hello-web -o /tmp/test.xbin 2>&1
+```
+If this fails, your change broke the build. Fix it before proceeding.
+
+### 4. Is HANDOFF.md up to date?
+If you added a feature, changed the format, or modified the architecture:
+- Update the relevant section above
+- Update the "Current state" header
+- Add a "Next steps" item if relevant
+
+### 5. Is README.md up to date?
+If you added a CLI command, changed the install process, or modified the
+format: update README.md (quickstart, quick links, "How it works" diagram).
+
+### 6. Is CODE_STYLE.md up to date?
+If you changed the linting or formatting config, update CODE_STYLE.md.
+
+### 7. Are docs up to date?
+If you changed the builder, launcher, format, or isolation: update the
+relevant `docs/src/` page.
+
+### 8. No regressions?
+Run the full test sequence:
+```bash
+xbin build examples/hello-web -o /tmp/t.xbin
+xbin inspect /tmp/t.xbin
+xbin keygen --key-dir /tmp/tk
+xbin sign /tmp/t.xbin --key /tmp/tk/*.key
+xbin verify /tmp/t.xbin --trusted-dir /tmp/tk
+```
+All must pass. If any fails, your change introduced a regression.
+
+### Rule: never commit without passing this loop.
 
 ## Cross-compilation (`--target aarch64`) — 2026-07-18
 
