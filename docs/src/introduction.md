@@ -36,7 +36,7 @@ Python, Node, Go, native binaries.
 
 ## Project status
 
-MVP functional — Phase 1 complete. The full pipeline runs end-to-end:
-`build` → `.xbin` → execution with self-extraction and cache. See the
-[Roadmap](./roadmap.md) for what's next (Ed25519 signatures, user namespaces,
-squashfs+mmap).
+Phase 2 complete, Phase 3 partially done. The full pipeline runs end-to-end:
+`build` → `.xbin` → execution with self-extraction, cache, Ed25519 signatures,
+squashfs support, and cross-compilation (`--target aarch64`). See the
+[Roadmap](./roadmap.md) for what's next.

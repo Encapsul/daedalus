@@ -40,7 +40,8 @@ Linux x86_64. Kernel 5.6+ recommended. User namespace isolation requires 5.11+.
 
 ```sh
 git clone https://github.com/Tednoob17/x.bin.git && cd x.bin
-make stub
+make preflight     # verify all prerequisites
+make stub          # build Rust launcher + crypto binaries
 pip install -e ./cli
 ```
 
@@ -57,6 +58,11 @@ pip install -e ./cli
   git pull && make stub
   ```
 
+- **Encrypt support** (optional, for `--encrypt` flag)
+  ```sh
+  pip install -e "./cli[encrypt]"
+  ```
+
 </details>
 
 ## Quickstart
@@ -64,6 +70,11 @@ pip install -e ./cli
 Build a Python app, run it, inspect it, sign it, verify it:
 
 ```bash
+$ xbin doctor                         # check prerequisites
+  [ ]   Python          3.12.3
+  [ ]   cargo           cargo 1.97.1
+  ...
+
 $ xbin build examples/hello-web -o hello-web.xbin
 [xbin] building 'hello-web'
   runtime: python
@@ -87,6 +98,14 @@ $ xbin sign hello-web.xbin --key ~/.xbin/keys/bf68e4e5.key
 
 $ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
 [xbin] signature verified for hello-web.xbin
+```
+
+#### Cross-build for aarch64 (from x86_64)
+
+```bash
+$ xbin build my-app -o my-app-aarch64.xbin --target aarch64
+# Downloads vendored Python for aarch64, pip downloads target wheels,
+# produces an aarch64 .xbin (requires aarch64 stub pre-built)
 ```
 
 #### Here is what you can do next:
@@ -120,9 +139,12 @@ $ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
 
 - CLI
   - [`xbin build`](https://tednoob17.github.io/x.bin/reference/builder.html)
+  - [`xbin build --target aarch64`](https://tednoob17.github.io/x.bin/reference/builder.html) (cross-compile)
+  - [`xbin build --squashfs`](https://tednoob17.github.io/x.bin/reference/builder.html) (SquashFS format)
   - [`xbin inspect`](https://tednoob17.github.io/x.bin/reference/builder.html)
   - [`xbin sign` / `verify`](https://tednoob17.github.io/x.bin/security.html)
   - [`xbin keygen`](https://tednoob17.github.io/x.bin/security.html)
+  - [`xbin doctor`](https://tednoob17.github.io/x.bin/guides/quickstart.html) (check prerequisites)
   - [`xbin clean`](https://tednoob17.github.io/x.bin/reference/cache.html)
 
 ## Guides
@@ -146,21 +168,22 @@ $ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
 ## How it works
 
 ```
-┌───────────────────────────────────────────────────────────┐
-│  my-app.xbin =                                            │
-│    [ ELF launcher ][ zstd layers ][ metadata ][ footer ]  │
-│      Rust/musl        runtime + app    JSON      92B      │
-│      ~615KB            layers          entrypoint  v3     │
-└───────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  my-app.xbin =                                               │
+│    [ ELF launcher ][ zstd/squashfs layers ][ metadata ][ footer ]│
+│      Rust/musl        runtime + app          JSON      92B   │
+│      ~615KB            layers                 entrypoint v5  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 **At build time**, `xbin build`:
 1. Detects the runtime (Python, Node, or native binary)
 2. Scans Dockerfile for declared system/pip/npm packages and external binary fetches
-3. Resolves shared libraries via a pure-Python ELF parser (no host `ldd` needed)
+3. Resolves shared libraries via a pure-Python ELF analyzer (no host `ldd` needed)
 4. Packages interpreter + stdlib + `.so` into a **runtime layer**
 5. Packages app code + dependencies into an **app layer**
-6. Compresses each layer with `zstd`, assembles the `.xbin`
+6. Compresses each layer with `zstd` (default) or `mksquashfs` (`--squashfs`)
+7. For cross-builds: downloads vendored Python for target arch, pip downloads target wheels
 
 **At runtime**, the launcher:
 1. Opens `/proc/self/exe` (not `argv[0]`)

@@ -1,9 +1,10 @@
 # The Builder
 
 The builder analyzes an application and produces the `.xbin`. It's written in
-**pure Python** (stdlib only for the MVP — zero installation friction).
+**pure Python** (stdlib only for the core — optional `cryptography` for
+`--encrypt`, optional `tomli` for Python 3.10).
 
-- **Code**: `cli/xbin/build.py`, `cli/xbin/analyzer/`
+- **Code**: `cli/xbin/build.py`, `cli/xbin/analyzer/`, `cli/xbin/cross.py`
 - **Why Python**: the builder is business logic (walking directories,
   parsing ELF headers, manipulating paths, assembling bytes). Python is fast
   to write and modify, and the future AI Analyzer naturally integrates with
@@ -65,6 +66,10 @@ Key point: we **preserve the absolute tree** of copied files
 (`/usr/lib/...` → `rootfs/usr/lib/...`). This lets the embedded Python
 interpreter find its stdlib via landmark detection relative to its own path.
 
+For **cross-compilation** (`--target aarch64`), a vendored Python from
+`python-build-standalone` is downloaded and `.so` resolution is skipped (no
+host libs to resolve for a different arch).
+
 ### 3. Layer splitting + compression — `build()`
 
 The builder constructs **two layers** (v2 format):
@@ -74,9 +79,8 @@ The builder constructs **two layers** (v2 format):
 - **app layer** (`_build_app_layer`): app code + site-packages. Small and
   volatile.
 
-Each layer is `tar`'ed **deterministically** (`_tar_deterministic`:
-normalized mtime/uid/gid, sorted entries) so *same content → same bytes →
-same hash*. Then compressed with `zstd -19`.
+Each layer is compressed with either `zstd -19` (default) or `mksquashfs`
+(`--squashfs` flag, v5 format, better compression ratio).
 
 **Build cache** (`~/.cache/xbin/build/{hash}.zst`): the runtime layer is
 looked up by its tar hash. If an identical blob already exists, it's
@@ -86,8 +90,8 @@ of apps sharing the same runtime) near-instant.
 Final assembly, then `chmod +x`:
 
 ```
-[ ELF stub ][ runtime layer ][ app layer ][ JSON metadata ][ 84B footer ]
-^0          ^payload_offset               ^meta_offset      ^EOF-84
+[ ELF stub ][ runtime layer ][ app layer ][ JSON metadata ][ sig? ][ footer ]
+^0          ^payload_offset                              ^meta_offset      ^EOF-92
 ```
 
 See [`.xbin` Format](./format.md#layers-v2) for the layer table details.
