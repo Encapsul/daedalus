@@ -19,11 +19,11 @@ discriminatory behavior will not be tolerated.
 
 ## What we need help with
 
-### Phase 2 (current)
-- Manifest mode (`xbin.toml`) for complex dependencies
+### Phase 3 (current)
+- SquashFS + mmap direct read (kernel mount, no extraction)
 - LRU cache eviction
-- Cross-arch support (aarch64)
-- Squashfs + mmap for direct read
+- Cold/warm start < 100 ms
+- Distribution / discovery (lightweight registry)
 
 ### Always welcome
 - Documentation improvements
@@ -39,19 +39,43 @@ rustup target add x86_64-unknown-linux-musl
 python3 -m pip install -e cli/
 
 # Build and test
+make preflight
 make stub
 make example
 ./hello-web.xbin
 ```
 
-## Development workflow
+## Branching strategy
 
-1. **Fork** the repo on GitHub.
-2. **Create a branch** — `git checkout -b feature/your-feature`.
-3. **Make changes.** See [code conventions](#code-conventions) below.
-4. **Test your changes.** Ensure the full pipeline works end-to-end.
-5. **Commit** with a clear message (see commit style below).
-6. **Open a pull request** against `main`.
+```
+main          ← stable, tagged releases only
+  └── dev     ← integration branch, all PRs target here
+       ├── feat/squashfs-mmap
+       ├── feat/registry
+       ├── fix/pip-cross-download
+       └── ...
+```
+
+- **`main`** — production-ready. Only `dev` merges into `main` via PR.
+  Every push to `main` triggers a release if tagged `v*`.
+- **`dev`** — active development. All feature branches merge here.
+  CI runs on every push. This is the default branch for PRs.
+- **`feat/*`** — feature branches. One feature per branch.
+  Branch off `dev`, PR back into `dev`.
+- **`fix/*`** — bug fix branches. Same flow as `feat/*`.
+
+### Workflow
+
+1. Create a branch from `dev`:
+   ```bash
+   git checkout dev && git pull
+   git checkout -b feat/my-feature
+   ```
+2. Make changes, commit, push.
+3. Open a PR against `dev`.
+4. CI must pass (lint, build, end-to-end test).
+5. Merge via squash or rebase (no merge commits).
+6. Periodically, `dev` merges into `main` for releases.
 
 ### Commit style
 
@@ -91,11 +115,27 @@ Bad: `fix stuff` or `updated code`
 
 ## Pull request process
 
-1. CI must pass (lint, typecheck, end-to-end build).
-2. At least one review from a maintainer.
-3. New features should include a demo example or test where practical.
-4. PRs that change the `.xbin` format must update **both** `format.py` and
+1. PR targets `dev` (not `main`).
+2. CI must pass (lint, clippy, build, end-to-end test).
+3. At least one review from a maintainer.
+4. New features should include a demo example or test where practical.
+5. PRs that change the `.xbin` format must update **both** `format.py` and
    `format.rs`.
+6. Squash or rebase — no merge commits on `dev`.
+
+### Release process
+
+```bash
+./scripts/release.sh 0.1.0    # creates v0.1.0 tag, pushes, CI builds binaries
+```
+
+The release CI builds `xbin-stub` + `xbin-crypto` for:
+- Linux x86_64 (`x86_64-unknown-linux-musl`)
+- Linux aarch64 (`aarch64-unknown-linux-musl`)
+- macOS ARM64 (`aarch64-apple-darwin`)
+- macOS x64 (`x86_64-apple-darwin`)
+
+Each archive contains `bin/xbin-stub` and `bin/xbin-crypto` (statically linked, no dependencies). A GitHub Release is created with binaries + SHA-256 checksums.
 
 ## Questions?
 
