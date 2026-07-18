@@ -53,6 +53,15 @@ struct Metadata {
     seccomp: bool,
     #[serde(default)]
     services: Vec<Service>,
+    #[serde(default)]
+    crypto: Option<CryptoMeta>,
+}
+
+#[derive(Deserialize)]
+struct CryptoMeta {
+    nonce_hex: String,
+    tag_offset: usize,
+    signing_seed_hex: String,
 }
 
 #[derive(Deserialize)]
@@ -136,6 +145,22 @@ fn run() -> io::Result<()> {
     } else {
         verify_sha256(&payload, &footer.payload_sha256)?;
     }
+
+    // Decrypt payload (v4+ with AES-256-GCM).
+    // Happens AFTER signature + integrity verification — we only decrypt
+    // what's already proven authentic.
+    let payload = if footer.crypto_suite() == format::CRYPTO_AES_256_GCM {
+        if let Some(ref crypto) = meta.crypto {
+            if verbose {
+                eprintln!("[xbin] decrypting AES-256-GCM payload");
+            }
+            decrypt_aes_gcm(&payload, crypto)?
+        } else {
+            return Err(err("encrypted payload but no crypto metadata"));
+        }
+    } else {
+        payload
+    };
 
     // Extract atomically.
     let lock = File::create(base.join(format!("{hash}.lock")))?;
@@ -282,6 +307,60 @@ fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> {
         ));
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// AES-256-GCM decryption
+// ---------------------------------------------------------------------------
+
+/// Derive a 32-byte AES key from an Ed25519 signing seed via HKDF-SHA256.
+fn hkdf_derive_key(signing_seed: &[u8]) -> [u8; 32] {
+    use hkdf::Hkdf;
+    use sha2::Sha256;
+    let salt = b"xbin-encrypt-v1";
+    let info = b"aes-256-gcm-key";
+    let hk = Hkdf::<Sha256>::new(Some(salt), signing_seed);
+    let mut key = [0u8; 32];
+    hk.expand(info, &mut key).expect("HKDF expand failed");
+    key
+}
+
+/// Decrypt an AES-256-GCM payload.
+///
+/// The signing seed is stored in metadata (protected by Ed25519 signature).
+/// We derive the AES key from it via HKDF, then decrypt.
+///
+/// Ciphertext layout: [plaintext bytes][16-byte GCM tag]
+fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec<u8>> {
+    use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+
+    let signing_seed = hex_decode(&crypto.signing_seed_hex)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad signing seed hex"))?;
+    if signing_seed.len() != 32 {
+        return Err(err("signing seed must be 32 bytes"));
+    }
+
+    let aes_key = hkdf_derive_key(&signing_seed);
+    let cipher = Aes256Gcm::new_from_slice(&aes_key)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("AES init: {e}")))?;
+
+    let nonce_bytes = hex_decode(&crypto.nonce_hex)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad nonce hex"))?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("AES decrypt: {e}")))
+}
+
+fn hex_decode(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .collect()
 }
 
 fn cache_dir() -> io::Result<PathBuf> {

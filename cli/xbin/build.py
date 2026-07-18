@@ -32,6 +32,7 @@ from .analyzer.lockfile import (
     write_lock_from_results,
 )
 from .analyzer.python_ast import detect_from_python_source, merge_deps
+from .encrypt import encrypt_payload
 
 XBIN_VERSION = "0.1.0"
 
@@ -349,6 +350,14 @@ def _collect_service_bins(services: list[dict], verbose: bool) -> set[Path]:
     return bins
 
 
+def _read_signing_seed(key_path: str) -> bytes:
+    """Read a 32-byte Ed25519 signing seed from a .key file."""
+    seed = Path(key_path).read_bytes()
+    if len(seed) != 32:
+        raise ValueError(f"signing key must be 32 bytes, got {len(seed)}")
+    return seed
+
+
 def _build_meta_json(
     *,
     name: str,
@@ -359,6 +368,7 @@ def _build_meta_json(
     layers: list[dict],
     services: list[dict] | None = None,
     seccomp: bool = False,
+    crypto: dict | None = None,
 ) -> bytes:
     """Build the metadata JSON bytes for the .xbin footer."""
     meta: dict = {
@@ -373,6 +383,8 @@ def _build_meta_json(
     }
     if seccomp:
         meta["seccomp"] = True
+    if crypto:
+        meta["crypto"] = crypto
     if services:
         meta["services"] = services
     return json.dumps(meta, separators=(",", ":")).encode()
@@ -384,19 +396,22 @@ def _assemble_xbin(
     payload: bytes,
     meta_bytes: bytes,
     key_path: str | None,
+    encrypt: bool = False,
 ) -> int:
     """Write [stub][payload][metadata][optional sig+footer] to disk.
 
     Returns the total file size.
     """
     stub_bytes = stub.read_bytes()
+    # v4 when encrypting (crypto_suite in payload_usize), v3 when signing, v2 otherwise.
+    fmt_ver = 4 if encrypt else (3 if key_path else 2)
     footer = fmt.Footer(
-        format_version=3 if key_path else 2,
+        format_version=fmt_ver,
         arch=fmt.ARCH_AARCH64 if platform.machine() == "aarch64" else fmt.ARCH_X86_64,
         flags=0,
         payload_offset=len(stub_bytes),
         payload_csize=len(payload),
-        payload_usize=0,
+        payload_usize=fmt.CRYPTO_AES_256_GCM if encrypt else 0,
         payload_sha256=hashlib.sha256(payload + meta_bytes).digest(),
         meta_offset=len(stub_bytes) + len(payload),
         meta_size=len(meta_bytes),
@@ -616,14 +631,17 @@ def build(
     key_path: str | None = None,
     isolation: int = 0,
     seccomp: bool = False,
+    encrypt: bool = False,
     verbose: bool = True,
     redetect: bool = False,
 ) -> str:
-    """Build a .xbin (v3 format, multi-layer). Returns the output path.
+    """Build a .xbin (v3/v4 format, multi-layer). Returns the output path.
 
     Layout: [stub][runtime layer][app layer][metadata][footer].
     When key_path is given, signs inline:
       [stub][payload][metadata][sig_block][v3 footer with FLAG_SIGNED].
+    When encrypt is True (requires key_path), encrypts payload with AES-256-GCM
+    and bumps to v4 footer (crypto_suite in payload_usize).
     """
     app_dir = _resolve_app_path(app_path)
     if not app_dir.is_dir():
@@ -671,6 +689,19 @@ def build(
 
     stub_bytes = stub.read_bytes()
     rt_offset = len(stub_bytes)
+    payload = rt_comp + app_comp
+
+    # --- Encryption (AES-256-GCM, requires --key for signing seed) ---
+    crypto_meta: dict = {}
+    if encrypt:
+        if not key_path:
+            raise ValueError("--encrypt requires --key (signing seed used for AES key derivation)")
+        signing_seed = _read_signing_seed(key_path)
+        payload, enc_meta = encrypt_payload(payload, signing_seed)
+        crypto_meta = enc_meta
+        if verbose:
+            print(f"  encrypted: {len(rt_comp + app_comp)/1e6:.1f}MB -> {len(payload)/1e6:.1f}MB (AES-256-GCM)")
+
     layers = [
         {
             "kind": "runtime",
@@ -695,13 +726,14 @@ def build(
         env=plan.env,
         layers=layers,
         seccomp=seccomp,
+        crypto=crypto_meta if crypto_meta else None,
     )
-    payload = rt_comp + app_comp
-    size = _assemble_xbin(out_path, stub, payload, meta_bytes, key_path)
+    size = _assemble_xbin(out_path, stub, payload, meta_bytes, key_path, encrypt=encrypt)
     if verbose:
         label = "signed" if key_path else "unsigned"
+        enc_label = "+encrypted" if encrypt else ""
         print(
-            f"[xbin] wrote {out_path} ({size/1e6:.1f}MB, {label}) in {time.time()-t0:.1f}s"
+            f"[xbin] wrote {out_path} ({size/1e6:.1f}MB, {label}{enc_label}) in {time.time()-t0:.1f}s"
         )
     return str(out_path)
 

@@ -36,6 +36,7 @@
 - [x] **Dependency fetcher** (isolated staging, non-invasive)
 - [x] **PATH injection** (bundled binaries found at runtime)
 - [x] **Minimal seccomp filter** (denylist of 16 dangerous syscalls, installed after pivot_root, arch-aware for x86_64 and aarch64)
+- [x] **Payload encryption** (AES-256-GCM, v4 format, HKDF key derivation from signing seed, decrypt after sig+integrity verification)
 - [ ] Manifest mode (`xbin.toml`) for complex dependencies
 - [ ] LRU cache cleanup (evict beyond threshold)
 
