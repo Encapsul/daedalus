@@ -198,7 +198,7 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 ### Verification
 - All Python modules import cleanly with no circular dependencies
 - `format.py` pack/unpack sig-block round-trip test passes
-- `cargo check` / `rustc` not available in this environment — Rust changes verified by manual review
+- `cargo build --release` + `cargo clippy -- -D warnings` passent clean (0 warnings, 0 errors)
 - No test suite exists; `make example` should build a working .xbin to confirm end-to-end
 
 ## Next steps (future)
