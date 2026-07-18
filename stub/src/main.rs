@@ -45,6 +45,8 @@ struct Metadata {
     #[serde(default)]
     isolation: u8,
     #[serde(default)]
+    seccomp: bool,
+    #[serde(default)]
     services: Vec<Service>,
 }
 
@@ -421,8 +423,10 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     enter_namespace_if_needed(meta.isolation)?;
     if use_pivot {
         pivot_root_into(rootfs)?;
-        if let Err(e) = install_seccomp_denylist() {
-            eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+        if meta.seccomp {
+            if let Err(e) = install_seccomp_denylist() {
+                eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+            }
         }
     }
 
@@ -470,8 +474,10 @@ fn supervise_services(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     enter_namespace_if_needed(meta.isolation)?;
     if use_pivot {
         pivot_root_into(rootfs)?;
-        if let Err(e) = install_seccomp_denylist() {
-            eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+        if meta.seccomp {
+            if let Err(e) = install_seccomp_denylist() {
+                eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+            }
         }
     }
 
