@@ -7,6 +7,7 @@ can run Python (Linux, macOS, Windows WSL).
 
 from __future__ import annotations
 
+import platform
 import struct
 from pathlib import Path
 
@@ -31,10 +32,13 @@ DT_STRTAB = 5
 DT_RUNPATH = 29
 DT_RPATH = 15
 
-# Standard search paths for shared libraries (Linux x86_64)
+# Architecture-specific GNU triplet and standard search paths.
+_MACHINE = platform.machine()
+_GNU_TRIPLET = "aarch64-linux-gnu" if _MACHINE == "aarch64" else "x86_64-linux-gnu"
+
 _STANDARD_PATHS = [
-    "/lib/x86_64-linux-gnu",
-    "/usr/lib/x86_64-linux-gnu",
+    f"/lib/{_GNU_TRIPLET}",
+    f"/usr/lib/{_GNU_TRIPLET}",
     "/lib64",
     "/lib",
     "/usr/lib64",
