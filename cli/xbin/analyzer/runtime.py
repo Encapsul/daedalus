@@ -97,9 +97,16 @@ def _detect_python(app_dir: Path, py_entry: str) -> RuntimePlan:
 def _detect_deno(app_dir: Path, cfg_name: str) -> RuntimePlan:
     deno = shutil.which("deno")
     if not deno:
-        raise ValueError(
-            f"deno app detected ({cfg_name}) but no deno on PATH to embed"
-        )
+        from ..cross import download_vendored_deno
+
+        try:
+            vendored = download_vendored_deno()
+        except (FileNotFoundError, RuntimeError) as e:
+            raise ValueError(
+                f"deno app detected ({cfg_name}) but no deno on PATH "
+                f"and vendored download failed: {e}"
+            ) from e
+        deno = str(vendored)
     interp = Path(deno).resolve()
     entry = _deno_entry(app_dir, cfg_name)
     env: dict[str, str] = {}

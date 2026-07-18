@@ -94,6 +94,7 @@ All must pass. If any fails, your change introduced a regression.
 - **File**: `cli/xbin/build.py` — `--squashfs` flag, `mksquashfs` build, tar→squashfs conversion
 - **File**: `docs/src/reference/format.md` — v5 format documented
 - Metadata `"payload_format": "squashfs"` tells launcher to use squashfs extraction instead of zstd(tar)
+- **Note**: SquashFS is a better-compressed layer format (vs zstd+tar). Extraction to disk still happens at startup. Direct mmap without extraction (the real cold-start perf win) is a Phase 3 goal — see "Next steps".
 
 ## Ed25519 verification: implemented
 
@@ -203,13 +204,13 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 
 ## Next steps (future)
 
-- Cross-compile aarch64 stub: `rustup target add aarch64-unknown-linux-musl`, build stub for target
+- Cross-build aarch64 stub locally: requires `rustup target add aarch64-unknown-linux-musl` + cross-linker. CI handles this automatically via GitHub Actions runners.
 - `xbin sign` with automatic key lookup in `~/.xbin/keys/` (without `--key`).
-- `squashfs + mmap` direct read (kernel mount, Linux 5.12+, no extraction needed)
+- `squashfs + mmap` direct read (kernel mount, Linux 5.12+, no extraction needed) — the real cold-start perf win beyond just better compression.
 - LRU cache cleanup (evict beyond threshold)
 - Cold/warm start < 100 ms end-to-end
 - Distribution / discovery (lightweight registry)
-- Run full end-to-end build+sign+verify cycle for aarch64 once stub is compiled
+- Run full end-to-end build+sign+verify cycle for aarch64 once stub is compiled locally
 
 ## Seccomp BPF denylist (2026-07-17)
 
@@ -312,6 +313,24 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - Pivot mode: `PATH` = `usr/bin:bin:usr/local/bin` (relative, rootfs IS `/`).
 - Non-pivot mode: `PATH` = `{rootfs}/usr/bin:{rootfs}/bin:{rootfs}/usr/local/bin:{existing_PATH}`.
 - Bundled binaries take priority over system equivalents — intentional: the app uses the version we packaged.
+
+## Payload encryption (AES-256-GCM)
+
+- **File**: `cli/xbin/encrypt.py` — `encrypt_payload(plaintext, signing_seed) -> (ciphertext, metadata)`
+- **File**: `cli/xbin/build.py` — `--encrypt` flag, requires `--key` for signing seed (used as AES key via HKDF).
+- **File**: `cli/pyproject.toml` — `pip install -e "./cli[encrypt]"` pulls in `cryptography`.
+- AES-256-GCM with HKDF key derivation from signing seed. Salt: `xbin-encrypt-v1`.
+- Encrypted payloads produce format v4 footers (`ENCRYPTED_AES_256_GCM` marker). Launcher decrypts after signature verification.
+- Signing key = encryption key (whoever can sign can also decrypt). Key rotation planned for future.
+
+## Deno support
+
+- **File**: `cli/xbin/analyzer/runtime.py` — `_detect_deno()`, `_deno_entry()`
+- Detection: looks for `deno.json` / `deno.jsonc` in app directory.
+- Entrypoint: reads `tasks.start` / `tasks.dev` / `tasks.default` from deno config, falls back to common names (`main.ts`, `mod.ts`, `index.ts`).
+- Embeds deno binary into rootfs at `/usr/bin/deno`.
+- **Vendored fallback**: if `deno` is not on PATH, `cross.py:download_vendored_deno()` downloads from GitHub Releases (`deno-{arch}-unknown-linux-gnu.zip`), caches in `~/.cache/xbin/cross/deno/{arch}/deno`.
+- Cross-build for Deno not yet supported (Python only for `--target`).
 
 ## xbin.lock lockfile: Feature D (2026-07-17)
 
