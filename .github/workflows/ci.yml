@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev, "feat/*", "fix/*"]
     tags: ["v*"]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   preflight:
