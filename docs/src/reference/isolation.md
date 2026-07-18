@@ -27,10 +27,12 @@ Mechanism (implemented in `stub/src/main.rs`):
 
 1. `unshare(CLONE_NEWUSER | CLONE_NEWNS)` — new user + mount namespaces
 2. UID/GID mapping: write to `/proc/self/uid_map`, `setgroups`, `gid_map`
-3. Bind-mount the rootfs onto itself (`MS_BIND | MS_REC`, required by `pivot_root`)
+3. Bind-mount the rootfs onto itself (`MS_BIND | MS_REC`, required by
+   `pivot_root`)
 4. `pivot_root(rootfs, rootfs/.old_root)` + `umount2("/.old_root", MNT_DETACH)`
 5. `std::env::set_current_dir("/")` — CWD in the new root
-6. `execve(entrypoint)` — the app sees only its rootfs
+6. Install seccomp-bpf denylist (blocks ~14 dangerous syscalls)
+7. `execve(entrypoint)` — the app sees only its rootfs
 
 Usage:
 ```
@@ -44,6 +46,12 @@ xbin build my-app/ -o my-app.xbin --isolation 2
   via different symlinks, avoiding duplicates in the rootfs.
 - `/etc/hosts` is created in the rootfs (`127.0.0.1 localhost`) to prevent
   the DNS PTR lookup hang that blocked app startup.
+- The seccomp filter is a conservative denylist — only syscalls with no
+  legitimate use in web/server apps are blocked (ptrace, mount, reboot,
+  kexec, module loading, etc.). All networking, file I/O, memory, and
+  process syscalls pass through.
+- If seccomp is unavailable (kernel without `CONFIG_SECCOMP`), the launcher
+  prints a warning and continues without the filter.
 
 ## Level 1 — chroot (skipped)
 

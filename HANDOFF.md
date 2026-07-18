@@ -122,6 +122,19 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - Possibly a `trust` subcommand to manage trusted keys.
 - Run full end-to-end build+sign+verify cycle once `cargo` is available to confirm Rust changes compile.
 
+## Seccomp BPF denylist (2026-07-17)
+
+- **File**: `stub/src/main.rs` — `install_seccomp_denylist()`.
+- **Approach**: Denylist (not allowlist). Conservative: ~14 syscalls blocked, everything else allowed.
+- **Rationale**: Python/Node.js use 150+ distinct syscalls. An allowlist would break apps unpredictably. A denylist of clearly dangerous syscalls is sufficient — namespace isolation handles the rest.
+- **Blocked syscalls**: ptrace, mount, umount2, pivot_root, reboot, kexec_load, kexec_file_load, init_module, finit_module, delete_module, swapon, swapoff, sethostname, setdomainname, acct, nfsservctl.
+- **Hook point**: After `pivot_root_into()` in both `exec_app()` (single-service) and `supervise_services()` (multi-service). Filter applies before `execve()` — child processes inherit it.
+- **Graceful degradation**: If `prctl(PR_SET_SECCOMP)` fails, prints `[xbin] warning` to stderr and continues. Never blocks execution.
+- **BPF program**: 21 instructions. Architecture check (reject non-x86_64), then 16 syscall comparisons with forward-jump chain to KILL at instruction [19]. ALLOW at instruction [20].
+- **x86_64 only**: Syscall numbers are hardcoded for x86_64 (`asm/unistd_64.h`). Cross-arch (aarch64) is Phase 3.
+- **No new crate**: Uses `libc = "0.2"` only. Raw BPF structs (`libc::sock_filter`, `libc::sock_fprog`) + `libc::prctl`.
+- **Docs updated**: `security.md` (new section 5, status line), `isolation.md` (level 2 mechanism), `roadmap.md` (marked done).
+
 ## CODE_STYLE.md and enforcement (2026-07-17)
 
 - `CODE_STYLE.md` written at repo root — philosophy of 42/Epitech Norm + Linux kernel style adapted for Rust/Python.

@@ -421,6 +421,9 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     enter_namespace_if_needed(meta.isolation)?;
     if use_pivot {
         pivot_root_into(rootfs)?;
+        if let Err(e) = install_seccomp_denylist() {
+            eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+        }
     }
 
     let resolve = make_resolve(rootfs, use_pivot);
@@ -467,6 +470,9 @@ fn supervise_services(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     enter_namespace_if_needed(meta.isolation)?;
     if use_pivot {
         pivot_root_into(rootfs)?;
+        if let Err(e) = install_seccomp_denylist() {
+            eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+        }
     }
 
     let base_env = setup_env(meta, rootfs, use_pivot, None);
@@ -651,6 +657,135 @@ fn enter_userns() -> io::Result<()> {
     write_proc("/proc/self/setgroups", "deny")?;
     write_proc("/proc/self/gid_map", &format!("0 {gid} 1"))?;
 
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Seccomp BPF denylist
+// ---------------------------------------------------------------------------
+
+/// Install a seccomp-bpf denylist after pivot_root.
+///
+/// Blocks syscalls that have no legitimate use in a packaged web/server app
+/// and represent escalation paths not covered by namespace isolation.
+/// The list is conservative: only ~14 syscalls, all clearly dangerous.
+/// Apps that work without seccomp continue working with it.
+fn install_seccomp_denylist() -> io::Result<()> {
+    // BPF instruction encodings (linux/filter.h).
+    const BPF_LD: u16 = 0x00;
+    const BPF_W: u16 = 0x00;
+    const BPF_ABS: u16 = 0x20;
+    const BPF_JMP: u16 = 0x05;
+    const BPF_JEQ: u16 = 0x10;
+    const BPF_RET: u16 = 0x06;
+    const BPF_K: u16 = 0x00;
+
+    /// `seccomp_data.arch` is at offset 4, `seccomp_data.nr` is at offset 0.
+    const SECCOMP_RET_KILL_PROCESS: u32 = 0x0002_0000;
+    const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
+    const AUDIT_ARCH_X86_64: u32 = 0xC000_003E;
+
+    // Syscall numbers for x86_64 (asm/unistd_64.h).
+    const SYS_PTRACE: u32 = 101;
+    const SYS_MOUNT: u32 = 165;
+    const SYS_UMOUNT2: u32 = 166;
+    const SYS_PIVOT_ROOT: u32 = 155;
+    const SYS_REBOOT: u32 = 169;
+    const SYS_SETHOSTNAME: u32 = 170;
+    const SYS_SETDOMAINNAME: u32 = 171;
+    const SYS_SWAPON: u32 = 175;
+    const SYS_SWAPOFF: u32 = 176;
+    const SYS_ACCT: u32 = 163;
+    const SYS_KEXEC_LOAD: u32 = 246;
+    const SYS_INIT_MODULE: u32 = 175;
+    const SYS_FINIT_MODULE: u32 = 313;
+    const SYS_DELETE_MODULE: u32 = 176;
+    const SYS_NFSSERVCTL: u32 = 423;
+    const SYS_KEXEC_FILE_LOAD: u32 = 320;
+
+    // Helper: load seccomp_data.arch (offset 4, 4 bytes).
+    let arch_load = |code: u16, jt: u8, jf: u8, k: u32| libc::sock_filter {
+        code: code | BPF_W | BPF_ABS,
+        jt,
+        jf,
+        k,
+    };
+    // Helper: BPF_JMP | BPF_JEQ.
+    let jmp_eq = |k: u32, jt: u8, jf: u8| libc::sock_filter {
+        code: BPF_JMP | BPF_JEQ | BPF_K,
+        jt,
+        jf,
+        k,
+    };
+    // Helper: BPF_RET.
+    let ret = |k: u32| libc::sock_filter {
+        code: BPF_RET | BPF_K,
+        jt: 0,
+        jf: 0,
+        k,
+    };
+
+    // BPF jt/jf are forward skip counts from the *next* instruction.
+    // Instruction layout:
+    //   [0]  arch_load(4)        — load seccomp_data.arch
+    //   [1]  jmp_eq AUDIT_ARCH   — if !x86_64 → ALLOW at [20]
+    //   [2]  arch_load(0)        — load seccomp_data.nr
+    //   [3]  jmp_eq SYS_PTRACE       → KILL at [19]  (skip 15)
+    //   [4]  jmp_eq SYS_MOUNT        → KILL at [19]  (skip 14)
+    //   [5]  jmp_eq SYS_UMOUNT2      → KILL at [19]  (skip 13)
+    //   [6]  jmp_eq SYS_PIVOT_ROOT   → KILL at [19]  (skip 12)
+    //   [7]  jmp_eq SYS_REBOOT       → KILL at [19]  (skip 11)
+    //   [8]  jmp_eq SYS_SETHOSTNAME  → KILL at [19]  (skip 10)
+    //   [9]  jmp_eq SYS_SETDOMAINNAME→ KILL at [19]  (skip 9)
+    //   [10] jmp_eq SYS_SWAPON       → KILL at [19]  (skip 8)
+    //   [11] jmp_eq SYS_SWAPOFF      → KILL at [19]  (skip 7)
+    //   [12] jmp_eq SYS_ACCT         → KILL at [19]  (skip 6)
+    //   [13] jmp_eq SYS_NFSSERVCTL   → KILL at [19]  (skip 5)
+    //   [14] jmp_eq SYS_KEXEC_LOAD   → KILL at [19]  (skip 4)
+    //   [15] jmp_eq SYS_INIT_MODULE  → KILL at [19]  (skip 3)
+    //   [16] jmp_eq SYS_FINIT_MODULE → KILL at [19]  (skip 2)
+    //   [17] jmp_eq SYS_DELETE_MODULE→ KILL at [19]  (skip 1)
+    //   [18] jmp_eq SYS_KEXEC_FILE_LOAD → KILL at [19] (skip 0, fall through)
+    //   [19] ret SECCOMP_RET_KILL_PROCESS
+    //   [20] ret SECCOMP_RET_ALLOW
+    #[allow(clippy::similar_names)]
+    let filter: Vec<libc::sock_filter> = vec![
+        arch_load(BPF_LD, 0, 0, 4),
+        jmp_eq(AUDIT_ARCH_X86_64, 0, 18),
+        arch_load(BPF_LD, 0, 0, 0),
+        jmp_eq(SYS_PTRACE, 15, 0),
+        jmp_eq(SYS_MOUNT, 14, 0),
+        jmp_eq(SYS_UMOUNT2, 13, 0),
+        jmp_eq(SYS_PIVOT_ROOT, 12, 0),
+        jmp_eq(SYS_REBOOT, 11, 0),
+        jmp_eq(SYS_SETHOSTNAME, 10, 0),
+        jmp_eq(SYS_SETDOMAINNAME, 9, 0),
+        jmp_eq(SYS_SWAPON, 8, 0),
+        jmp_eq(SYS_SWAPOFF, 7, 0),
+        jmp_eq(SYS_ACCT, 6, 0),
+        jmp_eq(SYS_NFSSERVCTL, 5, 0),
+        jmp_eq(SYS_KEXEC_LOAD, 4, 0),
+        jmp_eq(SYS_INIT_MODULE, 3, 0),
+        jmp_eq(SYS_FINIT_MODULE, 2, 0),
+        jmp_eq(SYS_DELETE_MODULE, 1, 0),
+        jmp_eq(SYS_KEXEC_FILE_LOAD, 0, 0),
+        ret(SECCOMP_RET_KILL_PROCESS),
+        ret(SECCOMP_RET_ALLOW),
+    ];
+
+    let prog = libc::sock_fprog {
+        len: filter.len() as u16,
+        filter: filter.as_ptr().cast_mut(),
+    };
+
+    // SAFETY: prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) installs
+    // a BPF filter on the current process. The filter program and its data
+    // are stack-allocated Vec that outlive the prctl call. On success the
+    // filter is permanent — any blocked syscall kills the process with SIGSYS.
+    let rc = unsafe { libc::prctl(libc::PR_SET_SECCOMP, 2, &prog as *const libc::sock_fprog as usize, 0, 0) };
+    if rc != 0 {
+        return Err(io::Error::last_os_error());
+    }
     Ok(())
 }
 

@@ -34,7 +34,7 @@
 - [x] **Python AST scanner** (subprocess/os.system call detection)
 - [x] **Dependency fetcher** (isolated staging, non-invasive)
 - [x] **PATH injection** (bundled binaries found at runtime)
-- [ ] Minimal seccomp filter
+- [x] **Minimal seccomp filter** (denylist of ~14 dangerous syscalls, installed after pivot_root)
 - [ ] Manifest mode (`xbin.toml`) for complex dependencies
 - [ ] LRU cache cleanup (evict beyond threshold)
 

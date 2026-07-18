@@ -5,7 +5,7 @@ architecture, not bolted on afterward. This page documents each attack
 surface, the naive flaw, and the current defense.
 
 Status: SHA-256 integrity and atomic extraction are in the MVP. Ed25519
-signatures are implemented (Phase 2). Seccomp filtering is planned (Phase 3).
+signatures and seccomp filtering are implemented (Phase 2).
 
 ## 1. Authenticity — Ed25519 signatures
 
@@ -108,6 +108,34 @@ a warning (UX-first)? The answer depends on the deployment context.
 
 See [Isolation](./reference/isolation.md) for the full comparison.
 
+## 5. Syscall filtering — seccomp-bpf
+
+**Attack:** Even inside user namespaces + pivot_root, an attacker could
+use dangerous syscalls to escalate: load kernel modules (`init_module`),
+remount filesystems (`mount`), reboot the host (`reboot`), or trace
+other processes (`ptrace`).
+
+**Defense:** A seccomp-bpf denylist is installed after pivot_root. It
+blocks ~14 syscalls that have no legitimate use in a packaged web/server
+app. All other syscalls (networking, file I/O, memory, process creation)
+are allowed.
+
+```
+Blocked: ptrace, mount, umount2, pivot_root, reboot, kexec_load,
+         kexec_file_load, init_module, finit_module, delete_module,
+         swapon, swapoff, sethostname, setdomainname, acct, nfsservctl
+```
+
+**Why denylist, not allowlist:** Python and Node.js use ~150+ distinct
+syscalls. Maintaining an allowlist that covers every runtime version and
+platform would break apps unpredictably. A denylist of the clearly
+dangerous syscalls is sufficient — namespace isolation handles the rest.
+
+**Graceful degradation:** If seccomp is unavailable (kernel without
+`CONFIG_SECCOMP`, container that blocks `prctl`), the launcher prints a
+warning and continues without the filter. This matches the principle that
+isolation is defense-in-depth, not the primary security boundary.
+
 ## Secure execution sequence
 
 ```
@@ -117,7 +145,7 @@ See [Isolation](./reference/isolation.md) for the full comparison.
 4. verify payload SHA-256                ← corruption check
 5. atomic extraction (tmp → rename)      ← no TOCTOU window
 6. user namespace + pivot_root           ← filesystem isolation (level 2)
-7. seccomp filter                        ← syscall filtering (Phase 3)
+7. seccomp filter                        ← syscall filtering (level 2)
 8. exec entrypoint
 ```
 
