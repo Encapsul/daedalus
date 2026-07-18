@@ -6,8 +6,12 @@ Footer versions:
           so a v2 launcher reading EOF-84 sees the correct magic + format_version
           and reports "unsupported format" cleanly.  A v3-aware reader reads 92
           bytes and picks sig_offset from the 8-byte prefix.
+  v4    — 92 bytes at EOF-92 (same physical size as v3).  payload_usize is
+          repurposed as crypto_suite: 0x00=none, 0x01=AES-256-GCM.
+          When crypto_suite=1, metadata contains "crypto" with nonce_hex and
+          signing_seed_hex for AES-256-GCM decryption.
 
-Layout of the 92-byte v3 footer (little-endian):
+Layout of the 92-byte v3/v4 footer (little-endian):
   [0-7]    sig_offset (u64)          offset of [sig_size:u32le][sig:64 bytes]
   [8-12]   magic (5 bytes)           "XBIN\x01"
   [13]     format_version (u8)       3
@@ -39,6 +43,10 @@ FOOTER_MAGIC = 0xBEEFCAFE
 FORMAT_VERSION = 3
 V2_FOOTER_SIZE = 84
 V3_FOOTER_SIZE = 92
+
+# Crypto suite IDs (stored in payload_usize when format_version >= 4)
+CRYPTO_NONE = 0x00
+CRYPTO_AES_256_GCM = 0x01
 
 # little-endian pack/unpack for the 84-byte core (identical across all versions):
 #   5s  magic
@@ -101,10 +109,24 @@ class Footer:
     meta_offset: int
     meta_size: int
     sig_offset: int = 0  # v3+: offset of signature block; 0 for v1/v2
+    # v4+: repurpose payload_usize as crypto_suite (CRYPTO_NONE / CRYPTO_AES_256_GCM)
+    # When format_version < 4, this is always 0 and payload_usize is unused.
 
     @property
     def footer_size(self) -> int:
         return V3_FOOTER_SIZE if self.format_version >= 3 else V2_FOOTER_SIZE
+
+    @property
+    def crypto_suite(self) -> int:
+        """Crypto suite ID. Only meaningful when format_version >= 4."""
+        if self.format_version >= 4:
+            return self.payload_usize
+        return CRYPTO_NONE
+
+    @crypto_suite.setter
+    def crypto_suite(self, value: int) -> None:
+        if self.format_version >= 4:
+            self.payload_usize = value
 
     def pack(self) -> bytes:
         core = struct.pack(

@@ -136,18 +136,80 @@ dangerous syscalls is sufficient — namespace isolation handles the rest.
 warning and continues without the filter. This matches the principle that
 isolation is defense-in-depth, not the primary security boundary.
 
+## 6. Payload encryption — AES-256-GCM
+
+**Attack:** A `.xbin` file is intercepted at rest (stolen laptop, shared
+storage, leaked artifact). Without encryption, anyone can extract the
+embedded application with `tar` after stripping the stub.
+
+**Defense:** Optional AES-256-GCM encryption (v4 format, `--encrypt`
+flag). The AES key is derived from the Ed25519 signing seed via
+HKDF-SHA256, so signing key = encryption key.
+
+```bash
+# Build with encryption
+$ xbin build my_app/ --key ~/.xbin/keys/a1b2c3d4.key --encrypt
+[xxbin] encrypted: 12.3MB -> 12.3MB (AES-256-GCM)
+[xbin] wrote my_app.xbin (12.5MB, signed+encrypted)
+```
+
+**Security model (stated plainly):**
+
+Encryption protects the payload **at rest** against casual extraction.
+It does **NOT** protect against a determined attacker on a machine that
+must run the decrypted app — the launcher decrypts before exec, and the
+key is derivable from the signing seed stored in metadata. This is the
+same fundamental limit as any DRM system.
+
+**Why this is still useful:**
+- Prevents casual `tar` extraction of the embedded app
+- Protects against opportunistic theft (stolen build artifacts)
+- Adds a layer of defense-in-depth alongside signatures
+- The signing seed in metadata is protected by the Ed25519 signature —
+  tampering with it invalidates the signature before decryption runs
+
+**Key derivation:**
+```
+AES_key = HKDF-SHA256(
+    key = ed25519_signing_seed,      # 32 bytes
+    salt = "xbin-encrypt-v1",        # fixed per xbin version
+    info = "aes-256-gcm-key"         # fixed per algorithm
+)
+```
+
+**Verification order (non-negotiable):**
+```
+1. open("/proc/self/exe")               ← self-locate (not argv[0])
+2. read footer, validate magic           ← reject early if not .xbin
+3. ── VERIFY Ed25519 SIGNATURE ──        ← nothing executes before this
+4. verify payload SHA-256                ← corruption check (on ciphertext)
+5. ── DECRYPT PAYLOAD ──                 ← only after sig + integrity pass
+6. atomic extraction (tmp → rename)      ← no TOCTOU window
+7. user namespace + pivot_root           ← filesystem isolation (level 2)
+8. seccomp filter                        ← syscall filtering (level 2)
+9. exec entrypoint
+```
+
+**Rule:** Decryption happens AFTER signature verification and SHA-256
+integrity check. We decrypt what's already proven authentic. The SHA-256
+hash covers the ciphertext, not the plaintext — this ensures integrity
+verification and signature verification both operate on the same bytes.
+
 ## Secure execution sequence
 
 ```
 1. open("/proc/self/exe")               ← self-locate (not argv[0])
 2. read footer, validate magic           ← reject early if not .xbin
 3. ── VERIFY Ed25519 SIGNATURE ──        ← nothing executes before this
-4. verify payload SHA-256                ← corruption check
-5. atomic extraction (tmp → rename)      ← no TOCTOU window
-6. user namespace + pivot_root           ← filesystem isolation (level 2)
-7. seccomp filter                        ← syscall filtering (level 2)
-8. exec entrypoint
+4. verify payload SHA-256                ← corruption check (ciphertext if encrypted)
+5. decrypt payload (if v4 encrypted)     ← AES-256-GCM, only after steps 3+4
+6. atomic extraction (tmp → rename)      ← no TOCTOU window
+7. user namespace + pivot_root           ← filesystem isolation (level 2)
+8. seccomp filter                        ← syscall filtering (level 2)
+9. exec entrypoint
 ```
 
 **Rule:** Nothing is written to disk before integrity is verified. With
 signatures enabled, nothing executes before the signature is verified.
+With encryption, nothing is decrypted before both signature and
+integrity are verified.

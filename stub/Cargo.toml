@@ -22,6 +22,8 @@ serde_json = "1"
 ed25519-dalek = { version = "2", default-features = false, features = ["alloc"] }
 rand = "0.8"
 libc = "0.2"
+aes-gcm = "0.10"        # AES-256-GCM payload decryption
+hkdf = "0.12"           # HKDF-SHA256 for AES key derivation from signing seed
 
 [profile.release]
 opt-level = "z"     # optimize for size

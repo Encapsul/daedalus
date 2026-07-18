@@ -8,16 +8,20 @@
 //!           so a v2 launcher reading EOF-84 sees the correct magic + format_version
 //!           and reports "unsupported format" cleanly.  A v3 launcher reads 92 bytes
 //!           and picks sig_offset from the 8-byte prefix.
+//!   v4    — 92 bytes at EOF-92 (same physical size as v3).  payload_usize is
+//!           repurposed as crypto_suite: 0x00=none, 0x01=AES-256-GCM.
+//!           When crypto_suite=1, metadata contains "crypto" with nonce_hex and
+//!           signing_seed_hex for AES-256-GCM decryption.
 //!
-//! Layout of the 92-byte v3 footer (little-endian):
+//! Layout of the 92-byte v3/v4 footer (little-endian):
 //!   [0-7]    sig_offset (u64)          offset of [`sig_size:u32le` + `sig:64 bytes`]
 //!   [8-12]   magic (5 bytes)           "XBIN\x01"
-//!   [13]     format_version (u8)       3
+//!   [13]     format_version (u8)       3 or 4
 //!   [14]     arch (u8)
-//!   [15]     flags (u8)                bit0=signed
+//!   [15]     flags (u8)                bit0=signed, bit1=encrypted
 //!   [16-23]  payload_offset (u64)
 //!   [24-31]  payload_csize (u64)
-//!   [32-39]  payload_usize (u64)       unused in v2/v3 (per-layer sizes in metadata)
+//!   [32-39]  payload_usize (u64)       v2/v3: unused; v4: crypto_suite
 //!   [40-71]  payload_sha256 (32 bytes) SHA-256(payload ‖ metadata)
 //!   [72-79]  meta_offset (u64)
 //!   [80-87]  meta_size (u64)
@@ -34,15 +38,23 @@ use std::io::{self, Read, Seek, SeekFrom};
 
 pub const MAGIC: &[u8; 5] = b"XBIN\x01";
 pub const FOOTER_MAGIC: u32 = 0xBEEF_CAFE;
-pub const FORMAT_VERSION: u8 = 3;
+pub const FORMAT_VERSION: u8 = 4;
 
 pub const V2_FOOTER_SIZE: u64 = 84;
 pub const V3_FOOTER_SIZE: u64 = 92;
+
+// Crypto suite IDs (stored in payload_usize when format_version >= 4)
+pub const CRYPTO_NONE: u64 = 0x00;
+pub const CRYPTO_AES_256_GCM: u64 = 0x01;
 
 /// Fixed footer at the very end of a .xbin file.
 ///
 /// `sig_offset` is meaningful only when `format_version >= 3 && flags & FLAG_SIGNED`.
 /// For v1/v2 it is always 0.
+///
+/// `payload_usize` serves double duty:
+///   v2/v3: unused (always 0)
+///   v4+:   crypto_suite (0=none, 1=AES-256-GCM)
 #[derive(Debug)]
 pub struct Footer {
     pub format_version: u8,
@@ -56,6 +68,17 @@ pub struct Footer {
     pub meta_size: u64,
     /// v3+: absolute offset of the signature block (`[sig_size:u32le][sig:64 bytes]`).
     pub sig_offset: u64,
+}
+
+impl Footer {
+    /// Crypto suite ID. Only meaningful when format_version >= 4.
+    pub fn crypto_suite(&self) -> u64 {
+        if self.format_version >= 4 {
+            self.payload_usize
+        } else {
+            CRYPTO_NONE
+        }
+    }
 }
 
 fn u64_le(b: &[u8]) -> u64 {

@@ -147,6 +147,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="install seccomp-bpf denylist (blocks dangerous syscalls, requires --isolation 2)",
     )
+    p_build.add_argument(
+        "--encrypt",
+        action="store_true",
+        help="encrypt payload with AES-256-GCM (requires --key for signing seed)",
+    )
     p_build.add_argument("-q", "--quiet", action="store_true")
     p_build.add_argument(
         "--redetect",
@@ -240,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
                 key_path=args.key,
                 isolation=args.isolation,
                 seccomp=args.seccomp,
+                encrypt=args.encrypt,
                 verbose=not args.quiet,
                 redetect=args.redetect,
             )
