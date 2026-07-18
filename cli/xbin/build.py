@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -391,7 +392,7 @@ def _assemble_xbin(
     stub_bytes = stub.read_bytes()
     footer = fmt.Footer(
         format_version=3 if key_path else 2,
-        arch=fmt.ARCH_X86_64,
+        arch=fmt.ARCH_AARCH64 if platform.machine() == "aarch64" else fmt.ARCH_X86_64,
         flags=0,
         payload_offset=len(stub_bytes),
         payload_csize=len(payload),

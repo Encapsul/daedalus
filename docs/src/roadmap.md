@@ -34,7 +34,7 @@
 - [x] **Python AST scanner** (subprocess/os.system call detection)
 - [x] **Dependency fetcher** (isolated staging, non-invasive)
 - [x] **PATH injection** (bundled binaries found at runtime)
-- [x] **Minimal seccomp filter** (denylist of ~14 dangerous syscalls, installed after pivot_root)
+- [x] **Minimal seccomp filter** (denylist of 16 dangerous syscalls, installed after pivot_root, arch-aware for x86_64 and aarch64)
 - [ ] Manifest mode (`xbin.toml`) for complex dependencies
 - [ ] LRU cache cleanup (evict beyond threshold)
 
@@ -43,7 +43,7 @@
 - [ ] **squashfs + mmap**: direct read, no extraction
 - [ ] **Cold/warm start < 100 ms** end-to-end
 - [ ] All runtime support (Java/GraalVM, Ruby, etc.)
-- [ ] Cross-arch (aarch64)
+- [x] **Native aarch64 support** (Makefile auto-detect, builder auto-detect, ELF analyzer arch-specific paths, stub seccomp arch-switch, binary search paths)
 - [ ] Distribution / discovery (lightweight registry, even P2P)
 
 ## Guiding principle

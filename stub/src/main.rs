@@ -19,10 +19,15 @@ use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 
-/// Standard library search paths for LD_LIBRARY_PATH (x86_64 Linux).
+/// Standard library search paths for LD_LIBRARY_PATH.
 /// Kept in sync with cli/xbin/build.py LD_LIBRARY_PATH construction.
+#[cfg(target_arch = "x86_64")]
 const LD_PATHS: &[&str] = &[
     "lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/x86_64-linux-gnu",
+];
+#[cfg(target_arch = "aarch64")]
+const LD_PATHS: &[&str] = &[
+    "lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/aarch64-linux-gnu",
 ];
 
 /// Binary search paths for PATH, mirroring LD_PATHS for executables.
@@ -689,24 +694,76 @@ fn install_seccomp_denylist() -> io::Result<()> {
     /// `seccomp_data.arch` is at offset 4, `seccomp_data.nr` is at offset 0.
     const SECCOMP_RET_KILL_PROCESS: u32 = 0x0002_0000;
     const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
-    const AUDIT_ARCH_X86_64: u32 = 0xC000_003E;
 
-    // Syscall numbers for x86_64 (asm/unistd_64.h).
+    // Audit arch + syscall numbers — differ between x86_64 and aarch64.
+    #[cfg(target_arch = "x86_64")]
+    const AUDIT_ARCH: u32 = 0xC000_003E;
+    #[cfg(target_arch = "x86_64")]
     const SYS_PTRACE: u32 = 101;
+    #[cfg(target_arch = "x86_64")]
     const SYS_MOUNT: u32 = 165;
+    #[cfg(target_arch = "x86_64")]
     const SYS_UMOUNT2: u32 = 166;
+    #[cfg(target_arch = "x86_64")]
     const SYS_PIVOT_ROOT: u32 = 155;
+    #[cfg(target_arch = "x86_64")]
     const SYS_REBOOT: u32 = 169;
+    #[cfg(target_arch = "x86_64")]
     const SYS_SETHOSTNAME: u32 = 170;
+    #[cfg(target_arch = "x86_64")]
     const SYS_SETDOMAINNAME: u32 = 171;
+    #[cfg(target_arch = "x86_64")]
     const SYS_SWAPON: u32 = 175;
+    #[cfg(target_arch = "x86_64")]
     const SYS_SWAPOFF: u32 = 176;
+    #[cfg(target_arch = "x86_64")]
     const SYS_ACCT: u32 = 163;
+    #[cfg(target_arch = "x86_64")]
     const SYS_KEXEC_LOAD: u32 = 246;
+    #[cfg(target_arch = "x86_64")]
     const SYS_INIT_MODULE: u32 = 175;
+    #[cfg(target_arch = "x86_64")]
     const SYS_FINIT_MODULE: u32 = 313;
+    #[cfg(target_arch = "x86_64")]
     const SYS_DELETE_MODULE: u32 = 176;
+    #[cfg(target_arch = "x86_64")]
     const SYS_NFSSERVCTL: u32 = 423;
+    #[cfg(target_arch = "x86_64")]
+    const SYS_KEXEC_FILE_LOAD: u32 = 320;
+
+    #[cfg(target_arch = "aarch64")]
+    const AUDIT_ARCH: u32 = 0xC000_00B7;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_PTRACE: u32 = 117;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_MOUNT: u32 = 40;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_UMOUNT2: u32 = 39;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_PIVOT_ROOT: u32 = 41;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_REBOOT: u32 = 142;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_SETHOSTNAME: u32 = 160;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_SETDOMAINNAME: u32 = 161;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_SWAPON: u32 = 233;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_SWAPOFF: u32 = 234;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_ACCT: u32 = 89;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_KEXEC_LOAD: u32 = 106;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_INIT_MODULE: u32 = 105;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_FINIT_MODULE: u32 = 278;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_DELETE_MODULE: u32 = 106;
+    #[cfg(target_arch = "aarch64")]
+    const SYS_NFSSERVCTL: u32 = 26;
+    #[cfg(target_arch = "aarch64")]
     const SYS_KEXEC_FILE_LOAD: u32 = 320;
 
     // Helper: load seccomp_data.arch (offset 4, 4 bytes).
@@ -734,7 +791,7 @@ fn install_seccomp_denylist() -> io::Result<()> {
     // BPF jt/jf are forward skip counts from the *next* instruction.
     // Instruction layout:
     //   [0]  arch_load(4)        — load seccomp_data.arch
-    //   [1]  jmp_eq AUDIT_ARCH   — if !x86_64 → ALLOW at [20]
+    //   [1]  jmp_eq AUDIT_ARCH   — if wrong arch → ALLOW at [20]
     //   [2]  arch_load(0)        — load seccomp_data.nr
     //   [3]  jmp_eq SYS_PTRACE       → KILL at [19]  (skip 15)
     //   [4]  jmp_eq SYS_MOUNT        → KILL at [19]  (skip 14)
@@ -757,7 +814,7 @@ fn install_seccomp_denylist() -> io::Result<()> {
     #[allow(clippy::similar_names)]
     let filter: Vec<libc::sock_filter> = vec![
         arch_load(BPF_LD, 0, 0, 4),
-        jmp_eq(AUDIT_ARCH_X86_64, 0, 18),
+        jmp_eq(AUDIT_ARCH, 0, 18),
         arch_load(BPF_LD, 0, 0, 0),
         jmp_eq(SYS_PTRACE, 15, 0),
         jmp_eq(SYS_MOUNT, 14, 0),
@@ -845,8 +902,8 @@ fn cstr(bytes: &[u8]) -> CString {
     CString::new(bytes).unwrap_or_else(|_| CString::new("").unwrap())
 }
 
-fn to_ptr_vec(v: &[CString]) -> Vec<*const i8> {
-    let mut ptrs: Vec<*const i8> = v.iter().map(|c| c.as_ptr()).collect();
+fn to_ptr_vec(v: &[CString]) -> Vec<*const core::ffi::c_char> {
+    let mut ptrs: Vec<*const core::ffi::c_char> = v.iter().map(|c| c.as_ptr()).collect();
     ptrs.push(std::ptr::null());
     ptrs
 }
@@ -872,7 +929,7 @@ fn flock_exclusive(f: &File) -> io::Result<()> {
 
 extern "C" {
     #[link_name = "execve"]
-    fn libc_execve(path: *const i8, argv: *const *const i8, envp: *const *const i8) -> i32;
+    fn libc_execve(path: *const core::ffi::c_char, argv: *const *const core::ffi::c_char, envp: *const *const core::ffi::c_char) -> i32;
     #[link_name = "flock"]
     fn libc_flock(fd: i32, operation: i32) -> i32;
 }

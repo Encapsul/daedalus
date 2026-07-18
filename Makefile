@@ -1,4 +1,5 @@
-TARGET := x86_64-unknown-linux-musl
+HOST_ARCH ?= $(shell uname -m)
+TARGET ?= $(HOST_ARCH)-unknown-linux-musl
 TOOLS := /tmp/xbin-stub-target
 STUB := $(TOOLS)/$(TARGET)/release/xbin-stub
 CRYPTO := $(TOOLS)/$(TARGET)/release/xbin-crypto
