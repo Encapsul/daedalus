@@ -4,7 +4,7 @@
 //! Flow: open /proc/self/exe → read footer → verify integrity (sig → SHA-256) →
 //! extract rootfs to ~/.cache/xbin/{sha256}/ (atomic) → exec the app.
 //!
-//! Level 0 isolation (MVP): LD_LIBRARY_PATH, no chroot. Levels 1/2
+//! Level 0 isolation (MVP): `LD_LIBRARY_PATH`, no chroot. Levels 1/2
 //! (chroot, user namespaces) in Phase 2 — see docs/src/roadmap.md.
 
 mod format;
@@ -16,12 +16,11 @@ use std::ffi::CString;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 
-/// Standard library search paths for LD_LIBRARY_PATH.
-/// Kept in sync with cli/xbin/build.py LD_LIBRARY_PATH construction.
+/// Standard library search paths for `LD_LIBRARY_PATH`.
+/// Kept in sync with cli/xbin/build.py `LD_LIBRARY_PATH` construction.
 #[cfg(target_arch = "x86_64")]
 const LD_PATHS: &[&str] = &[
     "lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/x86_64-linux-gnu",
@@ -31,7 +30,7 @@ const LD_PATHS: &[&str] = &[
     "lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/aarch64-linux-gnu",
 ];
 
-/// Binary search paths for PATH, mirroring LD_PATHS for executables.
+/// Binary search paths for PATH, mirroring `LD_PATHS` for executables.
 /// Bundled binaries (e.g. ffmpeg, gitleaks) land here via the rootfs.
 const BIN_PATHS: &[&str] = &["usr/bin", "bin", "usr/local/bin"];
 
@@ -39,6 +38,7 @@ const BIN_PATHS: &[&str] = &["usr/bin", "bin", "usr/local/bin"];
 struct Metadata {
     name: String,
     #[serde(default)]
+    #[allow(dead_code)]
     runtime: String,
     #[serde(default)]
     entrypoint: Vec<String>,
@@ -63,6 +63,7 @@ struct Metadata {
 #[derive(Deserialize)]
 struct CryptoMeta {
     nonce_hex: String,
+    #[allow(dead_code)]
     tag_offset: usize,
     signing_seed_hex: String,
 }
@@ -82,10 +83,12 @@ struct Service {
 #[derive(Deserialize)]
 struct Layer {
     #[serde(default)]
+    #[allow(dead_code)]
     kind: String,
     offset: u64,
     csize: u64,
     #[serde(rename = "usize")]
+    #[allow(dead_code)]
     uncompressed_size: u64,
     sha256: String,
 }
@@ -450,8 +453,8 @@ fn enter_namespace_if_needed(isolation: u8) -> io::Result<()> {
     Ok(())
 }
 
-/// Build the process environment: host env + LD_LIBRARY_PATH + meta.env + ROOTFS substitution.
-/// When `orig_cwd` is Some, inserts XBIN_ORIG_CWD (used by single-service exec).
+/// Build the process environment: host env + `LD_LIBRARY_PATH` + meta.env + `ROOTFS` substitution.
+/// When `orig_cwd` is Some, inserts `XBIN_ORIG_CWD` (used by single-service exec).
 fn setup_env(
     meta: &Metadata,
     rootfs: &Path,
@@ -506,7 +509,7 @@ fn setup_env(
     env
 }
 
-/// Resolve a rootfs path: absolute if using pivot_root, relative to rootfs otherwise.
+/// Resolve a rootfs path: absolute if using `pivot_root`, relative to rootfs otherwise.
 fn make_resolve<'a>(rootfs: &'a Path, use_pivot: bool) -> impl Fn(&str) -> PathBuf + 'a {
     move |p: &str| -> PathBuf {
         if use_pivot {
@@ -519,7 +522,7 @@ fn make_resolve<'a>(rootfs: &'a Path, use_pivot: bool) -> impl Fn(&str) -> PathB
     }
 }
 
-/// Convert a BTreeMap<String,String> to a null-terminated Vec<CString> for execve.
+/// Convert a `BTreeMap<String,String>` to a null-terminated `Vec<CString>` for execve.
 fn env_to_cstrings(env: &std::collections::BTreeMap<String, String>) -> Vec<CString> {
     env.iter()
         .map(|(k, v)| cstr(format!("{k}={v}").as_bytes()))
@@ -659,7 +662,7 @@ fn fork_services(
     Ok(children)
 }
 
-/// Block until all services with ready_port are accepting connections.
+/// Block until all services with `ready_port` are accepting connections.
 fn wait_for_health(meta: &Metadata, verbose: bool) -> io::Result<()> {
     for svc in &meta.services {
         if svc.ready_port == 0 { continue; }
@@ -743,8 +746,8 @@ fn install_signal_handler(children: &[(String, i32)]) {
     // signal_forward only calls kill(2) (async-signal-safe) and reads CHILD_PIDS
     // (which is immutable after this point).
     unsafe {
-        libc::signal(libc::SIGTERM, signal_forward as usize);
-        libc::signal(libc::SIGINT, signal_forward as usize);
+        libc::signal(libc::SIGTERM, signal_forward as *const () as usize);
+        libc::signal(libc::SIGINT, signal_forward as *const () as usize);
     }
 }
 
@@ -753,8 +756,10 @@ static mut CHILD_PIDS: Vec<i32> = Vec::new();
 extern "C" fn signal_forward(sig: i32) {
     // SAFETY: Called from a signal handler context. Only uses kill(2)
     // (async-signal-safe) and iterates CHILD_PIDS (immutable after install).
+    // We use `&raw const` to avoid creating a shared reference to a mutable static.
     unsafe {
-        for &pid in &CHILD_PIDS {
+        let pids: *const Vec<i32> = &raw const CHILD_PIDS;
+        for &pid in &*pids {
             libc::kill(pid, sig);
         }
     }
@@ -788,7 +793,7 @@ fn enter_userns() -> io::Result<()> {
 // Seccomp BPF denylist
 // ---------------------------------------------------------------------------
 
-/// Install a seccomp-bpf denylist after pivot_root.
+/// Install a seccomp-bpf denylist after `pivot_root`.
 ///
 /// Blocks syscalls that have no legitimate use in a packaged web/server app
 /// and represent escalation paths not covered by namespace isolation.
@@ -958,14 +963,14 @@ fn install_seccomp_denylist() -> io::Result<()> {
     // a BPF filter on the current process. The filter program and its data
     // are stack-allocated Vec that outlive the prctl call. On success the
     // filter is permanent — any blocked syscall kills the process with SIGSYS.
-    let rc = unsafe { libc::prctl(libc::PR_SET_SECCOMP, 2, &prog as *const libc::sock_fprog as usize, 0, 0) };
+    let rc = unsafe { libc::prctl(libc::PR_SET_SECCOMP, 2, std::ptr::from_ref(&prog) as usize, 0, 0) };
     if rc != 0 {
         return Err(io::Error::last_os_error());
     }
     Ok(())
 }
 
-/// Switch root to `rootfs` via pivot_root(2).
+/// Switch root to `rootfs` via `pivot_root(2)`.
 /// The old root is mounted at `rootfs/.old_root` and immediately detached.
 fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
     let new_root = std::fs::canonicalize(rootfs)?;

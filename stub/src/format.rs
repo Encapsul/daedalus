@@ -5,38 +5,38 @@
 //! Footer versions:
 //!   v1/v2 — 84 bytes at EOF-84.
 //!   v3    — 92 bytes at EOF-92.  The last 84 bytes are byte-identical to v2,
-//!           so a v2 launcher reading EOF-84 sees the correct magic + format_version
+//!           so a v2 launcher reading EOF-84 sees the correct magic + `format_version`
 //!           and reports "unsupported format" cleanly.  A v3 launcher reads 92 bytes
-//!           and picks sig_offset from the 8-byte prefix.
-//!   v4    — 92 bytes at EOF-92 (same physical size as v3).  payload_usize is
-//!           repurposed as crypto_suite: 0x00=none, 0x01=AES-256-GCM.
-//!           When crypto_suite=1, metadata contains "crypto" with nonce_hex and
-//!           signing_seed_hex for AES-256-GCM decryption.
+//!           and picks `sig_offset` from the 8-byte prefix.
+//!   v4    — 92 bytes at EOF-92 (same physical size as v3).  `payload_usize` is
+//!           repurposed as `crypto_suite`: 0x00=none, 0x01=AES-256-GCM.
+//!           When `crypto_suite=1`, metadata contains "crypto" with `nonce_hex` and
+//!           `signing_seed_hex` for AES-256-GCM decryption.
 //!   v5    — 92 bytes at EOF-92 (same physical size as v3/v4).  Footer identical
-//!           to v4.  Metadata gains "payload_format" field: "zstd-tar" (default,
-//!           backward-compatible) or "squashfs".  Launcher checks payload_format
+//!           to v4.  Metadata gains `payload_format` field: "zstd-tar" (default,
+//!           backward-compatible) or "squashfs".  Launcher checks `payload_format`
 //!           to choose extraction strategy (zstd+tar vs squashfs parse+extract).
 //!
 //! Layout of the 92-byte v3/v4/v5 footer (little-endian):
-//!   [0-7]    sig_offset (u64)          offset of [`sig_size:u32le` + `sig:64 bytes`]
+//!   [0-7]    `sig_offset` (u64)          offset of [`sig_size:u32le` + `sig:64 bytes`]
 //!   [8-12]   magic (5 bytes)           "XBIN\x01"
-//!   [13]     format_version (u8)       3, 4, or 5
+//!   [13]     `format_version` (u8)       3, 4, or 5
 //!   [14]     arch (u8)
 //!   [15]     flags (u8)                bit0=signed, bit1=encrypted
-//!   [16-23]  payload_offset (u64)
-//!   [24-31]  payload_csize (u64)
-//!   [32-39]  payload_usize (u64)       v2/v3: unused; v4/v5: crypto_suite
-//!   [40-71]  payload_sha256 (32 bytes) SHA-256(payload ‖ metadata)
-//!   [72-79]  meta_offset (u64)
-//!   [80-87]  meta_size (u64)
-//!   [88-91]  footer_magic (u32)        0xBEEFCAFE
+//!   [16-23]  `payload_offset` (u64)
+//!   [24-31]  `payload_csize` (u64)
+//!   [32-39]  `payload_usize` (u64)       v2/v3: unused; v4/v5: `crypto_suite`
+//!   [40-71]  `payload_sha256` (32 bytes) SHA-256(payload ‖ metadata)
+//!   [72-79]  `meta_offset` (u64)
+//!   [80-87]  `meta_size` (u64)
+//!   [88-91]  `footer_magic` (u32)        0xBEEFCAFE
 //!
 //! Integrity hash contract (MUST match across Rust + Python):
-//!   integrity = SHA-256(compressed_payload_bytes ‖ metadata_json_bytes)
-//!   This is stored in payload_sha256 and verified on every cold start.
-//!   The same hash is signed by Ed25519 (v3+): sign(integrity, private_key).
-//!   Implemented: Rust → main.rs:verify_sha256(), verify_ed25519()
-//!               Python → build.py:build(), sign.py:sign()
+//!   integrity = SHA-256(compressed_payload_bytes ‖ `metadata_json_bytes`)
+//!   This is stored in `payload_sha256` and verified on every cold start.
+//!   The same hash is signed by Ed25519 (v3+): sign(integrity, `private_key`).
+//!   Implemented: Rust → `main.rs:verify_sha256()`, `verify_ed25519()`
+//!               Python → `build.py:build()`, `sign.py:sign()`
 
 use std::io::{self, Read, Seek, SeekFrom};
 
@@ -52,6 +52,7 @@ pub const CRYPTO_NONE: u64 = 0x00;
 pub const CRYPTO_AES_256_GCM: u64 = 0x01;
 
 // Payload format strings (metadata JSON "payload_format" field, format_version >= 5)
+#[allow(dead_code)]
 pub const PAYLOAD_FORMAT_ZSTD_TAR: &str = "zstd-tar";
 pub const PAYLOAD_FORMAT_SQUASHFS: &str = "squashfs";
 
@@ -62,10 +63,11 @@ pub const PAYLOAD_FORMAT_SQUASHFS: &str = "squashfs";
 ///
 /// `payload_usize` serves double duty:
 ///   v2/v3: unused (always 0)
-///   v4+:   crypto_suite (0=none, 1=AES-256-GCM)
+///   v4+:   `crypto_suite` (0=none, 1=AES-256-GCM)
 #[derive(Debug)]
 pub struct Footer {
     pub format_version: u8,
+    #[allow(dead_code)]
     pub arch: u8,
     pub flags: u8,
     pub payload_offset: u64,
@@ -79,7 +81,7 @@ pub struct Footer {
 }
 
 impl Footer {
-    /// Crypto suite ID. Only meaningful when format_version >= 4.
+    /// Crypto suite ID. Only meaningful when `format_version` >= 4.
     pub fn crypto_suite(&self) -> u64 {
         if self.format_version >= 4 {
             self.payload_usize
@@ -165,6 +167,7 @@ impl Footer {
 }
 
 pub const FLAG_SIGNED: u8 = 0x01;
+#[allow(dead_code)]
 pub const FLAG_ENCRYPTED: u8 = 0x02;
 
 /// Read `len` bytes at absolute offset `off`.

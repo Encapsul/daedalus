@@ -1,6 +1,7 @@
-use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey, Verifier};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
@@ -37,8 +38,11 @@ fn cmd_keygen(args: &[String]) -> i32 {
     let verifying_key = signing_key.verifying_key();
 
     let pubkey_bytes = verifying_key.to_bytes();
-    let fingerprint = Sha256::digest(&pubkey_bytes);
-    let fp_hex: String = fingerprint.iter().map(|b| format!("{:02x}", b)).collect();
+    let fingerprint = Sha256::digest(pubkey_bytes);
+    let mut fp_hex = String::with_capacity(64);
+    for b in fingerprint {
+        let _ = write!(fp_hex, "{b:02x}");
+    }
 
     fs::create_dir_all(&key_dir).unwrap_or_else(|e| {
         eprintln!("error creating key directory: {e}");
@@ -46,12 +50,12 @@ fn cmd_keygen(args: &[String]) -> i32 {
     });
 
     let seed = signing_key.to_bytes();
-    fs::write(key_dir.join(format!("{fp_hex}.key")), &seed).unwrap_or_else(|e| {
+    fs::write(key_dir.join(format!("{fp_hex}.key")), seed).unwrap_or_else(|e| {
         eprintln!("error writing key file: {e}");
         std::process::exit(1);
     });
 
-    fs::write(key_dir.join(format!("{fp_hex}.pub")), &pubkey_bytes).unwrap_or_else(|e| {
+    fs::write(key_dir.join(format!("{fp_hex}.pub")), pubkey_bytes).unwrap_or_else(|e| {
         eprintln!("error writing pubkey file: {e}");
         std::process::exit(1);
     });
@@ -134,16 +138,14 @@ fn cmd_verify(args: &[String]) -> i32 {
     let mut sig_bytes = [0u8; 64];
     sig_bytes.copy_from_slice(&buf[32..96]);
 
-    let pub_key = match VerifyingKey::from_bytes(&pubkey_raw) {
-        Ok(k) => k,
-        Err(_) => {
-            eprintln!("error: invalid public key");
-            return 2;
-        }
+    let pub_key = if let Ok(k) = VerifyingKey::from_bytes(&pubkey_raw) {
+        k
+    } else {
+        eprintln!("error: invalid public key");
+        return 2;
     };
 
     let sig = Signature::from_bytes(&sig_bytes);
-    use ed25519_dalek::Verifier;
     match pub_key.verify(&hash, &sig) {
         Ok(()) => 0,
         Err(_) => 1,
