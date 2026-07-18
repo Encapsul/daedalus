@@ -202,6 +202,29 @@ def main(argv: list[str] | None = None) -> int:
         "--all", action="store_true", help="remove all cache (including build cache)"
     )
 
+    p_selftest = sub.add_parser(
+        "selftest", help="launch a .xbin in an ephemeral sandbox to confirm it starts"
+    )
+    p_selftest.add_argument("file", help=".xbin file to test")
+    p_selftest.add_argument(
+        "--mode",
+        choices=["auto", "server", "cli"],
+        default="auto",
+        help="detection mode: auto (default), server (expect liveness), cli (expect exit 0)",
+    )
+    p_selftest.add_argument(
+        "--timeout",
+        type=int,
+        default=3,
+        help="observation window in seconds after initial 2s crash check (default: 3)",
+    )
+    p_selftest.add_argument(
+        "--probe",
+        help="HTTP health check URL (e.g. http://127.0.0.1:8080/). "
+        "If set, verifies the app is actually serving — returns exit 2 on failure.",
+    )
+    p_selftest.add_argument("-q", "--quiet", action="store_true")
+
     args = parser.parse_args(argv)
 
     try:
@@ -262,6 +285,17 @@ def main(argv: list[str] | None = None) -> int:
 
             clean(all_entries=args.all)
             return 0
+
+        if args.command == "selftest":
+            from .selftest import selftest
+
+            return selftest(
+                args.file,
+                mode=args.mode,
+                timeout=args.timeout,
+                probe=args.probe,
+                verbose=not args.quiet,
+            )
     except (
         FileNotFoundError,
         NotADirectoryError,
