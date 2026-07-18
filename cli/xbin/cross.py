@@ -202,6 +202,66 @@ def resolve_cross_python(target_arch: str) -> Path:
     return cache
 
 
+_DENO_BASE_URL = "https://github.com/denoland/deno/releases/latest/download"
+
+
+def download_vendored_deno(target_arch: str = "x86_64") -> Path:
+    """Download and cache a vendored Deno binary for *target_arch*.
+
+    Returns the path to the cached `deno` binary.
+    Caches in ~/.cache/xbin/cross/deno/{arch}/deno.
+
+    Override with XBIN_CROSS_DENO env var to use a pre-existing binary.
+    """
+    override = os.environ.get("XBIN_CROSS_DENO")
+    if override:
+        p = Path(override)
+        if p.is_file():
+            return p
+        raise FileNotFoundError(f"XBIN_CROSS_DENO={override} is not a file")
+
+    arch_map = {
+        "x86_64": "x86_64-unknown-linux-gnu",
+        "aarch64": "aarch64-unknown-linux-gnu",
+    }
+    triple = arch_map.get(target_arch)
+    if triple is None:
+        raise FileNotFoundError(
+            f"no vendored Deno for '{target_arch}'; "
+            f"supported: {', '.join(sorted(arch_map))}"
+        )
+
+    cache = _cache_dir() / "deno" / target_arch
+    binary = cache / "deno"
+    if binary.exists():
+        return binary
+
+    zip_name = f"deno-{triple}.zip"
+    url = f"{_DENO_BASE_URL}/{zip_name}"
+    cache.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="xbin-deno-") as tmp:
+        zip_path = Path(tmp) / zip_name
+        try:
+            _download_url(url, zip_path)
+        except OSError as e:
+            raise RuntimeError(f"failed to download Deno: {e}") from e
+
+        import zipfile
+
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(cache)
+        except zipfile.BadZipFile as e:
+            shutil.rmtree(cache, ignore_errors=True)
+            raise RuntimeError(f"failed to extract {zip_name}: {e}") from e
+
+    if not binary.exists():
+        raise RuntimeError(f"Deno binary not found after extracting {zip_name}")
+
+    return binary
+
+
 def cross_python_root(cache_dir: Path) -> Path:
     """Given a cache dir from resolve_cross_python, return the Python root.
 

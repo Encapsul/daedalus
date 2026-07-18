@@ -103,6 +103,10 @@ $ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
 
 #### Cross-build for aarch64 (from x86_64)
 
+> **Note**: The Python side (vendored interpreter + target wheels) works automatically.
+> The aarch64 stub itself must be pre-built: `rustup target add aarch64-unknown-linux-musl && make stub`.
+> CI handles this automatically via GitHub Actions.
+
 ```bash
 $ xbin build my-app -o my-app-aarch64.xbin --target aarch64
 # Downloads vendored Python for aarch64, pip downloads target wheels,
