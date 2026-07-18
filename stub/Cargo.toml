@@ -13,7 +13,10 @@ name = "xbin-crypto"
 path = "src/bin/xbin-crypto.rs"
 
 [dependencies]
-# Pure-Rust deps only: lets us build a fully static musl binary without a C toolchain.
+# Mostly pure-Rust: ruzstd, tar, sha2, serde, ed25519-dalek, aes-gcm, hkdf
+# are all pure Rust.  backhand (squashfs) pulls in zstd-sys which requires
+# a C compiler (cc crate) at build time.  A C toolchain (gcc/musl-gcc) and
+# pkg-config are therefore needed alongside the Rust toolchain.
 ruzstd = "0.7"          # zstd decompression (decode-only, pure Rust)
 tar = "0.4"             # tar extraction
 sha2 = "0.10"           # SHA-256 integrity check
@@ -24,6 +27,7 @@ rand = "0.8"
 libc = "0.2"
 aes-gcm = "0.10"        # AES-256-GCM payload decryption
 hkdf = "0.12"           # HKDF-SHA256 for AES key derivation from signing seed
+backhand = { version = "0.25", default-features = false, features = ["gzip", "lz4", "zstd"] }  # squashfs extraction
 
 [profile.release]
 opt-level = "z"     # optimize for size

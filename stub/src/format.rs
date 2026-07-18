@@ -12,16 +12,20 @@
 //!           repurposed as crypto_suite: 0x00=none, 0x01=AES-256-GCM.
 //!           When crypto_suite=1, metadata contains "crypto" with nonce_hex and
 //!           signing_seed_hex for AES-256-GCM decryption.
+//!   v5    — 92 bytes at EOF-92 (same physical size as v3/v4).  Footer identical
+//!           to v4.  Metadata gains "payload_format" field: "zstd-tar" (default,
+//!           backward-compatible) or "squashfs".  Launcher checks payload_format
+//!           to choose extraction strategy (zstd+tar vs squashfs parse+extract).
 //!
-//! Layout of the 92-byte v3/v4 footer (little-endian):
+//! Layout of the 92-byte v3/v4/v5 footer (little-endian):
 //!   [0-7]    sig_offset (u64)          offset of [`sig_size:u32le` + `sig:64 bytes`]
 //!   [8-12]   magic (5 bytes)           "XBIN\x01"
-//!   [13]     format_version (u8)       3 or 4
+//!   [13]     format_version (u8)       3, 4, or 5
 //!   [14]     arch (u8)
 //!   [15]     flags (u8)                bit0=signed, bit1=encrypted
 //!   [16-23]  payload_offset (u64)
 //!   [24-31]  payload_csize (u64)
-//!   [32-39]  payload_usize (u64)       v2/v3: unused; v4: crypto_suite
+//!   [32-39]  payload_usize (u64)       v2/v3: unused; v4/v5: crypto_suite
 //!   [40-71]  payload_sha256 (32 bytes) SHA-256(payload ‖ metadata)
 //!   [72-79]  meta_offset (u64)
 //!   [80-87]  meta_size (u64)
@@ -38,7 +42,7 @@ use std::io::{self, Read, Seek, SeekFrom};
 
 pub const MAGIC: &[u8; 5] = b"XBIN\x01";
 pub const FOOTER_MAGIC: u32 = 0xBEEF_CAFE;
-pub const FORMAT_VERSION: u8 = 4;
+pub const FORMAT_VERSION: u8 = 5;
 
 pub const V2_FOOTER_SIZE: u64 = 84;
 pub const V3_FOOTER_SIZE: u64 = 92;
@@ -46,6 +50,10 @@ pub const V3_FOOTER_SIZE: u64 = 92;
 // Crypto suite IDs (stored in payload_usize when format_version >= 4)
 pub const CRYPTO_NONE: u64 = 0x00;
 pub const CRYPTO_AES_256_GCM: u64 = 0x01;
+
+// Payload format strings (metadata JSON "payload_format" field, format_version >= 5)
+pub const PAYLOAD_FORMAT_ZSTD_TAR: &str = "zstd-tar";
+pub const PAYLOAD_FORMAT_SQUASHFS: &str = "squashfs";
 
 /// Fixed footer at the very end of a .xbin file.
 ///

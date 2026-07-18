@@ -8,6 +8,7 @@
 //! (chroot, user namespaces) in Phase 2 — see docs/src/roadmap.md.
 
 mod format;
+mod squashfs_extract;
 
 use format::{read_at, Footer};
 use serde::Deserialize;
@@ -55,6 +56,8 @@ struct Metadata {
     services: Vec<Service>,
     #[serde(default)]
     crypto: Option<CryptoMeta>,
+    #[serde(default)]
+    payload_format: String,
 }
 
 #[derive(Deserialize)]
@@ -167,8 +170,14 @@ fn run() -> io::Result<()> {
     flock_exclusive(&lock)?;
 
     if !ready_marker.exists() {
-        let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered);
-        extract_atomic(&blobs, &cache_root, &rootfs)?;
+        let is_squashfs = meta.payload_format == format::PAYLOAD_FORMAT_SQUASHFS;
+        if is_squashfs {
+            let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered);
+            extract_squashfs_atomic(&blobs, &cache_root, &rootfs)?;
+        } else {
+            let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered);
+            extract_atomic(&blobs, &cache_root, &rootfs)?;
+        }
     }
 
     // 4. Exec into the extracted rootfs.
@@ -388,6 +397,31 @@ fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Resu
         archive.set_overwrite(true);
         archive.unpack(&tmp_rootfs)?;
     }
+
+    File::create(tmp.join(".ready"))?.write_all(b"1")?;
+
+    match fs::rename(&tmp, cache_root) {
+        Ok(()) => Ok(()),
+        Err(_) if rootfs.exists() => {
+            let _ = fs::remove_dir_all(&tmp);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = fs::remove_dir_all(&tmp);
+            Err(e)
+        }
+    }
+}
+
+fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
+    let parent = cache_root.parent().unwrap_or(Path::new("/tmp"));
+    fs::create_dir_all(parent)?;
+
+    let tmp = parent.join(format!(".tmp-{}-{}", std::process::id(), nanos()));
+    let tmp_rootfs = tmp.join("rootfs");
+    fs::create_dir_all(&tmp_rootfs)?;
+
+    squashfs_extract::extract_squashfs_layers(blobs, &tmp_rootfs)?;
 
     File::create(tmp.join(".ready"))?.write_all(b"1")?;
 

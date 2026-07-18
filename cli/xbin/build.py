@@ -32,6 +32,14 @@ from .analyzer.lockfile import (
     write_lock_from_results,
 )
 from .analyzer.python_ast import detect_from_python_source, merge_deps
+from .cross import (
+    cross_python_root,
+    host_arch,
+    is_cross_build,
+    pip_download_target,
+    resolve_cross_python,
+    _vendored_python_version,
+)
 from .encrypt import encrypt_payload
 
 XBIN_VERSION = "0.1.0"
@@ -41,23 +49,27 @@ _NO_KEYS_MSG = (
 )
 
 
-def find_stub() -> Path:
+def find_stub(target_arch: str | None = None) -> Path:
     """Locate the compiled launcher stub."""
     return find_binary(
         "xbin-stub",
         "XBIN_STUB",
         "launcher stub not found. Build it first:\n"
-        "  cd stub && cargo build --release --target x86_64-unknown-linux-musl",
+        "  cd stub && cargo build --release --target x86_64-unknown-linux-musl\n"
+        "  # or for cross-compilation:\n"
+        "  cd stub && cargo build --release --target aarch64-unknown-linux-musl",
+        target_arch=target_arch,
     )
 
 
-def find_crypto() -> Path:
+def find_crypto(target_arch: str | None = None) -> Path:
     """Locate the compiled xbin-crypto binary."""
     return find_binary(
         "xbin-crypto",
         "XBIN_CRYPTO",
         "xbin-crypto not found. Build it first:\n"
         "  cd stub && cargo build --release --target x86_64-unknown-linux-musl",
+        target_arch=target_arch,
     )
 
 
@@ -135,15 +147,45 @@ def _write_etc(rootfs: Path) -> None:
     (etc / "resolv.conf").write_text("nameserver 1.1.1.1\n")
 
 
+def _install_cross_python(vendored: Path, rootfs: Path, verbose: bool) -> str:
+    """Install vendored cross-compilation Python into rootfs at /opt/cross-python/.
+
+    Returns the vendored Python version string (e.g. '3.12') as detected
+    from the lib/ directory structure.
+
+    The vendored Python is self-contained — stdlib, shared libraries, and
+    bundled extensions (_ssl, _hashlib, _ctypes, etc.) are all included.
+    No external .so resolution is needed.
+    """
+    dest = rootfs / "opt" / "cross-python"
+    shutil.copytree(vendored, dest, symlinks=True)
+    if verbose:
+        print(f"  cross-python: installed {vendored} -> {dest}")
+    return _vendored_python_version(vendored) or "3"
+
+
 def _build_runtime_layer(
-    app_dir: Path, plan: runtime.RuntimePlan, layer: Path, verbose: bool
+    app_dir: Path,
+    plan: runtime.RuntimePlan,
+    layer: Path,
+    verbose: bool,
+    cross_python_root: Path | None = None,
 ) -> None:
     """RUNTIME layer: interpreter + stdlib + .so + /etc.
 
     Intentionally **independent of app code**: editing `app.py` does not change
     this layer, so it is reused as-is on rebuild (build cache). It only changes
     when the interpreter or binary dependencies change.
+
+    When cross_python_root is set, uses the vendored cross-compilation Python
+    instead of the host's Python. The vendored Python is self-contained and
+    does not need .so dependency resolution.
     """
+    if cross_python_root:
+        _install_cross_python(cross_python_root, layer, verbose)
+        _write_etc(layer)
+        return
+
     # Binaries to analyze for .so deps: interpreter, native binary, C
     # extensions from site-packages, and stdlib extensions (e.g. _ssl, _lzma).
     # Stdlib lib-dynload/ .so files are the most common source of version
@@ -250,6 +292,41 @@ def _zstd(raw: bytes) -> bytes:
     ).stdout
 
 
+def _mksquashfs(source_dir: Path) -> bytes:
+    """Create a squashfs image from a directory. Returns the raw squashfs bytes."""
+    with tempfile.NamedTemporaryFile(suffix=".squashfs", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        proc = subprocess.run(
+            [
+                "mksquashfs",
+                str(source_dir),
+                str(tmp_path),
+                "-comp",
+                "zstd",
+                "-b",
+                "1M",
+                "-no-xattrs",
+                "-noappend",
+                "-no-progress",
+                "-quiet",
+                "-force-gid",
+                "0",
+                "-force-uid",
+                "0",
+            ],
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"mksquashfs failed (exit {proc.returncode}): "
+                f"{proc.stderr.decode(errors='replace').strip()}"
+            )
+        return tmp_path.read_bytes()
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 def _build_cache_dir() -> Path:
     base = os.environ.get("XDG_CACHE_HOME")
     d = (Path(base) if base else Path.home() / ".cache") / "xbin" / "build"
@@ -287,17 +364,53 @@ def _compress_layer_cached(
 
 
 def _pip_install_requirements(
-    app_dir: Path, work_dir: Path, plan: runtime.RuntimePlan, verbose: bool
+    app_dir: Path,
+    work_dir: Path,
+    plan: runtime.RuntimePlan,
+    verbose: bool,
+    target_arch: str | None = None,
 ) -> None:
-    """Create a venv and pip-install from requirements.txt into work_dir.
-    Adds the resulting site-packages to plan.site_packages so the builder picks them up.
+    """Install pip dependencies for the target architecture.
+
+    When *target_arch* is set (cross-compilation), uses
+    ``pip download --only-binary=:all: --platform <tag>`` to fetch
+    target-arch wheels.  Pure-Python wheels (py3-none-any) work universally;
+    manylinux wheels must match the target arch tag.  Compiled extensions
+    that do not provide a matching wheel are rejected by pip.
+
+    When *target_arch* is None (native build), creates a temporary venv
+    and pip-installs normally.  This captures any compiled extensions
+    available on the host.
+
+    The resulting site-packages directory is appended to plan.site_packages.
+
+    Raises RuntimeError if pip fails.
     """
+    req = app_dir / "requirements.txt"
+    if not (req.is_file() and req.stat().st_size > 0):
+        return
+
+    if target_arch:
+        dest = work_dir / "pip-target"
+        dest.mkdir(parents=True, exist_ok=True)
+        pip_download_target(req, dest, target_arch, verbose)
+        # Unpack downloaded wheels into site-packages
+        sp_dir = dest / "site-packages"
+        sp_dir.mkdir(parents=True, exist_ok=True)
+        for whl in dest.glob("*.whl"):
+            _unpack_wheel(whl, sp_dir, verbose)
+        # Remove the .whl files, keep only extracted site-packages
+        for whl in dest.glob("*.whl"):
+            whl.unlink()
+        plan.site_packages.append((sp_dir, "/app/site-packages"))
+        plan.env["PYTHONPATH"] = "${ROOTFS}/app/site-packages"
+        return
+
     venv_dir = work_dir / ".xbin-venv"
     subprocess.run(
         [sys.executable, "-m", "venv", str(venv_dir)], check=True, capture_output=True
     )
     pip = str(venv_dir / "bin" / "pip")
-    req = app_dir / "requirements.txt"
     result = subprocess.run(
         [pip, "install", "-r", str(req), "--quiet"], capture_output=True
     )
@@ -312,6 +425,31 @@ def _pip_install_requirements(
     plan.env["PYTHONPATH"] = "${ROOTFS}/app/site-packages"
     if verbose:
         print(f"  pip install: {req} -> {sp}")
+
+
+def _unpack_wheel(whl: Path, dest: Path, verbose: bool) -> None:
+    """Extract a .whl file (which is a ZIP archive) into *dest*."""
+    import zipfile
+
+    name = whl.name
+    try:
+        with zipfile.ZipFile(whl, "r") as zf:
+            for member in zf.namelist():
+                # Skip dist-info, RECORD, etc. — pure code only
+                if ".dist-info" in member or member.endswith(".dist-info"):
+                    continue
+                target = dest / member
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if not member.endswith("/"):
+                    target.write_bytes(zf.read(member))
+        if verbose:
+            print(f"  unpacked wheel: {name}")
+    except zipfile.BadZipFile as e:
+        if verbose:
+            print(f"  warning: bad wheel {name}: {e}")
+    except (OSError, RuntimeError) as e:
+        if verbose:
+            print(f"  warning: failed to unpack {name}: {e}")
 
 
 def _copy_binary_into_rootfs(bin_path: Path, rootfs: Path, verbose: bool) -> None:
@@ -369,6 +507,7 @@ def _build_meta_json(
     services: list[dict] | None = None,
     seccomp: bool = False,
     crypto: dict | None = None,
+    payload_format: str = "",
 ) -> bytes:
     """Build the metadata JSON bytes for the .xbin footer."""
     meta: dict = {
@@ -381,6 +520,8 @@ def _build_meta_json(
         "env": env,
         "layers": layers,
     }
+    if payload_format:
+        meta["payload_format"] = payload_format
     if seccomp:
         meta["seccomp"] = True
     if crypto:
@@ -397,17 +538,32 @@ def _assemble_xbin(
     meta_bytes: bytes,
     key_path: str | None,
     encrypt: bool = False,
+    squashfs: bool = False,
+    target_arch: str | None = None,
 ) -> int:
     """Write [stub][payload][metadata][optional sig+footer] to disk.
 
     Returns the total file size.
     """
     stub_bytes = stub.read_bytes()
-    # v4 when encrypting (crypto_suite in payload_usize), v3 when signing, v2 otherwise.
-    fmt_ver = 4 if encrypt else (3 if key_path else 2)
+    # v5 when squashfs (payload_format in metadata), v4 when encrypting,
+    # v3 when signing, v2 otherwise.
+    if squashfs:
+        fmt_ver = 5
+    elif encrypt:
+        fmt_ver = 4
+    elif key_path:
+        fmt_ver = 3
+    else:
+        fmt_ver = 2
+    # Determine arch: use target_arch if cross-building, else host.
+    if target_arch:
+        arch = fmt.ARCH_AARCH64 if target_arch == "aarch64" else fmt.ARCH_X86_64
+    else:
+        arch = fmt.ARCH_AARCH64 if platform.machine() == "aarch64" else fmt.ARCH_X86_64
     footer = fmt.Footer(
         format_version=fmt_ver,
-        arch=fmt.ARCH_AARCH64 if platform.machine() == "aarch64" else fmt.ARCH_X86_64,
+        arch=arch,
         flags=0,
         payload_offset=len(stub_bytes),
         payload_csize=len(payload),
@@ -632,16 +788,23 @@ def build(
     isolation: int = 0,
     seccomp: bool = False,
     encrypt: bool = False,
+    squashfs: bool = False,
     verbose: bool = True,
     redetect: bool = False,
+    target: str | None = None,
 ) -> str:
-    """Build a .xbin (v3/v4 format, multi-layer). Returns the output path.
+    """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
     Layout: [stub][runtime layer][app layer][metadata][footer].
     When key_path is given, signs inline:
       [stub][payload][metadata][sig_block][v3 footer with FLAG_SIGNED].
     When encrypt is True (requires key_path), encrypts payload with AES-256-GCM
     and bumps to v4 footer (crypto_suite in payload_usize).
+    When squashfs is True, layers are squashfs images (v5 footer, payload_format
+    in metadata).
+    When target is set, cross-compiles for the specified architecture using a
+    vendored python-build-standalone Python interpreter. Only pure-Python apps
+    (no compiled extensions) are supported in cross-build mode.
     """
     app_dir = _resolve_app_path(app_path)
     if not app_dir.is_dir():
@@ -673,51 +836,104 @@ def build(
 
     name = app_dir.name
     out_path = Path(output) if output else Path.cwd() / f"{name}.xbin"
-    stub = find_stub()
+    stub = find_stub(target_arch=target)
     plan = runtime.detect(app_dir)
     if verbose:
         print(f"[xbin] building '{name}'")
         print(f"  runtime: {plan.runtime}")
         print(f"  entrypoint: {' '.join(plan.entrypoint)}")
 
-    t0 = time.time()
-    rt_comp, app_comp, rt_tar, app_tar = _build_layers(
-        app_dir,
-        plan,
-        verbose,
-    )
+    # --- Cross-compilation setup ---
+    cross_root: Path | None = None
+    if target and is_cross_build(target):
+        if plan.runtime != "python":
+            raise ValueError(
+                f"cross-build for {target} requires a Python runtime, "
+                f"got '{plan.runtime}'"
+            )
+        if verbose:
+            print(f"  target: {target} (cross-compilation)")
+        vendored = resolve_cross_python(target)
+        cross_root = cross_python_root(vendored)
+        plan.entrypoint[0] = "/opt/cross-python/bin/python3"
+    elif target:
+        if verbose:
+            print(f"  target: {target} (native build)")
+    else:
+        if verbose:
+            print(f"  target: {host_arch()} (native build)")
 
-    stub_bytes = stub.read_bytes()
-    rt_offset = len(stub_bytes)
-    payload = rt_comp + app_comp
+    t0 = time.time()
+    if squashfs:
+        rt_sqfs, app_sqfs = _build_layers_squashfs(
+            app_dir, plan, verbose, cross_python_root=cross_root,
+            target_arch=target,
+        )
+        stub_bytes = stub.read_bytes()
+        rt_offset = len(stub_bytes)
+        payload = rt_sqfs + app_sqfs
+        layers = [
+            {
+                "kind": "squashfs",
+                "offset": rt_offset,
+                "csize": len(rt_sqfs),
+                "usize": len(rt_sqfs),
+                "sha256": hashlib.sha256(rt_sqfs).hexdigest(),
+            },
+            {
+                "kind": "squashfs",
+                "offset": rt_offset + len(rt_sqfs),
+                "csize": len(app_sqfs),
+                "usize": len(app_sqfs),
+                "sha256": hashlib.sha256(app_sqfs).hexdigest(),
+            },
+        ]
+        payload_format = fmt.PAYLOAD_FORMAT_SQUASHFS
+    else:
+        rt_comp, app_comp, rt_tar, app_tar = _build_layers(
+            app_dir,
+            plan,
+            verbose,
+            cross_python_root=cross_root,
+            target_arch=target,
+        )
+        stub_bytes = stub.read_bytes()
+        rt_offset = len(stub_bytes)
+        payload = rt_comp + app_comp
+        layers = [
+            {
+                "kind": "runtime",
+                "offset": rt_offset,
+                "csize": len(rt_comp),
+                "usize": len(rt_tar),
+                "sha256": hashlib.sha256(rt_comp).hexdigest(),
+            },
+            {
+                "kind": "app",
+                "offset": rt_offset + len(rt_comp),
+                "csize": len(app_comp),
+                "usize": len(app_tar),
+                "sha256": hashlib.sha256(app_comp).hexdigest(),
+            },
+        ]
+        payload_format = ""
 
     # --- Encryption (AES-256-GCM, requires --key for signing seed) ---
     crypto_meta: dict = {}
     if encrypt:
         if not key_path:
-            raise ValueError("--encrypt requires --key (signing seed used for AES key derivation)")
+            raise ValueError(
+                "--encrypt requires --key (signing seed used for AES key derivation)"
+            )
         signing_seed = _read_signing_seed(key_path)
+        pre_enc_size = len(payload)
         payload, enc_meta = encrypt_payload(payload, signing_seed)
         crypto_meta = enc_meta
         if verbose:
-            print(f"  encrypted: {len(rt_comp + app_comp)/1e6:.1f}MB -> {len(payload)/1e6:.1f}MB (AES-256-GCM)")
+            print(
+                f"  encrypted: {pre_enc_size/1e6:.1f}MB -> {len(payload)/1e6:.1f}MB (AES-256-GCM)"
+            )
 
-    layers = [
-        {
-            "kind": "runtime",
-            "offset": rt_offset,
-            "csize": len(rt_comp),
-            "usize": len(rt_tar),
-            "sha256": hashlib.sha256(rt_comp).hexdigest(),
-        },
-        {
-            "kind": "app",
-            "offset": rt_offset + len(rt_comp),
-            "csize": len(app_comp),
-            "usize": len(app_tar),
-            "sha256": hashlib.sha256(app_comp).hexdigest(),
-        },
-    ]
     meta_bytes = _build_meta_json(
         name=name,
         runtime=plan.runtime,
@@ -727,13 +943,24 @@ def build(
         layers=layers,
         seccomp=seccomp,
         crypto=crypto_meta if crypto_meta else None,
+        payload_format=payload_format,
     )
-    size = _assemble_xbin(out_path, stub, payload, meta_bytes, key_path, encrypt=encrypt)
+    size = _assemble_xbin(
+        out_path,
+        stub,
+        payload,
+        meta_bytes,
+        key_path,
+        encrypt=encrypt,
+        squashfs=squashfs,
+        target_arch=target,
+    )
     if verbose:
         label = "signed" if key_path else "unsigned"
         enc_label = "+encrypted" if encrypt else ""
+        sqfs_label = "+squashfs" if squashfs else ""
         print(
-            f"[xbin] wrote {out_path} ({size/1e6:.1f}MB, {label}{enc_label}) in {time.time()-t0:.1f}s"
+            f"[xbin] wrote {out_path} ({size/1e6:.1f}MB, {label}{enc_label}{sqfs_label}) in {time.time()-t0:.1f}s"
         )
     return str(out_path)
 
@@ -742,6 +969,8 @@ def _build_layers(
     app_dir: Path,
     plan: runtime.RuntimePlan,
     verbose: bool,
+    cross_python_root: Path | None = None,
+    target_arch: str | None = None,
 ) -> tuple[bytes, bytes, bytes, bytes]:
     """Build runtime and app layers, returning (rt_comp, app_comp, rt_tar, app_tar)."""
     req = app_dir / "requirements.txt"
@@ -753,14 +982,18 @@ def _build_layers(
             and req.stat().st_size > 0
             and not plan.site_packages
         ):
-            _pip_install_requirements(app_dir, tmp_path, plan, verbose)
+            _pip_install_requirements(
+                app_dir, tmp_path, plan, verbose, target_arch=target_arch
+            )
 
         rt_dir = tmp_path / "runtime"
         app_dir_layer = tmp_path / "app"
         rt_dir.mkdir()
         app_dir_layer.mkdir()
 
-        _build_runtime_layer(app_dir, plan, rt_dir, verbose)
+        _build_runtime_layer(
+            app_dir, plan, rt_dir, verbose, cross_python_root=cross_python_root
+        )
         _build_app_layer(app_dir, plan, app_dir_layer, verbose)
 
         rt_tar = _tar_deterministic(rt_dir)
@@ -775,3 +1008,46 @@ def _build_layers(
         app_tar, reuse=False, verbose=verbose, label="app layer"
     )
     return rt_comp, app_comp, rt_tar, app_tar
+
+
+def _build_layers_squashfs(
+    app_dir: Path,
+    plan: runtime.RuntimePlan,
+    verbose: bool,
+    cross_python_root: Path | None = None,
+    target_arch: str | None = None,
+) -> tuple[bytes, bytes]:
+    """Build runtime and app layers as squashfs images.
+
+    Returns (rt_sqfs, app_sqfs) — raw squashfs image bytes.
+    """
+    req = app_dir / "requirements.txt"
+    with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
+        tmp_path = Path(tmp)
+        if (
+            plan.runtime == "python"
+            and req.is_file()
+            and req.stat().st_size > 0
+            and not plan.site_packages
+        ):
+            _pip_install_requirements(
+                app_dir, tmp_path, plan, verbose, target_arch=target_arch
+            )
+
+        rt_dir = tmp_path / "runtime"
+        app_dir_layer = tmp_path / "app"
+        rt_dir.mkdir()
+        app_dir_layer.mkdir()
+
+        _build_runtime_layer(
+            app_dir, plan, rt_dir, verbose, cross_python_root=cross_python_root
+        )
+        _build_app_layer(app_dir, plan, app_dir_layer, verbose)
+
+        rt_sqfs = _mksquashfs(rt_dir)
+        app_sqfs = _mksquashfs(app_dir_layer)
+
+    if verbose:
+        print(f"  runtime layer: {len(rt_sqfs)/1e6:.1f}MB (squashfs)")
+        print(f"  app layer: {len(app_sqfs)/1e6:.1f}MB (squashfs)")
+    return rt_sqfs, app_sqfs

@@ -42,10 +42,12 @@
 
 ## Phase 3 — Production
 
-- [ ] **squashfs + mmap**: direct read, no extraction
+- [x] **SquashFS extraction** (v5 format, `--squashfs` flag, `mksquashfs` build, `backhand` Rust parser, better compression than zstd+tar)
+- [ ] **squashfs + mmap**: direct read, no extraction (kernel mount, Linux 5.12+)
 - [ ] **Cold/warm start < 100 ms** end-to-end
 - [ ] All runtime support (Java/GraalVM, Ruby, etc.)
 - [x] **Native aarch64 support** (Makefile auto-detect, builder auto-detect, ELF analyzer arch-specific paths, stub seccomp arch-switch, binary search paths)
+- [x] **Cross-compilation** (`--target aarch64` from x86_64, vendored python-build-standalone, pure-Python-only apps, stub pre-built for target)
 - [ ] Distribution / discovery (lightweight registry, even P2P)
 
 ## Guiding principle
