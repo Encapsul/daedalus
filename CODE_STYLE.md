@@ -202,44 +202,61 @@ on the same line as code unless they're a short `# type: ignore[code]`.
 
 ## Enforcement
 
-We use **Makefile targets** — not CI, not pre-commit hooks. Reasoning:
-this is a solo/small-team project where `make lint` is enough. CI adds
-setup overhead (GitHub Actions config, secrets, runner costs) that isn't
-justified yet. Pre-commit hooks require every contributor to install them.
+We use **Makefile targets** and **GitHub Actions CI**.
 
-```makefile
-# Add to Makefile:
+### Local
 
-.PHONY: lint lint-rust lint-python fmt fmt-rust fmt-python
-
-lint: lint-rust lint-python
-
-lint-rust:
-	cd stub && cargo clippy -- -D warnings
-
-lint-python:
-	cd cli && python -m ruff check xbin/
-	cd cli && python -m black --check xbin/
-
-fmt: fmt-rust fmt-python
-
-fmt-rust:
-	cd stub && cargo fmt
-
-fmt-python:
-	cd cli && python -m black xbin/
-	cd cli && python -m ruff check --fix xbin/
+```bash
+make lint       # check both Rust + Python
+make fmt        # auto-fix both
+make preflight  # verify prerequisites
 ```
 
-**Workflow:**
+### CI (GitHub Actions)
+
+`.github/workflows/ci.yml` runs on every push/PR to `main`:
+1. **preflight** — verify system prerequisites
+2. **rust** — `cargo build` + `cargo clippy -- -D warnings`
+3. **python** — `ruff check` + `black --check`
+4. **build** — full end-to-end: build → inspect → keygen → sign → verify
+
+PRs that fail CI cannot be merged.
+
+### Workflow
 1. Before committing: `make lint` to check, `make fmt` to auto-fix.
 2. If you see a new warning, fix it or add an explicit `# noqa` / `#[allow]`
    with a comment explaining why.
 
-### Future: when to add CI
+---
 
-If the project gets a second contributor or goes public, add a GitHub Actions
-workflow that runs `make lint`. Until then, the Makefile is sufficient.
+## Brevity rules
+
+**The codebase is too long.** These rules enforce conciseness:
+
+### Python
+- **Functions ≤ 40 lines** (down from 60). If longer, split.
+- **No docstrings on private functions.** The name + type hints say enough.
+  Only `_public_api()` or complex algorithms get docstrings.
+- **No comments that restate the code.** `# read the footer` is noise.
+  `# v2 readers expect exactly 84 bytes here` is signal.
+- **No dead code.** If it's not called, delete it. Git remembers.
+- **Inline small helpers.** Don't extract a 3-line function unless it's
+  called from 2+ places.
+
+### Rust
+- **Functions ≤ 30 lines** (down from 40). Rust is more concise than Python;
+  functions should be shorter.
+- **No `#[allow]` without a comment.** Every lint suppression must explain
+  why the lint is wrong in this specific case.
+- **Prefer `?` over `match` for error propagation.** Only use `match` when
+  you handle the error differently per arm.
+
+### Both
+- **No multi-file refactors unless the bug/feature requires it.** Moving code
+  between files for "cleanliness" creates noise in diffs and breaks `git blame`.
+- **One logical change per commit.** Don't mix refactors with features.
+- **If you touch a file, check if related files need the same fix.** But don't
+  touch files that don't need it.
 
 ---
 
