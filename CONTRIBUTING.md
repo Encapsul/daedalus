@@ -19,18 +19,11 @@ discriminatory behavior will not be tolerated.
 
 ## What we need help with
 
-### Phase 1 (current MVP)
-- Node.js end-to-end support
-- `requirements.txt` → auto pip-install at build time
-- Testing on different Linux distributions
-- Performance profiling (cold/warm start times)
-
-### Phase 2
-- Ed25519 signing (`xbin keygen` / `sign` / `verify`)
-- User namespaces isolation (`pivot_root`)
-- AI dependency analyzer (detect `subprocess`, `dlopen` calls)
-- Manifest mode (`xbin.toml`)
+### Phase 2 (current)
+- Manifest mode (`xbin.toml`) for complex dependencies
 - LRU cache eviction
+- Cross-arch support (aarch64)
+- Squashfs + mmap for direct read
 
 ### Always welcome
 - Documentation improvements
@@ -91,7 +84,7 @@ Bad: `fix stuff` or `updated code`
 
 ### Documentation (`docs/`)
 
-- Written in French (the builder's native language) — this is intentional
+- Written in English
 - Uses mdbook for structure
 - Images go in `docs/src/images/`
 - Keep the format spec in sync between `format.py` and `format.rs`
@@ -106,5 +99,5 @@ Bad: `fix stuff` or `updated code`
 
 ## Questions?
 
-Open a [Discussion](https://github.com/tedsig42/xbin/discussions) or tag
-`@tedsig42` in your issue.
+Open a [Discussion](https://github.com/Tednoob17/x.bin/discussions) or tag
+`@Tednoob17` in your issue.
