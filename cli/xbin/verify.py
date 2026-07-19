@@ -5,7 +5,8 @@ import hashlib
 import os
 import sys
 
-from . import crypto, format as fmt
+from . import crypto
+from . import format as fmt
 
 
 def verify(args: argparse.Namespace) -> None:
