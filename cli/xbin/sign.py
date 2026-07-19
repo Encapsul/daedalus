@@ -5,7 +5,8 @@ import hashlib
 import os
 import sys
 
-from . import crypto, format as fmt
+from . import crypto
+from . import format as fmt
 
 _NO_KEYS_MSG = (
     "no .key files found in ~/.xbin/keys/; use --key or run 'xbin keygen' first"
@@ -21,7 +22,7 @@ def _resolve_signing_key(explicit_key: str | None) -> str:
     try:
         entries = sorted(os.listdir(keys_dir))
     except FileNotFoundError:
-        raise ValueError(_NO_KEYS_MSG)
+        raise ValueError(_NO_KEYS_MSG) from None
 
     key_files = [e for e in entries if e.endswith(".key")]
     if not key_files:

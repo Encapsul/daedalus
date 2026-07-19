@@ -90,10 +90,10 @@ class ELFParser:
                 p_flags,
                 p_offset,
                 p_vaddr,
-                p_paddr,
+                _p_paddr,
                 p_filesz,
                 p_memsz,
-                p_align,
+                _p_align,
             ) = struct.unpack_from("<IIQQQQQQ", self.data, off)
             yield {
                 "type": p_type,
@@ -146,9 +146,7 @@ class ELFParser:
                 needed.append(str(d_val))  # placeholder, resolved via strtab
             elif d_tag == DT_STRTAB:
                 strtab_addr = d_val
-            elif d_tag == DT_RUNPATH:
-                runpaths.append(str(d_val))
-            elif d_tag == DT_RPATH:
+            elif d_tag in (DT_RUNPATH, DT_RPATH):
                 runpaths.append(str(d_val))
             pos += 16
 
