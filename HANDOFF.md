@@ -8,7 +8,8 @@
 - **Health check**: `xbin doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
 - **Release**: `./scripts/release.sh 0.1.0` → CI builds multi-arch binaries → GitHub Release
-- **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary (10 total)
+- **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo (11 total)
+- **Framework support**: Next.js, Nuxt, Astro, Django, Laravel, Symfony (auto-detected)
 - **Last commit**: `2158078` — clig.dev audit complete (12 gaps fixed)
 
 ---
@@ -179,6 +180,57 @@ All must pass. If any fails, your change introduced a regression.
 - **File**: `docs/src/guides/go.md` — new guide page
 - **File**: `docs/src/guides/php.md` — new guide page
 - **File**: `docs/src/guides/perl.md` — new guide page
+
+## Framework-specific detection — 2026-07-20
+
+### Enhanced runtime detectors
+
+**Node.js** (`cli/xbin/runtimes/node.py`):
+- Framework detection: Next.js (`next.config.js/mjs/ts`), Nuxt (`nuxt.config.ts/js/mjs`), Astro (`astro.config.mjs/ts`)
+- Reads `scripts.start` from `package.json` as fallback entrypoint
+- Next.js: entrypoint = `next start`
+- Nuxt: entrypoint = `nuxt start`
+- Astro SSR: entrypoint = `dist/server/entry.mjs` (after build) or `astro start`
+- Generic: `main` field → `index.js`/`server.js`/`app.js`
+
+**Python** (`cli/xbin/runtimes/python.py`):
+- Django detection: `manage.py` + `wsgi.py`/`asgi.py` in subdirectory
+- Auto-finds gunicorn (WSGI) or uvicorn (ASGI) on PATH
+- Fallback: `manage.py runserver 0.0.0.0:8000`
+- Generic: `app.py`/`main.py`/`__main__.py`/`server.py`
+
+**PHP** (`cli/xbin/runtimes/php.py`):
+- Laravel: `php artisan serve --host=0.0.0.0 --port=8000` (was just `artisan` which prints help)
+- Symfony: `php bin/console server:run 0.0.0.0:8000`
+- WordPress: `php -S 0.0.0.0:8080 -t /app` (PHP built-in server)
+- Generic: `php -S 0.0.0.0:8000 -t /app/public`
+
+**Hugo** (`cli/xbin/runtimes/hugo.py`) — NEW RUNTIME:
+- Detection: `hugo.toml`, `hugo.yaml`, `hugo.json`, `config.toml`/`config.yaml` (with Hugo-specific keywords)
+- If `hugo` binary on PATH: `hugo --minify && python3 -m http.server 1313`
+- Fallback: serve `public/` with Python http.server
+
+### Unit tests
+
+- **File**: `cli/tests/test_node_runtime.py` — added TestNextJsDetection (3), TestNuxtDetection (2), TestAstroDetection (2), TestNodeScriptsStart (1)
+- **File**: `cli/tests/test_python_runtime.py` — added TestDjangoDetection (4)
+- **File**: `cli/tests/test_php_runtime.py` — updated Laravel test (asserts `serve` + `--host`), WordPress test (asserts `-S`)
+- **File**: `cli/tests/test_hugo_runtime.py` — NEW, 8 tests
+- **Total**: 117 Python tests + 26 Rust tests = 143 tests, all passing
+
+### Impossible cases (future work)
+
+**WordPress** — Cannot package as single binary:
+- Requires LAMP stack: Apache/Nginx + MySQL/MariaDB + php-fpm
+- x.bin currently uses `php -S` built-in server as a fallback, but this is NOT production-ready
+- For true WordPress support: would need to embed nginx + php-fpm + SQLite (or bundle MySQL)
+- **Status**: documented, not implementable without a fundamentally different approach
+
+**Vite** — Not a production runtime:
+- Vite is a build tool / dev server, not a production application
+- After `vite build`, output is static files in `dist/`
+- x.bin could serve static files, but Vite itself is not the runtime
+- **Status**: not applicable as standalone runtime
 
 ## Package manager support — 2026-07-20
 

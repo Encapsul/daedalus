@@ -21,6 +21,7 @@ class TestRegistry:
         assert "java" in names
         assert "ruby" in names
         assert "dotnet" in names
+        assert "hugo" in names
         assert "go" in names
         assert "php" in names
         assert "perl" in names

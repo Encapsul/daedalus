@@ -1,4 +1,7 @@
-"""PHP runtime detection and embedding."""
+"""PHP runtime detection and embedding.
+
+Supports Laravel, Symfony, WordPress, and generic PHP apps.
+"""
 
 from __future__ import annotations
 
@@ -26,7 +29,7 @@ def _detect_php(app_dir: Path) -> RuntimePlan:
         raise ValueError("PHP app detected (composer.json) but no php on PATH to embed")
     interp = Path(php).resolve()
 
-    entry = _php_entry(app_dir)
+    entrypoint = _php_entrypoint(app_dir, interp)
 
     env: dict[str, str] = {}
     vendor = app_dir / "vendor"
@@ -36,7 +39,7 @@ def _detect_php(app_dir: Path) -> RuntimePlan:
     return RuntimePlan(
         runtime="php",
         interpreter_host=interp,
-        entrypoint=[f"/{_rootfs_rel(interp)}", f"/app/{entry}"],
+        entrypoint=entrypoint,
         cwd="/app",
         env=env,
     )
@@ -46,22 +49,40 @@ def _rootfs_rel(host_path: Path) -> str:
     return str(host_path).lstrip("/")
 
 
-def _php_entry(app_dir: Path) -> str:
-    # Framework-specific detection
+def _php_interp(app_dir: Path) -> str:
+    php = shutil.which("php") or "php"
+    return f"/{_rootfs_rel(Path(php).resolve())}"
+
+
+def _php_entrypoint(app_dir: Path, interp: Path) -> list[str]:
+    """Build the entrypoint argv based on detected framework."""
+    php_cmd = f"/{_rootfs_rel(interp)}"
+
+    # Laravel: php artisan serve
     if (app_dir / "artisan").is_file():
-        # Laravel
-        return "artisan"
+        return [php_cmd, "/app/artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+
+    # Symfony: php bin/console
     if (app_dir / "symfony.lock").is_file() or (
         app_dir / "config" / "bundles.php"
     ).is_file():
-        # Symfony
-        return "bin/console"
+        return [php_cmd, "/app/bin/console", "server:run", "0.0.0.0:8000"]
+
+    # WordPress: PHP built-in server
     if (app_dir / "wp-config.php").is_file():
-        # WordPress
-        return "wp-cli.phar"
+        return [
+            php_cmd,
+            "-S",
+            "0.0.0.0:8080",
+            "-t",
+            "/app",
+        ]
+
+    # Generic framework with public/ directory
     if (app_dir / "public" / "index.php").is_file():
-        # Generic framework with public/ directory
-        return "public/index.php"
+        return [php_cmd, "-S", "0.0.0.0:8000", "-t", "/app/public"]
+
     if (app_dir / "index.php").is_file():
-        return "index.php"
-    return "index.php"
+        return [php_cmd, "-S", "0.0.0.0:8000", "-t", "/app"]
+
+    return [php_cmd, "-S", "0.0.0.0:8000", "-t", "/app"]
