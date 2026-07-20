@@ -183,6 +183,7 @@ def build(
     health_port: int = 0,
     otel_endpoint: str | None = None,
     otel_protocol: str = "grpc",
+    cron_tasks: list[str] | None = None,
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -316,6 +317,26 @@ def build(
         if verbose:
             print(
                 f"  otel: endpoint={otel_endpoint} protocol={otel_protocol}",
+                file=sys.stderr,
+            )
+
+    # --- Cron/scheduled tasks ---
+    if cron_tasks:
+        from .cron import build_cron_env
+
+        parsed_tasks = []
+        for ct in cron_tasks:
+            if ":" not in ct:
+                raise ValueError(
+                    f"--cron format: NAME:SCHEDULE (got '{ct}')"
+                )
+            name, _, schedule = ct.partition(":")
+            parsed_tasks.append({"name": name, "schedule": schedule})
+        cron_env = build_cron_env(parsed_tasks)
+        plan.env.update(cron_env)
+        if verbose:
+            print(
+                f"  cron: {len(parsed_tasks)} task(s) registered",
                 file=sys.stderr,
             )
 

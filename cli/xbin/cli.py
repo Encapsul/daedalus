@@ -272,6 +272,13 @@ def main(argv: list[str] | None = None) -> int:
         default="grpc",
         help="OTLP protocol (default: grpc)",
     )
+    p_build.add_argument(
+        "--cron",
+        action="append",
+        default=[],
+        metavar="NAME:SCHEDULE",
+        help="register a cron task (e.g. --cron cleanup:'*/5 * * * *')",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     _SUBPARSERS["run"] = p_run
@@ -462,6 +469,7 @@ def main(argv: list[str] | None = None) -> int:
                 health_port=args.health_port,
                 otel_endpoint=args.otel_endpoint,
                 otel_protocol=args.otel_protocol,
+                cron_tasks=args.cron,
             )
             return 0
 
