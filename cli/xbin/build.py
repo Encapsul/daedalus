@@ -33,6 +33,7 @@ from .dotenv import load_dotenv
 from .encrypt import encrypt_payload
 from .layers import build_layers
 from .manifest import build_manifest
+from .persistent import get_persist_env
 from .pkgmgr import detect_pkgmgr, install_deps
 
 XBIN_VERSION = "0.1.0"
@@ -175,6 +176,7 @@ def build(
     author: str = "",
     description: str = "",
     license: str = "",
+    persist: bool = False,
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -245,6 +247,16 @@ def build(
             candidate = app_dir / env_file
         if candidate.is_file():
             env_file_path = candidate
+
+    # --- Persistent storage ---
+    if persist:
+        persist_env = get_persist_env(name)
+        plan.env.update(persist_env)
+        if verbose:
+            print(
+                f"  persistent storage: ~/.local/share/xbin/{name}/",
+                file=sys.stderr,
+            )
 
     # --- Cross-compilation setup ---
     cross_root: Path | None = None
