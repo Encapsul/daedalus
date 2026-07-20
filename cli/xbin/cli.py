@@ -132,6 +132,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--version", action="version", version="%(prog)s 0.1.0",
     )
+    parser.add_argument(
+        "--no-color", action="store_true",
+        help="disable colored output (also: set NO_COLOR env var)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_build = sub.add_parser("build", help="analyze an app and produce a .xbin")
@@ -262,6 +266,9 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    from ._color import init as _init_color
+    _init_color(no_color=getattr(args, "no_color", False))
+
     try:
         if args.command == "build":
             from .build import build
@@ -347,7 +354,8 @@ def main(argv: list[str] | None = None) -> int:
         FileExistsError,
         RuntimeError,
     ) as e:
-        print(f"[xbin] error: {e}", file=sys.stderr)
+        from ._color import red as _red
+        print(f"[xbin] {_red(f'error: {e}')}", file=sys.stderr)
         return 1
 
     return 1
