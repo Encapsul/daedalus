@@ -43,11 +43,19 @@
 ## Phase 3 — Production
 
 - [x] **SquashFS extraction** (v5 format, `--squashfs` flag, `mksquashfs` build, `backhand` Rust parser, better compression than zstd+tar)
+- [x] **11 runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo
+- [x] **Framework auto-detect**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony
+- [x] **`.env` file baking** (`--env-file` flag, secret detection)
+- [x] **Version metadata** (`--version-info`, `--author`, `--description`, `--license`)
+- [x] **Persistent storage** (`--persist` flag, `XBIN_PERSIST_DIR` env var)
+- [x] **Data files** (`--include PATH` flag, repeatable)
+- [x] **Tree-shaking** (`--tree-shake`, removes unused node_modules)
+- [x] **Minification** (`--minify`, JS/TS via terser, CSS built-in)
+- [x] **Health checks** (`--health-port`, `/healthz`, `/readyz`, `/status`)
+- [x] **OpenTelemetry** (`--otel-endpoint`, OTLP export, auto-instrumentation)
+- [x] **Cron/scheduled tasks** (`--cron NAME:SCHEDULE`, background scheduler)
 - [ ] **squashfs + mmap**: direct read, no extraction (kernel mount, Linux 5.12+)
 - [ ] **Cold/warm start < 100 ms** end-to-end
-- [ ] All runtime support (Java/GraalVM, Ruby, etc.)
-- [x] **Native aarch64 support** (Makefile auto-detect, builder auto-detect, ELF analyzer arch-specific paths, stub seccomp arch-switch, binary search paths)
-- [x] **Cross-compilation** (`--target aarch64` from x86_64, vendored python-build-standalone, pure-Python-only apps, stub pre-built for target)
 - [ ] Distribution / discovery (lightweight registry, even P2P)
 
 ## Guiding principle
