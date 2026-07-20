@@ -179,6 +179,7 @@ def build(
     persist: bool = False,
     include: list[str] | None = None,
     tree_shake: bool = False,
+    minify: bool = False,
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -284,6 +285,17 @@ def build(
         if verbose:
             print(
                 f"  tree-shake: removed {removed} unused package(s)",
+                file=sys.stderr,
+            )
+
+    # --- Minification: shrink JS/TS/CSS ---
+    if minify:
+        from .minify import minify_app_dir
+
+        minified = minify_app_dir(app_dir, verbose=verbose)
+        if verbose:
+            print(
+                f"  minify: minified {minified} file(s)",
                 file=sys.stderr,
             )
 

@@ -249,6 +249,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="remove unused packages from node_modules before packaging (saves space)",
     )
+    p_build.add_argument(
+        "--minify",
+        action="store_true",
+        help="minify JS/TS/CSS files before packaging (saves space)",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     _SUBPARSERS["run"] = p_run
@@ -435,6 +440,7 @@ def main(argv: list[str] | None = None) -> int:
                 persist=args.persist,
                 include=args.include,
                 tree_shake=args.tree_shake,
+                minify=args.minify,
             )
             return 0
 
