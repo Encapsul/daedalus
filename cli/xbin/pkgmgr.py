@@ -7,7 +7,6 @@ Priority is speed-based: uv > poetry > pipenv > pip; pnpm > yarn > bun > npm.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
