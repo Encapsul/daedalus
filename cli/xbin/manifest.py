@@ -55,7 +55,10 @@ def collect_service_bins(services: list[dict], verbose: bool) -> set[Path]:
             if verbose:
                 print(f"  service '{svc['name']}': {bp}", file=sys.stderr)
         else:
-            print(f"  WARNING: binary not found for '{svc['name']}': {svc['cmd'][0]}", file=sys.stderr)
+            print(
+                f"  WARNING: binary not found for '{svc['name']}': {svc['cmd'][0]}",
+                file=sys.stderr,
+            )
     return bins
 
 

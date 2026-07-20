@@ -181,8 +181,12 @@ def build(
     t0 = time.time()
     if squashfs:
         rt_sqfs, app_sqfs = build_layers(
-            app_dir, plan, verbose, squashfs=True,
-            cross_python_root=cross_root, target_arch=target,
+            app_dir,
+            plan,
+            verbose,
+            squashfs=True,
+            cross_python_root=cross_root,
+            target_arch=target,
         )
         stub_bytes = stub.read_bytes()
         rt_offset = len(stub_bytes)
@@ -206,8 +210,12 @@ def build(
         payload_format = "squashfs"
     else:
         rt_comp, app_comp, rt_tar, app_tar = build_layers(
-            app_dir, plan, verbose, squashfs=False,
-            cross_python_root=cross_root, target_arch=target,
+            app_dir,
+            plan,
+            verbose,
+            squashfs=False,
+            cross_python_root=cross_root,
+            target_arch=target,
         )
         stub_bytes = stub.read_bytes()
         rt_offset = len(stub_bytes)
