@@ -8,6 +8,7 @@
 - **Health check**: `xbin doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
 - **Release**: `./scripts/release.sh 0.1.0` → CI builds multi-arch binaries → GitHub Release
+- **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary (10 total)
 - **Last commit**: `2158078` — clig.dev audit complete (12 gaps fixed)
 
 ---
@@ -126,6 +127,58 @@ All must pass. If any fails, your change introduced a regression.
   - `--json` outputs structured JSON with all metadata fields
 - **Exit codes**: 0 if files found, 1 if none found
 - **Tested**: scan /tmp/ (found 4 files), scan --json, scan /nonexistent (exit 1), scan examples/ (exit 1) ✓
+
+## New runtimes + release fix — 2026-07-20
+
+### New runtimes: Go, PHP, Perl
+
+- **File**: `cli/xbin/runtimes/go.py` — Go runtime
+  - Detection: `go.mod` in project root
+  - Builds static binary via `go build`, embeds into .xbin
+  - Cross-compilation supported (GOOS/GOARCH)
+- **File**: `cli/xbin/runtimes/php.py` — PHP runtime
+  - Detection: `composer.json` in project root
+  - Framework detection: Laravel (artisan), Symfony (symfony.lock), WordPress (wp-config.php)
+  - Entry point: public/index.php, index.php, bin/console, artisan
+- **File**: `cli/xbin/runtimes/perl.py` — Perl runtime
+  - Detection: `Makefile.PL` or `cpanfile` in project root
+  - Entry point: app.pl, bin/app, main.pl, server.pl, app.psgi
+- **File**: `cli/xbin/runtimes/__init__.py` — updated registry
+  - Detection order: Python > Deno > Node > Java > Ruby > .NET > Go > PHP > Perl > Binary
+
+### Unit tests
+
+- **File**: `cli/tests/test_php_runtime.py` — 6 tests (detect, no-detect, Laravel, Symfony, WordPress, cross)
+- **File**: `cli/tests/test_go_runtime.py` — 4 tests (detect, no-detect, no-go-on-path, cross)
+- **File**: `cli/tests/test_perl_runtime.py` — 6 tests (detect Makefile.PL, detect cpanfile, no-detect, cross, app.pl entry, bin/app entry)
+- **File**: `cli/tests/test_registry.py` — 5 tests (not-empty, all runtimes present, get_runtime, not-found, detection order)
+- **File**: `cli/tests/conftest.py` — pytest path configuration
+- **File**: `cli/pyproject.toml` — added `pytest>=7.0` to dev dependencies
+- **Total**: 21 tests, all passing
+
+### Release fix (critical bug)
+
+- **Bug**: `release.yml` only packaged `xbin-stub` + `xbin-crypto` (Rust binaries), NOT the Python CLI (`xbin`). Users could not run `xbin` after installing from a release.
+- **File**: `.github/workflows/release.yml` — restructured:
+  - Packages full CLI bundle: Python package + Rust stubs + wrapper script
+  - Naming: `xbin-{os}-{arch}.tar.gz` (Bun/Wasmer pattern, no version in dir name)
+  - SHA-256 checksums included
+  - Release notes with changelog, install instructions, checksums section
+- **File**: `scripts/install.sh` — updated to match new structure:
+  - Expects `xbin-{platform}/bin/xbin` wrapper script
+  - Handles both `sha256sum` (Linux) and `shasum` (macOS)
+  - Installs Python CLI lib to `{INSTALL_DIR}/../lib/xbin/python/`
+  - Updates wrapper script with correct lib path
+- **Architecture**: wrapper script sets `PYTHONPATH` to find bundled Python CLI, then execs `python3 -m xbin`
+
+### Documentation
+
+- **File**: `README.md` — added Go, PHP, Perl to runtime table, guides, and quick links
+- **File**: `docs/src/introduction.md` — updated runtime list
+- **File**: `docs/src/SUMMARY.md` — added Go, PHP, Perl guide entries
+- **File**: `docs/src/guides/go.md` — new guide page
+- **File**: `docs/src/guides/php.md` — new guide page
+- **File**: `docs/src/guides/perl.md` — new guide page
 
 ## Install script + upgrade command — 2026-07-20
 
