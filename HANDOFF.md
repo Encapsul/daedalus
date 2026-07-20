@@ -7,7 +7,7 @@
 - **Build**: `make stub` + `pip install -e ./cli`
 - **Health check**: `xbin doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
-- **Release**: `./scripts/release.sh 0.1.0` → CI builds multi-arch binaries → GitHub Release
+- **Release**: `git tag v0.1.0 && git push --tags` → GitHub Actions builds 4 platforms → GitHub Release with binary archives + SHASUMS256.txt
 - **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo (11 total)
 - **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
 - **Rust core**: `xbin-core` crate — Phase 1 complete, stub uses shared library

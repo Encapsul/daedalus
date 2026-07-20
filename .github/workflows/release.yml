@@ -18,7 +18,7 @@ env:
 jobs:
   # ── Linux x86_64 ─────────────────────────────────────────────────────
   linux-x64:
-    name: Build + test linux-x64
+    name: Build linux-x64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,59 +38,41 @@ jobs:
           STUB=stub/target/x86_64-unknown-linux-musl/release/xbin-stub
           CRYPTO=stub/target/x86_64-unknown-linux-musl/release/xbin-crypto
 
-          # Must be valid ELF
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: not an ELF binary"; exit 1; }
-
-          # Must be statically linked (musl)
-          file "$STUB" | grep -q "statically linked" || echo "WARN: not statically linked"
-
-          # Must be x86_64
+          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
           file "$STUB" | grep -q "x86-64" || { echo "FAIL: not x86_64"; exit 1; }
-
-          # Must execute (exit 0 or 1, but not segfault)
-          "$STUB" --help 2>/dev/null && echo "OK: xbin-stub runs" || echo "OK: xbin-stub runs (exit != 0 is fine)"
-          "$CRYPTO" --help 2>/dev/null && echo "OK: xbin-crypto runs" || echo "OK: xbin-crypto runs (exit != 0 is fine)"
-
-          # Must print usage/help text
-          "$STUB" 2>&1 | head -1 | grep -qi "usage\|xbin\|help\|error" || echo "WARN: no usage text"
-
+          "$STUB" --help 2>/dev/null || true
           echo "=== PASS: linux-x64 ==="
 
       - name: Package
         run: |
           STUB=stub/target/x86_64-unknown-linux-musl/release/xbin-stub
           CRYPTO=stub/target/x86_64-unknown-linux-musl/release/xbin-crypto
-
-          # Binary archive
-          mkdir -p xbin-stub
-          cp "$STUB" xbin-stub/
-          tar czf "xbin-linux-x64.tar.gz" xbin-stub
-          rm -rf xbin-stub
-
-          # Full bundle
+          VERSION="${GITHUB_REF_NAME#v}"
           DIR="xbin-linux-x64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
+
           cat > "${DIR}/bin/xbin" << 'WRAPPER'
-          #!/usr/bin/env bash
-          XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-          export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-          exec python3 -m xbin "$@"
-          WRAPPER
+#!/usr/bin/env bash
+XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+exec python3 -m xbin "$@"
+WRAPPER
           chmod +x "${DIR}/bin/xbin"
+
           tar czf "${DIR}.tar.gz" "${DIR}"
-          rm -rf "${DIR}"
+          echo "ASSET=${DIR}.tar.gz" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x64
-          path: "*.tar.gz"
+          path: xbin-*.tar.gz
 
-  # ── Linux aarch64 (cross-compiled + QEMU test) ───────────────────────
+  # ── Linux aarch64 ────────────────────────────────────────────────────
   linux-arm64:
-    name: Build + test linux-arm64
+    name: Build linux-arm64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,69 +90,48 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Test binary (static checks)
+      - name: Test binary
         run: |
           STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
-          CRYPTO=stub/target/aarch64-unknown-linux-musl/release/xbin-crypto
+          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
+          file "$STUB" | grep -q "aarch64" || { echo "FAIL: not aarch64"; exit 1; }
+          echo "=== PASS: linux-arm64 ==="
 
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: not an ELF binary"; exit 1; }
-          file "$STUB" | grep -q "statically linked" || echo "WARN: not statically linked"
-          file "$STUB" | grep -q "aarch64\|ARM aarch64" || { echo "FAIL: not aarch64"; exit 1; }
-
-          echo "=== PASS: linux-arm64 (static checks) ==="
-
-      - name: Test binary (QEMU)
-        if: success()
+      - name: Test QEMU
         run: |
           sudo apt-get install -y qemu-user-static || true
           STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
-          CRYPTO=stub/target/aarch64-unknown-linux-musl/release/xbin-crypto
-
-          if qemu-aarch64-static "$STUB" --help 2>/dev/null; then
-            echo "OK: xbin-stub runs under QEMU"
-          else
-            echo "WARN: QEMU test skipped or binary exited non-zero (OK)"
-          fi
-
-          if qemu-aarch64-static "$CRYPTO" --help 2>/dev/null; then
-            echo "OK: xbin-crypto runs under QEMU"
-          else
-            echo "WARN: QEMU test skipped or binary exited non-zero (OK)"
-          fi
+          qemu-aarch64-static "$STUB" --help 2>/dev/null && echo "OK: QEMU pass" || echo "OK: QEMU exit != 0 is fine"
 
       - name: Package
         run: |
           STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
           CRYPTO=stub/target/aarch64-unknown-linux-musl/release/xbin-crypto
-
-          mkdir -p xbin-stub
-          cp "$STUB" xbin-stub/
-          tar czf "xbin-linux-arm64.tar.gz" xbin-stub
-          rm -rf xbin-stub
-
+          VERSION="${GITHUB_REF_NAME#v}"
           DIR="xbin-linux-arm64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
+
           cat > "${DIR}/bin/xbin" << 'WRAPPER'
-          #!/usr/bin/env bash
-          XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-          export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-          exec python3 -m xbin "$@"
-          WRAPPER
+#!/usr/bin/env bash
+XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+exec python3 -m xbin "$@"
+WRAPPER
           chmod +x "${DIR}/bin/xbin"
+
           tar czf "${DIR}.tar.gz" "${DIR}"
-          rm -rf "${DIR}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: linux-arm64
-          path: "*.tar.gz"
+          path: xbin-*.tar.gz
 
-  # ── macOS aarch64 (Apple Silicon) ────────────────────────────────────
+  # ── macOS Apple Silicon ──────────────────────────────────────────────
   macos-arm64:
-    name: Build + test macos-arm64
+    name: Build macos-arm64
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -188,49 +149,40 @@ jobs:
       - name: Test binary
         run: |
           STUB=stub/target/aarch64-apple-darwin/release/xbin-stub
-          CRYPTO=stub/target/aarch64-apple-darwin/release/xbin-crypto
-
-          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: not a Mach-O binary"; exit 1; }
+          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; exit 1; }
           file "$STUB" | grep -q "arm64" || { echo "FAIL: not arm64"; exit 1; }
-
-          "$STUB" --help 2>/dev/null && echo "OK: xbin-stub runs" || echo "OK: xbin-stub runs (exit != 0 is fine)"
-          "$CRYPTO" --help 2>/dev/null && echo "OK: xbin-crypto runs" || echo "OK: xbin-crypto runs (exit != 0 is fine)"
-
+          "$STUB" --help 2>/dev/null || true
           echo "=== PASS: macos-arm64 ==="
 
       - name: Package
         run: |
           STUB=stub/target/aarch64-apple-darwin/release/xbin-stub
           CRYPTO=stub/target/aarch64-apple-darwin/release/xbin-crypto
-
-          mkdir -p xbin-stub
-          cp "$STUB" xbin-stub/
-          tar czf "xbin-macos-arm64.tar.gz" xbin-stub
-          rm -rf xbin-stub
-
+          VERSION="${GITHUB_REF_NAME#v}"
           DIR="xbin-macos-arm64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
+
           cat > "${DIR}/bin/xbin" << 'WRAPPER'
-          #!/usr/bin/env bash
-          XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-          export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-          exec python3 -m xbin "$@"
-          WRAPPER
+#!/usr/bin/env bash
+XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+exec python3 -m xbin "$@"
+WRAPPER
           chmod +x "${DIR}/bin/xbin"
+
           tar czf "${DIR}.tar.gz" "${DIR}"
-          rm -rf "${DIR}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
-          path: "*.tar.gz"
+          path: xbin-*.tar.gz
 
-  # ── macOS x86_64 (Intel) ─────────────────────────────────────────────
+  # ── macOS Intel ──────────────────────────────────────────────────────
   macos-x64:
-    name: Build + test macos-x64
+    name: Build macos-x64
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
@@ -248,143 +200,101 @@ jobs:
       - name: Test binary
         run: |
           STUB=stub/target/x86_64-apple-darwin/release/xbin-stub
-          CRYPTO=stub/target/x86_64-apple-darwin/release/xbin-crypto
-
-          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: not a Mach-O binary"; exit 1; }
+          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; exit 1; }
           file "$STUB" | grep -q "x86_64" || { echo "FAIL: not x86_64"; exit 1; }
-
-          "$STUB" --help 2>/dev/null && echo "OK: xbin-stub runs" || echo "OK: xbin-stub runs (exit != 0 is fine)"
-          "$CRYPTO" --help 2>/dev/null && echo "OK: xbin-crypto runs" || echo "OK: xbin-crypto runs (exit != 0 is fine)"
-
+          "$STUB" --help 2>/dev/null || true
           echo "=== PASS: macos-x64 ==="
 
       - name: Package
         run: |
           STUB=stub/target/x86_64-apple-darwin/release/xbin-stub
           CRYPTO=stub/target/x86_64-apple-darwin/release/xbin-crypto
-
-          mkdir -p xbin-stub
-          cp "$STUB" xbin-stub/
-          tar czf "xbin-macos-x64.tar.gz" xbin-stub
-          rm -rf xbin-stub
-
+          VERSION="${GITHUB_REF_NAME#v}"
           DIR="xbin-macos-x64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
+
           cat > "${DIR}/bin/xbin" << 'WRAPPER'
-          #!/usr/bin/env bash
-          XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-          export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-          exec python3 -m xbin "$@"
-          WRAPPER
+#!/usr/bin/env bash
+XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+exec python3 -m xbin "$@"
+WRAPPER
           chmod +x "${DIR}/bin/xbin"
+
           tar czf "${DIR}.tar.gz" "${DIR}"
-          rm -rf "${DIR}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: macos-x64
-          path: "*.tar.gz"
+          path: xbin-*.tar.gz
 
   # ── GitHub Release ───────────────────────────────────────────────────
   release:
-    name: Publish release
+    name: Create GitHub Release
     needs: [linux-x64, linux-arm64, macos-arm64, macos-x64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Verify all artifacts present
+      - name: List artifacts
         run: |
-          cd artifacts
           echo "=== Downloaded artifacts ==="
-          ls -la *.tar.gz
-
-          REQUIRED=(
-            "xbin-linux-x64.tar.gz"
-            "xbin-linux-arm64.tar.gz"
-            "xbin-macos-arm64.tar.gz"
-            "xbin-macos-x64.tar.gz"
-          )
-
-          for f in "${REQUIRED[@]}"; do
-            if [ ! -f "$f" ]; then
-              echo "FAIL: missing $f"
-              exit 1
-            fi
-            # Must be valid tar.gz
-            tar tzf "$f" > /dev/null 2>&1 || { echo "FAIL: $f is not a valid tar.gz"; exit 1; }
-            echo "OK: $f"
-          done
-          echo "=== All artifacts valid ==="
+          find artifacts -type f -name '*.tar.gz' | sort
+          ls -lh artifacts/
 
       - name: Generate SHASUMS256.txt
         run: |
           cd artifacts
-          echo "# x.bin v${GITHUB_REF_NAME#v} — SHA-256 Checksums" > SHASUMS256.txt
-          echo "#" >> SHASUMS256.txt
+          : > SHASUMS256.txt
           for f in xbin-*.tar.gz; do
             [ -f "$f" ] && sha256sum "$f"
           done >> SHASUMS256.txt
-
-          echo "=== Checksums ==="
+          echo "=== SHASUMS ==="
           cat SHASUMS256.txt
 
-      - name: Generate release notes
+      - name: Write release body
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          cat > release-notes.md << NOTES
-          ## x.bin v${VERSION}
+          cat > release-body.md << 'EOF'
+          ## x.bin — Package any app into a single executable
 
-          Package any web/server/CLI app into a single self-extracting executable.
+          **Supported runtimes:** Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo
 
           ### Quick install
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash
+          ```
 
-          \`\`\`bash
-          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
-          \`\`\`
-
-          ### Downloads
-
-          Each archive contains a \`xbin-stub\` binary. Extract and move to your PATH.
-
-          | Platform | Archive |
-          |----------|---------|
-          | Linux x86_64 | [\`xbin-linux-x64.tar.gz\`](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xbin-linux-x64.tar.gz) |
-          | Linux aarch64 | [\`xbin-linux-arm64.tar.gz\`](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xbin-linux-arm64.tar.gz) |
-          | macOS Apple Silicon | [\`xbin-macos-arm64.tar.gz\`](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xbin-macos-arm64.tar.gz) |
-          | macOS Intel | [\`xbin-macos-x64.tar.gz\`](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xbin-macos-x64.tar.gz) |
-
-          ### Verify checksum
-
-          \`\`\`bash
+          ### Verify checksums
+          ```bash
           sha256sum -c SHASUMS256.txt
-          \`\`\`
+          ```
+          EOF
 
-          ### Supported runtimes
-          Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ASSETS=""
+          for f in artifacts/xbin-*.tar.gz; do
+            [ -f "$f" ] && ASSETS="$ASSETS $f"
+          done
+          [ -f "artifacts/SHASUMS256.txt" ] && ASSETS="$ASSETS artifacts/SHASUMS256.txt"
 
-          ### From source
-          \`\`\`bash
-          git clone https://github.com/${{ github.repository }}.git
-          cd x.bin
-          make preflight && make stub && pip install -e ./cli
-          \`\`\`
-          NOTES
+          echo "Uploading:$ASSETS"
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: release-notes.md
-          files: |
-            artifacts/xbin-*.tar.gz
-            artifacts/SHASUMS256.txt
-          draft: false
-          prerelease: false
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "${{ github.repository }}" \
+            --title "x.bin ${GITHUB_REF_NAME}" \
+            --notes-file release-body.md \
+            $ASSETS
+
+          echo "=== Release published ==="

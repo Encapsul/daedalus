@@ -8,6 +8,10 @@ description = "xbin core library — format, compression, runtime detection, pac
 name = "xbin_core"
 path = "src/lib.rs"
 
+[features]
+default = []
+python = ["pyo3"]
+
 [dependencies]
 # Format + integrity
 sha2 = "0.10"
@@ -17,6 +21,9 @@ serde_json = "1"
 # Compression
 ruzstd = "0.7"          # zstd decompression (pure Rust, for reading)
 zstd = "0.13"           # zstd compression (C bindings, for building)
+
+# Python bindings (optional)
+pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
