@@ -231,6 +231,12 @@ def main(argv: list[str] | None = None) -> int:
         "--license",
         help="embed license identifier in binary metadata (e.g. MIT, Apache-2.0)",
     )
+    p_build.add_argument(
+        "--persist",
+        action="store_true",
+        help="enable persistent storage (creates ~/.local/share/xbin/{app}/ dir, "
+        "sets XBIN_PERSIST_DIR env var at runtime)",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     _SUBPARSERS["run"] = p_run
@@ -414,6 +420,7 @@ def main(argv: list[str] | None = None) -> int:
                 author=args.author or "",
                 description=args.description or "",
                 license=args.license or "",
+                persist=args.persist,
             )
             return 0
 
