@@ -175,12 +175,11 @@ def build_app_layer(
         ),
     )
     # Copy external .env file into app layer as .env if it's outside app_dir.
-    if env_file_path is not None and env_file_path.is_file():
-        if not str(env_file_path.resolve()).startswith(str(app_dir.resolve())):
-            dest = app_dest / ".env"
-            shutil.copy2(env_file_path, dest)
-            if verbose:
-                print(f"  app layer: copied {env_file_path.name} -> .env", file=sys.stderr)
+    if env_file_path is not None and env_file_path.is_file() and not str(env_file_path.resolve()).startswith(str(app_dir.resolve())):
+        dest = app_dest / ".env"
+        shutil.copy2(env_file_path, dest)
+        if verbose:
+            print(f"  app layer: copied {env_file_path.name} -> .env", file=sys.stderr)
     # Copy --include files/dirs into app layer.
     if include_paths:
         for inc_path in include_paths:
