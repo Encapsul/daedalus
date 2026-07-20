@@ -44,10 +44,6 @@ from .encrypt import encrypt_payload
 
 XBIN_VERSION = "0.1.0"
 
-_NO_KEYS_MSG = (
-    "no .key files found in ~/.xbin/keys/; use --key or run 'xbin keygen' first"
-)
-
 
 def find_stub(target_arch: str | None = None) -> Path:
     """Locate the compiled launcher stub."""

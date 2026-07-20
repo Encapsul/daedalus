@@ -7,10 +7,7 @@ import sys
 
 from . import crypto
 from . import format as fmt
-
-_NO_KEYS_MSG = (
-    "no .key files found in ~/.xbin/keys/; use --key or run 'xbin keygen' first"
-)
+from ._util import keys_dir as _keys_dir
 
 
 def _resolve_signing_key(explicit_key: str | None) -> str:
@@ -18,17 +15,21 @@ def _resolve_signing_key(explicit_key: str | None) -> str:
     if explicit_key:
         return os.path.abspath(explicit_key)
 
-    keys_dir = os.path.expanduser("~/.xbin/keys")
+    keys = _keys_dir()
     try:
-        entries = sorted(os.listdir(keys_dir))
+        entries = sorted(os.listdir(keys))
     except FileNotFoundError:
-        raise ValueError(_NO_KEYS_MSG) from None
+        raise ValueError(
+            f"no .key files found in {keys}; use --key or run 'xbin keygen' first"
+        ) from None
 
     key_files = [e for e in entries if e.endswith(".key")]
     if not key_files:
-        raise ValueError(_NO_KEYS_MSG)
+        raise ValueError(
+            f"no .key files found in {keys}; use --key or run 'xbin keygen' first"
+        )
 
-    return os.path.join(keys_dir, key_files[0])
+    return os.path.join(keys, key_files[0])
 
 
 def sign(args: argparse.Namespace) -> None:

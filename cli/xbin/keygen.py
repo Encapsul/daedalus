@@ -7,7 +7,11 @@ from . import crypto
 
 
 def keygen(args: argparse.Namespace) -> None:
-    key_dir = Path(args.key_dir).expanduser().resolve()
+    from ._util import keys_dir as _keys_dir
+
+    key_dir = (
+        Path(args.key_dir).expanduser().resolve() if args.key_dir else _keys_dir()
+    )
     key_dir.mkdir(parents=True, exist_ok=True)
 
     fp = crypto.keygen(str(key_dir))

@@ -182,15 +182,15 @@ def main(argv: list[str] | None = None) -> int:
     p_keygen = sub.add_parser("keygen", help="generate an Ed25519 signing keypair")
     p_keygen.add_argument(
         "--key-dir",
-        default="~/.xbin/keys",
-        help="output directory for key files (default: ~/.xbin/keys)",
+        default=None,
+        help="output directory for key files (default: $XDG_DATA_HOME/xbin/keys)",
     )
     p_keygen.add_argument("-q", "--quiet", action="store_true")
 
     p_sign = sub.add_parser("sign", help="sign a .xbin file (in-place, v3 footer)")
     p_sign.add_argument("file", help=".xbin file to sign")
     p_sign.add_argument(
-        "--key", help="path to signing key (default: first .key in ~/.xbin/keys/)"
+        "--key", help="path to signing key (default: first .key in keys directory)"
     )
     p_sign.add_argument("-q", "--quiet", action="store_true")
 
@@ -198,7 +198,8 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("file", help=".xbin file to verify")
     p_verify.add_argument(
         "--trusted-dir",
-        help="trusted keys directory " "(default: ~/.xbin/trusted-keys/)",
+        help="trusted keys directory "
+        "(default: $XDG_DATA_HOME/xbin/trusted-keys)",
     )
     p_verify.add_argument("-q", "--quiet", action="store_true")
 
@@ -208,8 +209,8 @@ def main(argv: list[str] | None = None) -> int:
     p_trust.add_argument("pubkey", help="path to a 32-byte Ed25519 public key file")
     p_trust.add_argument(
         "--trusted-dir",
-        default="~/.xbin/trusted-keys",
-        help="trusted keys directory (default: ~/.xbin/trusted-keys/)",
+        default=None,
+        help="trusted keys directory (default: $XDG_DATA_HOME/xbin/trusted-keys)",
     )
     p_trust.add_argument("-q", "--quiet", action="store_true")
 

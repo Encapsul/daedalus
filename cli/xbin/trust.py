@@ -6,6 +6,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from ._util import trusted_dir as _trusted_dir
+
 
 def trust(args: argparse.Namespace) -> None:
     pubkey_path = Path(args.pubkey).expanduser().resolve()
@@ -16,7 +18,11 @@ def trust(args: argparse.Namespace) -> None:
     if len(raw) != 32:
         raise ValueError(f"public key must be exactly 32 bytes, got {len(raw)}")
 
-    dest_dir = Path(args.trusted_dir).expanduser().resolve()
+    dest_dir = (
+        Path(args.trusted_dir).expanduser().resolve()
+        if args.trusted_dir
+        else _trusted_dir()
+    )
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     fp = hashlib.sha256(raw).hexdigest()

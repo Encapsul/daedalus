@@ -7,6 +7,7 @@ import sys
 
 from . import crypto
 from . import format as fmt
+from ._util import trusted_dir as _trusted_dir
 
 
 def verify(args: argparse.Namespace) -> None:
@@ -28,11 +29,7 @@ def verify(args: argparse.Namespace) -> None:
 
     hash_and_sig = body_hash + sig  # 96 bytes
 
-    trusted_dir = args.trusted_dir
-    if trusted_dir:
-        trusted_dir = os.path.abspath(trusted_dir)
-    else:
-        trusted_dir = os.path.expanduser("~/.xbin/trusted-keys")
+    trusted_dir = os.path.abspath(args.trusted_dir) if args.trusted_dir else str(_trusted_dir())
 
     if not os.path.isdir(trusted_dir):
         raise ValueError(f"trusted keys directory not found: {trusted_dir}")
