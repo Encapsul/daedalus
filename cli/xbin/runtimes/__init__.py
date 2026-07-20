@@ -86,15 +86,24 @@ def get_runtime(name: str) -> Runtime:
 
 
 def _register_builtins() -> None:
-    """Register the four built-in runtimes.  Called at module load time."""
+    """Register the built-in runtimes.  Called at module load time.
+
+    Detection order: Python > Deno > Node > Java > Ruby > .NET > Binary.
+    """
     from .binary import BinaryRuntime
     from .deno import DenoRuntime
+    from .dotnet import DotnetRuntime
+    from .java import JavaRuntime
     from .node import NodeRuntime
     from .python import PythonRuntime
+    from .ruby import RubyRuntime
 
     register(PythonRuntime())
     register(DenoRuntime())
     register(NodeRuntime())
+    register(JavaRuntime())
+    register(RubyRuntime())
+    register(DotnetRuntime())
     register(BinaryRuntime())
 
 
