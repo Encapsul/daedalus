@@ -128,6 +128,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="xbin",
         description="Ship your web app like a binary. Run anywhere.",
+        epilog=(
+            "examples:\n"
+            "  xbin build ./myapp                   Build a standalone .xbin\n"
+            "  xbin build ./myapp -o out.xbin       Build with custom output path\n"
+            "  xbin build ./myapp --key key.key      Build and sign in one step\n"
+            "  xbin run myapp.xbin                   Run a packed binary\n"
+            "  xbin inspect myapp.xbin               Show layers, deps, and metadata\n"
+            "  xbin doctor                           Check prerequisites\n"
+            "\nfull docs: https://github.com/xbin-org/xbin"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--version", action="version", version="%(prog)s 0.1.0",
