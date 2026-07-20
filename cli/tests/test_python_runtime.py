@@ -102,3 +102,72 @@ class TestPythonRuntime:
             plan = python_runtime.detect(tmp_path)
         assert plan.env["PYTHONUNBUFFERED"] == "1"
         assert plan.env["PYTHONDONTWRITEBYTECODE"] == "1"
+
+
+class TestDjangoDetection:
+    def test_detect_django_with_wsgi(self, python_runtime, tmp_path):
+        (tmp_path / "manage.py").write_text("#!/usr/bin/env python")
+        project_dir = tmp_path / "myproject"
+        project_dir.mkdir()
+        (project_dir / "wsgi.py").write_text("application = None")
+        with (
+            patch("xbin.runtimes.python.shutil.which") as mock_which,
+            patch("xbin.runtimes.python.sys", _mock_sys()),
+        ):
+            mock_which.side_effect = lambda cmd: {
+                "python3": "/usr/bin/python3",
+                "gunicorn": "/usr/bin/gunicorn",
+            }.get(cmd)
+            plan = python_runtime.detect(tmp_path)
+        assert plan is not None
+        assert plan.runtime == "python"
+        assert any("gunicorn" in part for part in plan.entrypoint)
+        assert any("myproject.wsgi" in part for part in plan.entrypoint)
+
+    def test_detect_django_with_asgi(self, python_runtime, tmp_path):
+        (tmp_path / "manage.py").write_text("#!/usr/bin/env python")
+        project_dir = tmp_path / "myproject"
+        project_dir.mkdir()
+        (project_dir / "asgi.py").write_text("application = None")
+        with (
+            patch("xbin.runtimes.python.shutil.which") as mock_which,
+            patch("xbin.runtimes.python.sys", _mock_sys()),
+        ):
+            mock_which.side_effect = lambda cmd: {
+                "python3": "/usr/bin/python3",
+                "uvicorn": "/usr/bin/uvicorn",
+            }.get(cmd)
+            plan = python_runtime.detect(tmp_path)
+        assert plan is not None
+        assert any("uvicorn" in part for part in plan.entrypoint)
+        assert any("myproject.asgi" in part for part in plan.entrypoint)
+
+    def test_django_fallback_to_manage_py(self, python_runtime, tmp_path):
+        (tmp_path / "manage.py").write_text("#!/usr/bin/env python")
+        project_dir = tmp_path / "myproject"
+        project_dir.mkdir()
+        (project_dir / "wsgi.py").write_text("application = None")
+        with (
+            patch("xbin.runtimes.python.shutil.which") as mock_which,
+            patch("xbin.runtimes.python.sys", _mock_sys()),
+        ):
+            mock_which.side_effect = lambda cmd: {
+                "python3": "/usr/bin/python3",
+            }.get(cmd)
+            plan = python_runtime.detect(tmp_path)
+        assert plan is not None
+        assert any("manage.py" in part for part in plan.entrypoint)
+        assert any("runserver" in part for part in plan.entrypoint)
+
+    def test_django_no_wsgi_no_asgi(self, python_runtime, tmp_path):
+        (tmp_path / "manage.py").write_text("#!/usr/bin/env python")
+        # No wsgi.py or asgi.py — should fall through to generic Python
+        (tmp_path / "app.py").write_text("print('hello')")
+        with (
+            patch("xbin.runtimes.python.shutil.which", return_value="/usr/bin/python3"),
+            patch("xbin.runtimes.python.sys", _mock_sys()),
+        ):
+            plan = python_runtime.detect(tmp_path)
+        assert plan is not None
+        # Should detect as generic Python, not Django
+        assert any("app.py" in part for part in plan.entrypoint)

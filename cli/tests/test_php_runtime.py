@@ -37,6 +37,8 @@ class TestPHPRuntime:
         plan = php_runtime.detect(tmp_path)
         assert plan is not None
         assert "artisan" in plan.entrypoint[1]
+        assert "serve" in plan.entrypoint
+        assert "--host=0.0.0.0" in plan.entrypoint
 
     def test_symfony_detection(self, php_runtime, tmp_path):
         composer = tmp_path / "composer.json"
@@ -60,6 +62,9 @@ class TestPHPRuntime:
 
         plan = php_runtime.detect(tmp_path)
         assert plan is not None
+        # WordPress uses PHP built-in server
+        assert "-S" in plan.entrypoint
+        assert "0.0.0.0:8080" in plan.entrypoint
 
     def test_supports_cross_false(self, php_runtime):
         assert php_runtime.supports_cross() is False

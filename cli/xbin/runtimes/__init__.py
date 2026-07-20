@@ -1,8 +1,9 @@
 """Runtime detection, registry, and shared data structures.
 
-Each runtime (Python, Node, Deno, Java, Ruby, .NET, binary) lives in its own
-file and implements the ``Runtime`` base class.  Detection order is fixed by
-the registry: Python > Deno > Node > Binary.
+Each runtime (Python, Node, Deno, Java, Ruby, .NET, Hugo, Go, PHP, Perl, binary)
+lives in its own file and implements the ``Runtime`` base class.
+Detection order is fixed by the registry:
+Python > Deno > Node > Java > Ruby > .NET > Hugo > Go > PHP > Perl > Binary.
 """
 
 from __future__ import annotations
@@ -73,7 +74,8 @@ def detect_runtime(app_dir: Path) -> RuntimePlan:
     raise ValueError(
         "could not detect runtime: no app.py/main.py, no deno.json/package.json, "
         "no pom.xml/build.gradle, no Gemfile, no *.csproj, no go.mod, "
-        "no composer.json, no Makefile.PL/cpanfile, no single ELF binary. "
+        "no composer.json, no Makefile.PL/cpanfile, no hugo.toml/config.toml, "
+        "no single ELF binary. "
         "Use a manifest (xbin.toml) to declare entrypoint."
     )
 
@@ -89,12 +91,13 @@ def get_runtime(name: str) -> Runtime:
 def _register_builtins() -> None:
     """Register the built-in runtimes.  Called at module load time.
 
-    Detection order: Python > Deno > Node > Java > Ruby > .NET > Go > PHP > Perl > Binary.
+    Detection order: Python > Deno > Node > Java > Ruby > .NET > Hugo > Go > PHP > Perl > Binary.
     """
     from .binary import BinaryRuntime
     from .deno import DenoRuntime
     from .dotnet import DotnetRuntime
     from .go import GoRuntime
+    from .hugo import HugoRuntime
     from .java import JavaRuntime
     from .node import NodeRuntime
     from .perl import PerlRuntime
@@ -108,6 +111,7 @@ def _register_builtins() -> None:
     register(JavaRuntime())
     register(RubyRuntime())
     register(DotnetRuntime())
+    register(HugoRuntime())
     register(GoRuntime())
     register(PHPRuntime())
     register(PerlRuntime())
