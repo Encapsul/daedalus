@@ -86,6 +86,16 @@ All must pass. If any fails, your change introduced a regression.
 - **File**: `stub/Cargo.toml`
 - Fixed misleading comment: `backhand` (squashfs) requires C compiler via `zstd-sys` — project is not purely pure-Rust
 
+## Doctor --fix (auto-install missing deps) — 2026-07-20
+
+- **File**: `cli/xbin/doctor.py` — `--fix` flag, `--force` / `-f` flag
+- `xbin doctor --fix`: attempts to auto-install missing required prerequisites
+- `xbin doctor --fix --force`: skips confirmation prompt (for scripts/CI)
+- **Fixable checks**: musl target (`rustup target add`), zstd (`apt install`), mksquashfs (`apt install`), cryptography/ruff/black (`pip install`), xbin-stub/xbin-crypto (`make stub`)
+- **Non-fixable checks** (manual install required): Python version, pip, cargo, rustc, C compiler, node, deno
+- **Safety**: confirms interactively before fixing (unless `--force`); each fix has a timeout; re-verifies after fix; continues on individual failures
+- **clig.dev compliance**: `--fix` follows "confirm before dangerous actions" guideline; `--force` for scriptability; exit 0 on full success, 1 on partial/full failure
+
 ## SquashFS support — 2026-07-18
 
 - **File**: `stub/src/format.rs` — format v5, `PAYLOAD_FORMAT_SQUASHFS = 2`

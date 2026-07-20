@@ -297,6 +297,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="output as JSON",
     )
+    p_doctor.add_argument(
+        "--fix",
+        action="store_true",
+        help="attempt to install missing prerequisites automatically",
+    )
+    p_doctor.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="skip confirmation prompt (for use with --fix in scripts)",
+    )
 
     p_help = sub.add_parser(
         "help",
@@ -402,7 +413,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "doctor":
             from .doctor import doctor
 
-            return doctor(verbose=_verbose, json_output=args.json)
+            return doctor(
+                verbose=_verbose,
+                json_output=args.json,
+                fix=args.fix,
+                force=args.force,
+            )
     except (
         FileNotFoundError,
         NotADirectoryError,
