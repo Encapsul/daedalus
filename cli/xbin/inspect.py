@@ -37,6 +37,10 @@ def _collect_inspect_data(path: str) -> dict:
     data["created"] = meta.get("created")
     data["layers"] = meta.get("layers")
     data["integrity_sha256"] = footer.payload_sha256.hex()
+    data["version"] = meta.get("version", "")
+    data["author"] = meta.get("author", "")
+    data["description"] = meta.get("description", "")
+    data["license"] = meta.get("license", "")
     return data
 
 
@@ -57,6 +61,14 @@ def inspect(path: str, *, json_output: bool = False) -> None:
         print(f"sig size:        {data['sig_size']} bytes")
         print("signer:          (run 'xbin verify' with trusted keys to identify)")
     print(f"name:            {data['name']}")
+    if data["version"]:
+        print(f"version:         {data['version']}")
+    if data["author"]:
+        print(f"author:          {data['author']}")
+    if data["description"]:
+        print(f"description:     {data['description']}")
+    if data["license"]:
+        print(f"license:         {data['license']}")
     print(f"runtime:         {data['runtime']}")
     print(f"isolation level: {data['isolation']}")
     print(f"entrypoint:      {' '.join(data['entrypoint'])}")

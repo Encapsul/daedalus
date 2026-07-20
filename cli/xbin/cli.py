@@ -209,6 +209,28 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="skip automatic dependency installation (deps must already be installed)",
     )
+    p_build.add_argument(
+        "--env-file",
+        metavar="FILE",
+        help="load env vars from FILE (e.g. .env) and bake into the .xbin",
+    )
+    p_build.add_argument(
+        "--version-info",
+        metavar="VERSION",
+        help="embed app version in binary metadata (e.g. 1.2.3)",
+    )
+    p_build.add_argument(
+        "--author",
+        help="embed author name in binary metadata",
+    )
+    p_build.add_argument(
+        "--description",
+        help="embed app description in binary metadata",
+    )
+    p_build.add_argument(
+        "--license",
+        help="embed license identifier in binary metadata (e.g. MIT, Apache-2.0)",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     _SUBPARSERS["run"] = p_run
@@ -387,6 +409,11 @@ def main(argv: list[str] | None = None) -> int:
                 target=args.target,
                 update=args.update,
                 no_install=args.no_install,
+                env_file=args.env_file,
+                version=args.version_info or "",
+                author=args.author or "",
+                description=args.description or "",
+                license=args.license or "",
             )
             return 0
 

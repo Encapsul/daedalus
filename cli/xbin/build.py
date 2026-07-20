@@ -29,6 +29,7 @@ from .cross import (
     is_cross_build,
     resolve_cross_python,
 )
+from .dotenv import load_dotenv
 from .encrypt import encrypt_payload
 from .layers import build_layers
 from .manifest import build_manifest
@@ -169,6 +170,11 @@ def build(
     target: str | None = None,
     update: bool = False,
     no_install: bool = False,
+    env_file: str | None = None,
+    version: str = "",
+    author: str = "",
+    description: str = "",
+    license: str = "",
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -227,6 +233,18 @@ def build(
         print(f"[xbin] building '{name}'", file=sys.stderr)
         print(f"  runtime: {plan.runtime}", file=sys.stderr)
         print(f"  entrypoint: {' '.join(plan.entrypoint)}", file=sys.stderr)
+
+    # --- Load .env file and merge into plan.env ---
+    env_file_path: Path | None = None
+    if env_file:
+        dotenv_env = load_dotenv(app_dir, env_file, verbose=verbose)
+        plan.env.update(dotenv_env)
+        # Resolve env_file_path for copying into app layer.
+        candidate = Path(env_file)
+        if not candidate.is_absolute():
+            candidate = app_dir / env_file
+        if candidate.is_file():
+            env_file_path = candidate
 
     # --- Cross-compilation setup ---
     cross_root: Path | None = None
@@ -306,7 +324,7 @@ def build(
             with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
                 app_dir_layer = Path(tmp) / "app"
                 app_dir_layer.mkdir()
-                build_app_layer(app_dir, plan, app_dir_layer, verbose)
+                build_app_layer(app_dir, plan, app_dir_layer, verbose, env_file_path=env_file_path)
                 app_sqfs = mksquashfs(app_dir_layer)
             rt_sqfs = reuse_rt_blob
             if verbose:
@@ -326,6 +344,7 @@ def build(
                 squashfs=True,
                 cross_python_root=cross_root,
                 target_arch=target,
+                env_file_path=env_file_path,
             )
         stub_bytes = stub.read_bytes()
         rt_offset = len(stub_bytes)
@@ -359,7 +378,7 @@ def build(
             with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
                 app_dir_layer = Path(tmp) / "app"
                 app_dir_layer.mkdir()
-                build_app_layer(app_dir, plan, app_dir_layer, verbose)
+                build_app_layer(app_dir, plan, app_dir_layer, verbose, env_file_path=env_file_path)
                 app_tar = tar_deterministic(app_dir_layer)
             from .layers import compress_layer_cached
 
@@ -381,6 +400,7 @@ def build(
                 squashfs=False,
                 cross_python_root=cross_root,
                 target_arch=target,
+                env_file_path=env_file_path,
             )
             rt_usize = len(rt_tar)
             app_usize = len(app_tar)
@@ -434,6 +454,10 @@ def build(
         payload_format=payload_format,
         app_hash=new_app_hash,
         rt_deps_hash=new_rt_hash,
+        version=version,
+        author=author,
+        description=description,
+        license=license,
     )
     size = assemble_xbin(
         out_path,
