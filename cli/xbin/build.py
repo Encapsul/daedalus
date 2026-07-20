@@ -33,12 +33,12 @@ from .analyzer.lockfile import (
 )
 from .analyzer.python_ast import detect_from_python_source, merge_deps
 from .cross import (
+    _vendored_python_version,
     cross_python_root,
     host_arch,
     is_cross_build,
     pip_download_target,
     resolve_cross_python,
-    _vendored_python_version,
 )
 from .encrypt import encrypt_payload
 
@@ -160,7 +160,7 @@ def _install_cross_python(vendored: Path, rootfs: Path, verbose: bool) -> str:
     dest = rootfs / "opt" / "cross-python"
     shutil.copytree(vendored, dest, symlinks=True)
     if verbose:
-        print(f"  cross-python: installed {vendored} -> {dest}")
+        print(f"  cross-python: installed {vendored} -> {dest}", file=sys.stderr)
     return _vendored_python_version(vendored) or "3"
 
 
@@ -213,11 +213,11 @@ def _build_runtime_layer(
     for lib in sorted(all_libs):
         _copy_into_rootfs(lib, layer)
     if verbose:
-        print(f"  runtime layer: {len(all_libs)} shared libraries")
+        print(f"  runtime layer: {len(all_libs)} shared libraries", file=sys.stderr)
         for lib in sorted(all_libs):
             r = str(lib.resolve()) if lib.is_symlink() else ""
             arrow = f" -> {r}" if r and r != str(lib) else ""
-            print(f"    {lib}{arrow}")
+            print(f"    {lib}{arrow}", file=sys.stderr)
 
     # Runtime directories (e.g. Python stdlib).
     # Exclude site-packages (belongs in app layer, not runtime), test dirs,
@@ -238,7 +238,7 @@ def _build_runtime_layer(
         dest = layer / str(d).lstrip("/")
         shutil.copytree(d, dest, symlinks=True, dirs_exist_ok=True, ignore=_RT_IGNORE)
         if verbose:
-            print(f"  runtime layer: embedded {d}")
+            print(f"  runtime layer: embedded {d}", file=sys.stderr)
 
     _write_etc(layer)
 
@@ -262,7 +262,7 @@ def _build_app_layer(
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(src, dest, symlinks=True)
         if verbose:
-            print(f"  app layer: {src.name} from {src}")
+            print(f"  app layer: {src.name} from {src}", file=sys.stderr)
 
 
 def _tar_deterministic(root: Path) -> bytes:
@@ -344,7 +344,8 @@ def _compress_layer_cached(
         comp = _zstd(raw_tar)
         if verbose:
             print(
-                f"  {label}: {len(raw_tar)/1e6:.1f}MB -> {len(comp)/1e6:.1f}MB (zstd)"
+                f"  {label}: {len(raw_tar)/1e6:.1f}MB -> {len(comp)/1e6:.1f}MB (zstd)",
+                file=sys.stderr,
             )
         return comp
 
@@ -352,13 +353,14 @@ def _compress_layer_cached(
     blob = _build_cache_dir() / f"{key}.zst"
     if blob.is_file():
         if verbose:
-            print(f"  {label}: reused from build cache (no recompression) ✓")
+            print(f"  {label}: reused from build cache (no recompression) ✓", file=sys.stderr)
         return blob.read_bytes()
     comp = _zstd(raw_tar)
     blob.write_bytes(comp)
     if verbose:
         print(
-            f"  {label}: {len(raw_tar)/1e6:.1f}MB -> {len(comp)/1e6:.1f}MB (zstd, cached)"
+            f"  {label}: {len(raw_tar)/1e6:.1f}MB -> {len(comp)/1e6:.1f}MB (zstd, cached)",
+            file=sys.stderr,
         )
     return comp
 
@@ -424,7 +426,7 @@ def _pip_install_requirements(
     plan.site_packages.append((sp, "/app/site-packages"))
     plan.env["PYTHONPATH"] = "${ROOTFS}/app/site-packages"
     if verbose:
-        print(f"  pip install: {req} -> {sp}")
+        print(f"  pip install: {req} -> {sp}", file=sys.stderr)
 
 
 def _unpack_wheel(whl: Path, dest: Path, verbose: bool) -> None:
@@ -443,13 +445,13 @@ def _unpack_wheel(whl: Path, dest: Path, verbose: bool) -> None:
                 if not member.endswith("/"):
                     target.write_bytes(zf.read(member))
         if verbose:
-            print(f"  unpacked wheel: {name}")
+            print(f"  unpacked wheel: {name}", file=sys.stderr)
     except zipfile.BadZipFile as e:
         if verbose:
-            print(f"  warning: bad wheel {name}: {e}")
+            print(f"  warning: bad wheel {name}: {e}", file=sys.stderr)
     except (OSError, RuntimeError) as e:
         if verbose:
-            print(f"  warning: failed to unpack {name}: {e}")
+            print(f"  warning: failed to unpack {name}: {e}", file=sys.stderr)
 
 
 def _copy_binary_into_rootfs(bin_path: Path, rootfs: Path, verbose: bool) -> None:
@@ -457,7 +459,7 @@ def _copy_binary_into_rootfs(bin_path: Path, rootfs: Path, verbose: bool) -> Non
     real = bin_path.resolve()
     _copy_into_rootfs(real, rootfs)
     if verbose:
-        print(f"    binary: {real}")
+        print(f"    binary: {real}", file=sys.stderr)
     for lib in elf.shared_libs(real):
         _copy_into_rootfs(lib, rootfs)
 
@@ -482,9 +484,9 @@ def _collect_service_bins(services: list[dict], verbose: bool) -> set[Path]:
         if bp and bp.exists():
             bins.add(bp)
             if verbose:
-                print(f"  service '{svc['name']}': {bp}")
+                print(f"  service '{svc['name']}': {bp}", file=sys.stderr)
         else:
-            print(f"  WARNING: binary not found for '{svc['name']}': {svc['cmd'][0]}")
+            print(f"  WARNING: binary not found for '{svc['name']}': {svc['cmd'][0]}", file=sys.stderr)
     return bins
 
 
@@ -660,7 +662,8 @@ def _build_manifest(
     size = _assemble_xbin(out_path, stub, payload, meta_bytes, key_path)
     label = "signed" if key_path else "unsigned"
     print(
-        f"[xbin] wrote {out_path} ({size/1e6:.1f}MB, {label}) in {time.time()-t0:.1f}s"
+        f"[xbin] wrote {out_path} ({size/1e6:.1f}MB, {label}) in {time.time()-t0:.1f}s",
+        file=sys.stderr,
     )
     return str(out_path)
 
@@ -676,7 +679,8 @@ def _copy_service_layers(all_bins: set[Path], rt_dir: Path, verbose: bool) -> No
         _copy_into_rootfs(b, rt_dir)
     if verbose:
         print(
-            f"  runtime layer: {len(all_bins)} binaries, {len(all_libs)} shared libraries"
+            f"  runtime layer: {len(all_bins)} binaries, {len(all_libs)} shared libraries",
+            file=sys.stderr,
         )
 
 
@@ -815,7 +819,7 @@ def build(
         with open(manifest_path, "rb") as f:
             manifest = tomllib.load(f)
         if verbose:
-            print(f"[xbin] building '{app_dir.name}' (manifest mode)")
+            print(f"[xbin] building '{app_dir.name}' (manifest mode)", file=sys.stderr)
         return _build_manifest(app_dir, manifest, output, key_path, verbose)
 
     # --- Dependency detection (Features A/B/C) + lockfile ---
@@ -832,16 +836,16 @@ def build(
             _, results = fetch_deps(dep_list, verbose=verbose)
             write_lock_from_results(app_dir, dep_list, results, verbose=verbose)
         elif verbose:
-            print("[xbin] no external dependencies detected")
+            print("[xbin] no external dependencies detected", file=sys.stderr)
 
     name = app_dir.name
     out_path = Path(output) if output else Path.cwd() / f"{name}.xbin"
     stub = find_stub(target_arch=target)
     plan = runtime.detect(app_dir)
     if verbose:
-        print(f"[xbin] building '{name}'")
-        print(f"  runtime: {plan.runtime}")
-        print(f"  entrypoint: {' '.join(plan.entrypoint)}")
+        print(f"[xbin] building '{name}'", file=sys.stderr)
+        print(f"  runtime: {plan.runtime}", file=sys.stderr)
+        print(f"  entrypoint: {' '.join(plan.entrypoint)}", file=sys.stderr)
 
     # --- Cross-compilation setup ---
     cross_root: Path | None = None
@@ -852,16 +856,16 @@ def build(
                 f"got '{plan.runtime}'"
             )
         if verbose:
-            print(f"  target: {target} (cross-compilation)")
+            print(f"  target: {target} (cross-compilation)", file=sys.stderr)
         vendored = resolve_cross_python(target)
         cross_root = cross_python_root(vendored)
         plan.entrypoint[0] = "/opt/cross-python/bin/python3"
     elif target:
         if verbose:
-            print(f"  target: {target} (native build)")
+            print(f"  target: {target} (native build)", file=sys.stderr)
     else:
         if verbose:
-            print(f"  target: {host_arch()} (native build)")
+            print(f"  target: {host_arch()} (native build)", file=sys.stderr)
 
     t0 = time.time()
     if squashfs:
@@ -931,7 +935,8 @@ def build(
         crypto_meta = enc_meta
         if verbose:
             print(
-                f"  encrypted: {pre_enc_size/1e6:.1f}MB -> {len(payload)/1e6:.1f}MB (AES-256-GCM)"
+                f"  encrypted: {pre_enc_size/1e6:.1f}MB -> {len(payload)/1e6:.1f}MB (AES-256-GCM)",
+                file=sys.stderr,
             )
 
     meta_bytes = _build_meta_json(
@@ -960,7 +965,8 @@ def build(
         enc_label = "+encrypted" if encrypt else ""
         sqfs_label = "+squashfs" if squashfs else ""
         print(
-            f"[xbin] wrote {out_path} ({size/1e6:.1f}MB, {label}{enc_label}{sqfs_label}) in {time.time()-t0:.1f}s"
+            f"[xbin] wrote {out_path} ({size/1e6:.1f}MB, {label}{enc_label}{sqfs_label}) in {time.time()-t0:.1f}s",
+            file=sys.stderr,
         )
     return str(out_path)
 
@@ -1048,6 +1054,6 @@ def _build_layers_squashfs(
         app_sqfs = _mksquashfs(app_dir_layer)
 
     if verbose:
-        print(f"  runtime layer: {len(rt_sqfs)/1e6:.1f}MB (squashfs)")
-        print(f"  app layer: {len(app_sqfs)/1e6:.1f}MB (squashfs)")
+        print(f"  runtime layer: {len(rt_sqfs)/1e6:.1f}MB (squashfs)", file=sys.stderr)
+        print(f"  app layer: {len(app_sqfs)/1e6:.1f}MB (squashfs)", file=sys.stderr)
     return rt_sqfs, app_sqfs

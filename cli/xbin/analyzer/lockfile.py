@@ -20,6 +20,7 @@ Schema::
 from __future__ import annotations
 
 import hashlib
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -169,7 +170,7 @@ def detect_or_read_lock(
     """
     if redetect:
         if verbose:
-            print("[xbin] --redetect: forcing re-detection")
+            print("[xbin] --redetect: forcing re-detection", file=sys.stderr)
         return None
 
     lock = read_lock(app_dir)
@@ -178,13 +179,13 @@ def detect_or_read_lock(
 
     if not is_lock_fresh(app_dir, lock):
         if verbose:
-            print("[xbin] xbin.lock stale (Dockerfile changed), re-detecting")
+            print("[xbin] xbin.lock stale (Dockerfile changed), re-detecting", file=sys.stderr)
         return None
 
     deps = lock_deps(lock)
     if verbose:
         detected_at = lock.get("detect", {}).get("detected_at", "?")
-        print(f"[xbin] xbin.lock fresh ({len(deps)} deps, detected {detected_at})")
+        print(f"[xbin] xbin.lock fresh ({len(deps)} deps, detected {detected_at})", file=sys.stderr)
     return deps
 
 
@@ -197,5 +198,5 @@ def write_lock_from_results(
     """Write xbin.lock after a detection + fetch cycle."""
     lock_path = write_lock(app_dir, deps, results)
     if verbose:
-        print(f"[xbin] wrote {lock_path.name} ({len(deps)} deps)")
+        print(f"[xbin] wrote {lock_path.name} ({len(deps)} deps)", file=sys.stderr)
     return lock_path
