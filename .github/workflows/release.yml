@@ -12,9 +12,6 @@ on:
 permissions:
   contents: write
 
-env:
-  RUST_VERSION: "1.80"
-
 jobs:
   # ── Linux x86_64 ─────────────────────────────────────────────────────
   linux-x64:
@@ -183,25 +180,24 @@ jobs:
       - name: Generate release notes
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          cat > release-notes.md << 'NOTES'
+          cat > release-notes.md << NOTES
           ## Install
 
           ### Linux / macOS
 
-          ```bash
-          curl -sSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xbin-${VERSION}-linux-x64.tar.gz | tar xz
-          sudo mv xbin-${VERSION}-linux-x64/bin/* /usr/local/bin/
-          ```
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
+          \`\`\`
 
           Or download manually from the assets below.
 
           ### From source
 
-          ```bash
+          \`\`\`bash
           git clone https://github.com/${{ github.repository }}.git
           cd x.bin
           make preflight && make stub && make install
-          ```
+          \`\`\`
           NOTES
 
           # Append checksums
@@ -214,8 +210,9 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
           body_path: release-notes.md
-          files: artifacts/*.tar.gz
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.sha256
           draft: false
           prerelease: false

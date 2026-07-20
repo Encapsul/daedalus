@@ -39,6 +39,12 @@ x.bin packages a Python or Node.js web/server/CLI app — code, runtime, shared 
 Linux x86_64. Kernel 5.6+ recommended. User namespace isolation requires 5.11+.
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash
+```
+
+Or install from source:
+
+```sh
 git clone https://github.com/Tednoob17/x.bin.git && cd x.bin
 make preflight     # verify all prerequisites
 make stub          # build Rust launcher + crypto binaries
@@ -56,7 +62,8 @@ export PATH="$HOME/.local/bin:$PATH"  # add xbin to PATH (once per shell)
 
 - **Upgrade** (from existing install)
   ```sh
-  git pull && make stub
+  xbin upgrade
+  # or: git pull && make stub
   ```
 
 - **Encrypt support** (optional, for `--encrypt` flag)
