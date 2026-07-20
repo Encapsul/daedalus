@@ -112,6 +112,21 @@ All must pass. If any fails, your change introduced a regression.
 - **Benefits**: 2-5x faster rebuilds when only app code changes (runtime layer is 12+ MB, app layer is small)
 - **Tested**: build → modify app.py → build --update → runtime layer SHA unchanged, app layer SHA changed ✓
 
+## xbin scan (discover .xbin files) — 2026-07-20
+
+- **File**: `cli/xbin/scan.py` — `scan(paths, json_output)` function
+- **File**: `cli/xbin/cli.py` — `scan` subparser with `paths` (nargs="*", default=["."]) and `--json`
+- **File**: `cli/xbin/_util.py` — `cache_dir()` moved here from `clean.py` (shared by scan + clean)
+- **File**: `cli/xbin/clean.py` — imports `cache_dir` from `_util` instead of defining locally
+- **How it works**:
+  - Recursively finds `.xbin` files by extension + footer magic (`0xBEEFCAFE`)
+  - Reads metadata from each file (reuses `format.read_footer()`)
+  - Displays table: FILE, NAME, RUNTIME, ARCH, SIGNED, CREATED
+  - Shows cache stats (entries + total size from `~/.cache/xbin/`)
+  - `--json` outputs structured JSON with all metadata fields
+- **Exit codes**: 0 if files found, 1 if none found
+- **Tested**: scan /tmp/ (found 4 files), scan --json, scan /nonexistent (exit 1), scan examples/ (exit 1) ✓
+
 ## SquashFS support — 2026-07-18
 
 - **File**: `stub/src/format.rs` — format v5, `PAYLOAD_FORMAT_SQUASHFS = 2`
@@ -285,7 +300,6 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 ### Remaining features
 - Cross-build aarch64 stub locally: requires `rustup target add aarch64-unknown-linux-musl` + cross-linker. CI handles this automatically via GitHub Actions runners.
 - `xbin sign` with automatic key lookup in `$XDG_DATA_HOME/xbin/keys/` (without `--key`).
-- `xbin scan` — scan installed xbin packages for updates/vulnerabilities
 - `squashfs + mmap` direct read (kernel mount, Linux 5.12+, no extraction needed) — the real cold-start perf win beyond just better compression.
 - LRU cache cleanup (evict beyond threshold)
 - Cold/warm start < 100 ms end-to-end

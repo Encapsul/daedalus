@@ -137,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             "  xbin run myapp.xbin                   Run a packed binary\n"
             "  xbin inspect myapp.xbin               Show layers, deps, and metadata\n"
             "  xbin doctor                           Check prerequisites\n"
+            "  xbin scan                             Scan for .xbin files\n"
             "\nexit codes:\n"
             "  0   success\n"
             "  1   operation failed (build error, bad input, etc.)\n"
@@ -315,6 +316,20 @@ def main(argv: list[str] | None = None) -> int:
         help="skip confirmation prompt (for use with --fix in scripts)",
     )
 
+    p_scan = sub.add_parser("scan", help="scan for .xbin files and show metadata")
+    _SUBPARSERS["scan"] = p_scan
+    p_scan.add_argument(
+        "paths",
+        nargs="*",
+        default=["."],
+        help="directories to scan (default: cwd)",
+    )
+    p_scan.add_argument(
+        "--json",
+        action="store_true",
+        help="output as JSON",
+    )
+
     p_help = sub.add_parser(
         "help",
         help="show help for a command",
@@ -426,6 +441,11 @@ def main(argv: list[str] | None = None) -> int:
                 fix=args.fix,
                 force=args.force,
             )
+
+        if args.command == "scan":
+            from .scan import scan
+
+            return scan(args.paths, json_output=args.json)
     except (
         FileNotFoundError,
         NotADirectoryError,
