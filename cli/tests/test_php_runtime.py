@@ -1,8 +1,5 @@
 """Unit tests for PHP runtime detection."""
 
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from xbin.runtimes.php import PHPRuntime

@@ -1,8 +1,5 @@
 """Unit tests for Perl runtime detection."""
 
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from xbin.runtimes.perl import PerlRuntime
@@ -16,7 +13,9 @@ def perl_runtime():
 class TestPerlRuntime:
     def test_detect_with_makefile_pl(self, perl_runtime, tmp_path):
         makefile = tmp_path / "Makefile.PL"
-        makefile.write_text('use ExtUtils::MakeMaker;\nWriteMakefile(NAME => "My::App");')
+        makefile.write_text(
+            'use ExtUtils::MakeMaker;\nWriteMakefile(NAME => "My::App");'
+        )
         app_pl = tmp_path / "app.pl"
         app_pl.write_text("#!/usr/bin/env perl\nprint 'hello\\n';")
 

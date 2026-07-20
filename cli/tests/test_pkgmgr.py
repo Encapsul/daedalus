@@ -1,9 +1,5 @@
 """Unit tests for package manager detection."""
 
-from pathlib import Path
-
-import pytest
-
 from xbin.pkgmgr import (
     detect_node_pkgmgr,
     detect_pkgmgr,
