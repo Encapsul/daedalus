@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 
@@ -26,13 +27,13 @@ def _dir_size(path: Path) -> int:
 def clean(all_entries: bool = False) -> None:
     cache = cache_dir()
     if not cache.is_dir():
-        print("[xbin] cache is empty")
+        print("[xbin] cache is empty", file=sys.stderr)
         return
 
     if all_entries:
         size = _dir_size(cache)
         shutil.rmtree(cache, ignore_errors=True)
-        print(f"[xbin] removed entire cache ({size/1e6:.1f}MB) at {cache}")
+        print(f"[xbin] removed entire cache ({size/1e6:.1f}MB) at {cache}", file=sys.stderr)
         return
 
     # Without --all: remove extracted entries ({sha256}/ dirs) and orphaned
@@ -50,4 +51,5 @@ def clean(all_entries: bool = False) -> None:
         elif entry.suffix == ".lock":
             entry.unlink(missing_ok=True)
     print(f"[xbin] removed {removed} extracted entr{'y' if removed == 1 else 'ies'} "
-          f"({freed/1e6:.1f}MB freed); build cache kept (use --all to wipe)")
+          f"({freed/1e6:.1f}MB freed); build cache kept (use --all to wipe)",
+          file=sys.stderr)

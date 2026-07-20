@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 import urllib.request
 from dataclasses import dataclass
@@ -132,7 +133,7 @@ def fetch_deps(
 
     if uncertain and verbose:
         for d in uncertain:
-            print(f"  SKIP (uncertain): {d.name}")
+            print(f"  SKIP (uncertain): {d.name}", file=sys.stderr)
 
     stage = stage_dir_for(high)
     results: list[FetchResult] = []
@@ -145,21 +146,21 @@ def fetch_deps(
             )
             continue
         if verbose:
-            print(f"  fetching {dep.kind} {dep.name}...", end=" ", flush=True)
+            print(f"  fetching {dep.kind} {dep.name}...", end=" ", flush=True, file=sys.stderr)
         result = fetcher(dep, stage)  # type: ignore[operator]
         results.append(result)
         if verbose:
             if result.ok:
                 tag = result.sha256[:12] if result.sha256 else "ok"
-                print(f"ok ({tag})")
+                print(f"ok ({tag})", file=sys.stderr)
             else:
-                print(f"WARN: {result.error}")
+                print(f"WARN: {result.error}", file=sys.stderr)
 
     _write_manifest(stage, results)
 
     ok_count = sum(1 for r in results if r.ok)
     if verbose:
-        print(f"[xbin] fetched {ok_count}/{len(high)} dependencies")
+        print(f"[xbin] fetched {ok_count}/{len(high)} dependencies", file=sys.stderr)
 
     return stage, results
 

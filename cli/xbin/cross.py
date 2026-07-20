@@ -124,7 +124,7 @@ def pip_download_target(
         "--quiet",
     ]
     if verbose:
-        print(f"  pip (target={target_arch}): {' '.join(cmd)}")
+        print(f"  pip (target={target_arch}): {' '.join(cmd)}", file=sys.stderr)
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace").strip()
