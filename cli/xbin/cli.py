@@ -181,6 +181,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p_inspect = sub.add_parser("inspect", help="show .xbin contents")
     p_inspect.add_argument("file", help=".xbin file")
+    p_inspect.add_argument(
+        "--json", action="store_true", help="output as JSON",
+    )
 
     p_keygen = sub.add_parser("keygen", help="generate an Ed25519 signing keypair")
     p_keygen.add_argument(
@@ -253,6 +256,9 @@ def main(argv: list[str] | None = None) -> int:
         "doctor", help="check that all prerequisites are installed"
     )
     p_doctor.add_argument("-q", "--quiet", action="store_true")
+    p_doctor.add_argument(
+        "--json", action="store_true", help="output as JSON",
+    )
 
     args = parser.parse_args(argv)
 
@@ -285,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "inspect":
             from .inspect import inspect
 
-            inspect(args.file)
+            inspect(args.file, json_output=args.json)
             return 0
 
         if args.command == "keygen":
@@ -332,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "doctor":
             from .doctor import doctor
 
-            return doctor(verbose=not args.quiet)
+            return doctor(verbose=not args.quiet, json_output=args.json)
     except (
         FileNotFoundError,
         NotADirectoryError,

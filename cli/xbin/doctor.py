@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import platform
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 
 def _check(name: str, cmd: list[str] | None = None, hint: str = "") -> tuple[bool, str]:
@@ -78,9 +78,9 @@ def _check_crypto() -> tuple[bool, str]:
         return False, "not built (run: make stub)"
 
 
-def doctor(*, verbose: bool = True) -> int:
-    """Check all prerequisites. Returns 0 if all required checks pass."""
-    checks: list[tuple[str, bool, str, bool]] = []  # (name, ok, detail, required)
+def _collect_checks() -> list[dict]:
+    """Run all checks and return structured results."""
+    checks: list[tuple[str, bool, str, bool]] = []
 
     def add(name: str, ok: bool, detail: str, required: bool = True) -> None:
         checks.append((name, ok, detail, required))
@@ -114,16 +114,32 @@ def doctor(*, verbose: bool = True) -> int:
     add("xbin-stub", *_check_stub())
     add("xbin-crypto", *_check_crypto())
 
-    # --- Print results ---
+    return [
+        {"name": name, "ok": ok, "detail": detail, "required": required}
+        for name, ok, detail, required in checks
+    ]
+
+
+def doctor(*, verbose: bool = True, json_output: bool = False) -> int:
+    """Check all prerequisites. Returns 0 if all required checks pass."""
+    results = _collect_checks()
+
+    if json_output:
+        output = {
+            "ok": all(r["ok"] or not r["required"] for r in results),
+            "checks": results,
+        }
+        print(json.dumps(output, indent=2))
+        return 0 if output["ok"] else 1
+
     required_failed = False
-    for name, ok, detail, required in checks:
-        tag = "OK" if ok else ("FAIL" if required else "optional")
-        marker = " " if ok else ("X" if required else "-")
+    for r in results:
+        marker = " " if r["ok"] else ("X" if r["required"] else "-")
         if verbose:
             status = f"[{marker}]"
-            req_label = "" if required else " (optional)"
-            print(f"  {status:5s} {name:15s} {detail}{req_label}")
-        if not ok and required:
+            req_label = "" if r["required"] else " (optional)"
+            print(f"  {status:5s} {r['name']:15s} {r['detail']}{req_label}")
+        if not r["ok"] and r["required"]:
             required_failed = True
 
     if required_failed:
