@@ -35,6 +35,53 @@ from .manifest import build_manifest
 
 XBIN_VERSION = "0.1.0"
 
+_IGNORED_APP_DIRS = {".venv", "venv", "site-packages", "node_modules", ".git"}
+
+
+def _hash_app_files(app_dir: Path) -> str:
+    """Compute a SHA-256 hash of all app files for change detection.
+
+    Excludes .venv, venv, site-packages, node_modules, .git.
+    """
+    h = hashlib.sha256()
+    for p in sorted(app_dir.rglob("*")):
+        if p.is_dir():
+            continue
+        if any(part in _IGNORED_APP_DIRS for part in p.parts):
+            continue
+        if p.is_symlink():
+            h.update(os.readlink(p).encode())
+        elif p.is_file():
+            h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def _read_existing_xbin(xbin_path: Path, verbose: bool) -> tuple[bytes, dict] | None:
+    """Read the runtime layer blob and metadata from an existing .xbin.
+
+    Returns (runtime_blob, metadata_dict) or None if not readable.
+    """
+    from . import format as fmt
+
+    try:
+        footer = fmt.read_footer(str(xbin_path))
+        with open(xbin_path, "rb") as f:
+            meta_bytes = fmt.read_at(f, footer.meta_offset, footer.meta_size)
+        import json
+
+        meta = json.loads(meta_bytes)
+        layers = meta.get("layers", [])
+        if len(layers) < 2:
+            return None
+        rt_layer = layers[0]
+        with open(xbin_path, "rb") as f:
+            rt_blob = fmt.read_at(f, rt_layer["offset"], rt_layer["csize"])
+        return rt_blob, meta
+    except (ValueError, KeyError, OSError) as e:
+        if verbose:
+            print(f"[xbin] could not read existing .xbin: {e}", file=sys.stderr)
+        return None
+
 
 def find_stub(target_arch: str | None = None) -> Path:
     """Locate the compiled launcher stub."""
@@ -99,6 +146,7 @@ def build(
     verbose: bool = True,
     redetect: bool = False,
     target: str | None = None,
+    update: bool = False,
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -179,15 +227,71 @@ def build(
             print(f"  target: {host_arch()} (native build)", file=sys.stderr)
 
     t0 = time.time()
+
+    # --- Compute hashes for metadata (always, used by --update and stored) ---
+    new_app_hash = _hash_app_files(app_dir)
+    req = app_dir / "requirements.txt"
+    new_rt_hash = hashlib.sha256(req.read_bytes()).hexdigest() if req.is_file() else ""
+
+    # --- Incremental update: reuse existing layers when possible ---
+    reuse_rt_blob: bytes | None = None
+    if update and out_path.is_file():
+        existing = _read_existing_xbin(out_path, verbose)
+        if existing is not None:
+            old_rt_blob, old_meta = existing
+            old_app_hash = old_meta.get("app_hash", "")
+            old_rt_hash = old_meta.get("rt_deps_hash", "")
+
+            if old_app_hash == new_app_hash and old_rt_hash == new_rt_hash:
+                if verbose:
+                    print(
+                        "[xbin] everything up to date, nothing to rebuild",
+                        file=sys.stderr,
+                    )
+                return str(out_path)
+            elif old_rt_hash == new_rt_hash and old_app_hash != new_app_hash:
+                if verbose:
+                    print("[xbin] app changed, reusing runtime layer", file=sys.stderr)
+                reuse_rt_blob = old_rt_blob
+            else:
+                if verbose:
+                    reason = (
+                        "runtime deps changed"
+                        if old_rt_hash != new_rt_hash
+                        else "first update"
+                    )
+                    print(f"[xbin] {reason}, full rebuild", file=sys.stderr)
     if squashfs:
-        rt_sqfs, app_sqfs = build_layers(
-            app_dir,
-            plan,
-            verbose,
-            squashfs=True,
-            cross_python_root=cross_root,
-            target_arch=target,
-        )
+        if reuse_rt_blob is not None:
+            # Reuse existing runtime squashfs blob, only rebuild app layer.
+            import tempfile
+
+            from .layers import build_app_layer, mksquashfs
+
+            with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
+                app_dir_layer = Path(tmp) / "app"
+                app_dir_layer.mkdir()
+                build_app_layer(app_dir, plan, app_dir_layer, verbose)
+                app_sqfs = mksquashfs(app_dir_layer)
+            rt_sqfs = reuse_rt_blob
+            if verbose:
+                print(
+                    f"  runtime layer: reused ({len(rt_sqfs)/1e6:.1f}MB)",
+                    file=sys.stderr,
+                )
+                print(
+                    f"  app layer: {len(app_sqfs)/1e6:.1f}MB (squashfs)",
+                    file=sys.stderr,
+                )
+        else:
+            rt_sqfs, app_sqfs = build_layers(
+                app_dir,
+                plan,
+                verbose,
+                squashfs=True,
+                cross_python_root=cross_root,
+                target_arch=target,
+            )
         stub_bytes = stub.read_bytes()
         rt_offset = len(stub_bytes)
         payload = rt_sqfs + app_sqfs
@@ -209,14 +313,42 @@ def build(
         ]
         payload_format = "squashfs"
     else:
-        rt_comp, app_comp, rt_tar, app_tar = build_layers(
-            app_dir,
-            plan,
-            verbose,
-            squashfs=False,
-            cross_python_root=cross_root,
-            target_arch=target,
-        )
+        rt_usize = 0
+        app_usize = 0
+        if reuse_rt_blob is not None:
+            # Reuse existing runtime blob, only rebuild app layer.
+            import tempfile
+
+            from .layers import build_app_layer, tar_deterministic
+
+            with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
+                app_dir_layer = Path(tmp) / "app"
+                app_dir_layer.mkdir()
+                build_app_layer(app_dir, plan, app_dir_layer, verbose)
+                app_tar = tar_deterministic(app_dir_layer)
+            from .layers import compress_layer_cached
+
+            app_comp = compress_layer_cached(
+                app_tar, reuse=False, verbose=verbose, label="app layer"
+            )
+            rt_comp = reuse_rt_blob
+            app_usize = len(app_tar)
+            if verbose:
+                print(
+                    f"  runtime layer: reused ({len(rt_comp)/1e6:.1f}MB)",
+                    file=sys.stderr,
+                )
+        else:
+            rt_comp, app_comp, rt_tar, app_tar = build_layers(
+                app_dir,
+                plan,
+                verbose,
+                squashfs=False,
+                cross_python_root=cross_root,
+                target_arch=target,
+            )
+            rt_usize = len(rt_tar)
+            app_usize = len(app_tar)
         stub_bytes = stub.read_bytes()
         rt_offset = len(stub_bytes)
         payload = rt_comp + app_comp
@@ -225,14 +357,14 @@ def build(
                 "kind": "runtime",
                 "offset": rt_offset,
                 "csize": len(rt_comp),
-                "usize": len(rt_tar),
+                "usize": rt_usize,
                 "sha256": hashlib.sha256(rt_comp).hexdigest(),
             },
             {
                 "kind": "app",
                 "offset": rt_offset + len(rt_comp),
                 "csize": len(app_comp),
-                "usize": len(app_tar),
+                "usize": app_usize,
                 "sha256": hashlib.sha256(app_comp).hexdigest(),
             },
         ]
@@ -265,6 +397,8 @@ def build(
         seccomp=seccomp,
         crypto=crypto_meta if crypto_meta else None,
         payload_format=payload_format,
+        app_hash=new_app_hash,
+        rt_deps_hash=new_rt_hash,
     )
     size = assemble_xbin(
         out_path,

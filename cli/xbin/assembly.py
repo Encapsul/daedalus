@@ -30,6 +30,8 @@ def build_meta_json(
     seccomp: bool = False,
     crypto: dict | None = None,
     payload_format: str = "",
+    app_hash: str = "",
+    rt_deps_hash: str = "",
 ) -> bytes:
     """Build the metadata JSON bytes for the .xbin footer."""
     meta: dict = {
@@ -50,6 +52,10 @@ def build_meta_json(
         meta["crypto"] = crypto
     if services:
         meta["services"] = services
+    if app_hash:
+        meta["app_hash"] = app_hash
+    if rt_deps_hash:
+        meta["rt_deps_hash"] = rt_deps_hash
     return json.dumps(meta, separators=(",", ":")).encode()
 
 

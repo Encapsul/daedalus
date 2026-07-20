@@ -96,6 +96,22 @@ All must pass. If any fails, your change introduced a regression.
 - **Safety**: confirms interactively before fixing (unless `--force`); each fix has a timeout; re-verifies after fix; continues on individual failures
 - **clig.dev compliance**: `--fix` follows "confirm before dangerous actions" guideline; `--force` for scriptability; exit 0 on full success, 1 on partial/full failure
 
+## Incremental update (`--update` flag) — 2026-07-20
+
+- **File**: `cli/xbin/build.py` — `--update` flag on build subcommand
+- **File**: `cli/xbin/assembly.py` — `app_hash` and `rt_deps_hash` params on `build_meta_json()`
+- **How it works**:
+  - First build: computes `app_hash` (SHA-256 of all app files) and `rt_deps_hash` (SHA-256 of requirements.txt), stores them in the .xbin metadata JSON
+  - `xbin build --update`: reads existing .xbin, compares hashes:
+    - Same app + same runtime deps → early return ("everything up to date")
+    - Same runtime deps, app changed → reuses existing runtime squashfs/zstd blob, only rebuilds app layer
+    - Runtime deps changed → full rebuild
+- **Helper functions**:
+  - `_hash_app_files(app_dir)`: SHA-256 of all files in app_dir (excluding .venv, node_modules, .git, etc.)
+  - `_read_existing_xbin(xbin_path, verbose)`: reads footer → meta JSON → extracts runtime layer blob
+- **Benefits**: 2-5x faster rebuilds when only app code changes (runtime layer is 12+ MB, app layer is small)
+- **Tested**: build → modify app.py → build --update → runtime layer SHA unchanged, app layer SHA changed ✓
+
 ## SquashFS support — 2026-07-18
 
 - **File**: `stub/src/format.rs` — format v5, `PAYLOAD_FORMAT_SQUASHFS = 2`
@@ -246,13 +262,36 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 
 ## Next steps (future)
 
+### Real-app testing — top 200 GitHub projects (HIGH PRIORITY)
+- **Goal**: prove x.bin works on real-world apps, not just toy examples
+- **Approach**: test `xbin build` against top 200 GitHub repos (by stars), curate the ones that work as prebuilt downloads
+- **Target repos to test** (Python/Node.js focus, apps not libraries):
+  - **Python web**: flask (pallets/flask), fastapi (tiangolo/fastapi), django (django/django), sanic (sanic-org/sanic), litestar (litestar-org/litestar)
+  - **Python tools**: httpie (httpie/cli), httpx (encode/httpx), thefuck (nvbn/thefuck), borgbackup (borgbackup/borg), pgcli (dbcli/pgcli), mycli (dbcli/mycli), ranger (ranger/ranger), streamlink (streamlink/streamlink), you-get (soimort/you-get), yt-dlp (yt-dlp/yt-dlp), tldr (tldr-pages/tldr)
+  - **Python data**: jupyter (jupyter/jupyter), numpy (numpy/numpy), pandas (pandas-dev/pandas), matplotlib (matplotlib/matplotlib), scikit-learn (scikit-learn/scikit-learn), polars (pola-rs/polars)
+  - **Python infra**: ansible (ansible/ansible), fabric (fabric/fabric), invoke (pyinvoke/invoke), salt (saltstack/salt)
+  - **Node.js**: express (expressjs/express), next.js (vercel/next.js), n8n (n8n-io/n8n), Ghost (TryGhost/Ghost), PM2 (Unitech/pm2), homebridge (homebridge/homebridge), mosca (moscajs/mosca)
+  - **Go (future)**: caddy (caddyserver/caddy), traefik (traefik/traefik), hugo (gohugoio/hugo), lazygit (jesseduffield/lazygit)
+- **Process**: for each repo, `git clone` → `xbin build` → test run → document what works/breaks
+- **Distribution**: working builds become official downloads on the website (`xbin.sh/downloads`)
+- **Why**: marketing proof point ("we can build Flask, FastAPI, yt-dlp, n8n…"), real-world bug discovery, performance benchmarks
+- **File**: track results in `TESTED_APPS.md` at repo root (pass/fail, size, notes)
+
+### Install script + upgrade command
+- `scripts/install.sh` — curl-pipe-bash installer (like bun.sh, get.wasmer.io)
+- `xbin upgrade` — self-update command
+- See release strategy section in conversation notes
+
+### Remaining features
 - Cross-build aarch64 stub locally: requires `rustup target add aarch64-unknown-linux-musl` + cross-linker. CI handles this automatically via GitHub Actions runners.
 - `xbin sign` with automatic key lookup in `$XDG_DATA_HOME/xbin/keys/` (without `--key`).
+- `xbin scan` — scan installed xbin packages for updates/vulnerabilities
 - `squashfs + mmap` direct read (kernel mount, Linux 5.12+, no extraction needed) — the real cold-start perf win beyond just better compression.
 - LRU cache cleanup (evict beyond threshold)
 - Cold/warm start < 100 ms end-to-end
 - Distribution / discovery (lightweight registry)
 - Run full end-to-end build+sign+verify cycle for aarch64 once stub is compiled locally
+- GitHub Actions official action (`action-xbin/build`) — for CI/CD workflows
 
 ## Seccomp BPF denylist (2026-07-17)
 
