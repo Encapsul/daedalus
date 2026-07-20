@@ -24,13 +24,23 @@ def _dir_size(path: Path) -> int:
     return total
 
 
-def clean(all_entries: bool = False) -> None:
+def clean(all_entries: bool = False, force: bool = False) -> None:
     cache = cache_dir()
     if not cache.is_dir():
         print("[xbin] cache is empty", file=sys.stderr)
         return
 
     if all_entries:
+        if not force and sys.stdin.isatty():
+            size = _dir_size(cache)
+            print(
+                f"[xbin] this will remove the entire cache ({size/1e6:.1f}MB) at {cache}",
+                file=sys.stderr,
+            )
+            answer = input("continue? [y/N] ").strip().lower()
+            if answer not in ("y", "yes"):
+                print("[xbin] aborted", file=sys.stderr)
+                return
         size = _dir_size(cache)
         shutil.rmtree(cache, ignore_errors=True)
         print(f"[xbin] removed entire cache ({size/1e6:.1f}MB) at {cache}", file=sys.stderr)
