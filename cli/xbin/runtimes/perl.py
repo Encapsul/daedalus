@@ -12,7 +12,10 @@ class PerlRuntime(Runtime):
     name = "perl"
 
     def detect(self, app_dir: Path) -> RuntimePlan | None:
-        if not (app_dir / "Makefile.PL").is_file() and not (app_dir / "cpanfile").is_file():
+        if (
+            not (app_dir / "Makefile.PL").is_file()
+            and not (app_dir / "cpanfile").is_file()
+        ):
             return None
         return _detect_perl(app_dir)
 
@@ -23,9 +26,7 @@ class PerlRuntime(Runtime):
 def _detect_perl(app_dir: Path) -> RuntimePlan:
     perl = shutil.which("perl")
     if not perl:
-        raise ValueError(
-            "Perl app detected but no perl on PATH to embed"
-        )
+        raise ValueError("Perl app detected but no perl on PATH to embed")
     interp = Path(perl).resolve()
 
     entry = _perl_entry(app_dir)

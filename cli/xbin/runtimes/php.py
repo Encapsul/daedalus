@@ -23,9 +23,7 @@ class PHPRuntime(Runtime):
 def _detect_php(app_dir: Path) -> RuntimePlan:
     php = shutil.which("php")
     if not php:
-        raise ValueError(
-            "PHP app detected (composer.json) but no php on PATH to embed"
-        )
+        raise ValueError("PHP app detected (composer.json) but no php on PATH to embed")
     interp = Path(php).resolve()
 
     entry = _php_entry(app_dir)
@@ -53,7 +51,9 @@ def _php_entry(app_dir: Path) -> str:
     if (app_dir / "artisan").is_file():
         # Laravel
         return "artisan"
-    if (app_dir / "symfony.lock").is_file() or (app_dir / "config" / "bundles.php").is_file():
+    if (app_dir / "symfony.lock").is_file() or (
+        app_dir / "config" / "bundles.php"
+    ).is_file():
         # Symfony
         return "bin/console"
     if (app_dir / "wp-config.php").is_file():

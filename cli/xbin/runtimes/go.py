@@ -24,9 +24,7 @@ class GoRuntime(Runtime):
 def _detect_go(app_dir: Path) -> RuntimePlan:
     go = shutil.which("go")
     if not go:
-        raise ValueError(
-            "Go app detected (go.mod) but no go on PATH to build"
-        )
+        raise ValueError("Go app detected (go.mod) but no go on PATH to build")
 
     go_bin = Path(go).resolve()
 
