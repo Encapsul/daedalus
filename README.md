@@ -116,6 +116,14 @@ $ xbin build my-app -o my-app-aarch64.xbin --target aarch64
 # produces an aarch64 .xbin (requires aarch64 stub pre-built)
 ```
 
+#### Incremental rebuilds
+
+```bash
+$ xbin build my-app                    # full build
+$ # ... edit app code ...
+$ xbin build my-app --update           # reuses unchanged runtime layer, rebuilds app layer only
+```
+
 #### Here is what you can do next:
 
 - [Package a Python app](https://tednoob17.github.io/x.bin/guides/python.html)
