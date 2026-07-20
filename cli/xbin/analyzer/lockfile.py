@@ -179,13 +179,19 @@ def detect_or_read_lock(
 
     if not is_lock_fresh(app_dir, lock):
         if verbose:
-            print("[xbin] xbin.lock stale (Dockerfile changed), re-detecting", file=sys.stderr)
+            print(
+                "[xbin] xbin.lock stale (Dockerfile changed), re-detecting",
+                file=sys.stderr,
+            )
         return None
 
     deps = lock_deps(lock)
     if verbose:
         detected_at = lock.get("detect", {}).get("detected_at", "?")
-        print(f"[xbin] xbin.lock fresh ({len(deps)} deps, detected {detected_at})", file=sys.stderr)
+        print(
+            f"[xbin] xbin.lock fresh ({len(deps)} deps, detected {detected_at})",
+            file=sys.stderr,
+        )
     return deps
 
 

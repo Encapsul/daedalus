@@ -43,7 +43,10 @@ def clean(all_entries: bool = False, force: bool = False) -> None:
                 return
         size = _dir_size(cache)
         shutil.rmtree(cache, ignore_errors=True)
-        print(f"[xbin] removed entire cache ({size/1e6:.1f}MB) at {cache}", file=sys.stderr)
+        print(
+            f"[xbin] removed entire cache ({size/1e6:.1f}MB) at {cache}",
+            file=sys.stderr,
+        )
         return
 
     # Without --all: remove extracted entries ({sha256}/ dirs) and orphaned
@@ -60,6 +63,8 @@ def clean(all_entries: bool = False, force: bool = False) -> None:
             removed += 1
         elif entry.suffix == ".lock":
             entry.unlink(missing_ok=True)
-    print(f"[xbin] removed {removed} extracted entr{'y' if removed == 1 else 'ies'} "
-          f"({freed/1e6:.1f}MB freed); build cache kept (use --all to wipe)",
-          file=sys.stderr)
+    print(
+        f"[xbin] removed {removed} extracted entr{'y' if removed == 1 else 'ies'} "
+        f"({freed/1e6:.1f}MB freed); build cache kept (use --all to wipe)",
+        file=sys.stderr,
+    )

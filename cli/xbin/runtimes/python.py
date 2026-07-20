@@ -13,7 +13,9 @@ class PythonRuntime(Runtime):
     name = "python"
 
     def detect(self, app_dir: Path) -> RuntimePlan | None:
-        entry = _first_existing(app_dir, ["app.py", "main.py", "__main__.py", "server.py"])
+        entry = _first_existing(
+            app_dir, ["app.py", "main.py", "__main__.py", "server.py"]
+        )
         if not entry:
             return None
         return _detect_python(app_dir, entry)

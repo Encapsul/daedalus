@@ -98,9 +98,20 @@ def _detect_mode(meta: dict) -> str:
     if runtime in ("python", "node"):
         entry = " ".join(meta.get("entrypoint", [])).lower()
         server_hints = (
-            "flask", "uvicorn", "gunicorn", "django", "http.server",
-            "fastapi", "starlette", "bottle", "tornado", "aiohttp",
-            "express", "hono", "fastify", "http",
+            "flask",
+            "uvicorn",
+            "gunicorn",
+            "django",
+            "http.server",
+            "fastapi",
+            "starlette",
+            "bottle",
+            "tornado",
+            "aiohttp",
+            "express",
+            "hono",
+            "fastify",
+            "http",
         )
         if any(h in entry for h in server_hints):
             return "server"

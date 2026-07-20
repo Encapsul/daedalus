@@ -21,7 +21,11 @@ def _check(name: str, cmd: list[str] | None = None, hint: str = "") -> tuple[boo
         if r.returncode == 0:
             out = r.stdout.strip().splitlines()[0] if r.stdout.strip() else "ok"
             return True, out
-        return False, r.stderr.strip().splitlines()[0] if r.stderr.strip() else f"exit {r.returncode}"
+        return False, (
+            r.stderr.strip().splitlines()[0]
+            if r.stderr.strip()
+            else f"exit {r.returncode}"
+        )
     except FileNotFoundError:
         return False, f"{cmd[0]} not found"
     except subprocess.TimeoutExpired:
@@ -32,7 +36,9 @@ def _check_musl_target() -> tuple[bool, str]:
     try:
         r = subprocess.run(
             ["rustup", "target", "list", "--installed"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         target = f"{platform.machine()}-unknown-linux-musl"
         if target in r.stdout:
@@ -87,13 +93,31 @@ def _collect_checks() -> list[dict]:
 
     # --- Required ---
     add("Python", *_check_python_version())
-    add("pip", *(
-        (True, subprocess.run([sys.executable, "-m", "pip", "--version"],
-                              capture_output=True, text=True, timeout=5).stdout.strip().split()[1]
-         if subprocess.run([sys.executable, "-m", "pip", "--version"],
-                           capture_output=True, timeout=5).returncode == 0
-         else (False, "not available"))
-    ))
+    add(
+        "pip",
+        *(
+            (
+                True,
+                (
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    .stdout.strip()
+                    .split()[1]
+                    if subprocess.run(
+                        [sys.executable, "-m", "pip", "--version"],
+                        capture_output=True,
+                        timeout=5,
+                    ).returncode
+                    == 0
+                    else (False, "not available")
+                ),
+            )
+        ),
+    )
     add("cargo", *_check("cargo", ["cargo", "--version"]))
     add("rustc", *_check("rustc", ["rustc", "--version"]))
     add("musl target", *_check_musl_target())
@@ -152,10 +176,14 @@ def doctor(*, verbose: bool = True, json_output: bool = False) -> int:
     if required_failed:
         if verbose:
             from ._color import red as _red
-            print(f"\n{_red('Some required tools are missing. Install them and re-run.')}")
+
+            print(
+                f"\n{_red('Some required tools are missing. Install them and re-run.')}"
+            )
         return 1
 
     if verbose:
         from ._color import green as _green
+
         print(f"\n{_green('All required checks passed.')}")
     return 0

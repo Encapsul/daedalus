@@ -145,10 +145,13 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--version", action="version", version="%(prog)s 0.1.0",
+        "--version",
+        action="version",
+        version="%(prog)s 0.1.0",
     )
     parser.add_argument(
-        "--no-color", action="store_true",
+        "--no-color",
+        action="store_true",
         help="disable colored output (also: set NO_COLOR env var)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -205,7 +208,9 @@ def main(argv: list[str] | None = None) -> int:
     _SUBPARSERS["inspect"] = p_inspect
     p_inspect.add_argument("file", help=".xbin file")
     p_inspect.add_argument(
-        "--json", action="store_true", help="output as JSON",
+        "--json",
+        action="store_true",
+        help="output as JSON",
     )
 
     p_keygen = sub.add_parser("keygen", help="generate an Ed25519 signing keypair")
@@ -230,8 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("file", help=".xbin file to verify")
     p_verify.add_argument(
         "--trusted-dir",
-        help="trusted keys directory "
-        "(default: $XDG_DATA_HOME/xbin/trusted-keys)",
+        help="trusted keys directory " "(default: $XDG_DATA_HOME/xbin/trusted-keys)",
     )
     p_verify.add_argument("-q", "--quiet", action="store_true")
 
@@ -253,7 +257,9 @@ def main(argv: list[str] | None = None) -> int:
         "--all", action="store_true", help="remove all cache (including build cache)"
     )
     p_clean.add_argument(
-        "-f", "--force", action="store_true",
+        "-f",
+        "--force",
+        action="store_true",
         help="skip confirmation prompt (for use in scripts)",
     )
 
@@ -287,21 +293,27 @@ def main(argv: list[str] | None = None) -> int:
     _SUBPARSERS["doctor"] = p_doctor
     p_doctor.add_argument("-q", "--quiet", action="store_true")
     p_doctor.add_argument(
-        "--json", action="store_true", help="output as JSON",
+        "--json",
+        action="store_true",
+        help="output as JSON",
     )
 
     p_help = sub.add_parser(
-        "help", help="show help for a command",
+        "help",
+        help="show help for a command",
     )
     _SUBPARSERS["help"] = p_help
     p_help.add_argument(
-        "command_name", nargs="?", default=None,
+        "command_name",
+        nargs="?",
+        default=None,
         help="command to get help for (omit for general help)",
     )
 
     args = parser.parse_args(argv)
 
     from ._color import init as _init_color
+
     _init_color(no_color=getattr(args, "no_color", False))
 
     _verbose = getattr(args, "quiet", False) is False and sys.stderr.isatty()
@@ -320,9 +332,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build":
             from .build import build
 
-            _warn_multi_service_compose(
-                Path(args.app).resolve(), verbose=_verbose
-            )
+            _warn_multi_service_compose(Path(args.app).resolve(), verbose=_verbose)
             build(
                 args.app,
                 args.output,
@@ -402,6 +412,7 @@ def main(argv: list[str] | None = None) -> int:
         RuntimeError,
     ) as e:
         from ._color import red as _red
+
         print(f"[xbin] {_red(f'error: {e}')}", file=sys.stderr)
         return 1
 

@@ -62,7 +62,11 @@ def _deno_entry(app_dir: Path, cfg_name: str) -> str:
         cfg = json.loads(raw)
         tasks = cfg.get("tasks", {})
         for key in ("start", "dev", "default"):
-            cmd = tasks.get(key, {}).get("command") if isinstance(tasks.get(key), dict) else tasks.get(key)
+            cmd = (
+                tasks.get(key, {}).get("command")
+                if isinstance(tasks.get(key), dict)
+                else tasks.get(key)
+            )
             if cmd and isinstance(cmd, str):
                 for part in cmd.split():
                     if part.endswith(".ts") and (app_dir / part).is_file():

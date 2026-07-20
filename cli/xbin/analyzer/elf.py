@@ -185,7 +185,10 @@ class ELFParser:
 
     def _vaddr_to_offset(self, vaddr: int) -> int | None:
         for ph in self._program_headers():
-            if ph["type"] == PT_LOAD and ph["vaddr"] <= vaddr < ph["vaddr"] + ph["memsz"]:
+            if (
+                ph["type"] == PT_LOAD
+                and ph["vaddr"] <= vaddr < ph["vaddr"] + ph["memsz"]
+            ):
                 return ph["offset"] + (vaddr - ph["vaddr"])
         return None
 

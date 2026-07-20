@@ -29,7 +29,9 @@ def verify(args: argparse.Namespace) -> None:
 
     hash_and_sig = body_hash + sig  # 96 bytes
 
-    trusted_dir = os.path.abspath(args.trusted_dir) if args.trusted_dir else str(_trusted_dir())
+    trusted_dir = (
+        os.path.abspath(args.trusted_dir) if args.trusted_dir else str(_trusted_dir())
+    )
 
     if not os.path.isdir(trusted_dir):
         raise ValueError(f"trusted keys directory not found: {trusted_dir}")

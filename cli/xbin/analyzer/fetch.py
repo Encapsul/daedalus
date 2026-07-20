@@ -146,7 +146,12 @@ def fetch_deps(
             )
             continue
         if verbose:
-            print(f"  fetching {dep.kind} {dep.name}...", end=" ", flush=True, file=sys.stderr)
+            print(
+                f"  fetching {dep.kind} {dep.name}...",
+                end=" ",
+                flush=True,
+                file=sys.stderr,
+            )
         result = fetcher(dep, stage)  # type: ignore[operator]
         results.append(result)
         if verbose:

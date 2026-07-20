@@ -22,6 +22,7 @@ from .cross import _vendored_python_version, pip_download_target
 # Rootfs helpers
 # ---------------------------------------------------------------------------
 
+
 def copy_into_rootfs(host_path: Path, rootfs: Path) -> None:
     """Copy a host file into the rootfs, preserving its absolute path.
 
@@ -69,6 +70,7 @@ def write_etc(rootfs: Path) -> None:
 # Cross-compilation Python
 # ---------------------------------------------------------------------------
 
+
 def install_cross_python(vendored: Path, rootfs: Path, verbose: bool) -> str:
     """Install vendored cross-compilation Python into rootfs at /opt/cross-python/.
 
@@ -84,6 +86,7 @@ def install_cross_python(vendored: Path, rootfs: Path, verbose: bool) -> str:
 # ---------------------------------------------------------------------------
 # Runtime layer
 # ---------------------------------------------------------------------------
+
 
 def build_runtime_layer(
     app_dir: Path,
@@ -129,8 +132,14 @@ def build_runtime_layer(
             print(f"    {lib}{arrow}", file=sys.stderr)
 
     _RT_IGNORE = shutil.ignore_patterns(
-        "test", "tests", "site-packages", "idlelib",
-        "ensurepip", "turtledemo", "pydoc_data", "config-*",
+        "test",
+        "tests",
+        "site-packages",
+        "idlelib",
+        "ensurepip",
+        "turtledemo",
+        "pydoc_data",
+        "config-*",
     )
     for d in plan.extra_dirs_host:
         dest = layer / str(d).lstrip("/")
@@ -145,14 +154,20 @@ def build_runtime_layer(
 # App layer
 # ---------------------------------------------------------------------------
 
+
 def build_app_layer(
     app_dir: Path, plan: analyzer.runtime.RuntimePlan, layer: Path, verbose: bool
 ) -> None:
     """APP layer: application code + site-packages. Small and volatile."""
     app_dest = layer / "app"
     shutil.copytree(
-        app_dir, app_dest, symlinks=True, dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns(".venv", "venv", "site-packages", "node_modules", ".git"),
+        app_dir,
+        app_dest,
+        symlinks=True,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(
+            ".venv", "venv", "site-packages", "node_modules", ".git"
+        ),
     )
     for src, rootfs_rel in plan.site_packages:
         dest = layer / rootfs_rel.lstrip("/")
@@ -165,6 +180,7 @@ def build_app_layer(
 # ---------------------------------------------------------------------------
 # Compression
 # ---------------------------------------------------------------------------
+
 
 def tar_deterministic(root: Path) -> bytes:
     """Deterministic tar of `root` content (normalized mtime/uid/gid, sorted entries)."""
@@ -198,10 +214,21 @@ def mksquashfs(source_dir: Path) -> bytes:
     try:
         proc = subprocess.run(
             [
-                "mksquashfs", str(source_dir), str(tmp_path),
-                "-comp", "zstd", "-b", "1M",
-                "-no-xattrs", "-noappend", "-no-progress", "-quiet",
-                "-force-gid", "0", "-force-uid", "0",
+                "mksquashfs",
+                str(source_dir),
+                str(tmp_path),
+                "-comp",
+                "zstd",
+                "-b",
+                "1M",
+                "-no-xattrs",
+                "-noappend",
+                "-no-progress",
+                "-quiet",
+                "-force-gid",
+                "0",
+                "-force-uid",
+                "0",
             ],
             capture_output=True,
         )
@@ -229,25 +256,35 @@ def compress_layer_cached(
     if not reuse:
         comp = zstd(raw_tar)
         if verbose:
-            print(f"  {label}: {len(raw_tar)/1e6:.1f}MB -> {len(comp)/1e6:.1f}MB (zstd)", file=sys.stderr)
+            print(
+                f"  {label}: {len(raw_tar)/1e6:.1f}MB -> {len(comp)/1e6:.1f}MB (zstd)",
+                file=sys.stderr,
+            )
         return comp
 
     key = hashlib.sha256(raw_tar).hexdigest()
     blob = build_cache_dir() / f"{key}.zst"
     if blob.is_file():
         if verbose:
-            print(f"  {label}: reused from build cache (no recompression) ✓", file=sys.stderr)
+            print(
+                f"  {label}: reused from build cache (no recompression) ✓",
+                file=sys.stderr,
+            )
         return blob.read_bytes()
     comp = zstd(raw_tar)
     blob.write_bytes(comp)
     if verbose:
-        print(f"  {label}: {len(raw_tar)/1e6:.1f}MB -> {len(comp)/1e6:.1f}MB (zstd, cached)", file=sys.stderr)
+        print(
+            f"  {label}: {len(raw_tar)/1e6:.1f}MB -> {len(comp)/1e6:.1f}MB (zstd, cached)",
+            file=sys.stderr,
+        )
     return comp
 
 
 # ---------------------------------------------------------------------------
 # Pip install (Python-specific)
 # ---------------------------------------------------------------------------
+
 
 def pip_install_requirements(
     app_dir: Path,
@@ -328,6 +365,7 @@ def unpack_wheel(whl: Path, dest: Path, verbose: bool) -> None:
 # Consolidated layer builders (replaces _build_layers + _build_layers_squashfs)
 # ---------------------------------------------------------------------------
 
+
 def build_layers(
     app_dir: Path,
     plan: analyzer.runtime.RuntimePlan,
@@ -361,20 +399,32 @@ def build_layers(
         rt_dir.mkdir()
         app_dir_layer.mkdir()
 
-        build_runtime_layer(app_dir, plan, rt_dir, verbose, cross_python_root=cross_python_root)
+        build_runtime_layer(
+            app_dir, plan, rt_dir, verbose, cross_python_root=cross_python_root
+        )
         build_app_layer(app_dir, plan, app_dir_layer, verbose)
 
         if squashfs:
             rt_sqfs = mksquashfs(rt_dir)
             app_sqfs = mksquashfs(app_dir_layer)
             if verbose:
-                print(f"  runtime layer: {len(rt_sqfs)/1e6:.1f}MB (squashfs)", file=sys.stderr)
-                print(f"  app layer: {len(app_sqfs)/1e6:.1f}MB (squashfs)", file=sys.stderr)
+                print(
+                    f"  runtime layer: {len(rt_sqfs)/1e6:.1f}MB (squashfs)",
+                    file=sys.stderr,
+                )
+                print(
+                    f"  app layer: {len(app_sqfs)/1e6:.1f}MB (squashfs)",
+                    file=sys.stderr,
+                )
             return rt_sqfs, app_sqfs
 
         rt_tar = tar_deterministic(rt_dir)
         app_tar = tar_deterministic(app_dir_layer)
 
-    rt_comp = compress_layer_cached(rt_tar, reuse=True, verbose=verbose, label="runtime layer")
-    app_comp = compress_layer_cached(app_tar, reuse=False, verbose=verbose, label="app layer")
+    rt_comp = compress_layer_cached(
+        rt_tar, reuse=True, verbose=verbose, label="runtime layer"
+    )
+    app_comp = compress_layer_cached(
+        app_tar, reuse=False, verbose=verbose, label="app layer"
+    )
     return rt_comp, app_comp, rt_tar, app_tar

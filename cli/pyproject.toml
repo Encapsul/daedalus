@@ -23,11 +23,11 @@ where = ["."]
 include = ["xbin*"]
 
 [tool.black]
-target-version = ["py313"]
+target-version = ["py312"]
 line-length = 88
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
