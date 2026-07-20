@@ -168,7 +168,7 @@ Par ordre de valeur :
    Python. Attention : pip indisponible sur la machine de session.
 2. **Node.js de bout en bout** : prouve le language-agnostic (node + node_modules).
 3. **Signature Ed25519** : footer v2→v3 avec bloc signature, `xbin keygen/sign/verify`,
-   vérif avant extraction, trust model (`~/.xbin/trusted-keys/`).
+   vérif avant extraction, trust model (`$XDG_DATA_HOME/xbin/trusted-keys/`).
 4. **Isolation niveau 2** (userns + pivot_root + seccomp) : portabilité réelle +
    réutilisation d'extraction par couche via overlayfs.
 5. **Analyzer IA** : `--ai-analyze` → génère `xbin.toml` (deps cachées). C'est la

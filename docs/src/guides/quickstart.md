@@ -64,13 +64,13 @@ integrity sha256: 4232327e...
 
 ```bash
 # Generate a keypair
-python3 -m xbin keygen --key-dir ~/.xbin/keys
+python3 -m xbin keygen --key-dir $XDG_DATA_HOME/xbin/keys
 
 # Sign a .xbin
-python3 -m xbin sign hello-web.xbin --key ~/.xbin/keys/<fingerprint>.key
+python3 -m xbin sign hello-web.xbin --key $XDG_DATA_HOME/xbin/keys/<fingerprint>.key
 
 # Copy public key to trusted directory
-cp ~/.xbin/keys/<fingerprint>.pub ~/.xbin/trusted-keys/
+cp $XDG_DATA_HOME/xbin/keys/<fingerprint>.pub $XDG_DATA_HOME/xbin/trusted-keys/
 
 # Verify
 python3 -m xbin verify hello-web.xbin

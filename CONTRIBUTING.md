@@ -98,6 +98,12 @@ Bad: `fix stuff` or `updated code`
 - `from __future__ import annotations` at the top
 - Docstrings in English, triple-quoted, with brief description
 - Keep functions focused and small
+- Progress/status output goes to **stderr** (`file=sys.stderr`), never stdout
+- Use `_color.py` helpers (red, green, yellow, bold) for terminal output — respects `--no-color` / `NO_COLOR`
+- Non-TTY stderr: suppress verbose progress (use `verbose` parameter)
+- Interactive prompts: always offer `--force` / `-f` to skip (for CI/scripting)
+- Machine-readable output: offer `--json` flag where applicable (inspect, doctor)
+- XDG compliance: use `_util.keys_dir()` / `_util.trusted_dir()` for config paths
 
 ### Rust (`stub/`)
 

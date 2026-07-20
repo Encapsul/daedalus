@@ -138,7 +138,7 @@ $ xbin build my-app -o my-app-aarch64.xbin --target aarch64
 
 - Security
   - [Ed25519 signatures](https://tednoob17.github.io/x.bin/security.html)
-  - [Trust model (`~/.xbin/trusted-keys/`)](https://tednoob17.github.io/x.bin/security.html)
+  - [Trust model (`$XDG_DATA_HOME/xbin/trusted-keys/`)](https://tednoob17.github.io/x.bin/security.html)
   - [SHA-256 integrity verification](https://tednoob17.github.io/x.bin/reference/format.html)
   - [Seccomp syscall filtering](https://tednoob17.github.io/x.bin/reference/isolation.html)
 
@@ -146,11 +146,13 @@ $ xbin build my-app -o my-app-aarch64.xbin --target aarch64
   - [`xbin build`](https://tednoob17.github.io/x.bin/reference/builder.html)
   - [`xbin build --target aarch64`](https://tednoob17.github.io/x.bin/reference/builder.html) (cross-compile)
   - [`xbin build --squashfs`](https://tednoob17.github.io/x.bin/reference/builder.html) (SquashFS format)
-  - [`xbin inspect`](https://tednoob17.github.io/x.bin/reference/builder.html)
+  - [`xbin inspect --json`](https://tednoob17.github.io/x.bin/reference/builder.html) (machine-readable output)
   - [`xbin sign` / `verify`](https://tednoob17.github.io/x.bin/security.html)
   - [`xbin keygen`](https://tednoob17.github.io/x.bin/security.html)
   - [`xbin doctor`](https://tednoob17.github.io/x.bin/guides/quickstart.html) (check prerequisites)
-  - [`xbin clean`](https://tednoob17.github.io/x.bin/reference/cache.html)
+  - [`xbin doctor --json`](https://tednoob17.github.io/x.bin/guides/quickstart.html) (machine-readable output)
+  - [`xbin clean --all -f`](https://tednoob17.github.io/x.bin/reference/cache.html) (force clean cache)
+  - [`xbin help [command]`](https://tednoob17.github.io/x.bin/) (discoverability)
 
 ## Guides
 
@@ -184,11 +186,13 @@ $ xbin build my-app -o my-app-aarch64.xbin --target aarch64
 **At build time**, `xbin build`:
 1. Detects the runtime (Python, Node, or native binary)
 2. Scans Dockerfile for declared system/pip/npm packages and external binary fetches
-3. Resolves shared libraries via a pure-Python ELF analyzer (no host `ldd` needed)
-4. Packages interpreter + stdlib + `.so` into a **runtime layer**
-5. Packages app code + dependencies into an **app layer**
-6. Compresses each layer with `zstd` (default) or `mksquashfs` (`--squashfs`)
-7. For cross-builds: downloads vendored Python for target arch, pip downloads target wheels
+3. Scans Python AST for subprocess/os.system calls
+4. Resolves shared libraries via a pure-Python ELF analyzer (no host `ldd` needed)
+5. Fetches detected dependencies into isolated staging (`pip download`, `npm install`, etc.)
+6. Packages interpreter + stdlib + `.so` into a **runtime layer**
+7. Packages app code + dependencies into an **app layer**
+8. Compresses each layer with `zstd` (default) or `mksquashfs` (`--squashfs`)
+9. For cross-builds: downloads vendored Python for target arch, pip downloads target wheels
 
 **At runtime**, the launcher:
 1. Opens `/proc/self/exe` (not `argv[0]`)

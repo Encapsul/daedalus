@@ -22,7 +22,7 @@
 - [x] **Pure-Python ELF analyzer** (no host `ldd` dependency, works on any
       machine with Python)
 - [x] **Ed25519 signatures** (v3 footer, `xbin keygen` / `sign` / `verify` / `trust`)
-- [x] **Trust model**: `~/.xbin/trusted-keys/` keyring, `xbin trust` subcommand
+- [x] **Trust model**: `$XDG_DATA_HOME/xbin/trusted-keys/` keyring, `xbin trust` subcommand
 - [x] **Level 2 isolation**: user namespaces + `pivot_root` (real portability)
 - [x] **Smart `.so` deduplication** (if `ld-linux` is found via `/lib64`
       (symlink) and `/lib/x86_64-linux-gnu` (real file), the duplicate is

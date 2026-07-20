@@ -3,12 +3,12 @@
 ## Current state
 
 - **Format**: v5 (SquashFS support)
-- **Status**: Phase 2 complete, Phase 3 partially done
+- **Status**: Phase 2 complete, Phase 3 partially done, CLI compliant with clig.dev
 - **Build**: `make stub` + `pip install -e ./cli`
 - **Health check**: `xbin doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
 - **Release**: `./scripts/release.sh 0.1.0` → CI builds multi-arch binaries → GitHub Release
-- **Last commit**: `4593a33` — branching strategy, release CI
+- **Last commit**: `2158078` — clig.dev audit complete (12 gaps fixed)
 
 ---
 
@@ -100,8 +100,8 @@ All must pass. If any fails, your change introduced a regression.
 
 - `stub/src/main.rs:70-75` — calls `verify_ed25519()` when `format_version >= 3 && flags & FLAG_SIGNED`.
 - `stub/src/main.rs:119-182` — full verification logic: reads sig block at `sig_offset`,
-  computes SHA-256(payload ‖ meta_bytes), iterates trusted keys from `~/.xbin/trusted-keys/`
-  (or `$XBIN_TRUSTED_DIR`), verifies via `ed25519_dalek::Verifier`.
+  computes SHA-256(payload ‖ meta_bytes), iterates trusted keys from `$XDG_DATA_HOME/xbin/trusted-keys/`
+  (legacy fallback: `~/.xbin/trusted-keys/`), verifies via `ed25519_dalek::Verifier`.
 - `stub/Cargo.toml:18` — `ed25519-dalek` with `default-features = false, features = ["alloc"]`.
 
 ## Keygen / Sign / Verify CLI: IMPLEMENTED
@@ -118,13 +118,13 @@ All implemented in the session of 2026-07-09:
     Exit 0 = valid, 1 = invalid, 2 = error.
 - `cli/xbin/crypto.py` — `find_crypto()` (mirrors `find_stub()`) + thin subprocess wrappers
   for keygen/sign/verify.
-- `cli/xbin/keygen.py` — `xbin keygen` CLI (default dir `~/.xbin/keys`).
+- `cli/xbin/keygen.py` — `xbin keygen` CLI (default dir `$XDG_DATA_HOME/xbin/keys`, legacy fallback `~/.xbin/keys`).
 - `cli/xbin/sign.py` — `xbin sign <file.xbin>`: reads file with format.py, computes
   SHA-256(payload‖meta), calls crypto.py sign, writes sig_block `[sig_size:u32le][64-byte sig]`
   between metadata and footer, rewrites footer as v3 (format_version=3, flags|=FLAG_SIGNED,
   sig_offset set, footer grown to 92 bytes). In-place modification.
 - `cli/xbin/verify.py` — `xbin verify <file.xbin>`: reads v3 footer, iterates trusted keys
-  from `~/.xbin/trusted-keys/` (or `--trusted-dir`), calls crypto.py verify for each.
+  from `$XDG_DATA_HOME/xbin/trusted-keys/` (legacy fallback `~/.xbin/trusted-keys/`, or `--trusted-dir`), calls crypto.py verify for each.
 - `cli/xbin/cli.py` — wired up keygen/sign/verify subcommands.
 - `Makefile` — `make stub` builds both `xbin-stub` and `xbin-crypto`.
 - `.cargo/config.toml` — target-dir is `/tmp/xbin-stub-target` (vfat workaround).
@@ -202,10 +202,42 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - `cargo build --release` + `cargo clippy -- -D warnings` passent clean (0 warnings, 0 errors)
 - No test suite exists; `make example` should build a working .xbin to confirm end-to-end
 
+## Clig.dev CLI audit (2026-07-20)
+
+Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixed.
+
+| # | Gap | Fix | Commit |
+|---|-----|-----|--------|
+| 1 | Progress on stdout | All `print()` → `file=sys.stderr` (build, clean, lockfile, fetch, cross) | `348e0b4` |
+| 2 | `clean --all` no confirmation | Interactive prompt + `-f`/`--force` flag, non-interactive requires `--force` | `fe8aaba` |
+| 3 | Silent network fetches | "detecting dependencies..." + "downloading N dependencies..." messages | `9ba1473` |
+| 4 | Non-XDG key paths | `$XDG_DATA_HOME/xbin/` with legacy `~/.xbin/` fallback + deprecation warning | `8a2bafe` |
+| 5 | No `--version` | `xbin --version` → `xbin 0.1.0` | `f519099` |
+| 6 | No machine-readable output | `--json` flag for `inspect` and `doctor` | `9b567f3` |
+| 7 | Subcommand abbreviation | Already prevented by argparse (Python 3.12) | N/A |
+| 8 | No color support | `_color.py` module: `--no-color`, `NO_COLOR`, `TERM=dumb`, isatty detection | `b36e086` |
+| 9 | No isatty checks | `verbose = not args.quiet and sys.stderr.isatty()` — auto-suppress in pipes | `7ae378b` |
+| 10 | No help examples | Epilog with 6 usage examples + docs link | `a64dcfd` |
+| 11 | No `help` subcommand | `xbin help [command]` via `_SUBPARSERS` dict dispatch | `5652e83` |
+| 12 | No exit code docs | 0/1/2 documented in `--help` epilog | `2158078` |
+
+### New files
+- `cli/xbin/_color.py` — ANSI color helpers (red, green, yellow, bold) with TTY/NO_COLOR/dumb detection
+
+### Key changes
+- `_util.py`: added `keys_dir()` and `trusted_dir()` functions (XDG + legacy fallback)
+- `cli.py`: `--no-color` global flag, `--version`, `_SUBPARSERS` dict, `_verbose` with isatty, `help` subcommand, `RawDescriptionHelpFormatter` epilog
+- `build.py`: stderr for all progress, network fetch transparency messages, removed dead `_NO_KEYS_MSG`
+- `clean.py`: `--force` flag, interactive confirmation for `--all`
+- `inspect.py`: refactored with `_collect_inspect_data()` helper, `--json` output
+- `doctor.py`: refactored with `_collect_checks()` helper, `--json` output, colored check markers
+- `sign.py`, `verify.py`, `trust.py`, `keygen.py`: updated to use `_util.keys_dir()` / `_util.trusted_dir()`
+- `lockfile.py`, `fetch.py`, `cross.py`: stderr for all progress messages
+
 ## Next steps (future)
 
 - Cross-build aarch64 stub locally: requires `rustup target add aarch64-unknown-linux-musl` + cross-linker. CI handles this automatically via GitHub Actions runners.
-- `xbin sign` with automatic key lookup in `~/.xbin/keys/` (without `--key`).
+- `xbin sign` with automatic key lookup in `$XDG_DATA_HOME/xbin/keys/` (without `--key`).
 - `squashfs + mmap` direct read (kernel mount, Linux 5.12+, no extraction needed) — the real cold-start perf win beyond just better compression.
 - LRU cache cleanup (evict beyond threshold)
 - Cold/warm start < 100 ms end-to-end
