@@ -25,16 +25,34 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: stub
-      - run: cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Build Rust stubs
+        run: cargo build --release --target x86_64-unknown-linux-musl
         working-directory: stub
 
-      - name: Package
+      - name: Package CLI bundle
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          DIR="xbin-${VERSION}-linux-x64"
+          DIR="xbin-linux-x64"
           mkdir -p "${DIR}/bin"
+          mkdir -p "${DIR}/lib/python/xbin"
+
+          # Rust stubs
           cp stub/target/x86_64-unknown-linux-musl/release/xbin-stub "${DIR}/bin/"
           cp stub/target/x86_64-unknown-linux-musl/release/xbin-crypto "${DIR}/bin/"
+
+          # Python CLI package
+          cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
+
+          # Create xbin wrapper script
+          cat > "${DIR}/bin/xbin" << 'WRAPPER'
+          #!/usr/bin/env bash
+          XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+          export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+          exec python3 -m xbin "$@"
+          WRAPPER
+          chmod +x "${DIR}/bin/xbin"
+
           tar czf "${DIR}.tar.gz" "${DIR}"
           sha256sum "${DIR}.tar.gz" > "${DIR}.tar.gz.sha256"
           echo "ASSET=${DIR}.tar.gz" >> "$GITHUB_ENV"
@@ -63,18 +81,32 @@ jobs:
         with:
           workspaces: stub
       - run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-      - run: cargo build --release --target aarch64-unknown-linux-musl
+      - name: Build Rust stubs
+        run: cargo build --release --target aarch64-unknown-linux-musl
         working-directory: stub
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Package
+      - name: Package CLI bundle
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          DIR="xbin-${VERSION}-linux-arm64"
+          DIR="xbin-linux-arm64"
           mkdir -p "${DIR}/bin"
+          mkdir -p "${DIR}/lib/python/xbin"
+
           cp stub/target/aarch64-unknown-linux-musl/release/xbin-stub "${DIR}/bin/"
           cp stub/target/aarch64-unknown-linux-musl/release/xbin-crypto "${DIR}/bin/"
+
+          cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
+
+          cat > "${DIR}/bin/xbin" << 'WRAPPER'
+          #!/usr/bin/env bash
+          XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+          export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+          exec python3 -m xbin "$@"
+          WRAPPER
+          chmod +x "${DIR}/bin/xbin"
+
           tar czf "${DIR}.tar.gz" "${DIR}"
           sha256sum "${DIR}.tar.gz" > "${DIR}.tar.gz.sha256"
           echo "ASSET=${DIR}.tar.gz" >> "$GITHUB_ENV"
@@ -102,16 +134,31 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: stub
-      - run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Build Rust stubs
+        run: cargo build --release --target aarch64-apple-darwin
         working-directory: stub
 
-      - name: Package
+      - name: Package CLI bundle
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          DIR="xbin-${VERSION}-macos-arm64"
+          DIR="xbin-macos-arm64"
           mkdir -p "${DIR}/bin"
+          mkdir -p "${DIR}/lib/python/xbin"
+
           cp stub/target/aarch64-apple-darwin/release/xbin-stub "${DIR}/bin/"
           cp stub/target/aarch64-apple-darwin/release/xbin-crypto "${DIR}/bin/"
+
+          cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
+
+          cat > "${DIR}/bin/xbin" << 'WRAPPER'
+          #!/usr/bin/env bash
+          XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+          export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+          exec python3 -m xbin "$@"
+          WRAPPER
+          chmod +x "${DIR}/bin/xbin"
+
           tar czf "${DIR}.tar.gz" "${DIR}"
           shasum -a 256 "${DIR}.tar.gz" > "${DIR}.tar.gz.sha256"
           echo "ASSET=${DIR}.tar.gz" >> "$GITHUB_ENV"
@@ -139,16 +186,31 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: stub
-      - run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Build Rust stubs
+        run: cargo build --release --target x86_64-apple-darwin
         working-directory: stub
 
-      - name: Package
+      - name: Package CLI bundle
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          DIR="xbin-${VERSION}-macos-x64"
+          DIR="xbin-macos-x64"
           mkdir -p "${DIR}/bin"
+          mkdir -p "${DIR}/lib/python/xbin"
+
           cp stub/target/x86_64-apple-darwin/release/xbin-stub "${DIR}/bin/"
           cp stub/target/x86_64-apple-darwin/release/xbin-crypto "${DIR}/bin/"
+
+          cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
+
+          cat > "${DIR}/bin/xbin" << 'WRAPPER'
+          #!/usr/bin/env bash
+          XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+          export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+          exec python3 -m xbin "$@"
+          WRAPPER
+          chmod +x "${DIR}/bin/xbin"
+
           tar czf "${DIR}.tar.gz" "${DIR}"
           shasum -a 256 "${DIR}.tar.gz" > "${DIR}.tar.gz.sha256"
           echo "ASSET=${DIR}.tar.gz" >> "$GITHUB_ENV"
@@ -181,6 +243,11 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cat > release-notes.md << NOTES
+          ## What's New
+
+          - Improved CLI packaging with full Python runtime support
+          - Updated installation script
+
           ## Install
 
           ### Linux / macOS
