@@ -178,6 +178,7 @@ def build(
     license: str = "",
     persist: bool = False,
     include: list[str] | None = None,
+    tree_shake: bool = False,
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -274,6 +275,17 @@ def build(
                     f"  include: {inc_path.name} ({'dir' if inc_path.is_dir() else 'file'})",
                     file=sys.stderr,
                 )
+
+    # --- Tree-shaking: remove unused node_modules packages ---
+    if tree_shake:
+        from .treeshake import prune_node_modules
+
+        removed = prune_node_modules(app_dir, verbose=verbose)
+        if verbose:
+            print(
+                f"  tree-shake: removed {removed} unused package(s)",
+                file=sys.stderr,
+            )
 
     # --- Cross-compilation setup ---
     cross_root: Path | None = None
