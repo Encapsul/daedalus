@@ -48,6 +48,14 @@ def trusted_dir() -> Path:
     return _resolve_data_dir("trusted-keys", "trusted-keys")
 
 
+def cache_dir() -> Path:
+    """Same logic as the launcher (stub/src/main.rs::cache_dir)."""
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg:
+        return Path(xdg) / "xbin"
+    return Path.home() / ".cache" / "xbin"
+
+
 def find_binary(
     name: str, env_var: str, error_msg: str, target_arch: str | None = None
 ) -> Path:

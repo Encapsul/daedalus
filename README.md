@@ -138,6 +138,7 @@ $ xbin build my-app --update           # reuses unchanged runtime layer, rebuild
   - [Python source AST scanning](https://tednoob17.github.io/x.bin/guides/dependencies.html)
   - [Dependency fetcher (pip/npm/apt)](https://tednoob17.github.io/x.bin/guides/dependencies.html)
   - [Incremental rebuilds](https://tednoob17.github.io/x.bin/reference/format.html)
+  - [Scan for .xbin files](https://tednoob17.github.io/x.bin/reference/builder.html)
   - [Layered format (v3)](https://tednoob17.github.io/x.bin/reference/format.html)
 
 - Runtime
