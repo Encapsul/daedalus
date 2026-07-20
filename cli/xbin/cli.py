@@ -148,8 +148,10 @@ def main(argv: list[str] | None = None) -> int:
         help="disable colored output (also: set NO_COLOR env var)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+    _SUBPARSERS: dict[str, argparse.ArgumentParser] = {}
 
     p_build = sub.add_parser("build", help="analyze an app and produce a .xbin")
+    _SUBPARSERS["build"] = p_build
     p_build.add_argument("app", help="application directory")
     p_build.add_argument("-o", "--output", help="output path (default: <name>.xbin)")
     p_build.add_argument("--key", help="sign the .xbin with this Ed25519 key")
@@ -189,18 +191,21 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
+    _SUBPARSERS["run"] = p_run
     p_run.add_argument("file", help=".xbin file")
     p_run.add_argument(
         "args", nargs=argparse.REMAINDER, help="arguments passed to the app"
     )
 
     p_inspect = sub.add_parser("inspect", help="show .xbin contents")
+    _SUBPARSERS["inspect"] = p_inspect
     p_inspect.add_argument("file", help=".xbin file")
     p_inspect.add_argument(
         "--json", action="store_true", help="output as JSON",
     )
 
     p_keygen = sub.add_parser("keygen", help="generate an Ed25519 signing keypair")
+    _SUBPARSERS["keygen"] = p_keygen
     p_keygen.add_argument(
         "--key-dir",
         default=None,
@@ -209,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     p_keygen.add_argument("-q", "--quiet", action="store_true")
 
     p_sign = sub.add_parser("sign", help="sign a .xbin file (in-place, v3 footer)")
+    _SUBPARSERS["sign"] = p_sign
     p_sign.add_argument("file", help=".xbin file to sign")
     p_sign.add_argument(
         "--key", help="path to signing key (default: first .key in keys directory)"
@@ -216,6 +222,7 @@ def main(argv: list[str] | None = None) -> int:
     p_sign.add_argument("-q", "--quiet", action="store_true")
 
     p_verify = sub.add_parser("verify", help="verify a .xbin file's Ed25519 signature")
+    _SUBPARSERS["verify"] = p_verify
     p_verify.add_argument("file", help=".xbin file to verify")
     p_verify.add_argument(
         "--trusted-dir",
@@ -227,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     p_trust = sub.add_parser(
         "trust", help="copy a .pub key into the trusted-keys directory"
     )
+    _SUBPARSERS["trust"] = p_trust
     p_trust.add_argument("pubkey", help="path to a 32-byte Ed25519 public key file")
     p_trust.add_argument(
         "--trusted-dir",
@@ -236,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
     p_trust.add_argument("-q", "--quiet", action="store_true")
 
     p_clean = sub.add_parser("clean", help="clean local cache (~/.cache/xbin)")
+    _SUBPARSERS["clean"] = p_clean
     p_clean.add_argument(
         "--all", action="store_true", help="remove all cache (including build cache)"
     )
@@ -247,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
     p_selftest = sub.add_parser(
         "selftest", help="launch a .xbin in an ephemeral sandbox to confirm it starts"
     )
+    _SUBPARSERS["selftest"] = p_selftest
     p_selftest.add_argument("file", help=".xbin file to test")
     p_selftest.add_argument(
         "--mode",
@@ -270,9 +280,19 @@ def main(argv: list[str] | None = None) -> int:
     p_doctor = sub.add_parser(
         "doctor", help="check that all prerequisites are installed"
     )
+    _SUBPARSERS["doctor"] = p_doctor
     p_doctor.add_argument("-q", "--quiet", action="store_true")
     p_doctor.add_argument(
         "--json", action="store_true", help="output as JSON",
+    )
+
+    p_help = sub.add_parser(
+        "help", help="show help for a command",
+    )
+    _SUBPARSERS["help"] = p_help
+    p_help.add_argument(
+        "command_name", nargs="?", default=None,
+        help="command to get help for (omit for general help)",
     )
 
     args = parser.parse_args(argv)
@@ -280,9 +300,19 @@ def main(argv: list[str] | None = None) -> int:
     from ._color import init as _init_color
     _init_color(no_color=getattr(args, "no_color", False))
 
-    _verbose = not args.quiet and sys.stderr.isatty()
+    _verbose = getattr(args, "quiet", False) is False and sys.stderr.isatty()
 
     try:
+        if args.command == "help":
+            if args.command_name is None:
+                parser.print_help()
+            elif args.command_name in _SUBPARSERS:
+                _SUBPARSERS[args.command_name].print_help()
+            else:
+                print(f"unknown command: {args.command_name}", file=sys.stderr)
+                return 1
+            return 0
+
         if args.command == "build":
             from .build import build
 
