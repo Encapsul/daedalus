@@ -32,10 +32,31 @@ from .cross import (
 from .encrypt import encrypt_payload
 from .layers import build_layers
 from .manifest import build_manifest
+from .pkgmgr import detect_pkgmgr, install_deps
 
 XBIN_VERSION = "0.1.0"
 
 _IGNORED_APP_DIRS = {".venv", "venv", "site-packages", "node_modules", ".git"}
+
+_LOCK_FILES = [
+    "requirements.txt",
+    "uv.lock",
+    "poetry.lock",
+    "Pipfile.lock",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "bun.lockb",
+]
+
+
+def _hash_lock_file(app_dir: Path) -> str:
+    """Hash the first matching lock file for change detection."""
+    for name in _LOCK_FILES:
+        p = app_dir / name
+        if p.is_file() and p.stat().st_size > 0:
+            return hashlib.sha256(p.read_bytes()).hexdigest()
+    return ""
 
 
 def _hash_app_files(app_dir: Path) -> str:
@@ -147,6 +168,7 @@ def build(
     redetect: bool = False,
     target: str | None = None,
     update: bool = False,
+    no_install: bool = False,
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -228,10 +250,19 @@ def build(
 
     t0 = time.time()
 
+    # --- Package manager install (uv/poetry/pipenv/pip/pnpm/yarn/bun/npm) ---
+    if not no_install:
+        pm = detect_pkgmgr(app_dir, plan.runtime)
+        if pm is not None:
+            if verbose:
+                print(
+                    f"[xbin] installing dependencies via {pm.name}...", file=sys.stderr
+                )
+            install_deps(app_dir, pm, verbose)
+
     # --- Compute hashes for metadata (always, used by --update and stored) ---
     new_app_hash = _hash_app_files(app_dir)
-    req = app_dir / "requirements.txt"
-    new_rt_hash = hashlib.sha256(req.read_bytes()).hexdigest() if req.is_file() else ""
+    new_rt_hash = _hash_lock_file(app_dir)
 
     # --- Incremental update: reuse existing layers when possible ---
     reuse_rt_blob: bytes | None = None

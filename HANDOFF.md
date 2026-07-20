@@ -180,6 +180,44 @@ All must pass. If any fails, your change introduced a regression.
 - **File**: `docs/src/guides/php.md` — new guide page
 - **File**: `docs/src/guides/perl.md` — new guide page
 
+## Package manager support — 2026-07-20
+
+### New module: `cli/xbin/pkgmgr.py`
+
+Automatic dependency installation via the user's package manager.
+
+**Python package managers** (priority order):
+| Manager | Lock file | Install command |
+|---------|-----------|-----------------|
+| uv | `uv.lock` | `uv sync` |
+| poetry | `poetry.lock` | `poetry install --no-interaction` |
+| pipenv | `Pipfile.lock` | `pipenv install --deploy` |
+| pip | `requirements.txt` | `pip install -r requirements.txt` |
+
+**Node package managers** (priority order):
+| Manager | Lock file | Install command |
+|---------|-----------|-----------------|
+| pnpm | `pnpm-lock.yaml` | `pnpm install --frozen-lockfile` |
+| yarn | `yarn.lock` | `yarn install --frozen-lockfile` |
+| bun | `bun.lockb` | `bun install --frozen-lockfile` |
+| npm | `package-lock.json` | `npm ci` |
+| npm (no lock) | `package.json` | `npm install` |
+
+**How it works**:
+- `detect_pkgmgr(app_dir, runtime)` returns the first matching package manager
+- `install_deps()` runs the install command in the app directory
+- Integrated into `build()` pipeline: runs after runtime detection, before layer building
+- `--no-install` flag skips automatic installation (for pre-installed deps)
+- Incremental update hashes all lock files (not just `requirements.txt`)
+
+**File**: `cli/xbin/build.py` — added `no_install` param, pkgmgr integration
+**File**: `cli/xbin/cli.py` — added `--no-install` flag to build subcommand
+
+### Unit tests
+
+- **File**: `cli/tests/test_pkgmgr.py` — 17 tests
+- **Total**: 38 tests, all passing
+
 ## Install script + upgrade command — 2026-07-20
 
 - **File**: `scripts/install.sh` — curl-pipe-bash installer

@@ -204,6 +204,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="incremental rebuild: reuse unchanged layers from existing .xbin",
     )
+    p_build.add_argument(
+        "--no-install",
+        action="store_true",
+        help="skip automatic dependency installation (deps must already be installed)",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     _SUBPARSERS["run"] = p_run
@@ -381,6 +386,7 @@ def main(argv: list[str] | None = None) -> int:
                 redetect=args.redetect,
                 target=args.target,
                 update=args.update,
+                no_install=args.no_install,
             )
             return 0
 
