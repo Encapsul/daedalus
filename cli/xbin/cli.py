@@ -254,6 +254,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="minify JS/TS/CSS files before packaging (saves space)",
     )
+    p_build.add_argument(
+        "--health-port",
+        type=int,
+        default=0,
+        metavar="PORT",
+        help="enable health check endpoint on PORT (0=disabled, default: 0)",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     _SUBPARSERS["run"] = p_run
@@ -441,6 +448,7 @@ def main(argv: list[str] | None = None) -> int:
                 include=args.include,
                 tree_shake=args.tree_shake,
                 minify=args.minify,
+                health_port=args.health_port,
             )
             return 0
 

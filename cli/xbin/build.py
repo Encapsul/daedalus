@@ -180,6 +180,7 @@ def build(
     include: list[str] | None = None,
     tree_shake: bool = False,
     minify: bool = False,
+    health_port: int = 0,
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -296,6 +297,15 @@ def build(
         if verbose:
             print(
                 f"  minify: minified {minified} file(s)",
+                file=sys.stderr,
+            )
+
+    # --- Health check port ---
+    if health_port:
+        plan.env["XBIN_HEALTH_PORT"] = str(health_port)
+        if verbose:
+            print(
+                f"  health: endpoint enabled on port {health_port}",
                 file=sys.stderr,
             )
 
