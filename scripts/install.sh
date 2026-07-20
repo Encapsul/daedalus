@@ -10,6 +10,7 @@ GITHUB="https://github.com/${REPO}"
 # ── Helpers ────────────────────────────────────────────────────────────
 info()  { printf "\033[1;34m[xbin]\033[0m %s\n" "$*"; }
 ok()    { printf "\033[1;32m[xbin]\033[0m %s\n" "$*"; }
+warn()  { printf "\033[1;33m[xbin]\033[0m %s\n" "$*"; }
 err()   { printf "\033[1;31m[xbin]\033[0m %s\n" "$*" >&2; exit 1; }
 
 detect_platform() {
@@ -30,6 +31,37 @@ detect_platform() {
   esac
 
   echo "${os}-${arch}"
+}
+
+verify_checksum() {
+  local file="$1" checksum_file="$2"
+
+  if [ ! -f "$checksum_file" ]; then
+    warn "no checksum file found, skipping verification"
+    return 0
+  fi
+
+  local expected got
+  expected="$(grep "$(basename "$file")" "$checksum_file" 2>/dev/null | awk '{print $1}')"
+
+  if [ -z "$expected" ]; then
+    warn "checksum for $(basename "$file") not found in SHASUMS256.txt, skipping"
+    return 0
+  fi
+
+  if command -v sha256sum &>/dev/null; then
+    got="$(sha256sum "$file" | awk '{print $1}')"
+  elif command -v shasum &>/dev/null; then
+    got="$(shasum -a 256 "$file" | awk '{print $1}')"
+  else
+    warn "no sha256sum or shasum found, skipping verification"
+    return 0
+  fi
+
+  if [ "$expected" != "$got" ]; then
+    err "checksum mismatch!\n  expected: ${expected}\n  got:      ${got}"
+  fi
+  ok "checksum verified"
 }
 
 # ── Main ───────────────────────────────────────────────────────────────
@@ -84,31 +116,16 @@ main() {
       || err "download failed — is version ${version} available for ${platform}?"
   fi
 
-  # Verify checksum
-  local checksum_url="${GITHUB}/releases/download/${tag}/${asset}.sha256"
+  # Download SHASUMS256.txt
+  local checksum_url="${GITHUB}/releases/download/${tag}/SHASUMS256.txt"
   if command -v curl &>/dev/null; then
-    curl -fsSL "$checksum_url" -o "${tmpdir}/${asset}.sha256" 2>/dev/null || true
+    curl -fsSL "$checksum_url" -o "${tmpdir}/SHASUMS256.txt" 2>/dev/null || true
   else
-    wget -q "$checksum_url" -O "${tmpdir}/${asset}.sha256" 2>/dev/null || true
+    wget -q "$checksum_url" -O "${tmpdir}/SHASUMS256.txt" 2>/dev/null || true
   fi
 
-  if [ -f "${tmpdir}/${asset}.sha256" ] && command -v sha256sum &>/dev/null; then
-    local expected got
-    expected="$(awk '{print $1}' "${tmpdir}/${asset}.sha256")"
-    got="$(sha256sum "${tmpdir}/${asset}" | awk '{print $1}')"
-    if [ "$expected" != "$got" ]; then
-      err "checksum mismatch: expected ${expected}, got ${got}"
-    fi
-    ok "checksum verified"
-  elif [ -f "${tmpdir}/${asset}.sha256" ] && command -v shasum &>/dev/null; then
-    local expected got
-    expected="$(awk '{print $1}' "${tmpdir}/${asset}.sha256")"
-    got="$(shasum -a 256 "${tmpdir}/${asset}" | awk '{print $1}')"
-    if [ "$expected" != "$got" ]; then
-      err "checksum mismatch: expected ${expected}, got ${got}"
-    fi
-    ok "checksum verified"
-  fi
+  # Verify checksum
+  verify_checksum "${tmpdir}/${asset}" "${tmpdir}/SHASUMS256.txt"
 
   # Extract
   info "extracting..."
@@ -116,7 +133,6 @@ main() {
 
   local extracted_dir="${tmpdir}/xbin-${platform}"
   if [ ! -d "$extracted_dir" ]; then
-    # Try finding any xbin-* directory
     extracted_dir="$(find "${tmpdir}" -maxdepth 1 -type d -name 'xbin-*' | head -1)"
   fi
 
