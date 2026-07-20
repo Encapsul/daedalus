@@ -11,7 +11,7 @@
 - **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo (11 total)
 - **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
 - **Rust core**: `xbin-core` crate — Phase 1 complete, stub uses shared library
-- **Tests**: 185 Python + 26 Rust = 211 total (0 failures)
+- **Tests**: 234 Python + 26 Rust = 260 total (0 failures)
 - **Hugo**: runtime rewritten — builds at detect time, serves static files via python3 http.server
 - **`.env` baking**: implemented — `--env-file` flag, secret detection, bake into app layer
 - **Version metadata**: `--version-info`, `--author`, `--description`, `--license` flags
@@ -20,6 +20,9 @@
 - **Tree-shaking**: `--tree-shake` removes unused node_modules packages
 - **Minification**: `--minify` shrinks JS/TS/CSS files before packaging
 - **Framework auto-detect**: Express, Fastify, Hono, Remix, SvelteKit, FastAPI, Flask detected from deps/source
+- **Health checks**: `--health-port` for /healthz, /readyz, /status endpoints
+- **OpenTelemetry**: `--otel-endpoint` for auto-instrumentation, OTLP export
+- **Cron/scheduled tasks**: `--cron NAME:SCHEDULE` for built-in periodic tasks
 - **Last updated**: 2026-07-20
 
 ---
@@ -35,6 +38,8 @@ If you edited any `.py`, `.rs`, `.toml`, or `.yml` file → continue. Otherwise 
 ```bash
 cd stub && cargo check 2>&1          # Rust
 cd cli && python3 -c "import xbin" 2>&1  # Python
+cd cli && python3 -m ruff check xbin/ 2>&1  # Lint
+cd cli && python3 -m pytest tests/ -q 2>&1  # Tests
 ```
 
 ### 3. Does the app work?
@@ -230,7 +235,7 @@ All must pass. If any fails, your change introduced a regression.
 - **File**: `cli/tests/test_python_runtime.py` — added TestDjangoDetection (4)
 - **File**: `cli/tests/test_php_runtime.py` — updated Laravel test (asserts `serve` + `--host`), WordPress test (asserts `-S`)
 - **File**: `cli/tests/test_hugo_runtime.py` — NEW, 8 tests
-- **Total**: 185 Python tests + 26 Rust tests = 211 tests, all passing
+- **Total**: 234 Python tests + 26 Rust tests = 260 tests, all passing
 
 ### Impossible cases (future work)
 
@@ -325,6 +330,44 @@ All must pass. If any fails, your change introduced a regression.
   - `_build_python_plan()` — shared builder for detected frameworks
 - **Test file**: `cli/tests/test_framework_detect.py` — 15 tests (10 Node, 5 Python)
 - **Status**: implemented, committed `c82c0d2`
+
+## Health checks — 2026-07-20
+
+- **File**: `cli/xbin/health.py` — NEW module
+  - `HealthState` class: mark_ready(), mark_not_ready(), uptime, version, extra fields
+  - HTTP server: `/healthz` (liveness, always 200), `/readyz` (readiness), `/status` (JSON)
+  - `start_health_server(port)` — background thread, daemon
+  - `get_health_state()` — global singleton for app code
+- **File**: `cli/xbin/cli.py` — `--health-port PORT` flag on build subcommand
+- **File**: `cli/xbin/build.py` — injects `XBIN_HEALTH_PORT` into plan.env
+- **Flow**: `--health-port 8081` → launcher starts HTTP server → app marks ready via `xbin.health.mark_ready()`
+- **Test file**: `cli/tests/test_health.py` — 12 tests (state, server endpoints, disabled)
+- **Status**: implemented, committed `0da1980`
+
+## OpenTelemetry — 2026-07-20
+
+- **File**: `cli/xbin/otel.py` — NEW module
+  - `build_otel_env()` — builds OTEL_SERVICE_NAME, OTEL_RESOURCE_ATTRIBUTES, OTEL_EXPORTER_OTLP_ENDPOINT, etc.
+  - `get_otel_config()` — reads current OTel config from environment
+  - `format_resource_attributes()` — parses "key=value,key2=value2" string
+- **File**: `cli/xbin/cli.py` — `--otel-endpoint URL` and `--otel-protocol` flags
+- **File**: `cli/xbin/build.py` — injects OTel env vars into plan.env
+- **Flow**: `--otel-endpoint http://localhost:4317` → OTEL_* env vars set → app auto-instruments
+- **Test file**: `cli/tests/test_otel.py` — 15 tests (env building, config reading, resource attrs)
+- **Status**: implemented, committed `71b2c28`
+
+## Cron/scheduled tasks — 2026-07-20
+
+- **File**: `cli/xbin/cron.py` — NEW module
+  - `CronScheduler` — background thread, tick-based, @every/@hourly/@daily/@weekly + cron-style
+  - `Task` dataclass — name, schedule, func, error tracking
+  - `get_scheduler()` — global singleton
+  - `build_cron_env()` — XBIN_CRON_ENABLED + XBIN_CRON_TASKS env vars
+- **File**: `cli/xbin/cli.py` — `--cron NAME:SCHEDULE` flag (repeatable)
+- **File**: `cli/xbin/build.py` — parses cron tasks, injects env vars
+- **Flow**: `--cron cleanup:'*/5 * * * *'` → XBIN_CRON_TASKS JSON → app registers tasks
+- **Test file**: `cli/tests/test_cron.py` — 22 tests (schedule parsing, scheduler, error handling)
+- **Status**: implemented, committed `465a3c9`
 
 ## Package manager support — 2026-07-20
 
@@ -725,9 +768,9 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 | Framework auto-detect | ✅ | ✅ `deno compile .` | ✅ Enhanced | HIGH | DONE |
 | Hot reload (dev mode) | `bun --hot` | Tunnels + HMR | ❌ Missing | LOW | TODO (not production-focused) |
 | Browser target | `--compile --target=browser` | N/A | ❌ N/A | LOW | N/A (different use case) |
-| Cron/scheduled tasks | `Bun.cron()` | Cron in dashboard | ❌ Missing | MEDIUM | TODO |
-| Health checks | N/A | Built-in | ❌ Missing | MEDIUM | TODO |
-| OpenTelemetry | N/A | Auto-instrumented | ❌ Missing | MEDIUM | TODO |
+| Cron/scheduled tasks | `Bun.cron()` | Cron in dashboard | ✅ `--cron` flag | MEDIUM | DONE |
+| Health checks | N/A | Built-in | ✅ `--health-port` | MEDIUM | DONE |
+| OpenTelemetry | N/A | Auto-instrumented | ✅ `--otel-endpoint` | MEDIUM | DONE |
 
 ### Hugo real-site test — ✅ DONE
 - **Site**: `../tednoob17.github.io` — GoHugo site with risotto theme
