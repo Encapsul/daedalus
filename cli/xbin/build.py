@@ -829,10 +829,18 @@ def build(
         dep_list = locked_deps
     else:
         # No lock or stale — run full detection pipeline.
+        if verbose:
+            print("[xbin] detecting dependencies...", file=sys.stderr)
         dockerfile_deps = detect_from_dockerfile(app_dir)
         ast_deps = detect_from_python_source(app_dir)
         dep_list = merge_deps(dockerfile_deps, ast_deps)
         if dep_list:
+            if verbose:
+                n = len(dep_list)
+                print(
+                    f"[xbin] downloading {n} dependenc{'y' if n == 1 else 'ies'}...",
+                    file=sys.stderr,
+                )
             _, results = fetch_deps(dep_list, verbose=verbose)
             write_lock_from_results(app_dir, dep_list, results, verbose=verbose)
         elif verbose:
