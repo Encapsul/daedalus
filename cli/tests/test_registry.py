@@ -3,9 +3,9 @@
 import pytest
 
 from xbin.runtimes import (
+    _RUNTIME_REGISTRY,
     detect_runtime,
     get_runtime,
-    _RUNTIME_REGISTRY,
 )
 
 
