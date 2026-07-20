@@ -19,14 +19,38 @@ _IMPORT_RE = re.compile(
 )
 # Skip these file extensions (not JS/TS).
 _SKIP_EXT = {
-    ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".lock",
-    ".css", ".scss", ".less", ".svg", ".png", ".jpg", ".gif",
-    ".woff", ".woff2", ".ttf", ".eot",
+    ".md",
+    ".txt",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".lock",
+    ".css",
+    ".scss",
+    ".less",
+    ".svg",
+    ".png",
+    ".jpg",
+    ".gif",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
 }
 # Skip these directories when scanning.
 _SKIP_DIRS = {
-    "node_modules", ".git", ".venv", "venv", "dist", "build",
-    "__pycache__", ".next", ".nuxt", ".output", "coverage",
+    "node_modules",
+    ".git",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    "__pycache__",
+    ".next",
+    ".nuxt",
+    ".output",
+    "coverage",
 }
 
 
@@ -140,6 +164,7 @@ def prune_node_modules(app_dir: Path, verbose: bool = False) -> int:
                 pkg_name = child.name + "/" + sub.name
                 if pkg_name not in used and sub.is_dir():
                     import shutil
+
                     shutil.rmtree(sub)
                     removed += 1
                     if verbose:
@@ -147,6 +172,7 @@ def prune_node_modules(app_dir: Path, verbose: bool = False) -> int:
         else:
             if child.name not in used:
                 import shutil
+
                 shutil.rmtree(child)
                 removed += 1
                 if verbose:

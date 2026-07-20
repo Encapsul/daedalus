@@ -175,7 +175,11 @@ def build_app_layer(
         ),
     )
     # Copy external .env file into app layer as .env if it's outside app_dir.
-    if env_file_path is not None and env_file_path.is_file() and not str(env_file_path.resolve()).startswith(str(app_dir.resolve())):
+    if (
+        env_file_path is not None
+        and env_file_path.is_file()
+        and not str(env_file_path.resolve()).startswith(str(app_dir.resolve()))
+    ):
         dest = app_dest / ".env"
         shutil.copy2(env_file_path, dest)
         if verbose:
@@ -428,7 +432,14 @@ def build_layers(
         build_runtime_layer(
             app_dir, plan, rt_dir, verbose, cross_python_root=cross_python_root
         )
-        build_app_layer(app_dir, plan, app_dir_layer, verbose, env_file_path=env_file_path, include_paths=include_paths)
+        build_app_layer(
+            app_dir,
+            plan,
+            app_dir_layer,
+            verbose,
+            env_file_path=env_file_path,
+            include_paths=include_paths,
+        )
 
         if squashfs:
             rt_sqfs = mksquashfs(rt_dir)

@@ -140,7 +140,10 @@ def _detect_fastapi(app_dir: Path) -> RuntimePlan | None:
     fastapi_re = re.compile(r"(?:from\s+fastapi\s+import|import\s+fastapi)")
     py_files = list(app_dir.rglob("*.py"))
     for pf in py_files:
-        if any(part.startswith(".") or part == "__pycache__" for part in pf.relative_to(app_dir).parts):
+        if any(
+            part.startswith(".") or part == "__pycache__"
+            for part in pf.relative_to(app_dir).parts
+        ):
             continue
         try:
             content = pf.read_text(errors="replace")
@@ -158,7 +161,10 @@ def _detect_flask(app_dir: Path) -> RuntimePlan | None:
     flask_re = re.compile(r"(?:from\s+flask\s+import|import\s+flask)")
     py_files = list(app_dir.rglob("*.py"))
     for pf in py_files:
-        if any(part.startswith(".") or part == "__pycache__" for part in pf.relative_to(app_dir).parts):
+        if any(
+            part.startswith(".") or part == "__pycache__"
+            for part in pf.relative_to(app_dir).parts
+        ):
             continue
         try:
             content = pf.read_text(errors="replace")
@@ -169,7 +175,9 @@ def _detect_flask(app_dir: Path) -> RuntimePlan | None:
     return None
 
 
-def _build_python_plan(app_dir: Path, entry_file: Path, asgi: bool = False) -> RuntimePlan:
+def _build_python_plan(
+    app_dir: Path, entry_file: Path, asgi: bool = False
+) -> RuntimePlan:
     """Build a RuntimePlan for a detected Python web framework."""
     py = shutil.which("python3") or shutil.which("python") or sys.executable
     interp = Path(py).resolve()

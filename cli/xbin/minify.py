@@ -14,8 +14,17 @@ from pathlib import Path
 _JS_EXTS = {".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx"}
 _CSS_EXTS = {".css"}
 _SKIP_DIRS = {
-    "node_modules", ".git", ".venv", "venv", "dist", "build",
-    "__pycache__", ".next", ".nuxt", ".output", "coverage",
+    "node_modules",
+    ".git",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    "__pycache__",
+    ".next",
+    ".nuxt",
+    ".output",
+    "coverage",
 }
 
 
@@ -41,6 +50,7 @@ def _minify_js_file(path: Path) -> bool:
 def _minify_css_simple(content: str) -> str:
     """Simple CSS minification: strip comments, collapse whitespace."""
     import re
+
     # Remove comments
     content = re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL)
     # Collapse whitespace
