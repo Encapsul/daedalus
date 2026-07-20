@@ -261,6 +261,17 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PORT",
         help="enable health check endpoint on PORT (0=disabled, default: 0)",
     )
+    p_build.add_argument(
+        "--otel-endpoint",
+        metavar="URL",
+        help="OTLP collector endpoint for OpenTelemetry (e.g. http://localhost:4317)",
+    )
+    p_build.add_argument(
+        "--otel-protocol",
+        choices=["grpc", "http/protobuf"],
+        default="grpc",
+        help="OTLP protocol (default: grpc)",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     _SUBPARSERS["run"] = p_run
@@ -449,6 +460,8 @@ def main(argv: list[str] | None = None) -> int:
                 tree_shake=args.tree_shake,
                 minify=args.minify,
                 health_port=args.health_port,
+                otel_endpoint=args.otel_endpoint,
+                otel_protocol=args.otel_protocol,
             )
             return 0
 
