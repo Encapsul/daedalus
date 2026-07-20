@@ -2,18 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import sys
 from pathlib import Path
 
-
-def cache_dir() -> Path:
-    """Same logic as the launcher (stub/src/main.rs::cache_dir)."""
-    xdg = os.environ.get("XDG_CACHE_HOME")
-    if xdg:
-        return Path(xdg) / "xbin"
-    return Path.home() / ".cache" / "xbin"
+from ._util import cache_dir
 
 
 def _dir_size(path: Path) -> int:
