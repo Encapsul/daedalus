@@ -129,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
         prog="xbin",
         description="Ship your web app like a binary. Run anywhere.",
     )
+    parser.add_argument(
+        "--version", action="version", version="%(prog)s 0.1.0",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_build = sub.add_parser("build", help="analyze an app and produce a .xbin")
