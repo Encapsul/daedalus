@@ -181,6 +181,8 @@ def build(
     tree_shake: bool = False,
     minify: bool = False,
     health_port: int = 0,
+    otel_endpoint: str | None = None,
+    otel_protocol: str = "grpc",
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -297,6 +299,23 @@ def build(
         if verbose:
             print(
                 f"  minify: minified {minified} file(s)",
+                file=sys.stderr,
+            )
+
+    # --- OpenTelemetry setup ---
+    if otel_endpoint:
+        from .otel import build_otel_env
+
+        otel_env = build_otel_env(
+            service_name=plan.env.get("XBIN_APP_NAME", "app"),
+            version=version,
+            endpoint=otel_endpoint,
+            protocol=otel_protocol,
+        )
+        plan.env.update(otel_env)
+        if verbose:
+            print(
+                f"  otel: endpoint={otel_endpoint} protocol={otel_protocol}",
                 file=sys.stderr,
             )
 
