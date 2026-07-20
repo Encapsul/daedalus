@@ -32,7 +32,7 @@ API, a CLI build tool. You launch the binary, the server starts, you open
 your browser.
 
 And unlike `vercel/pkg` or `nexe` (Node only), `xbin` is **language-agnostic**:
-Python, Node, Go, native binaries.
+Python, Node.js, Java, Ruby, .NET/C#, Deno, Go, PHP, Perl, or native binaries — same CLI, same format.
 
 ## Project status
 

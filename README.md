@@ -27,12 +27,30 @@
 
 <br />
 
-x.bin packages a Python or Node.js web/server/CLI app — code, runtime, shared libraries, and dependencies — into a **single self-extracting ELF executable**. No runtime to install. No Docker. No dependency resolution on the target machine. The file just runs.
+x.bin packages **any** web/server/CLI app — code, runtime, shared libraries, and dependencies — into a **single self-extracting ELF executable**. No runtime to install. No Docker. No dependency resolution on the target machine. The file just runs.
 
 - **Single file.** One `.xbin` = launcher + runtime + app + deps. Copy it anywhere.
 - **Secure by default.** Ed25519 signatures verified before anything touches disk. SHA-256 integrity check.
 - **Fast rebuilds.** Layered format means editing code only recompresses the small app layer — not the runtime.
-- **Language-agnostic.** Python, Node.js, or native binary — same CLI, same format.
+- **Language-agnostic.** Python, Node.js, Java, Ruby, .NET, Deno, Go, PHP, Perl, or native binary — same CLI, same format.
+
+### Supported runtimes
+
+| Runtime | Detection | Notes |
+|---------|-----------|-------|
+| Python | `app.py`, `main.py`, `requirements.txt` | pip, venv, AST scanning, cross-compilation |
+| Node.js | `package.json` | npm, `node_modules` embedding |
+| Deno | `deno.json`, `deno.jsonc` | Vendored fallback if not on PATH |
+| Java | `pom.xml`, `build.gradle`, `build.gradle.kts` | Maven + Gradle, JAR manifest parsing |
+| Ruby | `Gemfile`, `*.rb` | Bundler, GEM_PATH, Rails conventions |
+| .NET / C# | `*.csproj`, `*.sln` | `dotnet publish`, self-contained or framework-dependent |
+| Go | `go.mod` | Static binary compilation |
+| PHP | `composer.json` | Symfony, Laravel, WordPress |
+| Perl | `Makefile.PL`, `cpanfile` | PSGI applications |
+| Binary | Single ELF executable | Native, zero overhead |
+
+> **Adding a new runtime** is a single file under `cli/xbin/runtimes/`. The registry is
+> extensible — Rust, Lua, and more are on the roadmap.
 
 ## Install
 
@@ -135,6 +153,14 @@ $ xbin build my-app --update           # reuses unchanged runtime layer, rebuild
 
 - [Package a Python app](https://tednoob17.github.io/x.bin/guides/python.html)
 - [Package a Node.js app](https://tednoob17.github.io/x.bin/guides/node.html)
+- [Package a Java app](https://tednoob17.github.io/x.bin/guides/java.html)
+- [Package a Ruby app](https://tednoob17.github.io/x.bin/guides/ruby.html)
+- [Package a .NET app](https://tednoob17.github.io/x.bin/guides/dotnet.html)
+- [Package a Deno app](https://tednoob17.github.io/x.bin/guides/deno.html)
+- [Package a Go app](https://tednoob17.github.io/x.bin/guides/go.html)
+- [Package a PHP app](https://tednoob17.github.io/x.bin/guides/php.html)
+- [Package a Perl app](https://tednoob17.github.io/x.bin/guides/perl.html)
+- [Package a native binary](https://tednoob17.github.io/x.bin/guides/binary.html)
 - [Sign and verify your builds](https://tednoob17.github.io/x.bin/security.html)
 - [Read the full documentation](https://tednoob17.github.io/x.bin/)
 
@@ -151,6 +177,11 @@ $ xbin build my-app --update           # reuses unchanged runtime layer, rebuild
 - Runtime
   - [Python apps](https://tednoob17.github.io/x.bin/guides/python.html)
   - [Node.js apps](https://tednoob17.github.io/x.bin/guides/node.html)
+  - [Java apps](https://tednoob17.github.io/x.bin/guides/java.html)
+  - [Ruby apps](https://tednoob17.github.io/x.bin/guides/ruby.html)
+  - [.NET / C# apps](https://tednoob17.github.io/x.bin/guides/dotnet.html)
+  - [Deno apps](https://tednoob17.github.io/x.bin/guides/deno.html)
+  - [Native binaries](https://tednoob17.github.io/x.bin/guides/binary.html)
   - [Isolation modes](https://tednoob17.github.io/x.bin/reference/isolation.html)
   - [Shared library resolution](https://tednoob17.github.io/x.bin/reference/launcher.html)
   - [PATH and LD_LIBRARY_PATH injection](https://tednoob17.github.io/x.bin/reference/launcher.html)
@@ -185,6 +216,30 @@ $ xbin build my-app --update           # reuses unchanged runtime layer, rebuild
   - [Package a Node.js app](https://tednoob17.github.io/x.bin/guides/node.html)
   - [Automatic `package.json` install](https://tednoob17.github.io/x.bin/guides/dependencies.html)
 
+- Java
+  - [Package a Java app (Maven / Gradle)](https://tednoob17.github.io/x.bin/guides/java.html)
+
+- Ruby
+  - [Package a Ruby app (Bundler)](https://tednoob17.github.io/x.bin/guides/ruby.html)
+
+- .NET / C#
+  - [Package a .NET app](https://tednoob17.github.io/x.bin/guides/dotnet.html)
+
+- Deno
+  - [Package a Deno app](https://tednoob17.github.io/x.bin/guides/deno.html)
+
+- Go
+  - [Package a Go app](https://tednoob17.github.io/x.bin/guides/go.html)
+
+- PHP
+  - [Package a PHP app (Symfony, Laravel)](https://tednoob17.github.io/x.bin/guides/php.html)
+
+- Perl
+  - [Package a Perl app](https://tednoob17.github.io/x.bin/guides/perl.html)
+
+- Native
+  - [Package a native ELF binary](https://tednoob17.github.io/x.bin/guides/binary.html)
+
 - Deployment
   - [Single-binary deployment](https://tednoob17.github.io/x.bin/guides/quickstart.html)
 
@@ -204,7 +259,7 @@ $ xbin build my-app --update           # reuses unchanged runtime layer, rebuild
 ```
 
 **At build time**, `xbin build`:
-1. Detects the runtime (Python, Node, or native binary)
+1. Detects the runtime (Python, Node.js, Deno, Java, Ruby, .NET, Go, PHP, Perl, or native binary)
 2. Scans Dockerfile for declared system/pip/npm packages and external binary fetches
 3. Scans Python AST for subprocess/os.system calls
 4. Resolves shared libraries via a pure-Python ELF analyzer (no host `ldd` needed)
