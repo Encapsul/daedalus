@@ -235,12 +235,15 @@ def build(
 
     # --- Incremental update: reuse existing layers when possible ---
     reuse_rt_blob: bytes | None = None
+    reuse_rt_usize: int = 0
     if update and out_path.is_file():
         existing = _read_existing_xbin(out_path, verbose)
         if existing is not None:
             old_rt_blob, old_meta = existing
             old_app_hash = old_meta.get("app_hash", "")
             old_rt_hash = old_meta.get("rt_deps_hash", "")
+            old_layers = old_meta.get("layers", [])
+            old_rt_usize = old_layers[0].get("usize", 0) if old_layers else 0
 
             if old_app_hash == new_app_hash and old_rt_hash == new_rt_hash:
                 if verbose:
@@ -253,6 +256,7 @@ def build(
                 if verbose:
                     print("[xbin] app changed, reusing runtime layer", file=sys.stderr)
                 reuse_rt_blob = old_rt_blob
+                reuse_rt_usize = old_rt_usize
             else:
                 if verbose:
                     reason = (
@@ -313,7 +317,7 @@ def build(
         ]
         payload_format = "squashfs"
     else:
-        rt_usize = 0
+        rt_usize = reuse_rt_usize
         app_usize = 0
         if reuse_rt_blob is not None:
             # Reuse existing runtime blob, only rebuild app layer.

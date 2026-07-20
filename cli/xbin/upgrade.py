@@ -63,7 +63,7 @@ def _find_xbin_binary() -> Path:
         return Path(sys.argv[0]).resolve()
 
     # Try PATH
-    for p in os.getpath("PATH", "").split(os.pathsep):
+    for p in os.environ.get("PATH", "").split(os.pathsep):
         candidate = Path(p) / "xbin"
         if candidate.is_file():
             return candidate
