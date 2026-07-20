@@ -269,12 +269,14 @@ def main(argv: list[str] | None = None) -> int:
     from ._color import init as _init_color
     _init_color(no_color=getattr(args, "no_color", False))
 
+    _verbose = not args.quiet and sys.stderr.isatty()
+
     try:
         if args.command == "build":
             from .build import build
 
             _warn_multi_service_compose(
-                Path(args.app).resolve(), verbose=not args.quiet
+                Path(args.app).resolve(), verbose=_verbose
             )
             build(
                 args.app,
@@ -284,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
                 seccomp=args.seccomp,
                 encrypt=args.encrypt,
                 squashfs=args.squashfs,
-                verbose=not args.quiet,
+                verbose=_verbose,
                 redetect=args.redetect,
                 target=args.target,
             )
@@ -339,13 +341,13 @@ def main(argv: list[str] | None = None) -> int:
                 mode=args.mode,
                 timeout=args.timeout,
                 probe=args.probe,
-                verbose=not args.quiet,
+                verbose=_verbose,
             )
 
         if args.command == "doctor":
             from .doctor import doctor
 
-            return doctor(verbose=not args.quiet, json_output=args.json)
+            return doctor(verbose=_verbose, json_output=args.json)
     except (
         FileNotFoundError,
         NotADirectoryError,
