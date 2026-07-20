@@ -244,6 +244,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="embed additional file or directory in the binary (can be repeated)",
     )
+    p_build.add_argument(
+        "--tree-shake",
+        action="store_true",
+        help="remove unused packages from node_modules before packaging (saves space)",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     _SUBPARSERS["run"] = p_run
@@ -429,6 +434,7 @@ def main(argv: list[str] | None = None) -> int:
                 license=args.license or "",
                 persist=args.persist,
                 include=args.include,
+                tree_shake=args.tree_shake,
             )
             return 0
 
