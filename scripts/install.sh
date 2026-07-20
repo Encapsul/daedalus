@@ -70,9 +70,9 @@ main() {
 
   # Download
   tmpdir="$(mktemp -d)"
-  trap 'rm -rf "$tmpdir"' EXIT
+  trap 'rm -rf "${tmpdir}"' EXIT
 
-  local asset="xbin-${version}-${platform}.tar.gz"
+  asset="xbin-${platform}.tar.gz"
   url="${GITHUB}/releases/download/${tag}/${asset}"
 
   info "downloading ${asset}..."
@@ -114,9 +114,9 @@ main() {
   info "extracting..."
   tar xzf "${tmpdir}/${asset}" -C "${tmpdir}"
 
-  local extracted_dir="${tmpdir}/xbin-${version}-${platform}"
+  local extracted_dir="${tmpdir}/xbin-${platform}"
   if [ ! -d "$extracted_dir" ]; then
-    # Try without version in dir name
+    # Try finding any xbin-* directory
     extracted_dir="$(find "${tmpdir}" -maxdepth 1 -type d -name 'xbin-*' | head -1)"
   fi
 
@@ -124,12 +124,29 @@ main() {
     err "unexpected archive structure — no bin/ directory found"
   fi
 
-  # Install
+  # Install binaries
   info "installing to ${INSTALL_DIR}..."
   if [ -w "$INSTALL_DIR" ] 2>/dev/null; then
     cp "${extracted_dir}/bin/"* "$INSTALL_DIR/"
   else
     sudo cp "${extracted_dir}/bin/"* "$INSTALL_DIR/"
+  fi
+
+  # Install Python CLI lib if present
+  if [ -d "$extracted_dir/lib/python/xbin" ]; then
+    local xbin_lib="${INSTALL_DIR}/../lib/xbin/python"
+    info "installing Python CLI to ${xbin_lib}..."
+    mkdir -p "$xbin_lib"
+    if [ -w "$(dirname "$xbin_lib")" ] 2>/dev/null; then
+      cp -r "${extracted_dir}/lib/python/xbin" "$xbin_lib/"
+    else
+      sudo cp -r "${extracted_dir}/lib/python/xbin" "$xbin_lib/"
+    fi
+    # Update wrapper script with correct lib path
+    local wrapper="$INSTALL_DIR/xbin"
+    if [ -f "$wrapper" ]; then
+      sed -i "s|/lib/python|/../lib/xbin/python|g" "$wrapper" 2>/dev/null || true
+    fi
   fi
 
   ok "installed xbin ${version} to ${INSTALL_DIR}"
