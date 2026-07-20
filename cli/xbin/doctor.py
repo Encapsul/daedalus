@@ -136,17 +136,26 @@ def doctor(*, verbose: bool = True, json_output: bool = False) -> int:
     for r in results:
         marker = " " if r["ok"] else ("X" if r["required"] else "-")
         if verbose:
-            status = f"[{marker}]"
+            from ._color import green, red, yellow
+
+            if r["ok"]:
+                status = green(f"[{marker}]")
+            elif r["required"]:
+                status = red(f"[{marker}]")
+            else:
+                status = yellow(f"[{marker}]")
             req_label = "" if r["required"] else " (optional)"
-            print(f"  {status:5s} {r['name']:15s} {r['detail']}{req_label}")
+            print(f"  {status:9s} {r['name']:15s} {r['detail']}{req_label}")
         if not r["ok"] and r["required"]:
             required_failed = True
 
     if required_failed:
         if verbose:
-            print("\nSome required tools are missing. Install them and re-run.")
+            from ._color import red as _red
+            print(f"\n{_red('Some required tools are missing. Install them and re-run.')}")
         return 1
 
     if verbose:
-        print("\nAll required checks passed.")
+        from ._color import green as _green
+        print(f"\n{_green('All required checks passed.')}")
     return 0
