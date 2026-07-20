@@ -156,7 +156,7 @@ class Footer:
         return core  # 84 bytes
 
     @classmethod
-    def unpack(cls, data: bytes) -> "Footer":
+    def unpack(cls, data: bytes) -> Footer:
         sig_offset = 0
         if len(data) == V3_FOOTER_SIZE:
             sig_offset = struct.unpack_from("<Q", data, 0)[0]
