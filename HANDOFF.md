@@ -31,16 +31,25 @@
 
 **Every time you modify code, before finishing your turn, run this checklist:**
 
+### ⚠️ RULE: NEVER commit without running ALL of these first:
+```bash
+cd cli && python3 -m ruff check xbin/     # lint
+cd cli && python3 -m black --check xbin/  # format
+cd cli && python3 -m pytest tests/ -q     # tests
+```
+
 ### 1. Did the code change?
 If you edited any `.py`, `.rs`, `.toml`, or `.yml` file → continue. Otherwise skip.
 
 ### 2. Does it compile / import?
 ```bash
-cd stub && cargo check 2>&1          # Rust
-cd cli && python3 -c "import xbin" 2>&1  # Python
-cd cli && python3 -m ruff check xbin/ 2>&1  # Lint
-cd cli && python3 -m pytest tests/ -q 2>&1  # Tests
+cd stub && cargo check 2>&1                                  # Rust
+cd cli && python3 -c "import xbin" 2>&1                      # Python import
+cd cli && python3 -m ruff check xbin/ 2>&1                   # Lint (must pass)
+cd cli && python3 -m black --check xbin/ 2>&1                # Format (must pass)
+cd cli && python3 -m pytest tests/ -q 2>&1                   # Tests (must pass)
 ```
+**ALL FOUR MUST PASS before finishing your turn. No exceptions.**
 
 ### 3. Does the app work?
 ```bash

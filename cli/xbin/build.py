@@ -327,9 +327,7 @@ def build(
         parsed_tasks = []
         for ct in cron_tasks:
             if ":" not in ct:
-                raise ValueError(
-                    f"--cron format: NAME:SCHEDULE (got '{ct}')"
-                )
+                raise ValueError(f"--cron format: NAME:SCHEDULE (got '{ct}')")
             name, _, schedule = ct.partition(":")
             parsed_tasks.append({"name": name, "schedule": schedule})
         cron_env = build_cron_env(parsed_tasks)
@@ -427,7 +425,14 @@ def build(
             with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
                 app_dir_layer = Path(tmp) / "app"
                 app_dir_layer.mkdir()
-                build_app_layer(app_dir, plan, app_dir_layer, verbose, env_file_path=env_file_path, include_paths=include_paths)
+                build_app_layer(
+                    app_dir,
+                    plan,
+                    app_dir_layer,
+                    verbose,
+                    env_file_path=env_file_path,
+                    include_paths=include_paths,
+                )
                 app_sqfs = mksquashfs(app_dir_layer)
             rt_sqfs = reuse_rt_blob
             if verbose:
@@ -482,7 +487,14 @@ def build(
             with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
                 app_dir_layer = Path(tmp) / "app"
                 app_dir_layer.mkdir()
-                build_app_layer(app_dir, plan, app_dir_layer, verbose, env_file_path=env_file_path, include_paths=include_paths)
+                build_app_layer(
+                    app_dir,
+                    plan,
+                    app_dir_layer,
+                    verbose,
+                    env_file_path=env_file_path,
+                    include_paths=include_paths,
+                )
                 app_tar = tar_deterministic(app_dir_layer)
             from .layers import compress_layer_cached
 

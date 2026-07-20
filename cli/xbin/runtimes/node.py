@@ -70,10 +70,9 @@ def _detect_framework(app_dir: Path) -> str | None:
         app_dir / "astro.config.ts"
     ).is_file():
         return "astro"
-    if (
-        (app_dir / "remix.config.js").is_file()
-        or (app_dir / "remix.config.mjs").is_file()
-    ):
+    if (app_dir / "remix.config.js").is_file() or (
+        app_dir / "remix.config.mjs"
+    ).is_file():
         return "remix"
     if (app_dir / "svelte.config.js").is_file() or (
         app_dir / "svelte.config.ts"
