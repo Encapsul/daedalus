@@ -127,6 +127,28 @@ All must pass. If any fails, your change introduced a regression.
 - **Exit codes**: 0 if files found, 1 if none found
 - **Tested**: scan /tmp/ (found 4 files), scan --json, scan /nonexistent (exit 1), scan examples/ (exit 1) ✓
 
+## Install script + upgrade command — 2026-07-20
+
+- **File**: `scripts/install.sh` — curl-pipe-bash installer
+  - Detects platform (linux-x64, linux-arm64, macos-x64, macos-arm64)
+  - Fetches latest version from GitHub API
+  - Downloads tar.gz from releases, verifies SHA-256 checksum
+  - Installs to `/usr/local/bin/` (or `$XBIN_INSTALL_DIR`)
+  - Idempotent: skips if already up-to-date
+  - Usage: `curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash`
+- **File**: `cli/xbin/upgrade.py` — `xbin upgrade` self-update command
+  - Fetches latest version from GitHub API
+  - Compares against current `_XBIN_VERSION`
+  - Downloads platform-specific tar.gz, verifies SHA-256
+  - Replaces xbin binary in-place (with sudo if needed)
+- **File**: `cli/xbin/cli.py` — `upgrade` subparser + dispatch
+- **File**: `.github/workflows/release.yml` — fixes:
+  - Removed stale `RUST_VERSION: "1.80"` env var (never used, rustc is 1.97.1)
+  - Release notes now point to `scripts/install.sh` for easy install
+  - SHA-256 checksum files now uploaded as release assets
+  - Removed redundant `generate_release_notes: true` (was conflicting with `body_path`)
+- **Tested**: install.sh syntax check ✓, import ✓, help ✓, build+inspect+scan ✓
+
 ## SquashFS support — 2026-07-18
 
 - **File**: `stub/src/format.rs` — format v5, `PAYLOAD_FORMAT_SQUASHFS = 2`
@@ -292,10 +314,8 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - **Why**: marketing proof point ("we can build Flask, FastAPI, yt-dlp, n8n…"), real-world bug discovery, performance benchmarks
 - **File**: track results in `TESTED_APPS.md` at repo root (pass/fail, size, notes)
 
-### Install script + upgrade command
-- `scripts/install.sh` — curl-pipe-bash installer (like bun.sh, get.wasmer.io)
-- `xbin upgrade` — self-update command
-- See release strategy section in conversation notes
+### Distribution & packaging
+- GitHub Actions official action (`action-xbin/build`) — for CI/CD workflows
 
 ### Remaining features
 - Cross-build aarch64 stub locally: requires `rustup target add aarch64-unknown-linux-musl` + cross-linker. CI handles this automatically via GitHub Actions runners.

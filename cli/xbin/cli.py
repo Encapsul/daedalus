@@ -138,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
             "  xbin inspect myapp.xbin               Show layers, deps, and metadata\n"
             "  xbin doctor                           Check prerequisites\n"
             "  xbin scan                             Scan for .xbin files\n"
+            "  xbin upgrade                          Upgrade to latest release\n"
             "\nexit codes:\n"
             "  0   success\n"
             "  1   operation failed (build error, bad input, etc.)\n"
@@ -330,6 +331,9 @@ def main(argv: list[str] | None = None) -> int:
         help="output as JSON",
     )
 
+    p_upgrade = sub.add_parser("upgrade", help="upgrade x.bin to the latest release")
+    _SUBPARSERS["upgrade"] = p_upgrade
+
     p_help = sub.add_parser(
         "help",
         help="show help for a command",
@@ -446,6 +450,12 @@ def main(argv: list[str] | None = None) -> int:
             from .scan import scan
 
             return scan(args.paths, json_output=args.json)
+
+        if args.command == "upgrade":
+            from .upgrade import upgrade
+
+            upgrade(verbose=_verbose)
+            return 0
     except (
         FileNotFoundError,
         NotADirectoryError,
