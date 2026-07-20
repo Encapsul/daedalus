@@ -217,6 +217,10 @@ def main(argv: list[str] | None = None) -> int:
     p_clean.add_argument(
         "--all", action="store_true", help="remove all cache (including build cache)"
     )
+    p_clean.add_argument(
+        "-f", "--force", action="store_true",
+        help="skip confirmation prompt (for use in scripts)",
+    )
 
     p_selftest = sub.add_parser(
         "selftest", help="launch a .xbin in an ephemeral sandbox to confirm it starts"
@@ -307,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "clean":
             from .clean import clean
 
-            clean(all_entries=args.all)
+            clean(all_entries=args.all, force=args.force)
             return 0
 
         if args.command == "selftest":
