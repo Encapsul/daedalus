@@ -7,6 +7,7 @@ can run Python (Linux, macOS, Windows WSL).
 
 from __future__ import annotations
 
+import contextlib
 import platform
 import struct
 from pathlib import Path
@@ -184,9 +185,8 @@ class ELFParser:
 
     def _vaddr_to_offset(self, vaddr: int) -> int | None:
         for ph in self._program_headers():
-            if ph["type"] == PT_LOAD:
-                if ph["vaddr"] <= vaddr < ph["vaddr"] + ph["memsz"]:
-                    return ph["offset"] + (vaddr - ph["vaddr"])
+            if ph["type"] == PT_LOAD and ph["vaddr"] <= vaddr < ph["vaddr"] + ph["memsz"]:
+                return ph["offset"] + (vaddr - ph["vaddr"])
         return None
 
     def _read_str(self, off: int) -> str:
@@ -232,10 +232,8 @@ class ELFParser:
         targets: set[Path] = set()
         for p in found:
             if p.is_symlink():
-                try:
+                with contextlib.suppress(OSError, RuntimeError):
                     targets.add(p.resolve())
-                except (OSError, RuntimeError):
-                    pass
         kept: set[Path] = set()
         for p in found:
             if p.is_symlink() or p.resolve() not in targets:
@@ -316,8 +314,8 @@ def shared_libs(binary: Path) -> set[Path]:
 
 def _fallback_ldd(binary: Path) -> set[Path]:
     """Fallback: use system `ldd`."""
-    import subprocess
     import re
+    import subprocess
 
     _ARROW = re.compile(r"=>\s+(/\S+)\s+\(0x[0-9a-f]+\)")
     _DIRECT = re.compile(r"^\s*(/\S+)\s+\(0x[0-9a-f]+\)")
