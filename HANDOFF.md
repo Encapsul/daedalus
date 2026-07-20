@@ -3,14 +3,24 @@
 ## Current state
 
 - **Format**: v5 (SquashFS support)
-- **Status**: Phase 2 complete, Phase 3 partially done, CLI compliant with clig.dev
+- **Status**: Phase 1 complete, Phase 2 pending, CLI compliant with clig.dev
 - **Build**: `make stub` + `pip install -e ./cli`
 - **Health check**: `xbin doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
 - **Release**: `./scripts/release.sh 0.1.0` → CI builds multi-arch binaries → GitHub Release
 - **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo (11 total)
-- **Framework support**: Next.js, Nuxt, Astro, Django, Laravel, Symfony (auto-detected)
-- **Last commit**: `2158078` — clig.dev audit complete (12 gaps fixed)
+- **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
+- **Rust core**: `xbin-core` crate — Phase 1 complete, stub uses shared library
+- **Tests**: 185 Python + 26 Rust = 211 total (0 failures)
+- **Hugo**: runtime rewritten — builds at detect time, serves static files via python3 http.server
+- **`.env` baking**: implemented — `--env-file` flag, secret detection, bake into app layer
+- **Version metadata**: `--version-info`, `--author`, `--description`, `--license` flags
+- **Persistent storage**: `--persist` flag, `XBIN_PERSIST_DIR` env var
+- **Data files**: `--include PATH` flag (repeatable) to embed files/dirs in binary
+- **Tree-shaking**: `--tree-shake` removes unused node_modules packages
+- **Minification**: `--minify` shrinks JS/TS/CSS files before packaging
+- **Framework auto-detect**: Express, Fastify, Hono, Remix, SvelteKit, FastAPI, Flask detected from deps/source
+- **Last updated**: 2026-07-20
 
 ---
 
@@ -205,10 +215,14 @@ All must pass. If any fails, your change introduced a regression.
 - WordPress: `php -S 0.0.0.0:8080 -t /app` (PHP built-in server)
 - Generic: `php -S 0.0.0.0:8000 -t /app/public`
 
-**Hugo** (`cli/xbin/runtimes/hugo.py`) — NEW RUNTIME:
+**Hugo** (`cli/xbin/runtimes/hugo.py`) — REWRITTEN RUNTIME:
 - Detection: `hugo.toml`, `hugo.yaml`, `hugo.json`, `config.toml`/`config.yaml` (with Hugo-specific keywords)
-- If `hugo` binary on PATH: `hugo --minify && python3 -m http.server 1313`
-- Fallback: serve `public/` with Python http.server
+- **Build phase**: runs `hugo --minify` during detect(), generates `public/` directory
+- **Runtime**: serves static files via `python3 -m http.server 1313 --directory /app/public`
+- Why: old `&&` entrypoint doesn't work with `execve()` (Linux doesn't support shell chaining in argv)
+- Real-site test PASSED: `../tednoob17.github.io` (GoHugo blog) — 84 pages, 263 static files, 167MB after zstd (91MB images), build ~140s
+- Hugo installed on system: `hugo v0.123.7+extended linux/amd64`
+- Test file updated: `test_detect_with_hugo_binary` and `test_hugo_builds_and_serves` assertions fixed for new runtime design
 
 ### Unit tests
 
@@ -216,7 +230,7 @@ All must pass. If any fails, your change introduced a regression.
 - **File**: `cli/tests/test_python_runtime.py` — added TestDjangoDetection (4)
 - **File**: `cli/tests/test_php_runtime.py` — updated Laravel test (asserts `serve` + `--host`), WordPress test (asserts `-S`)
 - **File**: `cli/tests/test_hugo_runtime.py` — NEW, 8 tests
-- **Total**: 117 Python tests + 26 Rust tests = 143 tests, all passing
+- **Total**: 185 Python tests + 26 Rust tests = 211 tests, all passing
 
 ### Impossible cases (future work)
 
@@ -231,6 +245,86 @@ All must pass. If any fails, your change introduced a regression.
 - After `vite build`, output is static files in `dist/`
 - x.bin could serve static files, but Vite itself is not the runtime
 - **Status**: not applicable as standalone runtime
+
+## .env file baking — 2026-07-20
+
+- **File**: `cli/xbin/dotenv.py` — NEW module
+  - `parse_dotenv(env_file)`: parses KEY=value format (export prefix, quotes, comments, empty lines, values with `=`)
+  - `detect_secret_keys(env)`: warns on `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `PRIVATE_KEY`, `CREDENTIALS` patterns
+  - `load_dotenv(app_dir, env_file, verbose)`: resolves path relative to app_dir, parses, warns on secrets
+- **File**: `cli/xbin/cli.py` — `--env-file FILE` flag on build subcommand
+- **File**: `cli/xbin/build.py` — `env_file` param on `build()`, resolves to `env_file_path`, threads through `build_app_layer()` + `build_layers()`
+- **File**: `cli/xbin/layers.py` — `env_file_path` param on `build_app_layer()` and `build_layers()`:
+  - Copies external `.env` file into app layer as `.env`
+  - If `plan.env` is set (from xbin.toml), writes a `.env` file with those key-value pairs
+- **Flow**: `--env-file .env` → parse → merge into `plan.env` (set as real env vars by launcher) + copy file into app layer
+- **Test file**: `cli/tests/test_dotenv.py` — 15 tests (parse_dotenv, detect_secret_keys, load_dotenv)
+- **Status**: implemented, wired through build pipeline, tests passing
+
+## Version metadata — 2026-07-20
+
+- **File**: `cli/xbin/cli.py` — `--version-info`, `--author`, `--description`, `--license` flags on build subcommand
+- **File**: `cli/xbin/build.py` — passes version/author/description/license to `build_meta_json()`
+- **File**: `cli/xbin/assembly.py` — `build_meta_json()` accepts and includes version/author/description/license in metadata JSON
+- **File**: `cli/xbin/inspect.py` — displays version/author/description/license when present
+- **Flow**: `--version-info 1.0 --author "John"` → stored in `.xbin` metadata JSON → displayed by `xbin inspect`
+- **Test file**: `cli/tests/test_version_metadata.py` — 6 tests
+- **Status**: implemented, committed `961c526`
+
+## Persistent storage — 2026-07-20
+
+- **File**: `cli/xbin/persistent.py` — NEW module
+  - `get_persist_dir(app_name)` → `~/.local/share/xbin/{app-name}/` (XDG compliant)
+  - `ensure_persist_dir()` creates directory
+  - `get_persist_env()` returns `{"XBIN_PERSIST_DIR": "<path>"}`
+- **File**: `cli/xbin/cli.py` — `--persist` flag on build subcommand
+- **File**: `cli/xbin/build.py` — injects `XBIN_PERSIST_DIR` into `plan.env` when `--persist` is set
+- **Flow**: `--persist` → sets `XBIN_PERSIST_DIR` env var → app reads it for persistent data
+- **Test file**: `cli/tests/test_persistent.py` — 7 tests
+- **Status**: implemented, committed `9872d53`
+
+## Data files (--include) — 2026-07-20
+
+- **File**: `cli/xbin/cli.py` — `--include PATH` flag (repeatable, `action="append"`)
+- **File**: `cli/xbin/build.py` — resolves include paths relative to app_dir, validates existence
+- **File**: `cli/xbin/layers.py` — `build_app_layer()` and `build_layers()` accept `include_paths` param
+- **Flow**: `--include data/config.json --include templates/` → copies files/dirs into app layer
+- **Test file**: `cli/tests/test_include.py` — 6 tests (file, dir, multiple, none, overwrite, symlink)
+- **Status**: implemented, committed `6ea54a5`
+
+## Tree-shaking — 2026-07-20
+
+- **File**: `cli/xbin/treeshake.py` — NEW module
+  - `detect_used_packages(app_dir)` → scans JS/TS source for require() and import statements
+  - `prune_node_modules(app_dir)` → removes unused top-level packages from node_modules
+- **File**: `cli/xbin/cli.py` — `--tree-shake` flag on build subcommand
+- **File**: `cli/xbin/build.py` — runs `prune_node_modules()` before layer building
+- **Flow**: `--tree-shake` → scan source → resolve used packages → remove unused from node_modules
+- **Test file**: `cli/tests/test_treeshake.py` — 10 tests (detect, prune, scoped packages)
+- **Status**: implemented, committed `0a1c5a9`
+
+## Minification — 2026-07-20
+
+- **File**: `cli/xbin/minify.py` — NEW module
+  - `minify_app_dir(app_dir)` → minifies JS/TS (via terser) and CSS (built-in stripper)
+- **File**: `cli/xbin/cli.py` — `--minify` flag on build subcommand
+- **File**: `cli/xbin/build.py` — runs `minify_app_dir()` before layer building
+- **Flow**: `--minify` → scan app dir → minify JS/TS via terser, CSS via whitespace stripping
+- **Test file**: `cli/tests/test_minify.py` — 7 tests (CSS, JS, skip node_modules, no files)
+- **Status**: implemented, committed `74d2011`
+
+## Framework auto-detect (enhanced) — 2026-07-20
+
+- **File**: `cli/xbin/runtimes/node.py` — enhanced `_detect_framework()`:
+  - Config-file detection: Next.js, Nuxt, Astro, Remix, SvelteKit
+  - Dependency-based detection: Express, Fastify, Hono (from package.json)
+  - Entrypoint builders for Remix (`remix-serve build`), SvelteKit (`svelte-kit dev`), Express/Fastify (`node entry.js`), Hono (`node src/index.ts`)
+- **File**: `cli/xbin/runtimes/python.py` — added FastAPI and Flask detection:
+  - `_detect_fastapi()` — scans source for `from fastapi import`, auto-selects uvicorn
+  - `_detect_flask()` — scans source for `from flask import`
+  - `_build_python_plan()` — shared builder for detected frameworks
+- **Test file**: `cli/tests/test_framework_detect.py` — 15 tests (10 Node, 5 Python)
+- **Status**: implemented, committed `c82c0d2`
 
 ## Package manager support — 2026-07-20
 
@@ -292,26 +386,23 @@ Python remains for:
   → xbin.toml manifest
 ```
 
-### Phase 1: xbin-core crate (IN PROGRESS)
+### Phase 1: xbin-core crate — ✅ COMPLETE
 
 **Directory**: `xbin-core/` at repo root
 
 **Modules created**:
-- `format.rs` — .xbin footer parsing (v1-v5), ported from `stub/src/format.rs`
-- `compress.rs` — zstd compress/decompress (level 19, size-optimized)
-- `detect.rs` — runtime detection by file markers (Python/Deno/Node/Java/Ruby/.NET/Go/PHP/Perl/Binary)
-- `pkgmgr.rs` — package manager detection by lock files (uv/poetry/pipenv/pip/pnpm/yarn/bun/npm)
+- `format.rs` — .xbin footer parsing (v1-v5), 15 unit tests
+- `compress.rs` — zstd compress/decompress, 1 unit test
+- `detect.rs` — runtime detection by file markers, 5 unit tests
+- `pkgmgr.rs` — package manager detection by lock files, 5 unit tests
 
-**Dependencies**: sha2, serde, serde_json, zstd (C bindings for compression)
+**Dependencies**: sha2, serde, serde_json, ruzstd, zstd (C bindings)
 
-**Tests**: 5 format, 1 compress, 5 detect, 5 pkgmgr = 16 Rust unit tests
+**Tests**: 26 Rust unit tests, all passing, clippy clean
 
-**Next steps**:
-- Wire `stub/` to use `xbin-core` as dependency instead of local `format.rs`
-- Add `xbin-core` as dependency to stub's Cargo.toml
-- Remove duplicate `format.rs` from stub
-- Add CLI binary to xbin-core (`xbin build` in Rust)
-- Python calls `xbin-core` via subprocess or PyO3
+**Wiring**: stub uses `xbin-core` as path dependency — `stub/src/format.rs` deleted, format parsing shared via `use xbin_core::format`.
+
+**Next steps**: Phase 2 — xbin-core becomes full core lib, Python becomes thin wrapper
 
 ### Phase 2: Rust core lib
 
@@ -360,6 +451,26 @@ Python remains for:
 | 1 (now) | Yes | Same | Same |
 | 2 | Yes (wrapper) | 2-5x faster | Same |
 | 3 | No | 10-50x faster | Single binary |
+
+## xbin-core wiring (Phase 1 complete) — 2026-07-20
+
+Stub now uses `xbin-core` as a shared library dependency instead of its local `format.rs`.
+
+**Changes**:
+- `stub/Cargo.toml` — added `xbin-core = { path = "../xbin-core" }`
+- `stub/src/main.rs` — removed `mod format;`, replaced with `use xbin_core::format::{self as format, read_at, Footer};`
+- `stub/src/format.rs` — **deleted** (format parsing now comes from xbin-core)
+- `xbin-core/src/format.rs` — fixed 3 clippy warnings (`doc_markdown`, `format_collect`, `unnecessary_map_or`)
+
+**Verification**:
+- `stub` compiles clean with `cargo check` and `cargo clippy -- -D warnings`
+- `xbin-core` — 26/26 tests pass, clippy clean
+- All existing `format::FLAG_SIGNED`, `format::CRYPTO_AES_256_GCM`, `format::PAYLOAD_FORMAT_SQUASHFS` references work unchanged via `self as format` alias
+
+**What this enables**:
+- Phase 2: Python CLI can call xbin-core via PyO3 or subprocess
+- Phase 3: Full Rust CLI — both stub and CLI share the same format parser
+- Single source of truth for .xbin format (no more duplicate format.rs)
 
 ## Install script + upgrade command — 2026-07-20
 
@@ -531,6 +642,46 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - `sign.py`, `verify.py`, `trust.py`, `keygen.py`: updated to use `_util.keys_dir()` / `_util.trusted_dir()`
 - `lockfile.py`, `fetch.py`, `cross.py`: stderr for all progress messages
 
+## Real-app testing — URGENT (all runtimes)
+
+**Why**: Unit tests pass but we've never tested with real apps. Toy examples hide real bugs — missing shared libs, wrong entrypoints, broken dep resolution, env issues. We need to prove x.bin works on production apps for every runtime.
+
+**Process per app**: `git clone` → `xbin build` → run → document pass/fail/bugs → fix → re-test
+
+### Testing matrix (one real app per runtime, user will send apps)
+
+| Runtime | App type | What to test | Status |
+|---------|----------|-------------|--------|
+| **Python** | Flask/FastAPI web app | detect → build → serve → HTTP 200 | NEED APP |
+| **Node.js** | Express/Next.js app | detect → build → serve → HTTP 200 | NEED APP |
+| **Deno** | Fresh/Todo app | detect → build → serve → HTTP 200 | NEED APP |
+| **Java** | Spring Boot / Maven app | detect → build → serve → HTTP 200 | NEED APP |
+| **Ruby** | Sinatra/Rails app | detect → build → serve → HTTP 200 | NEED APP |
+| **.NET/C#** | ASP.NET app | detect → build → serve → HTTP 200 | NEED APP |
+| **Go** | Caddy/Traefik-like app | detect → build → run → HTTP 200 | NEED APP |
+| **PHP** | Laravel/Symfony app | detect → build → serve → HTTP 200 | NEED APP |
+| **Perl** | Mojolicious/Dancer app | detect → build → serve → HTTP 200 | NEED APP |
+| **Hugo** | tednoob17.github.io | detect → build → serve → HTTP 200 | ✅ DONE |
+| **Binary** | Static ELF binary | detect → build → run → correct output | NEED APP |
+
+### Known issues to expect
+- **Python**: site-packages missing, venv not fully captured, shared lib resolution failures
+- **Node.js**: node_modules too large, native addons (node-gyp) fail
+- **Deno**: vendor cache not captured, missing deno binary
+- **Java**: missing JVM, JAR manifest wrong, classpath issues
+- **Ruby**: gem paths wrong, bundler not captured
+- **.NET**: dotnet runtime missing, publish dir empty
+- **Go**: static binary OK but dynamic linking issues possible
+- **PHP**: php-fpm not available, composer autoload wrong
+- **Perl**: perl not captured, module paths wrong
+- **Hugo**: ✅ works (tednoob17.github.io test passed)
+- **Binary**: musl vs glibc mismatch, missing shared libs
+
+### What user will send
+- One real app per runtime (or a few) — user selects which ones to test first
+- Each app gets a full build → run → fix cycle
+- Results tracked in `TESTED_APPS.md` (pass/fail, size, notes, bugs found)
+
 ## Next steps (future)
 
 ### Real-app testing — top 200 GitHub projects (HIGH PRIORITY)
@@ -560,6 +711,29 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - Distribution / discovery (lightweight registry)
 - Run full end-to-end build+sign+verify cycle for aarch64 once stub is compiled locally
 - GitHub Actions official action (`action-xbin/build`) — for CI/CD workflows
+
+### Competitor feature gaps (x.bin vs Bun vs Deno Deploy)
+
+| Feature | Bun | Deno Deploy | x.bin | Priority | Status |
+|---------|-----|-------------|-------|----------|--------|
+| `.env` file baking | Built-in `.env` | `.env` per playground | ✅ Implemented | HIGH | DONE |
+| Version metadata in binary | ✅ | ✅ | ✅ Implemented | HIGH | DONE |
+| Persistent storage | `Bun.sql` | `Deno.openKv()` | ✅ `--persist` flag | HIGH | DONE |
+| Data files (--include) | ✅ | ✅ Deno KV | ✅ `--include` flag | HIGH | DONE |
+| Tree-shaking | `--exclude-unused-npm` | ✅ | ✅ `--tree-shake` | HIGH | DONE |
+| Minification | `--bundle --minify` | ✅ | ✅ `--minify` | HIGH | DONE |
+| Framework auto-detect | ✅ | ✅ `deno compile .` | ✅ Enhanced | HIGH | DONE |
+| Hot reload (dev mode) | `bun --hot` | Tunnels + HMR | ❌ Missing | LOW | TODO (not production-focused) |
+| Browser target | `--compile --target=browser` | N/A | ❌ N/A | LOW | N/A (different use case) |
+| Cron/scheduled tasks | `Bun.cron()` | Cron in dashboard | ❌ Missing | MEDIUM | TODO |
+| Health checks | N/A | Built-in | ❌ Missing | MEDIUM | TODO |
+| OpenTelemetry | N/A | Auto-instrumented | ❌ Missing | MEDIUM | TODO |
+
+### Hugo real-site test — ✅ DONE
+- **Site**: `../tednoob17.github.io` — GoHugo site with risotto theme
+- **Result**: PASSED — 84 pages, 263 static files, Hugo v0.123.7+extended builds `public/` in ~1s, zstd compression ~140s
+- **Binary size**: 167MB after zstd (91MB is images — compressible further with image optimization)
+- **Runtime**: python3 -m http.server 1313 serves static files at runtime (hugo --minify runs at build time)
 
 ## Seccomp BPF denylist (2026-07-17)
 
