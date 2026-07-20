@@ -177,6 +177,7 @@ def build(
     description: str = "",
     license: str = "",
     persist: bool = False,
+    include: list[str] | None = None,
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -258,6 +259,22 @@ def build(
                 file=sys.stderr,
             )
 
+    # --- Resolve include paths ---
+    include_paths: list[Path] = []
+    if include:
+        for inc in include:
+            inc_path = Path(inc)
+            if not inc_path.is_absolute():
+                inc_path = app_dir / inc
+            if not inc_path.exists():
+                raise FileNotFoundError(f"--include: path not found: {inc}")
+            include_paths.append(inc_path)
+            if verbose:
+                print(
+                    f"  include: {inc_path.name} ({'dir' if inc_path.is_dir() else 'file'})",
+                    file=sys.stderr,
+                )
+
     # --- Cross-compilation setup ---
     cross_root: Path | None = None
     if target and is_cross_build(target):
@@ -336,7 +353,7 @@ def build(
             with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
                 app_dir_layer = Path(tmp) / "app"
                 app_dir_layer.mkdir()
-                build_app_layer(app_dir, plan, app_dir_layer, verbose, env_file_path=env_file_path)
+                build_app_layer(app_dir, plan, app_dir_layer, verbose, env_file_path=env_file_path, include_paths=include_paths)
                 app_sqfs = mksquashfs(app_dir_layer)
             rt_sqfs = reuse_rt_blob
             if verbose:
@@ -357,6 +374,7 @@ def build(
                 cross_python_root=cross_root,
                 target_arch=target,
                 env_file_path=env_file_path,
+                include_paths=include_paths,
             )
         stub_bytes = stub.read_bytes()
         rt_offset = len(stub_bytes)
@@ -390,7 +408,7 @@ def build(
             with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
                 app_dir_layer = Path(tmp) / "app"
                 app_dir_layer.mkdir()
-                build_app_layer(app_dir, plan, app_dir_layer, verbose, env_file_path=env_file_path)
+                build_app_layer(app_dir, plan, app_dir_layer, verbose, env_file_path=env_file_path, include_paths=include_paths)
                 app_tar = tar_deterministic(app_dir_layer)
             from .layers import compress_layer_cached
 
@@ -413,6 +431,7 @@ def build(
                 cross_python_root=cross_root,
                 target_arch=target,
                 env_file_path=env_file_path,
+                include_paths=include_paths,
             )
             rt_usize = len(rt_tar)
             app_usize = len(app_tar)

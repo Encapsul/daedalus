@@ -156,7 +156,12 @@ def build_runtime_layer(
 
 
 def build_app_layer(
-    app_dir: Path, plan: analyzer.runtime.RuntimePlan, layer: Path, verbose: bool
+    app_dir: Path,
+    plan: analyzer.runtime.RuntimePlan,
+    layer: Path,
+    verbose: bool,
+    env_file_path: Path | None = None,
+    include_paths: list[Path] | None = None,
 ) -> None:
     """APP layer: application code + site-packages. Small and volatile."""
     app_dest = layer / "app"
@@ -169,6 +174,26 @@ def build_app_layer(
             ".venv", "venv", "site-packages", "node_modules", ".git"
         ),
     )
+    # Copy external .env file into app layer as .env if it's outside app_dir.
+    if env_file_path is not None and env_file_path.is_file():
+        if not str(env_file_path.resolve()).startswith(str(app_dir.resolve())):
+            dest = app_dest / ".env"
+            shutil.copy2(env_file_path, dest)
+            if verbose:
+                print(f"  app layer: copied {env_file_path.name} -> .env", file=sys.stderr)
+    # Copy --include files/dirs into app layer.
+    if include_paths:
+        for inc_path in include_paths:
+            if inc_path.is_dir():
+                dest = app_dest / inc_path.name
+                if dest.exists():
+                    shutil.rmtree(dest)
+                shutil.copytree(inc_path, dest, symlinks=True)
+            else:
+                dest = app_dest / inc_path.name
+                shutil.copy2(inc_path, dest)
+            if verbose:
+                print(f"  app layer: included {inc_path.name}", file=sys.stderr)
     for src, rootfs_rel in plan.site_packages:
         dest = layer / rootfs_rel.lstrip("/")
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -374,6 +399,8 @@ def build_layers(
     squashfs: bool = False,
     cross_python_root: Path | None = None,
     target_arch: str | None = None,
+    env_file_path: Path | None = None,
+    include_paths: list[Path] | None = None,
 ) -> tuple[bytes, ...]:
     """Build runtime and app layers.
 
@@ -402,7 +429,7 @@ def build_layers(
         build_runtime_layer(
             app_dir, plan, rt_dir, verbose, cross_python_root=cross_python_root
         )
-        build_app_layer(app_dir, plan, app_dir_layer, verbose)
+        build_app_layer(app_dir, plan, app_dir_layer, verbose, env_file_path=env_file_path, include_paths=include_paths)
 
         if squashfs:
             rt_sqfs = mksquashfs(rt_dir)

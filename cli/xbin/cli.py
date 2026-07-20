@@ -237,6 +237,13 @@ def main(argv: list[str] | None = None) -> int:
         help="enable persistent storage (creates ~/.local/share/xbin/{app}/ dir, "
         "sets XBIN_PERSIST_DIR env var at runtime)",
     )
+    p_build.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="embed additional file or directory in the binary (can be repeated)",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     _SUBPARSERS["run"] = p_run
@@ -421,6 +428,7 @@ def main(argv: list[str] | None = None) -> int:
                 description=args.description or "",
                 license=args.license or "",
                 persist=args.persist,
+                include=args.include,
             )
             return 0
 
