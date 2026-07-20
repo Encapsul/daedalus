@@ -76,6 +76,9 @@ $ xbin doctor                         # check prerequisites
   [ ]   cargo           cargo 1.97.1
   ...
 
+$ xbin doctor --fix                   # auto-install missing prerequisites
+$ xbin doctor --fix --force           # skip confirmation (for scripts/CI)
+
 $ xbin build examples/hello-web -o hello-web.xbin
 [xbin] building 'hello-web'
   runtime: python
@@ -150,6 +153,7 @@ $ xbin build my-app -o my-app-aarch64.xbin --target aarch64
   - [`xbin sign` / `verify`](https://tednoob17.github.io/x.bin/security.html)
   - [`xbin keygen`](https://tednoob17.github.io/x.bin/security.html)
   - [`xbin doctor`](https://tednoob17.github.io/x.bin/guides/quickstart.html) (check prerequisites)
+  - [`xbin doctor --fix`](https://tednoob17.github.io/x.bin/guides/quickstart.html) (auto-install missing deps)
   - [`xbin doctor --json`](https://tednoob17.github.io/x.bin/guides/quickstart.html) (machine-readable output)
   - [`xbin clean --all -f`](https://tednoob17.github.io/x.bin/reference/cache.html) (force clean cache)
   - [`xbin help [command]`](https://tednoob17.github.io/x.bin/) (discoverability)

@@ -15,6 +15,13 @@ Verify all prerequisites in one command:
 make preflight      # or: xbin doctor
 ```
 
+If anything is missing, auto-fix what can be installed:
+
+```bash
+xbin doctor --fix            # interactive (asks before each fix)
+xbin doctor --fix --force    # non-interactive (for scripts and CI)
+```
+
 ## 1. Build the launcher stub
 
 ```bash
