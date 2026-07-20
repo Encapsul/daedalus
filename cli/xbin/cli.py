@@ -136,6 +136,10 @@ def main(argv: list[str] | None = None) -> int:
             "  xbin run myapp.xbin                   Run a packed binary\n"
             "  xbin inspect myapp.xbin               Show layers, deps, and metadata\n"
             "  xbin doctor                           Check prerequisites\n"
+            "\nexit codes:\n"
+            "  0   success\n"
+            "  1   operation failed (build error, bad input, etc.)\n"
+            "  2   usage error (missing args, invalid flags)\n"
             "\nfull docs: https://github.com/xbin-org/xbin"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
