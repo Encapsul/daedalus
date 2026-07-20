@@ -133,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
             "  xbin build ./myapp                   Build a standalone .xbin\n"
             "  xbin build ./myapp -o out.xbin       Build with custom output path\n"
             "  xbin build ./myapp --key key.key      Build and sign in one step\n"
+            "  xbin build ./myapp --update           Incremental rebuild (reuse layers)\n"
             "  xbin run myapp.xbin                   Run a packed binary\n"
             "  xbin inspect myapp.xbin               Show layers, deps, and metadata\n"
             "  xbin doctor                           Check prerequisites\n"
@@ -195,6 +196,11 @@ def main(argv: list[str] | None = None) -> int:
         "--redetect",
         action="store_true",
         help="force re-detection of dependencies (overwrite xbin.lock)",
+    )
+    p_build.add_argument(
+        "--update",
+        action="store_true",
+        help="incremental rebuild: reuse unchanged layers from existing .xbin",
     )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
@@ -355,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
                 verbose=_verbose,
                 redetect=args.redetect,
                 target=args.target,
+                update=args.update,
             )
             return 0
 
