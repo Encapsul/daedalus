@@ -195,12 +195,12 @@ $ xbin build my-app --update           # reuses unchanged runtime layer, rebuild
 ## How it works
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  my-app.xbin =                                               │
+┌──────────────────────────────────────────────────────────────────┐
+│                       my-app.xbin =                              │
 │    [ ELF launcher ][ zstd/squashfs layers ][ metadata ][ footer ]│
-│      Rust/musl        runtime + app          JSON      92B   │
-│      ~615KB            layers                 entrypoint v5  │
-└──────────────────────────────────────────────────────────────┘
+│      Rust/musl        runtime + app          JSON      92B       │
+│      ~615KB            layers                 entrypoint v5      │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 **At build time**, `xbin build`:

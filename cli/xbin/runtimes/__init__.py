@@ -72,7 +72,8 @@ def detect_runtime(app_dir: Path) -> RuntimePlan:
             return plan
     raise ValueError(
         "could not detect runtime: no app.py/main.py, no deno.json/package.json, "
-        "no pom.xml/build.gradle, no Gemfile, no *.csproj, no single ELF binary. "
+        "no pom.xml/build.gradle, no Gemfile, no *.csproj, no go.mod, "
+        "no composer.json, no Makefile.PL/cpanfile, no single ELF binary. "
         "Use a manifest (xbin.toml) to declare entrypoint."
     )
 
@@ -88,13 +89,16 @@ def get_runtime(name: str) -> Runtime:
 def _register_builtins() -> None:
     """Register the built-in runtimes.  Called at module load time.
 
-    Detection order: Python > Deno > Node > Java > Ruby > .NET > Binary.
+    Detection order: Python > Deno > Node > Java > Ruby > .NET > Go > PHP > Perl > Binary.
     """
     from .binary import BinaryRuntime
     from .deno import DenoRuntime
     from .dotnet import DotnetRuntime
+    from .go import GoRuntime
     from .java import JavaRuntime
     from .node import NodeRuntime
+    from .perl import PerlRuntime
+    from .php import PHPRuntime
     from .python import PythonRuntime
     from .ruby import RubyRuntime
 
@@ -104,6 +108,9 @@ def _register_builtins() -> None:
     register(JavaRuntime())
     register(RubyRuntime())
     register(DotnetRuntime())
+    register(GoRuntime())
+    register(PHPRuntime())
+    register(PerlRuntime())
     register(BinaryRuntime())
 
 
