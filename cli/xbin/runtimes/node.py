@@ -52,7 +52,8 @@ def _rootfs_rel(host_path: Path) -> str:
 
 
 def _detect_framework(app_dir: Path) -> str | None:
-    """Detect specific Node.js framework from config files."""
+    """Detect specific Node.js framework from config files and package.json."""
+    # Config-file based detection (existing)
     if (
         (app_dir / "next.config.js").is_file()
         or (app_dir / "next.config.mjs").is_file()
@@ -69,6 +70,40 @@ def _detect_framework(app_dir: Path) -> str | None:
         app_dir / "astro.config.ts"
     ).is_file():
         return "astro"
+    if (
+        (app_dir / "remix.config.js").is_file()
+        or (app_dir / "remix.config.mjs").is_file()
+    ):
+        return "remix"
+    if (app_dir / "svelte.config.js").is_file() or (
+        app_dir / "svelte.config.ts"
+    ).is_file():
+        return "sveltekit"
+
+    # Dependency-based detection from package.json
+    try:
+        pkg = json.loads((app_dir / "package.json").read_text())
+        deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    if "next" in deps:
+        return "nextjs"
+    if "nuxt" in deps:
+        return "nuxt"
+    if "astro" in deps:
+        return "astro"
+    if "@remix-run/node" in deps or "@remix-run/react" in deps:
+        return "remix"
+    if "@sveltejs/kit" in deps:
+        return "sveltekit"
+    if "express" in deps:
+        return "express"
+    if "fastify" in deps:
+        return "fastify"
+    if "hono" in deps:
+        return "hono"
+
     return None
 
 
@@ -88,6 +123,36 @@ def _build_entrypoint(app_dir: Path, framework: str | None) -> list[str]:
         if ssr_entry.is_file():
             return [interp, "/app/dist/server/entry.mjs"]
         return [interp, "/app/node_modules/.bin/astro", "start"]
+
+    if framework == "remix":
+        # Remix: try build first, fall back to dev
+        server_entry = app_dir / "build" / "server" / "index.js"
+        if server_entry.is_file():
+            return [interp, "/app/build/server/index.js"]
+        return [interp, "/app/node_modules/.bin/remix-serve", "build"]
+
+    if framework == "sveltekit":
+        # SvelteKit: try build, fall back to dev
+        server_entry = app_dir / "build" / "server" / "index.js"
+        if server_entry.is_file():
+            return [interp, "/app/build/server/index.js"]
+        return [interp, "/app/node_modules/.bin/svelte-kit", "dev"]
+
+    if framework == "express":
+        # Express: look for app.js or server.js in package.json scripts
+        entry = _node_entry(app_dir)
+        return [interp, f"/app/{entry}"]
+
+    if framework == "fastify":
+        entry = _node_entry(app_dir)
+        return [interp, f"/app/{entry}"]
+
+    if framework == "hono":
+        # Hono: look for src/index.ts or entry point
+        for cand in ("src/index.ts", "src/index.js", "index.ts", "index.js"):
+            if (app_dir / cand).is_file():
+                return [interp, f"/app/{cand}"]
+        return [interp, "/app/index.js"]
 
     # Generic Node.js: try scripts.start, then common files
     entry = _node_entry(app_dir)
