@@ -18,15 +18,15 @@ refusal to execute.
 
 ```bash
 # Generate a keypair
-$ xbin keygen --key-dir ~/.xbin/keys
+$ xbin keygen --key-dir $XDG_DATA_HOME/xbin/keys
 a1b2c3d4e5f6...
 
 # Sign a .xbin (in-place, writes v3 footer)
-$ xbin sign my_app.xbin --key ~/.xbin/keys/a1b2c3d4e5f6.key
+$ xbin sign my_app.xbin --key $XDG_DATA_HOME/xbin/keys/a1b2c3d4e5f6.key
 [xbin] signed my_app.xbin
 
 # Verify before running
-$ xbin verify my_app.xbin --trusted-dir ~/.xbin/trusted-keys
+$ xbin verify my_app.xbin --trusted-dir $XDG_DATA_HOME/xbin/trusted-keys
 [xbin] signature verified for /path/to/my_app.xbin
 ```
 
@@ -36,13 +36,13 @@ $ xbin verify my_app.xbin --trusted-dir ~/.xbin/trusted-keys
 - Timing-attack resistant by design (constant-time scalar multiplication).
 - Standard in modern protocols (SSH, TLS 1.3, Signal, WireGuard).
 
-**Trust model:** Trusted public keys live in `~/.xbin/trusted-keys/`. The
+**Trust model:** Trusted public keys live in `$XDG_DATA_HOME/xbin/trusted-keys/`. The
 launcher accepts the file if **any** trusted key verifies the signature.
 There is no central authority — trust is local and explicit.
 
 ```bash
 # Trust a key
-$ xbin trust ~/.xbin/keys/a1b2c3d4e5f6.pub
+$ xbin trust $XDG_DATA_HOME/xbin/keys/a1b2c3d4e5f6.pub
 [xbin] trusted key a1b2c3d4e5f6...
 ```
 
@@ -148,7 +148,7 @@ HKDF-SHA256, so signing key = encryption key.
 
 ```bash
 # Build with encryption
-$ xbin build my_app/ --key ~/.xbin/keys/a1b2c3d4.key --encrypt
+$ xbin build my_app/ --key $XDG_DATA_HOME/xbin/keys/a1b2c3d4.key --encrypt
 [xxbin] encrypted: 12.3MB -> 12.3MB (AES-256-GCM)
 [xbin] wrote my_app.xbin (12.5MB, signed+encrypted)
 ```

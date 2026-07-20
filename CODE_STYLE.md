@@ -166,7 +166,7 @@ def read_footer(path: str) -> Footer:
 ```
 
 **Why all functions, not just public ones:**
-- This is a small codebase (~1500 LOC across 14 files). The annotation cost is
+- This is a small codebase (~1800 LOC across 15 files). The annotation cost is
   negligible.
 - Private functions are called from other modules (e.g., `_build_manifest` is
   called from `build`). They need types too.
@@ -179,8 +179,8 @@ Measured from `def` to closing `}` (or end of body). 60 lines is roughly
 one screen at standard terminal height. Python functions tend to be longer
 than Rust because of indentation and verbosity, so the threshold is higher.
 
-**Current state:** `_build_manifest` is 171 lines and `build` is 138 lines —
-both need to be broken up.
+**Current state:** Functions have been extracted to stay under the limit.
+`_build_manifest` was 171 lines — now split into 10+ helpers.
 
 ### Comment style
 

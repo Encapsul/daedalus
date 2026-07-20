@@ -79,7 +79,7 @@ Chaque `.xbin` doit être signé avant distribution. Le launcher vérifie la sig
 
 ```bash
 # Côté développeur
-xbin sign mon_app.xbin --key ~/.xbin/mykey.pem
+xbin sign mon_app.xbin --key $XDG_DATA_HOME/xbin/mykey.pem
 
 # Côté utilisateur (automatique, transparent)
 ./mon_app.xbin
@@ -187,7 +187,7 @@ Trois niveaux explicites :
 
 | Niveau | Condition | Comportement |
 |--------|-----------|--------------|
-| `TRUSTED` | Signé par une clé dans `~/.xbin/trusted-keys/` | Exécution normale |
+| `TRUSTED` | Signé par une clé dans `$XDG_DATA_HOME/xbin/trusted-keys/` | Exécution normale |
 | `UNKNOWN` | Signé mais clé non dans le keyring | Warning + confirmation utilisateur |
 | `UNSIGNED` | Non signé | Refus par défaut |
 
