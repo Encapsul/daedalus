@@ -117,7 +117,10 @@ fn generate_man_pages(dir: &std::path::PathBuf) -> Result<()> {
     let cmd = Cli::command();
 
     // Generate man page for the main command
-    let man = clap_mangen::Man::new(cmd.clone());
+    let man = clap_mangen::Man::new(cmd.clone())
+        .section("1")
+        .manual("x.bin 0.3.0")
+        .source("Ted Kouhouenou <ted.sig42@tutamail.com>");
     let mut buffer = Vec::new();
     man.render(&mut buffer)?;
     let man_path = dir.join("xbin.1");
@@ -129,7 +132,10 @@ fn generate_man_pages(dir: &std::path::PathBuf) -> Result<()> {
         let mut sub_cmd = cmd.clone();
         sub_cmd = sub_cmd.subcommand(sub.clone());
 
-        let man = clap_mangen::Man::new(sub_cmd);
+        let man = clap_mangen::Man::new(sub_cmd)
+            .section("1")
+            .manual("x.bin 0.3.0")
+            .source("Ted Kouhouenou <ted.sig42@tutamail.com>");
         let mut buffer = Vec::new();
         man.render(&mut buffer)?;
         let man_path = dir.join(format!("xbin-{}.1", sub_name));
