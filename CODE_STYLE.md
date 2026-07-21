@@ -1,5 +1,19 @@
 # CODE_STYLE.md — x.bin coding conventions
 
+## References
+
+| Document | What we follow |
+|----------|---------------|
+| [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) | Naming, interop, docs, predictability, type safety |
+| [Rust CLI Book](https://rust-cli.github.io/book/) | Config files, exit codes, human/machine output, progress |
+| [The Rustonomicon](https://doc.rust-lang.org/nomicon/) | Unsafe Rust patterns (FFI, memory, concurrency) |
+| [clig.dev](https://clig.dev) | CLI UX: help, output, errors, flags, interactivity |
+| [Better CLI](https://bettercli.org/) | Lifecycle, distribution, security, analytics |
+| [clap docs](https://docs.rs/clap) | Arg parsing, derive macros, shell completion |
+| [anyhow docs](https://docs.rs/anyhow) | Error handling with context |
+| [Black](https://black.readthedocs.io/) | Python formatting (line-length 88, py312) |
+| [ruff](https://docs.astral.sh/ruff/) | Python linting (E/W/F/I/UP/B/SIM/RUF) |
+
 ## Philosophy
 
 We follow the principles behind 42/Epitech's "Norm" and the Linux kernel
