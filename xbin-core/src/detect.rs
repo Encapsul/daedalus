@@ -98,10 +98,6 @@ fn detect_ruby(dir: &Path) -> bool {
 }
 
 fn detect_dotnet(dir: &Path) -> bool {
-    if dir.join("*.csproj").is_file() {
-        return true;
-    }
-    // Check for any .csproj in the directory
     std::fs::read_dir(dir)
         .map(|entries| {
             entries.filter_map(Result::ok).any(|e| {

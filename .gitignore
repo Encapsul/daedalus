@@ -1,5 +1,7 @@
 # Rust
-stub/target/
+target/
+.cargo/config.toml
+/xbin
 
 # Python
 __pycache__/

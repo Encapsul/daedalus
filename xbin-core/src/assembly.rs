@@ -160,12 +160,16 @@ fn sha2_hash(payload: &[u8], meta: &[u8]) -> [u8; 32] {
 
 /// Simple ISO 8601 timestamp (UTC). Avoids chrono dependency.
 fn chrono_now() -> String {
-    // Use basic timestamp without chrono
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    format!("{secs}s-epoch")
+    let days = secs / 86400;
+    let remaining = secs % 86400;
+    let h = remaining / 3600;
+    let m = (remaining % 3600) / 60;
+    let s = remaining % 60;
+    format!("1970-01-{:02}T{:02}:{:02}:{:02}Z", days + 1, h, m, s)
 }
 
 fn env_map(env: &[(String, String)]) -> serde_json::Value {
