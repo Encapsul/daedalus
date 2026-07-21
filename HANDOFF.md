@@ -24,6 +24,76 @@
 - **OpenTelemetry**: `--otel-endpoint` for auto-instrumentation, OTLP export
 - **Cron/scheduled tasks**: `--cron NAME:SCHEDULE` for built-in periodic tasks
 - **Last updated**: 2026-07-21
+- **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), all commits/tags signed, GitHub key id=157872036
+- **Release workflow**: `on: release: types: [published]` — create release on GitHub UI → workflow builds 4 platforms → uploads tar.gz + SHASUMS256.txt
+
+---
+
+## Signing policy (MANDATORY)
+
+**All commits and tags MUST be signed.** This is enforced by git config:
+
+```bash
+# Global config (already set):
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/git_signing_key.pub
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
+```
+
+**Key**: `~/.ssh/git_signing_key` (ed25519, email: teddams047@gmail.com)
+**GitHub key**: id=157872036, title="git-signing", type=signing
+
+**New tags**: always use `git tag -s vX.Y.Z -m "message"` (NOT `git tag -a`).
+**New commits**: signing is automatic (`commit.gpgsign=true`).
+
+**Re-signing existing tags** (if needed):
+```bash
+for tag in $(git tag -l); do
+  COMMIT=$(git rev-parse "$tag"^{commit})
+  MSG=$(git log --format=%s -1 "$COMMIT")
+  git tag -d "$tag"
+  git tag -s "$tag" -m "$tag - $MSG" "$COMMIT"
+done
+git push --force --tags origin
+```
+
+---
+
+## Release policy (MANDATORY)
+
+**Workflow**: `.github/workflows/release.yml` triggers on `release: types: [published]` (toboggan pattern).
+
+**How to create a release**:
+1. Go to https://github.com/Tednoob17/x.bin/releases/new
+2. **Tag**: create new tag `vX.Y.Z` (or select existing)
+3. **Release title**: `x.bin vX.Y.Z` (or `x.bin vX.Y.Z — <codename>`)
+4. **Description**: write changelog, install instructions, etc.
+5. Click "Publish release"
+6. Workflow auto-triggers: builds linux-x64, linux-arm64, macos-arm64, macos-x64 → uploads tar.gz + SHASUMS256.txt
+
+**Package names**: `xbin-{os}-{arch}.tar.gz` (e.g., `xbin-linux-x64.tar.gz`)
+**Each tar.gz contains**: `bin/xbin-stub`, `bin/xbin-crypto`, `bin/xbin` (wrapper), `lib/python/xbin/` (CLI)
+
+---
+
+## Dependency maintenance policy
+
+**Rust crates** (`xbin-core/Cargo.toml`, `stub/Cargo.toml`):
+- Run `cargo update` periodically to get latest semver-compatible versions
+- Check https://crates.io for major version bumps (sha2, ruzstd, etc.)
+- Dependabot alerts: monitor and fix promptly
+- Current deps: pyo3 "0.29", sha2 "0.10", serde/serde_json "1", ruzstd "0.7", zstd "0.13", tar "0.4"
+
+**Python packages** (`cli/pyproject.toml`):
+- `cryptography >= 41.0` (latest: 49.0.0, spec is open enough)
+- Update pinned versions in `requirements.txt` if they exist
+
+**Security advisories**:
+- pyo3 < 0.29.0: 3 CVEs (HIGH/MEDIUM/LOW) — FIXED (upgraded to 0.29)
+- tar < 0.4.45: RUSTSEC-2026-0067/0068 — we have 0.4.46, safe
+- sha2 < 0.9.8: old CVE — we have 0.10.9, safe
 
 ---
 

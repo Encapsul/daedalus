@@ -4,6 +4,7 @@
 //! detection. Used by both the Python CLI (via `PyO3` or subprocess) and the
 //! future full-Rust CLI.
 
+pub mod assembly;
 pub mod compress;
 pub mod detect;
 pub mod format;

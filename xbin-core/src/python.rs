@@ -8,6 +8,7 @@ use crate::compress;
 use crate::detect::{self, Runtime};
 use crate::format::{self, Footer};
 use crate::pkgmgr::{self, PkgMgr};
+use crate::assembly;
 
 // ─── format ──────────────────────────────────────────────────────────────
 
@@ -342,6 +343,32 @@ fn py_create_tar_zstd<'py>(py: Python<'py>, root: &str) -> PyResult<Bound<'py, P
     Ok(PyBytes::new(py, &compressed))
 }
 
+// ─── assembly ────────────────────────────────────────────────────────────
+
+#[pyfunction]
+#[pyo3(signature = (out_path, stub_bytes, payload, meta_bytes, encrypt=false, squashfs=false, target_arch=None))]
+fn py_assemble_xbin(
+    out_path: &str,
+    stub_bytes: &[u8],
+    payload: &[u8],
+    meta_bytes: &[u8],
+    encrypt: bool,
+    squashfs: bool,
+    target_arch: Option<&str>,
+) -> PyResult<u64> {
+    let size = assembly::assemble_xbin(
+        Path::new(out_path),
+        stub_bytes,
+        payload,
+        meta_bytes,
+        encrypt,
+        squashfs,
+        target_arch,
+    )
+    .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+    Ok(size)
+}
+
 // ─── module ──────────────────────────────────────────────────────────────
 
 #[pymodule]
@@ -356,6 +383,8 @@ fn xbin_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("CRYPTO_AES_256_GCM", format::CRYPTO_AES_256_GCM)?;
     m.add("FLAG_SIGNED", format::FLAG_SIGNED)?;
     m.add("FLAG_ENCRYPTED", format::FLAG_ENCRYPTED)?;
+    m.add("ARCH_X86_64", format::ARCH_X86_64)?;
+    m.add("ARCH_AARCH64", format::ARCH_AARCH64)?;
     m.add_class::<PyFooter>()?;
     m.add_function(wrap_pyfunction!(py_read_footer, m)?)?;
     m.add_function(wrap_pyfunction!(py_read_at, m)?)?;
@@ -386,6 +415,9 @@ fn xbin_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // tar
     m.add_function(wrap_pyfunction!(py_create_tar, m)?)?;
     m.add_function(wrap_pyfunction!(py_create_tar_zstd, m)?)?;
+
+    // assembly
+    m.add_function(wrap_pyfunction!(py_assemble_xbin, m)?)?;
 
     Ok(())
 }

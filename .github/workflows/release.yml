@@ -1,8 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -214,20 +214,5 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: "x.bin ${{ github.ref_name }}"
-          body: |
-            ## x.bin ${{ github.ref_name }}
-
-            **Supported runtimes:** Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo
-
-            ### Quick install
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
-            ```
-
-            ### Verify checksums
-            ```bash
-            sha256sum -c SHASUMS256.txt
-            ```
+          tag_name: ${{ github.event.release.tag_name }}
           files: /tmp/assets/*

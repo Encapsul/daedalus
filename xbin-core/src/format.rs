@@ -21,6 +21,9 @@ pub const PAYLOAD_FORMAT_SQUASHFS: &str = "squashfs";
 pub const FLAG_SIGNED: u8 = 0x01;
 pub const FLAG_ENCRYPTED: u8 = 0x02;
 
+pub const ARCH_X86_64: u8 = 0x01;
+pub const ARCH_AARCH64: u8 = 0x02;
+
 /// Fixed footer at the very end of a .xbin file.
 #[derive(Debug)]
 pub struct Footer {
@@ -102,6 +105,22 @@ impl Footer {
             meta_size: u64_le(&buf[72..80]),
             sig_offset,
         })
+    }
+
+    pub fn pack(&self) -> [u8; 84] {
+        let mut buf = [0u8; 84];
+        buf[0..5].copy_from_slice(MAGIC);
+        buf[5] = self.format_version;
+        buf[6] = self.arch;
+        buf[7] = self.flags;
+        buf[8..16].copy_from_slice(&self.payload_offset.to_le_bytes());
+        buf[16..24].copy_from_slice(&self.payload_csize.to_le_bytes());
+        buf[24..32].copy_from_slice(&self.payload_usize.to_le_bytes());
+        buf[32..64].copy_from_slice(&self.payload_sha256);
+        buf[64..72].copy_from_slice(&self.meta_offset.to_le_bytes());
+        buf[72..80].copy_from_slice(&self.meta_size.to_le_bytes());
+        buf[80..84].copy_from_slice(&FOOTER_MAGIC.to_le_bytes());
+        buf
     }
 
     pub fn sha256_hex(&self) -> String {
