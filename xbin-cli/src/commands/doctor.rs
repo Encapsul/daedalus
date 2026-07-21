@@ -10,6 +10,10 @@ pub struct DoctorArgs {
     /// Quiet output
     #[arg(short, long)]
     pub quiet: bool,
+
+    /// Exit with error if any check fails
+    #[arg(long)]
+    pub strict: bool,
 }
 
 struct Check {
@@ -27,9 +31,6 @@ pub fn run(args: DoctorArgs) -> Result<(), Box<dyn std::error::Error>> {
         check_musl_target(),
         check_command("cc", &["--version"]),
         check_command("zstd", &["--version"]),
-        check_command("mksquashfs", &["-version"]),
-        check_command("node", &["--version"]),
-        check_command("deno", &["--version"]),
         check_xbin_stub(),
     ];
 
@@ -55,8 +56,10 @@ pub fn run(args: DoctorArgs) -> Result<(), Box<dyn std::error::Error>> {
         eprintln!();
         if all_ok {
             eprintln!("All checks passed");
-        } else {
+        } else if args.strict {
             return Err("Some checks failed — install missing dependencies".into());
+        } else {
+            eprintln!("Some checks failed (non-fatal, use --strict to enforce)");
         }
     }
 
@@ -123,7 +126,7 @@ fn check_xbin_stub() -> Check {
         Err(_) => Check {
             name: "xbin-stub".to_string(),
             ok: false,
-            detail: "not found — run: make stub".to_string(),
+            detail: "not found (optional)".to_string(),
         },
     }
 }
