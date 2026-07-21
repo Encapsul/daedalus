@@ -149,7 +149,7 @@ pub fn assemble_xbin(
     Ok(std::fs::metadata(out_path)?.len())
 }
 
-/// SHA-256(payload || meta_bytes) — the integrity hash.
+/// SHA-256(payload || `meta_bytes`) — the integrity hash.
 fn sha2_hash(payload: &[u8], meta: &[u8]) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
