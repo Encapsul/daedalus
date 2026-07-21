@@ -27,6 +27,7 @@ jobs:
         run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub -p xbin-crypto
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CC_x86_64_unknown_linux_musl: musl-gcc
 
       - name: Test binary
         run: |
@@ -70,6 +71,7 @@ jobs:
         run: cargo build --release --target aarch64-unknown-linux-musl -p xbin-stub -p xbin-crypto
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_musl: aarch64-linux-gnu-gcc
 
       - name: Test binary
         run: |
