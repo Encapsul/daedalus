@@ -66,23 +66,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-unknown-linux-musl
+          targets: aarch64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build
-        run: cargo build --release --target aarch64-unknown-linux-musl -p xbin-stub
+        run: cargo build --release --target aarch64-unknown-linux-gnu -p xbin-stub
         env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
-          CC_aarch64_unknown_linux_musl: aarch64-linux-gnu-gcc
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static"
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
 
       - name: Test binary
         run: |
           echo "=== Debug: listing target dir ==="
-          ls -la target/aarch64-unknown-linux-musl/release/ 2>/dev/null || echo "target dir not found"
+          ls -la target/aarch64-unknown-linux-gnu/release/ 2>/dev/null || echo "target dir not found"
           find target -name "xbin-stub" -type f 2>/dev/null || echo "xbin-stub not found"
-          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
+          STUB=target/aarch64-unknown-linux-gnu/release/xbin-stub
           file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; file "$STUB" 2>&1; exit 1; }
           file "$STUB" | grep -q "aarch64" || { echo "FAIL: not aarch64"; exit 1; }
           echo "=== PASS: linux-arm64 ==="
@@ -90,13 +89,13 @@ jobs:
       - name: Test QEMU
         run: |
           sudo apt-get install -y qemu-user-static || true
-          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
+          STUB=target/aarch64-unknown-linux-gnu/release/xbin-stub
           qemu-aarch64-static "$STUB" --help 2>/dev/null && echo "OK: QEMU pass" || echo "OK: QEMU exit != 0 is fine"
 
       - name: Package
         run: |
-          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
-          CRYPTO=target/aarch64-unknown-linux-musl/release/xbin-crypto
+          STUB=target/aarch64-unknown-linux-gnu/release/xbin-stub
+          CRYPTO=target/aarch64-unknown-linux-gnu/release/xbin-crypto
           DIR="xbin-linux-arm64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
