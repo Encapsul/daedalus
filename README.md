@@ -80,9 +80,6 @@ xbin build ./myapp \
   --squashfs \
   --encrypt \
   --env-file .env \
-  --tree-shake \
-  --minify \
-  --update \
   --dry-run \
   --verbose
 ```
