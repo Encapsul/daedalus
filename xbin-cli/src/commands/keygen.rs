@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use clap::Args;
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
@@ -14,14 +15,15 @@ pub struct KeygenArgs {
     pub quiet: bool,
 }
 
-pub fn run(args: KeygenArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: KeygenArgs) -> Result<()> {
     let key_dir = if args.key_dir == PathBuf::from(".") {
         default_key_dir()?
     } else {
         args.key_dir.clone()
     };
 
-    std::fs::create_dir_all(&key_dir)?;
+    std::fs::create_dir_all(&key_dir)
+        .with_context(|| format!("failed to create key directory {}", key_dir.display()))?;
 
     let signing_key = SigningKey::generate(&mut OsRng);
     let verifying_key = signing_key.verifying_key();
@@ -31,8 +33,10 @@ pub fn run(args: KeygenArgs) -> Result<(), Box<dyn std::error::Error>> {
     let key_path = key_dir.join(format!("{fingerprint}.key"));
     let pub_path = key_dir.join(format!("{fingerprint}.pub"));
 
-    std::fs::write(&key_path, signing_key.to_bytes())?;
-    std::fs::write(&pub_path, verifying_key.as_bytes())?;
+    std::fs::write(&key_path, signing_key.to_bytes())
+        .with_context(|| format!("failed to write private key to {}", key_path.display()))?;
+    std::fs::write(&pub_path, verifying_key.as_bytes())
+        .with_context(|| format!("failed to write public key to {}", pub_path.display()))?;
 
     #[cfg(unix)]
     {
@@ -52,7 +56,7 @@ pub fn run(args: KeygenArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn default_key_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn default_key_dir() -> Result<PathBuf> {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         Ok(PathBuf::from(xdg).join("xbin").join("keys"))
     } else if let Ok(home) = std::env::var("HOME") {

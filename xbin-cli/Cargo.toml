@@ -21,6 +21,8 @@ walkdir = "2"
 toml = "0.8"
 which = "7"
 hex = "0.4"
+anyhow = "1"
+human-panic = "2"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

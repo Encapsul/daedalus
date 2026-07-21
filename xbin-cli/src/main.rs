@@ -1,5 +1,6 @@
 mod commands;
 
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -10,6 +11,10 @@ use clap::{Parser, Subcommand};
     long_about = "x.bin compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  xbin build ./myapp -o myapp.xbin\n  xbin inspect myapp.xbin\n  xbin keygen\n  xbin sign myapp.xbin --key ~/.xbin/keys/*.key\n  xbin verify myapp.xbin\n  xbin doctor\n  xbin scan ."
 )]
 struct Cli {
+    /// Enable verbose output
+    #[arg(short, long, global = true)]
+    verbose: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -47,21 +52,21 @@ enum Commands {
     Env(commands::env::EnvArgs),
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
+    human_panic::setup_panic!();
+
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Build(args) => commands::build::run(args)?,
-        Commands::Inspect(args) => commands::inspect::run(args)?,
-        Commands::Keygen(args) => commands::keygen::run(args)?,
-        Commands::Sign(args) => commands::sign::run(args)?,
-        Commands::Verify(args) => commands::verify::run(args)?,
-        Commands::Trust(args) => commands::trust::run(args)?,
-        Commands::Scan(args) => commands::scan::run(args)?,
-        Commands::Doctor(args) => commands::doctor::run(args)?,
-        Commands::Clean(args) => commands::clean::run(args)?,
-        Commands::Env(args) => commands::env::run(args)?,
+        Commands::Build(args) => commands::build::run(args, cli.verbose),
+        Commands::Inspect(args) => commands::inspect::run(args),
+        Commands::Keygen(args) => commands::keygen::run(args),
+        Commands::Sign(args) => commands::sign::run(args),
+        Commands::Verify(args) => commands::verify::run(args),
+        Commands::Trust(args) => commands::trust::run(args),
+        Commands::Scan(args) => commands::scan::run(args),
+        Commands::Doctor(args) => commands::doctor::run(args),
+        Commands::Clean(args) => commands::clean::run(args),
+        Commands::Env(args) => commands::env::run(args),
     }
-
-    Ok(())
 }

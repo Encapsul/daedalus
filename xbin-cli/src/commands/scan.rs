@@ -1,3 +1,4 @@
+use anyhow::Result;
 use clap::Args;
 use std::path::{Path, PathBuf};
 use xbin_core::format::{Footer, ARCH_X86_64, ARCH_AARCH64};
@@ -13,7 +14,7 @@ pub struct ScanArgs {
     pub json: bool,
 }
 
-pub fn run(args: ScanArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: ScanArgs) -> Result<()> {
     let mut files = Vec::new();
 
     for path in &args.paths {
@@ -25,7 +26,7 @@ pub fn run(args: ScanArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if files.is_empty() {
-        return Err("No .xbin files found".into());
+        anyhow::bail!("No .xbin files found");
     }
 
     if args.json {
@@ -57,7 +58,7 @@ pub fn run(args: ScanArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn find_xbin_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+fn find_xbin_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();

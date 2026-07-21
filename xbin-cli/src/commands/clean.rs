@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
 
@@ -12,7 +13,7 @@ pub struct CleanArgs {
     pub force: bool,
 }
 
-pub fn run(args: CleanArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: CleanArgs) -> Result<()> {
     let cache_dir = cache_dir();
 
     if !cache_dir.exists() {
@@ -33,7 +34,8 @@ pub fn run(args: CleanArgs) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    std::fs::remove_dir_all(&cache_dir)?;
+    std::fs::remove_dir_all(&cache_dir)
+        .with_context(|| format!("failed to remove cache directory {}", cache_dir.display()))?;
     eprintln!("Cleaned {} ({})", cache_dir.display(), format_size(size));
 
     Ok(())
@@ -49,7 +51,7 @@ fn cache_dir() -> PathBuf {
     }
 }
 
-fn dir_size(path: &std::path::Path) -> Result<u64, std::io::Error> {
+fn dir_size(path: &std::path::Path) -> Result<u64> {
     let mut total = 0;
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
