@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import struct
 
-from . import format as fmt
+from . import _format as fmt
 
 
 def _collect_inspect_data(path: str) -> dict:

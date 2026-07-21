@@ -7,10 +7,10 @@
 - **Build**: `make stub` + `pip install -e ./cli`
 - **Health check**: `xbin doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
-- **Release**: `git tag v0.1.0 && git push --tags` → GitHub Actions builds 4 platforms → GitHub Release with binary archives + SHASUMS256.txt
+- **Release**: create release on GitHub UI → `on: release: types: [published]` triggers workflow → builds 4 platforms → uploads binaries + SHASUMS256.txt via `gh release upload --clobber`
 - **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo (11 total)
 - **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
-- **Rust core**: `xbin-core` crate — Phase 1 complete, stub uses shared library
+- **Rust core**: `xbin-core` crate — Phase 1 complete, stub uses shared library. Phase 2 (PyO3 bindings) started: format wired via `_format.py` wrapper
 - **Tests**: 234 Python + 26 Rust = 260 total (0 failures)
 - **Hugo**: runtime rewritten — builds at detect time, serves static files via python3 http.server
 - **`.env` baking**: implemented — `--env-file` flag, secret detection, bake into app layer
@@ -23,7 +23,7 @@
 - **Health checks**: `--health-port` for /healthz, /readyz, /status endpoints
 - **OpenTelemetry**: `--otel-endpoint` for auto-instrumentation, OTLP export
 - **Cron/scheduled tasks**: `--cron NAME:SCHEDULE` for built-in periodic tasks
-- **Last updated**: 2026-07-20
+- **Last updated**: 2026-07-21
 
 ---
 
@@ -456,11 +456,26 @@ Python remains for:
 
 **Next steps**: Phase 2 — xbin-core becomes full core lib, Python becomes thin wrapper
 
-### Phase 2: Rust core lib
+### Phase 2: Rust core lib — IN PROGRESS
 
 **Goal**: `xbin-core` handles all build logic. Python becomes thin wrapper.
 
-**Rust modules to add**:
+**PyO3 bindings** (`xbin-core/src/python.rs`):
+- Exposed: format (Footer, constants, read_footer, read_at), compress (compress/decompress), detect (runtime + all individual runtimes), pkgmgr (detect + install_cmd)
+- Built via `maturin build --release`, installed as `xbin_core` Python package
+- `cli/xbin/_format.py` wrapper: delegates to `xbin_core` when available, falls back to pure Python
+
+**Format wiring** (DONE):
+- 7 files switched from `from . import format as fmt` to `from . import _format as fmt`:
+  - build.py, scan.py, assembly.py, selftest.py, verify.py, inspect.py, sign.py
+- `_format.py` provides identical API, transparently uses Rust when available
+
+**Remaining to wire**:
+- `compress`: currently uses Python zstd in `layers.py`, no separate `compress.py` module
+- `detect`: currently in `analyzer/runtime.py`, calls Python runtime detectors
+- `pkgmgr`: currently in `pkgmgr.py`, pure Python detection
+
+**Rust modules to add** (future):
 - `build.rs` — build orchestration (currently `cli/xbin/build.py`)
 - `layers.rs` — layer construction (currently `cli/xbin/layers.py`)
 - `assembly.rs` — .xbin assembly (currently `cli/xbin/assembly.py`)

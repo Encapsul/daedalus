@@ -105,10 +105,11 @@ impl Footer {
     }
 
     pub fn sha256_hex(&self) -> String {
-        self.payload_sha256
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        self.payload_sha256.iter().fold(String::with_capacity(64), |mut s, b| {
+            use std::fmt::Write;
+            let _ = write!(s, "{b:02x}");
+            s
+        })
     }
 }
 

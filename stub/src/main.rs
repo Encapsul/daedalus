@@ -7,10 +7,9 @@
 //! Level 0 isolation (MVP): `LD_LIBRARY_PATH`, no chroot. Levels 1/2
 //! (chroot, user namespaces) in Phase 2 — see docs/src/roadmap.md.
 
-mod format;
 mod squashfs_extract;
 
-use format::{read_at, Footer};
+use xbin_core::format::{self as format, read_at, Footer};
 use serde::Deserialize;
 use std::ffi::CString;
 use std::fs::{self, File};

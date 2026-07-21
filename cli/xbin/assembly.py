@@ -12,8 +12,8 @@ import platform
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import _format as fmt
 from . import crypto
-from . import format as fmt
 
 XBIN_VERSION = "0.1.0"
 

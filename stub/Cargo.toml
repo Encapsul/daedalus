@@ -13,6 +13,8 @@ name = "xbin-crypto"
 path = "src/bin/xbin-crypto.rs"
 
 [dependencies]
+# Shared core library (format parsing, constants).
+xbin-core = { path = "../xbin-core" }
 # Mostly pure-Rust: ruzstd, tar, sha2, serde, ed25519-dalek, aes-gcm, hkdf
 # are all pure Rust.  backhand (squashfs) pulls in zstd-sys which requires
 # a C compiler (cc crate) at build time.  A C toolchain (gcc/musl-gcc) and

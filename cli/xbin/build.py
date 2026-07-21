@@ -84,7 +84,7 @@ def _read_existing_xbin(xbin_path: Path, verbose: bool) -> tuple[bytes, dict] | 
 
     Returns (runtime_blob, metadata_dict) or None if not readable.
     """
-    from . import format as fmt
+    from . import _format as fmt
 
     try:
         footer = fmt.read_footer(str(xbin_path))

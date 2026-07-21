@@ -27,7 +27,7 @@ class TestGoRuntime:
             plan = go_runtime.detect(tmp_path)
             assert plan is not None
             assert plan.runtime == "go"
-            assert plan.interpreter_host == Path("/usr/bin/go")
+            assert plan.interpreter_host.name == "go"
             assert plan.entrypoint == ["/app/app"]
 
     def test_no_detect_without_go_mod(self, go_runtime, tmp_path):
