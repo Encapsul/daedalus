@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use clap::Args;
 use std::path::{Path, PathBuf};
 use xbin_core::detect;
@@ -37,10 +38,6 @@ pub struct BuildArgs {
     #[arg(long)]
     pub target: Option<String>,
 
-    /// Verbose output
-    #[arg(short, long)]
-    pub verbose: bool,
-
     /// Skip dependency installation
     #[arg(long)]
     pub no_install: bool,
@@ -66,10 +63,10 @@ pub struct BuildArgs {
     pub license: Option<String>,
 }
 
-pub fn run(args: BuildArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let app_dir = args.app.canonicalize()?;
+pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
+    let app_dir = args.app.canonicalize().context("failed to canonicalize app path")?;
     if !app_dir.is_dir() {
-        return Err(format!("{} is not a directory", app_dir.display()).into());
+        anyhow::bail!("{} is not a directory", app_dir.display());
     }
 
     let output = if args.output.extension().map_or(false, |e| e == "xbin") {
@@ -83,33 +80,34 @@ pub fn run(args: BuildArgs) -> Result<(), Box<dyn std::error::Error>> {
     let runtime_name = match &runtime {
         Some(r) => r.name(),
         None => {
-            return Err(format!(
+            anyhow::bail!(
                 "could not detect runtime in {} — supported: python, node, deno, java, ruby, dotnet, go, php, perl, binary",
                 app_dir.display()
-            ).into());
+            );
         }
     };
 
-    if args.verbose {
+    if verbose {
         eprintln!("Detected runtime: {runtime_name}");
     }
 
     // Detect package manager
     let pkg_mgr = pkgmgr::detect_pkgmgr(&app_dir, runtime_name);
     if let Some(mgr) = &pkg_mgr {
-        if args.verbose {
+        if verbose {
             eprintln!("Package manager: {}", mgr.name());
         }
 
         if !args.no_install {
-            if args.verbose {
+            if verbose {
                 eprintln!("Installing dependencies...");
             }
             let cmd = mgr.install_cmd();
             let status = std::process::Command::new(&cmd[0])
                 .args(&cmd[1..])
                 .current_dir(&app_dir)
-                .status()?;
+                .status()
+                .context("failed to run dependency installation command")?;
             if !status.success() {
                 eprintln!("[xbin] warning: dependency installation failed");
             }
@@ -118,22 +116,26 @@ pub fn run(args: BuildArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     // Find stub binary
     let stub = find_stub(&args.target)?;
-    let stub_bytes = std::fs::read(&stub)?;
+    let stub_bytes = std::fs::read(&stub)
+        .with_context(|| format!("failed to read stub binary at {}", stub.display()))?;
 
     // Create temp directory for layer building
-    let tmp = tempfile::tempdir()?;
+    let tmp = tempfile::tempdir().context("failed to create temp directory")?;
     let rootfs = tmp.path().join("rootfs");
-    std::fs::create_dir_all(&rootfs)?;
+    std::fs::create_dir_all(&rootfs).context("failed to create rootfs directory")?;
 
     // Copy app files
-    copy_dir_recursive(&app_dir, &rootfs.join("app"))?;
+    copy_dir_recursive(&app_dir, &rootfs.join("app"))
+        .context("failed to copy app files")?;
 
     // Build deterministic tar
-    if args.verbose {
+    if verbose {
         eprintln!("Creating payload...");
     }
-    let tar_bytes = xbin_core::tar::create_deterministic_tar(&rootfs)?;
-    let payload = xbin_core::compress::compress_with_level(&tar_bytes, 19)?;
+    let tar_bytes = xbin_core::tar::create_deterministic_tar(&rootfs)
+        .context("failed to create deterministic tar")?;
+    let payload = xbin_core::compress::compress_with_level(&tar_bytes, 19)
+        .context("failed to compress payload")?;
 
     // Build metadata
     let app_name = app_dir.file_name().map_or_else(
@@ -174,7 +176,7 @@ pub fn run(args: BuildArgs) -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Assemble
-    if args.verbose {
+    if verbose {
         eprintln!("Assembling {}...", output.display());
     }
 
@@ -186,7 +188,8 @@ pub fn run(args: BuildArgs) -> Result<(), Box<dyn std::error::Error>> {
         args.encrypt,
         args.squashfs,
         args.target.as_deref(),
-    )?;
+    )
+    .context("failed to assemble xbin")?;
 
     eprintln!("Built {} ({:.1}MB)", output.display(), size as f64 / (1024.0 * 1024.0));
 
@@ -200,7 +203,7 @@ pub fn run(args: BuildArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn find_stub(target_arch: &Option<String>) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
     // Try env var
     if let Ok(path) = std::env::var("XBIN_STUB_PATH") {
         let p = PathBuf::from(path);
@@ -235,10 +238,10 @@ fn find_stub(target_arch: &Option<String>) -> Result<PathBuf, Box<dyn std::error
         return Ok(p);
     }
 
-    Err("xbin-stub not found — run: make stub".into())
+    anyhow::bail!("xbin-stub not found — run: make stub")
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;

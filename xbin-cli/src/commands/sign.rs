@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use clap::Args;
 use ed25519_dalek::{SigningKey, Signer};
 use sha2::{Sha256, Digest};
@@ -18,7 +19,7 @@ pub struct SignArgs {
     pub quiet: bool,
 }
 
-pub fn run(args: SignArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: SignArgs) -> Result<()> {
     let key_path = match args.key {
         Some(p) => p,
         None => {
@@ -32,25 +33,28 @@ pub fn run(args: SignArgs) -> Result<(), Box<dyn std::error::Error>> {
             if keys.len() == 1 {
                 keys[0].path()
             } else {
-                return Err("[xbin] error: specify key with --key".into());
+                anyhow::bail!("[xbin] error: specify key with --key");
             }
         }
     };
 
-    let key_bytes = std::fs::read(&key_path)?;
+    let key_bytes = std::fs::read(&key_path)
+        .with_context(|| format!("failed to read signing key at {}", key_path.display()))?;
     if key_bytes.len() != 32 {
-        return Err(format!("[xbin] error: key must be 32 bytes, got {}", key_bytes.len()).into());
+        anyhow::bail!("[xbin] error: key must be 32 bytes, got {}", key_bytes.len());
     }
 
     let mut key_arr = [0u8; 32];
     key_arr.copy_from_slice(&key_bytes);
     let signing_key = SigningKey::from_bytes(&key_arr);
 
-    let mut f = std::fs::File::open(&args.file)?;
-    let mut footer = Footer::read_from(&mut f)?;
+    let mut f = std::fs::File::open(&args.file)
+        .with_context(|| format!("failed to open {}", args.file.display()))?;
+    let mut footer = Footer::read_from(&mut f)
+        .context("failed to read xbin footer")?;
 
     if footer.is_signed() {
-        return Err("[xbin] error: file is already signed".into());
+        anyhow::bail!("[xbin] error: file is already signed");
     }
 
     // Read payload and metadata for hash

@@ -1,3 +1,4 @@
+use anyhow::Result;
 use clap::Args;
 use std::process::Command;
 
@@ -22,7 +23,7 @@ struct Check {
     detail: String,
 }
 
-pub fn run(args: DoctorArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: DoctorArgs) -> Result<()> {
     let checks = vec![
         check_command("python3", &["--version"]),
         check_command("pip", &["--version"]),
@@ -57,7 +58,7 @@ pub fn run(args: DoctorArgs) -> Result<(), Box<dyn std::error::Error>> {
         if all_ok {
             eprintln!("All checks passed");
         } else if args.strict {
-            return Err("Some checks failed — install missing dependencies".into());
+            anyhow::bail!("Some checks failed — install missing dependencies");
         } else {
             eprintln!("Some checks failed (non-fatal, use --strict to enforce)");
         }

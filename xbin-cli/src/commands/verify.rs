@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use clap::Args;
 use ed25519_dalek::{VerifyingKey, Verifier};
 use sha2::{Sha256, Digest};
@@ -18,14 +19,16 @@ pub struct VerifyArgs {
     pub quiet: bool,
 }
 
-pub fn run(args: VerifyArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: VerifyArgs) -> Result<()> {
     let trusted_dir = args.trusted_dir.unwrap_or_else(default_trusted_dir);
 
-    let mut f = std::fs::File::open(&args.file)?;
-    let footer = Footer::read_from(&mut f)?;
+    let mut f = std::fs::File::open(&args.file)
+        .with_context(|| format!("failed to open {}", args.file.display()))?;
+    let footer = Footer::read_from(&mut f)
+        .context("failed to read xbin footer")?;
 
     if !footer.is_signed() {
-        return Err("[xbin] error: file is not signed".into());
+        anyhow::bail!("[xbin] error: file is not signed");
     }
 
     // Read sig block
@@ -46,10 +49,10 @@ pub fn run(args: VerifyArgs) -> Result<(), Box<dyn std::error::Error>> {
     // Try each trusted key
     let keys = load_trusted_keys(&trusted_dir)?;
     if keys.is_empty() {
-        return Err(format!(
+        anyhow::bail!(
             "[xbin] error: no trusted keys in {} — add keys with: xbin trust <pubkey_file>",
             trusted_dir.display()
-        ).into());
+        );
     }
 
     let sig = ed25519_dalek::Signature::from_slice(signature_bytes)?;
@@ -66,7 +69,7 @@ pub fn run(args: VerifyArgs) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if !verified {
-        return Err("[xbin] error: signature does not match any trusted key".into());
+        anyhow::bail!("[xbin] error: signature does not match any trusted key");
     }
 
     if !args.quiet {
@@ -76,7 +79,7 @@ pub fn run(args: VerifyArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn load_trusted_keys(dir: &PathBuf) -> Result<Vec<(PathBuf, VerifyingKey)>, Box<dyn std::error::Error>> {
+fn load_trusted_keys(dir: &PathBuf) -> Result<Vec<(PathBuf, VerifyingKey)>> {
     let mut keys = Vec::new();
     if !dir.exists() {
         return Ok(keys);

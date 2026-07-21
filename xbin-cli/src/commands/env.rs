@@ -1,3 +1,4 @@
+use anyhow::Result;
 use clap::Args;
 use std::path::PathBuf;
 
@@ -8,7 +9,7 @@ pub struct EnvArgs {
     pub json: bool,
 }
 
-pub fn run(args: EnvArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: EnvArgs) -> Result<()> {
     let stub = find_binary("xbin-stub", "XBIN_STUB_PATH");
     let crypto = find_binary("xbin-crypto", "XBIN_CRYPTO_PATH");
 

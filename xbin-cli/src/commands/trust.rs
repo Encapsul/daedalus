@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use clap::Args;
 use sha2::{Sha256, Digest};
 use std::path::PathBuf;
@@ -16,14 +17,15 @@ pub struct TrustArgs {
     pub quiet: bool,
 }
 
-pub fn run(args: TrustArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: TrustArgs) -> Result<()> {
     let trusted_dir = args.trusted_dir.unwrap_or_else(default_trusted_dir);
-    std::fs::create_dir_all(&trusted_dir)?;
+    std::fs::create_dir_all(&trusted_dir)
+        .with_context(|| format!("failed to create trusted key directory {}", trusted_dir.display()))?;
 
-    let key_bytes = std::fs::read(&args.pubkey)?;
+    let key_bytes = std::fs::read(&args.pubkey)
+        .with_context(|| format!("failed to read public key at {}", args.pubkey.display()))?;
     if key_bytes.len() != 32 {
-        eprintln!("[xbin] error: public key must be 32 bytes, got {}", key_bytes.len());
-        std::process::exit(1);
+        anyhow::bail!("[xbin] error: public key must be 32 bytes, got {}", key_bytes.len());
     }
 
     // Compute fingerprint
