@@ -193,7 +193,7 @@ jobs:
   # ── Create GitHub Release + Upload binaries ──────────────────────────
   publish:
     name: Create Release
-    needs: [linux-x64, linux-arm64, macos-arm64, macos-x64]
+    needs: [linux-x64, linux-arm64, macos-arm64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -205,7 +205,7 @@ jobs:
       - name: Generate SHASUMS256.txt
         run: |
           cd /tmp/assets
-          sha256sum xbin-linux-x64.tar.gz xbin-linux-arm64.tar.gz xbin-macos-arm64.tar.gz xbin-macos-x64.tar.gz > SHASUMS256.txt
+          sha256sum xbin-linux-x64.tar.gz xbin-linux-arm64.tar.gz xbin-macos-arm64.tar.gz > SHASUMS256.txt
           cat SHASUMS256.txt
 
       - name: List files
