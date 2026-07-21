@@ -75,11 +75,43 @@ def detect_node_pkgmgr(app_dir: Path) -> PkgManager | None:
 
 
 def detect_pkgmgr(app_dir: Path, runtime: str) -> PkgManager | None:
-    """Detect the package manager for a given runtime."""
+    """Detect the package manager for a given runtime.
+
+    Uses xbin_core (Rust) for fast detection when available, then falls back
+    to the full Python detection with PkgManager objects.
+    """
+    # Fast path: Rust detection returns just the name
+    try:
+        import xbin_core
+
+        rust_name = xbin_core.py_detect_pkgmgr(str(app_dir), runtime)
+        if rust_name is not None:
+            return _name_to_pkgmgr(app_dir, rust_name)
+    except ImportError:
+        pass
+
+    # Fallback: Python detection
     if runtime == "python":
         return detect_python_pkgmgr(app_dir)
     if runtime == "node":
         return detect_node_pkgmgr(app_dir)
+    return None
+
+
+def _name_to_pkgmgr(app_dir: Path, name: str) -> PkgManager | None:
+    """Construct a PkgManager from a name detected by xbin_core."""
+    all_mangers = _PYTHON_PKG_MGRS + _NODE_PKG_MGRS
+    for pm in all_mangers:
+        if pm.name == name:
+            return pm
+    # Fallback: pip with requirements.txt
+    if name == "pip" and (app_dir / "requirements.txt").is_file():
+        return PkgManager(
+            "pip", "requirements.txt", ["pip", "install", "-r", "requirements.txt"]
+        )
+    # Fallback: npm without lock file
+    if name == "npm" and (app_dir / "package.json").is_file():
+        return PkgManager("npm", "package.json", ["npm", "install"])
     return None
 
 
