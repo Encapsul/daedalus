@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import format as fmt
+from . import _format as fmt
 from ._util import cache_dir
 
 

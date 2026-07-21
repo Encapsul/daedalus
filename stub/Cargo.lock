@@ -969,6 +969,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "xbin-core"
+version = "0.1.0"
+dependencies = [
+ "ruzstd",
+ "serde",
+ "serde_json",
+ "sha2",
+ "zstd",
+]
+
+[[package]]
 name = "xbin-stub"
 version = "0.1.0"
 dependencies = [
@@ -983,6 +994,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tar",
+ "xbin-core",
 ]
 
 [[package]]

@@ -38,6 +38,13 @@ struct PyFooter {
 
 #[pymethods]
 impl PyFooter {
+    #[new]
+    fn py_new(_py: Python<'_>) -> PyResult<Self> {
+        Err(pyo3::exceptions::PyNotImplementedError::new_err(
+            "Use PyFooter.unpack() to create a PyFooter from packed data",
+        ))
+    }
+
     #[getter]
     fn footer_size(&self) -> u64 {
         if self.format_version >= 3 {
@@ -168,12 +175,7 @@ impl PyFooter {
     }
 
     fn __repr__(&self) -> String {
-        format!(
-            "Footer(version={}, arch={:#04x}, flags={:#04x}, payload_offset={}, payload_csize={}, payload_usize={}, meta_offset={}, meta_size={}, sig_offset={})",
-            self.format_version, self.arch, self.flags, self.payload_offset,
-            self.payload_csize, self.payload_usize, self.meta_offset,
-            self.meta_size, self.sig_offset,
-        )
+        format!("Footer(version={}, arch={:#04x}, flags={:#04x}, payload_offset={}, payload_csize={}, payload_usize={}, meta_offset={}, meta_size={}, sig_offset={})", self.format_version, self.arch, self.flags, self.payload_offset, self.payload_csize, self.payload_usize, self.meta_offset, self.meta_size, self.sig_offset,)
     }
 }
 

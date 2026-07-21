@@ -53,7 +53,8 @@ class TestHugoDetection:
             }.get(cmd)
             plan = hugo_runtime.detect(tmp_path)
         assert plan is not None
-        assert "hugo" in plan.entrypoint[0]
+        # New design: runs python3 http.server to serve public/
+        assert "python3" in plan.entrypoint[0] or "python" in plan.entrypoint[0]
 
     def test_hugo_builds_and_serves(self, hugo_runtime, tmp_path):
         (tmp_path / "hugo.toml").write_text('baseURL = "https://example.com"')
@@ -64,7 +65,9 @@ class TestHugoDetection:
             }.get(cmd)
             plan = hugo_runtime.detect(tmp_path)
         assert plan is not None
-        assert "--minify" in plan.entrypoint
+        # New design: python3 -m http.server ... --directory /app/public
+        entry_str = " ".join(plan.entrypoint)
+        assert "http.server" in entry_str or "public" in entry_str
 
     def test_supports_cross_true(self, hugo_runtime):
         assert hugo_runtime.supports_cross() is True

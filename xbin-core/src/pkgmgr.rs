@@ -59,7 +59,7 @@ pub fn detect_python_pkgmgr(dir: &Path) -> Option<PkgMgr> {
         return Some(PkgMgr::Pipenv);
     }
     let req = dir.join("requirements.txt");
-    if req.is_file() && std::fs::metadata(&req).map_or(false, |m| m.len() > 0) {
+    if req.is_file() && std::fs::metadata(&req).is_ok_and(|m| m.len() > 0) {
         return Some(PkgMgr::Pip);
     }
     None

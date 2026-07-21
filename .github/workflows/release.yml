@@ -1,12 +1,12 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to release (e.g. 0.1.0)"
+      tag:
+        description: "Tag to upload assets to (e.g. v0.2.4)"
         required: true
 
 permissions:
@@ -36,8 +36,6 @@ jobs:
       - name: Test binary
         run: |
           STUB=stub/target/x86_64-unknown-linux-musl/release/xbin-stub
-          CRYPTO=stub/target/x86_64-unknown-linux-musl/release/xbin-crypto
-
           file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
           file "$STUB" | grep -q "x86-64" || { echo "FAIL: not x86_64"; exit 1; }
           "$STUB" --help 2>/dev/null || true
@@ -47,7 +45,6 @@ jobs:
         run: |
           STUB=stub/target/x86_64-unknown-linux-musl/release/xbin-stub
           CRYPTO=stub/target/x86_64-unknown-linux-musl/release/xbin-crypto
-          VERSION="${GITHUB_REF_NAME#v}"
           DIR="xbin-linux-x64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
@@ -63,7 +60,6 @@ WRAPPER
           chmod +x "${DIR}/bin/xbin"
 
           tar czf "${DIR}.tar.gz" "${DIR}"
-          echo "ASSET=${DIR}.tar.gz" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -107,7 +103,6 @@ WRAPPER
         run: |
           STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
           CRYPTO=stub/target/aarch64-unknown-linux-musl/release/xbin-crypto
-          VERSION="${GITHUB_REF_NAME#v}"
           DIR="xbin-linux-arm64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
@@ -158,7 +153,6 @@ WRAPPER
         run: |
           STUB=stub/target/aarch64-apple-darwin/release/xbin-stub
           CRYPTO=stub/target/aarch64-apple-darwin/release/xbin-crypto
-          VERSION="${GITHUB_REF_NAME#v}"
           DIR="xbin-macos-arm64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
@@ -209,7 +203,6 @@ WRAPPER
         run: |
           STUB=stub/target/x86_64-apple-darwin/release/xbin-stub
           CRYPTO=stub/target/x86_64-apple-darwin/release/xbin-crypto
-          VERSION="${GITHUB_REF_NAME#v}"
           DIR="xbin-macos-x64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
@@ -231,9 +224,9 @@ WRAPPER
           name: macos-x64
           path: xbin-*.tar.gz
 
-  # ── GitHub Release ───────────────────────────────────────────────────
-  release:
-    name: Create GitHub Release
+  # ── Upload binaries to existing GitHub Release ────────────────────────
+  upload-release-assets:
+    name: Upload release assets
     needs: [linux-x64, linux-arm64, macos-arm64, macos-x64]
     runs-on: ubuntu-latest
     permissions:
@@ -262,14 +255,19 @@ WRAPPER
           sha256sum xbin-linux-x64.tar.gz xbin-linux-arm64.tar.gz xbin-macos-arm64.tar.gz xbin-macos-x64.tar.gz > SHASUMS256.txt
           cat SHASUMS256.txt
 
-      - name: Create release with binaries
+      - name: Upload assets to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          VERSION="${GITHUB_REF_NAME#v}"
-          TAG="${GITHUB_REF_NAME}"
-          
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+
+          if [ -z "$TAG" ]; then
+            echo "ERROR: could not determine tag"
+            exit 1
+          fi
+          echo "Uploading assets to release: $TAG"
+
           # Verify all assets exist
           for f in \
             artifacts/xbin-linux-x64.tar.gz \
@@ -281,30 +279,16 @@ WRAPPER
               echo "ERROR: Missing asset: $f"
               exit 1
             fi
-            echo "Found: $f"
+            echo "Found: $f ($(stat --format=%s "$f") bytes)"
           done
 
-          # Create release with all assets
-          gh release create "$TAG" \
-            --repo "${{ github.repository }}" \
-            --title "x.bin $VERSION" \
-            --notes "## x.bin v$VERSION
-
-**Supported runtimes:** Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo
-
-### Quick install
-\`\`\`bash
-curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
-\`\`\`
-
-### Verify checksums
-\`\`\`bash
-sha256sum -c SHASUMS256.txt
-\`\`\`" \
+          # Upload all assets (clobber replaces any existing uploads)
+          gh release upload "$TAG" --clobber \
             artifacts/xbin-linux-x64.tar.gz \
             artifacts/xbin-linux-arm64.tar.gz \
             artifacts/xbin-macos-arm64.tar.gz \
             artifacts/xbin-macos-x64.tar.gz \
             artifacts/SHASUMS256.txt
 
-          echo "=== Release published with all assets ==="
+          echo "=== Release assets uploaded successfully ==="
+          gh release view "$TAG" --repo "${{ github.repository }}"
