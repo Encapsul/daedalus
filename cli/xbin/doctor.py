@@ -144,8 +144,8 @@ def _collect_checks() -> list[dict]:
     add("black", *_check_package("black"), required=False)
 
     # --- Built binaries ---
-    add("xbin-stub", *_check_stub())
-    add("xbin-crypto", *_check_crypto())
+    add("xbin-stub", *_check_stub(), required=False)
+    add("xbin-crypto", *_check_crypto(), required=False)
 
     return [
         {"name": name, "ok": ok, "detail": detail, "required": required}
