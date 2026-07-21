@@ -12,9 +12,20 @@ pub struct ScanArgs {
     /// Output as JSON
     #[arg(long)]
     pub json: bool,
+
+    /// Dry run — show what would be done without doing it
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 pub fn run(args: ScanArgs) -> Result<()> {
+    if args.dry_run {
+        for path in &args.paths {
+            eprintln!("Would scan: {}", path.display());
+        }
+        return Ok(());
+    }
+
     let mut files = Vec::new();
 
     for path in &args.paths {
