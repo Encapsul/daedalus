@@ -6,10 +6,18 @@
 
 pub mod assembly;
 pub mod compress;
+pub mod cron;
 pub mod detect;
+pub mod dotenv;
+pub mod encrypt;
 pub mod format;
+pub mod layers;
+pub mod minify;
+pub mod otel;
+pub mod persistent;
 pub mod pkgmgr;
 pub mod tar;
+pub mod treeshake;
 
 #[cfg(feature = "python")]
 pub mod python;

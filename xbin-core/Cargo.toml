@@ -25,6 +25,18 @@ zstd = "0.13"           # zstd compression (C bindings, for building)
 # Tar archive creation
 tar = "0.4"
 
+# Encryption
+aes-gcm = "0.10"
+hkdf = "0.12"
+rand = "0.8"
+anyhow = "1"
+
+# Path utilities
+pathdiff = "0.2"
+
+# Secret detection in .env files
+regex = "1"
+
 # Python bindings (optional)
 pyo3 = { version = "0.29", features = ["extension-module"], optional = true }
 
