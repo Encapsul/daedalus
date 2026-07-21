@@ -216,8 +216,14 @@ fn py_read_at<'py>(
 // ─── compress ────────────────────────────────────────────────────────────
 
 #[pyfunction]
-fn py_compress<'py>(py: Python<'py>, data: &[u8]) -> PyResult<Bound<'py, PyBytes>> {
-    let compressed = compress::compress(data)
+#[pyo3(signature = (data, level=None))]
+fn py_compress<'py>(
+    py: Python<'py>,
+    data: &[u8],
+    level: Option<i32>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let lv = level.unwrap_or(19);
+    let compressed = compress::compress_with_level(data, lv)
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
     Ok(PyBytes::new(py, &compressed))
 }
