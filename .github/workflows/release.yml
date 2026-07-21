@@ -31,8 +31,11 @@ jobs:
 
       - name: Test binary
         run: |
+          echo "=== Debug: listing target dir ==="
+          ls -la target/x86_64-unknown-linux-musl/release/ 2>/dev/null || echo "target dir not found"
+          find target -name "xbin-stub" -type f 2>/dev/null || echo "xbin-stub not found"
           STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
+          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; file "$STUB" 2>&1; exit 1; }
           file "$STUB" | grep -q "x86-64" || { echo "FAIL: not x86_64"; exit 1; }
           "$STUB" --help 2>/dev/null || true
           echo "=== PASS: linux-x64 ==="
@@ -72,11 +75,15 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
           CC_aarch64_unknown_linux_musl: aarch64-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static"
 
       - name: Test binary
         run: |
+          echo "=== Debug: listing target dir ==="
+          ls -la target/aarch64-unknown-linux-musl/release/ 2>/dev/null || echo "target dir not found"
+          find target -name "xbin-stub" -type f 2>/dev/null || echo "xbin-stub not found"
           STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
+          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; file "$STUB" 2>&1; exit 1; }
           file "$STUB" | grep -q "aarch64" || { echo "FAIL: not aarch64"; exit 1; }
           echo "=== PASS: linux-arm64 ==="
 
@@ -120,8 +127,11 @@ jobs:
 
       - name: Test binary
         run: |
+          echo "=== Debug: listing target dir ==="
+          ls -la target/aarch64-apple-darwin/release/ 2>/dev/null || echo "target dir not found"
+          find target -name "xbin-crypto" -type f 2>/dev/null || echo "xbin-crypto not found"
           CRYPTO=target/aarch64-apple-darwin/release/xbin-crypto
-          file "$CRYPTO" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; exit 1; }
+          file "$CRYPTO" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; file "$CRYPTO" 2>&1; exit 1; }
           file "$CRYPTO" | grep -q "arm64" || { echo "FAIL: not arm64"; exit 1; }
           echo "=== PASS: macos-arm64 ==="
 
@@ -157,8 +167,11 @@ jobs:
 
       - name: Test binary
         run: |
+          echo "=== Debug: listing target dir ==="
+          ls -la target/x86_64-apple-darwin/release/ 2>/dev/null || echo "target dir not found"
+          find target -name "xbin-crypto" -type f 2>/dev/null || echo "xbin-crypto not found"
           CRYPTO=target/x86_64-apple-darwin/release/xbin-crypto
-          file "$CRYPTO" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; exit 1; }
+          file "$CRYPTO" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; file "$CRYPTO" 2>&1; exit 1; }
           file "$CRYPTO" | grep -q "x86_64" || { echo "FAIL: not x86_64"; exit 1; }
           echo "=== PASS: macos-x64 ==="
 
