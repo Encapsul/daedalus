@@ -66,7 +66,26 @@ def register(rt: Runtime) -> None:
 
 
 def detect_runtime(app_dir: Path) -> RuntimePlan:
-    """Try every registered runtime in order.  Raises ValueError on failure."""
+    """Try every registered runtime in order.  Raises ValueError on failure.
+
+    Uses xbin_core (Rust) for fast pre-check when available, then falls back
+    to the full Python detection loop for RuntimePlan construction.
+    """
+    # Fast path: Rust pre-check narrows down which runtime to try first
+    try:
+        import xbin_core
+
+        rust_name = xbin_core.py_detect_runtime(str(app_dir))
+        if rust_name is not None:
+            for rt in _RUNTIME_REGISTRY:
+                if rt.name == rust_name:
+                    plan = rt.detect(app_dir)
+                    if plan is not None:
+                        return plan
+    except ImportError:
+        pass
+
+    # Fallback: full Python detection loop
     for rt in _RUNTIME_REGISTRY:
         plan = rt.detect(app_dir)
         if plan is not None:
