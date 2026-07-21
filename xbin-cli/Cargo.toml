@@ -1,6 +1,6 @@
 [package]
 name = "xbin-cli"
-version = "0.2.8"
+version = "0.2.9"
 edition = "2021"
 description = "xbin CLI — package any app into a single self-extracting binary"
 
