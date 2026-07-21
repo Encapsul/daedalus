@@ -6,7 +6,7 @@
 
 Package any app into a single self-extracting binary.
 
-x.bin compiles web, server, and CLI applications -- with their runtime, dependencies, and data -- into a single self-contained ELF executable. Auto-detects your runtime and framework, bundles everything with zstd or SquashFS compression, and signs the result with Ed25519. Built in Rust with no Python dependency required at runtime.
+x.bin compiles any web, server, or CLI application into a single self-contained ELF executable. Supported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo.
 
 ## Quick start
 
@@ -16,6 +16,17 @@ xbin doctor
 cd your-app && xbin build . -o myapp.xbin
 ./myapp.xbin
 ```
+
+## Overview
+
+x.bin transforms any application directory into a portable, self-extracting binary that can run on target machines without requiring the host runtime. This includes:
+
+- **Python applications** — Django, FastAPI, Flask
+- **Node.js applications** — Next.js, Express, Fastify
+- **Go binaries** — Standalone executables
+- **Docker-like isolation** — Sandboxed, portable execution
+
+The tool handles runtime detection, dependency installation, compression, and signing through a unified, language-agnostic pipeline.
 
 ## Supported runtimes
 
@@ -32,6 +43,8 @@ cd your-app && xbin build . -o myapp.xbin
 | Perl | `Makefile.PL`, `cpanfile` | Mojolicious, Dancer |
 | Hugo | `hugo.toml`, `hugo.yaml` | Static site generator |
 | Binary | ELF executable | Any static or dynamic binary |
+
+Each runtime has specific detection logic and framework support that triggers when building.
 
 ## CLI commands
 
@@ -50,9 +63,16 @@ cd your-app && xbin build . -o myapp.xbin
 | `xbin completion <shell>` | Generate shell completions for bash, zsh, fish, elvish, or powershell |
 | `xbin man [dir]` | Generate man pages to the specified directory |
 
+### Key features
+- **Global `--verbose`** flag for detailed output on any command
+- **`--strict`** mode on `xbin doctor` for strict validation
+- **`--dry-run`** flag on build, inspect, scan for preview operations
+- **`.xbin.toml`** configuration file support
+- **Rust-based CLI** with zero Python dependency at runtime
+
 ## Configuration
 
-Place a `.xbin.toml` in your app directory. CLI flags always override config values.
+Place a `.xbin.toml` in your app directory. CLI flags override config file values.
 
 ```toml
 [package]
@@ -84,7 +104,7 @@ xbin build ./myapp \
   --verbose
 ```
 
-## Shell completion
+### Shell completion
 
 ```bash
 # Bash
@@ -97,7 +117,7 @@ xbin completion zsh >> ~/.zshrc
 xbin completion fish > ~/.config/fish/completions/xbin.fish
 ```
 
-## Man pages
+### Man pages
 
 ```bash
 xbin man /usr/local/share/man/man1/
@@ -137,6 +157,10 @@ cargo test
 cargo fmt --check
 ```
 
+### Coding conventions
+
+See [CODE_STYLE.md](CODE_STYLE.md) for Rust and Python style guidelines, best practices, and formatting rules.
+
 ## License
 
-MIT -- see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE) for details.
