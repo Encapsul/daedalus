@@ -82,7 +82,7 @@ pub fn minify_app_dir(app_dir: &Path, verbose: bool) -> io::Result<usize> {
                 }
             }
             if let Ok(read) = fs::read_dir(&path) {
-                for e in read.filter_map(|e| e.ok()) {
+                for e in read.filter_map(Result::ok) {
                     stack.push(e);
                 }
             }

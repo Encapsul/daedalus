@@ -12,7 +12,7 @@ pub fn parse_schedule(schedule: &str) -> u64 {
         return 86400;
     }
     if schedule == "@weekly" {
-        return 604800;
+        return 604_800;
     }
 
     let parts: Vec<&str> = schedule.split_whitespace().collect();
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn test_parse_weekly() {
-        assert_eq!(parse_schedule("@weekly"), 604800);
+        assert_eq!(parse_schedule("@weekly"), 604_800);
     }
 
     #[test]

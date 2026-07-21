@@ -128,7 +128,7 @@ pub fn detect_used_packages(app_dir: &Path) -> HashSet<String> {
         Err(_) => return HashSet::new(),
     };
 
-    let mut stack: Vec<_> = walker.filter_map(Result::ok).collect();
+    let mut stack: Vec<_> = walker.filter_map(|e| e.ok()).collect();
 
     while let Some(entry) = stack.pop() {
         let path = entry.path();
