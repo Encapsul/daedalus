@@ -15,6 +15,13 @@ from pathlib import Path
 from . import _format as fmt
 from . import crypto
 
+try:
+    from xbin_core import py_assemble_xbin as _rust_assemble
+
+    _HAS_RUST = True
+except ImportError:
+    _HAS_RUST = False
+
 XBIN_VERSION = "0.1.0"
 
 
@@ -102,6 +109,17 @@ def assemble_xbin(
 
     Returns the total file size.
     """
+    if not key_path and _HAS_RUST:
+        stub_bytes = stub.read_bytes()
+        return _rust_assemble(
+            str(out_path),
+            stub_bytes,
+            payload,
+            meta_bytes,
+            encrypt,
+            squashfs,
+            target_arch,
+        )
     stub_bytes = stub.read_bytes()
     # v5 when squashfs (payload_format in metadata), v4 when encrypting,
     # v3 when signing, v2 otherwise.

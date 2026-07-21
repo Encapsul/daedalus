@@ -26,7 +26,7 @@ zstd = "0.13"           # zstd compression (C bindings, for building)
 tar = "0.4"
 
 # Python bindings (optional)
-pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
+pyo3 = { version = "0.29", features = ["extension-module"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
