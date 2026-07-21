@@ -71,7 +71,7 @@ pub fn minify_app_dir(app_dir: &Path, verbose: bool) -> io::Result<usize> {
     let mut minified = 0;
 
     let walker = fs::read_dir(app_dir)?;
-    let mut stack: Vec<_> = walker.filter_map(|e| e.ok()).collect();
+    let mut stack: Vec<_> = walker.filter_map(Result::ok).collect();
 
     while let Some(entry) = stack.pop() {
         let path = entry.path();

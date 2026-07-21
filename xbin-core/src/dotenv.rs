@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::hash::BuildHasher;
 use std::io;
 use std::path::Path;
 
@@ -39,7 +40,7 @@ fn parse_line(line: &str) -> Option<(String, String)> {
     }
 
     let value = strip_quotes(raw);
-    Some((key.to_string(), value.to_string()))
+    Some((key.to_string(), value.clone()))
 }
 
 fn strip_quotes(s: &str) -> String {
@@ -49,7 +50,7 @@ fn strip_quotes(s: &str) -> String {
     s.to_string()
 }
 
-pub fn detect_secret_keys(env: &HashMap<String, String>) -> Vec<String> {
+pub fn detect_secret_keys<S: BuildHasher>(env: &HashMap<String, String, S>) -> Vec<String> {
     let re = Regex::new(r"(?i)(secret|password|token|api[_-]?key|private[_-]?key|credentials)")
         .unwrap();
     env.keys()
