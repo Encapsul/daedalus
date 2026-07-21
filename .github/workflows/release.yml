@@ -21,16 +21,16 @@ jobs:
         with:
           targets: x86_64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: stub
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Build
-        run: cargo build --release --target x86_64-unknown-linux-musl
-        working-directory: stub
+        run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub -p xbin-crypto
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
 
       - name: Test binary
         run: |
-          STUB=stub/target/x86_64-unknown-linux-musl/release/xbin-stub
+          STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
           file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
           file "$STUB" | grep -q "x86-64" || { echo "FAIL: not x86_64"; exit 1; }
           "$STUB" --help 2>/dev/null || true
@@ -38,8 +38,8 @@ jobs:
 
       - name: Package
         run: |
-          STUB=stub/target/x86_64-unknown-linux-musl/release/xbin-stub
-          CRYPTO=stub/target/x86_64-unknown-linux-musl/release/xbin-crypto
+          STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
+          CRYPTO=target/x86_64-unknown-linux-musl/release/xbin-crypto
           DIR="xbin-linux-x64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
@@ -64,19 +64,16 @@ jobs:
         with:
           targets: aarch64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: stub
       - run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build
-        run: cargo build --release --target aarch64-unknown-linux-musl
-        working-directory: stub
+        run: cargo build --release --target aarch64-unknown-linux-musl -p xbin-stub -p xbin-crypto
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
 
       - name: Test binary
         run: |
-          STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
+          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
           file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
           file "$STUB" | grep -q "aarch64" || { echo "FAIL: not aarch64"; exit 1; }
           echo "=== PASS: linux-arm64 ==="
@@ -84,13 +81,13 @@ jobs:
       - name: Test QEMU
         run: |
           sudo apt-get install -y qemu-user-static || true
-          STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
+          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
           qemu-aarch64-static "$STUB" --help 2>/dev/null && echo "OK: QEMU pass" || echo "OK: QEMU exit != 0 is fine"
 
       - name: Package
         run: |
-          STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
-          CRYPTO=stub/target/aarch64-unknown-linux-musl/release/xbin-crypto
+          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
+          CRYPTO=target/aarch64-unknown-linux-musl/release/xbin-crypto
           DIR="xbin-linux-arm64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
@@ -115,16 +112,13 @@ jobs:
         with:
           targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: stub
 
       - name: Build
-        run: cargo build --release --target aarch64-apple-darwin
-        working-directory: stub
+        run: cargo build --release --target aarch64-apple-darwin -p xbin-stub -p xbin-crypto
 
       - name: Test binary
         run: |
-          STUB=stub/target/aarch64-apple-darwin/release/xbin-stub
+          STUB=target/aarch64-apple-darwin/release/xbin-stub
           file "$STUB" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; exit 1; }
           file "$STUB" | grep -q "arm64" || { echo "FAIL: not arm64"; exit 1; }
           "$STUB" --help 2>/dev/null || true
@@ -132,8 +126,8 @@ jobs:
 
       - name: Package
         run: |
-          STUB=stub/target/aarch64-apple-darwin/release/xbin-stub
-          CRYPTO=stub/target/aarch64-apple-darwin/release/xbin-crypto
+          STUB=target/aarch64-apple-darwin/release/xbin-stub
+          CRYPTO=target/aarch64-apple-darwin/release/xbin-crypto
           DIR="xbin-macos-arm64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
@@ -158,16 +152,13 @@ jobs:
         with:
           targets: x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: stub
 
       - name: Build
-        run: cargo build --release --target x86_64-apple-darwin
-        working-directory: stub
+        run: cargo build --release --target x86_64-apple-darwin -p xbin-stub -p xbin-crypto
 
       - name: Test binary
         run: |
-          STUB=stub/target/x86_64-apple-darwin/release/xbin-stub
+          STUB=target/x86_64-apple-darwin/release/xbin-stub
           file "$STUB" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; exit 1; }
           file "$STUB" | grep -q "x86_64" || { echo "FAIL: not x86_64"; exit 1; }
           "$STUB" --help 2>/dev/null || true
@@ -175,8 +166,8 @@ jobs:
 
       - name: Package
         run: |
-          STUB=stub/target/x86_64-apple-darwin/release/xbin-stub
-          CRYPTO=stub/target/x86_64-apple-darwin/release/xbin-crypto
+          STUB=target/x86_64-apple-darwin/release/xbin-stub
+          CRYPTO=target/x86_64-apple-darwin/release/xbin-crypto
           DIR="xbin-macos-x64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
