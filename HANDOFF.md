@@ -5,6 +5,7 @@
 - **Format**: v5 (SquashFS support)
 - **Status**: Phase 1/2/3 COMPLETE — full Rust CLI, no Python dependency for builds
 - **Build**: `cargo build --release` (or `make stub` for development)
+- **CLI**: Rust CLI (`xbin` binary) — recommended. Python CLI (`cli/`) legacy only.
 - **Health check**: `xbin doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
 - **Release**: create release on GitHub UI → `on: release: types: [published]` triggers workflow → builds 4 platforms → uploads binaries + SHASUMS256.txt

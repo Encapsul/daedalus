@@ -32,6 +32,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
       - run: cargo clippy -p xbin-stub -- -D warnings
+      - run: cargo clippy -p xbin-cli -- -D warnings
+      - run: cargo build -p xbin-cli
 
   python:
     name: Python lint

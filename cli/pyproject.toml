@@ -1,6 +1,6 @@
 [project]
 name = "xbin"
-version = "0.2.9"
+version = "0.3.0"
 description = "Ship your web app like a binary. Run anywhere."
 requires-python = ">=3.10"
 dependencies = []  # core: stdlib only

@@ -11,9 +11,18 @@ pub struct InspectArgs {
     /// Output as JSON
     #[arg(long)]
     pub json: bool,
+
+    /// Dry run — show what would be done without doing it
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 pub fn run(args: InspectArgs) -> Result<()> {
+    if args.dry_run {
+        eprintln!("Would inspect: {}", args.file.display());
+        return Ok(());
+    }
+
     let mut f = std::fs::File::open(&args.file)
         .with_context(|| format!("failed to open {}", args.file.display()))?;
     let footer = Footer::read_from(&mut f)
