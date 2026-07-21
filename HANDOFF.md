@@ -3,29 +3,63 @@
 ## Current state
 
 - **Format**: v5 (SquashFS support)
-- **Status**: Phase 1 complete, Phase 2 pending, CLI compliant with clig.dev
-- **Build**: `make stub` + `pip install -e ./cli`
+- **Status**: Phase 1/2/3 COMPLETE — full Rust CLI, no Python dependency for builds
+- **Build**: `cargo build --release` (or `make stub` for development)
 - **Health check**: `xbin doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
-- **Release**: create release on GitHub UI → `on: release: types: [published]` triggers workflow → builds 4 platforms → uploads binaries + SHASUMS256.txt via `gh release upload --clobber`
+- **Release**: create release on GitHub UI → `on: release: types: [published]` triggers workflow → builds 4 platforms → uploads binaries + SHASUMS256.txt
 - **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo (11 total)
 - **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
-- **Rust core**: `xbin-core` crate — Phase 1 complete, stub uses shared library. Phase 2 (PyO3 bindings) started: format wired via `_format.py` wrapper
-- **Tests**: 234 Python + 26 Rust = 260 total (0 failures)
-- **Hugo**: runtime rewritten — builds at detect time, serves static files via python3 http.server
-- **`.env` baking**: implemented — `--env-file` flag, secret detection, bake into app layer
-- **Version metadata**: `--version-info`, `--author`, `--description`, `--license` flags
-- **Persistent storage**: `--persist` flag, `XBIN_PERSIST_DIR` env var
-- **Data files**: `--include PATH` flag (repeatable) to embed files/dirs in binary
-- **Tree-shaking**: `--tree-shake` removes unused node_modules packages
-- **Minification**: `--minify` shrinks JS/TS/CSS files before packaging
-- **Framework auto-detect**: Express, Fastify, Hono, Remix, SvelteKit, FastAPI, Flask detected from deps/source
-- **Health checks**: `--health-port` for /healthz, /readyz, /status endpoints
-- **OpenTelemetry**: `--otel-endpoint` for auto-instrumentation, OTLP export
-- **Cron/scheduled tasks**: `--cron NAME:SCHEDULE` for built-in periodic tasks
+- **Rust core**: `xbin-core` crate — format, compress, detect, pkgmgr, tar, assembly, sign, verify, scan, PyO3 bindings
+- **Rust CLI**: `xbin-cli` crate — 10 commands (build, inspect, scan, sign, verify, keygen, trust, doctor, env, clean)
+- **Tests**: 234 Python + 40 Rust = 274 total (0 failures)
 - **Last updated**: 2026-07-21
 - **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), all commits/tags signed, GitHub signing key id=1064819
 - **Release workflow**: `on: release: types: [published]` — create release on GitHub UI → workflow builds 4 platforms → uploads tar.gz + SHASUMS256.txt
+
+---
+
+## Best practices references
+
+### CLI design
+- **[clig.dev](https://clig.dev)** — Command Line Interface Guidelines (Aanand Prasad, Ben Firshman, Carl Tashian). Primary reference for our CLI UX.
+- **[Better CLI](https://bettercli.org/)** — CLI Design Guide & Reference. Covers lifecycle, config, distribution, security, analytics.
+- **[12 Factor CLI Apps](https://medium.com/@jdxcode/12-factor-cli-apps-dd3c227a0e46)** — Config via env vars, self-contained binaries, strict separation of build/release/run.
+- **[GNU Coding Standards](https://www.gnu.org/prep/standards/html_node/Command_002dLine-Interfaces.html)** — POSIX conventions, `--help`, `--version`.
+
+### CLI design — tool-specific inspiration
+- **Docker CLI** — noun-verb pattern (`docker container create`), `--format` Go templates, shell completion for 4 shells, `config.json` for persistent config, `NO_COLOR` support.
+- **Bun** — single binary, zero deps, fast startup, `bunfig.toml` config file, `--verbose` global flag.
+- **Wasmer** — `wasmer.toml` package manifest, `wasmer run` with runtime detection, template system.
+
+### Rust
+- **[Command Line Applications in Rust](https://rust-cli.github.io/book/)** — Config files, exit codes, human/machine communication, progress bars, signal handling.
+- **[Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)** — Naming, interoperability, macros, documentation, predictability, flexibility, type safety, dependability, debuggability, future-proofing.
+- **[The Rustonomicon](https://doc.rust-lang.org/nomicon/)** — Unsafe Rust: FFI, memory model, type punning, uninitialized memory, concurrency. Only needed for low-level stub work.
+- **[clap](https://docs.rs/clap)** — Derive-based arg parsing, shell completion generation, `#[command(flatten)]` for shared args.
+- **[anyhow](https://docs.rs/anyhow)** — Error context with `.context("message")`, `bail!()` macro for early returns.
+- **[human-panic](https://docs.rs/human-panic)** — User-friendly crash reports instead of ugly backtraces.
+
+### What we follow from each reference
+
+| Rule | Source | Status |
+|------|--------|--------|
+| stdout=machine, stderr=messaging | clig.dev | ✅ |
+| `--json` for machine output | clig.dev | ✅ inspect, doctor |
+| `--no-color`, `NO_COLOR`, `TERM=dumb` | clig.dev | ✅ |
+| `-q`/`--quiet` | clig.dev | ✅ |
+| Confirm before dangerous actions | clig.dev | ✅ clean --all, doctor --fix |
+| `--force` / `-f` for scripts | clig.dev | ✅ |
+| `--version` reads from pyproject.toml | clig.dev | ✅ (was hardcoded 0.1.0) |
+| Shell completion (bash/zsh/fish) | Docker/Bun | ✅ `xbin completion {bash,zsh,fish}` |
+| `--strict` mode | Better CLI | ✅ doctor --strict |
+| `human-panic` crash reports | Rust CLI Book | ✅ |
+| `anyhow` for error context | Rust CLI Book | ✅ |
+| Global `--verbose` flag | Docker/Bun | ✅ |
+| Exit codes 0/1/2 | clig.dev + BSD sysexits | ✅ documented in help |
+| `--dry-run` for destructive ops | clig.dev | ❌ TODO |
+| Config file (`.xbin.toml`) | Docker/Bun/Wasmer | ❌ TODO |
+| Man pages | Rust CLI Book | ❌ TODO |
 
 ---
 
