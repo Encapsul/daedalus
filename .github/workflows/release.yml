@@ -45,15 +45,8 @@ jobs:
           cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-
-          cat > "${DIR}/bin/xbin" << 'WRAPPER'
-#!/usr/bin/env bash
-XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-exec python3 -m xbin "$@"
-WRAPPER
+          printf '#!/usr/bin/env bash\nXBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"\nexport PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"\nexec python3 -m xbin "$@"\n' > "${DIR}/bin/xbin"
           chmod +x "${DIR}/bin/xbin"
-
           tar czf "${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
@@ -103,15 +96,8 @@ WRAPPER
           cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-
-          cat > "${DIR}/bin/xbin" << 'WRAPPER'
-#!/usr/bin/env bash
-XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-exec python3 -m xbin "$@"
-WRAPPER
+          printf '#!/usr/bin/env bash\nXBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"\nexport PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"\nexec python3 -m xbin "$@"\n' > "${DIR}/bin/xbin"
           chmod +x "${DIR}/bin/xbin"
-
           tar czf "${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
@@ -153,15 +139,8 @@ WRAPPER
           cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-
-          cat > "${DIR}/bin/xbin" << 'WRAPPER'
-#!/usr/bin/env bash
-XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-exec python3 -m xbin "$@"
-WRAPPER
+          printf '#!/usr/bin/env bash\nXBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"\nexport PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"\nexec python3 -m xbin "$@"\n' > "${DIR}/bin/xbin"
           chmod +x "${DIR}/bin/xbin"
-
           tar czf "${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
@@ -203,15 +182,8 @@ WRAPPER
           cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-
-          cat > "${DIR}/bin/xbin" << 'WRAPPER'
-#!/usr/bin/env bash
-XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-exec python3 -m xbin "$@"
-WRAPPER
+          printf '#!/usr/bin/env bash\nXBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"\nexport PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"\nexec python3 -m xbin "$@"\n' > "${DIR}/bin/xbin"
           chmod +x "${DIR}/bin/xbin"
-
           tar czf "${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
