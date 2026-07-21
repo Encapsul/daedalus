@@ -30,7 +30,7 @@ pub struct BuildArgs {
     #[arg(long)]
     pub encrypt: bool,
 
-    /// Use SquashFS instead of zstd+tar
+    /// Use `SquashFS` instead of zstd+tar
     #[arg(long)]
     pub squashfs: bool,
 
@@ -61,6 +61,10 @@ pub struct BuildArgs {
     /// License
     #[arg(long)]
     pub license: Option<String>,
+
+    /// Dry run — show what would be built without building
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
@@ -69,11 +73,33 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         anyhow::bail!("{} is not a directory", app_dir.display());
     }
 
-    let output = if args.output.extension().map_or(false, |e| e == "xbin") {
+    let output = if args.output.extension().is_some_and(|e| e == "xbin") {
         args.output.clone()
     } else {
         args.output.join("app.xbin")
     };
+
+    // Load .xbin.toml config if present
+    let config = load_config(&app_dir);
+
+    // Apply config defaults (CLI flags override)
+    let isolation = if args.isolation != "sandbox" {
+        args.isolation
+    } else {
+        config.build.isolation.unwrap_or_else(|| "sandbox".into())
+    };
+
+    let seccomp = args.seccomp || config.build.seccomp.unwrap_or(false);
+    let encrypt = args.encrypt || config.build.encrypt.unwrap_or(false);
+    let squashfs = args.squashfs || config.build.squashfs.unwrap_or(false);
+    let version_info = args.version_info.or(config.package.version);
+    let author = args.author.or(config.package.author);
+    let description = args.description.or(config.package.description);
+    let license = args.license.or(config.package.license);
+    let env_file = args.env_file.or(config.build.env_file.map(PathBuf::from));
+    let no_install = args.no_install || config.build.no_install.unwrap_or(false);
+    let target = args.target.or(config.build.target);
+    let isolation_num: u32 = isolation.parse().unwrap_or(1);
 
     // Detect runtime
     let runtime = detect::detect_runtime(&app_dir);
@@ -91,6 +117,48 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         eprintln!("Detected runtime: {runtime_name}");
     }
 
+    // Dry run: print plan and exit
+    if args.dry_run {
+        eprintln!("Dry run — would build:");
+        eprintln!("  App:       {}", app_dir.display());
+        eprintln!("  Output:    {}", output.display());
+        eprintln!("  Runtime:   {runtime_name}");
+        eprintln!("  Isolation: {isolation}");
+        eprintln!("  Seccomp:   {seccomp}");
+        eprintln!("  Encrypt:   {encrypt}");
+        eprintln!("  SquashFS:  {squashfs}");
+        if let Some(ref v) = version_info { eprintln!("  Version:   {v}"); }
+        if let Some(ref a) = author { eprintln!("  Author:    {a}"); }
+        if let Some(ref d) = description { eprintln!("  Desc:      {d}"); }
+        if let Some(ref l) = license { eprintln!("  License:   {l}"); }
+        if let Some(ref t) = target { eprintln!("  Target:    {t}"); }
+        if let Some(ref e) = env_file { eprintln!("  Env file:  {}", e.display()); }
+        if no_install { eprintln!("  No install: yes"); }
+
+        // Detect package manager
+        let pkg_mgr = pkgmgr::detect_pkgmgr(&app_dir, runtime_name);
+        if let Some(mgr) = &pkg_mgr {
+            eprintln!("  Pkg mgr:   {}", mgr.name());
+            if !no_install {
+                let cmd = mgr.install_cmd();
+                eprintln!("  Install:   {}", cmd.join(" "));
+            }
+        } else {
+            eprintln!("  Pkg mgr:   (none)");
+        }
+
+        // Estimate sizes
+        let file_count = count_files(&app_dir);
+        eprintln!("  Files:     {file_count}");
+
+        if verbose {
+            eprintln!("\nFile tree:");
+            print_tree(&app_dir, 2);
+        }
+
+        return Ok(());
+    }
+
     // Detect package manager
     let pkg_mgr = pkgmgr::detect_pkgmgr(&app_dir, runtime_name);
     if let Some(mgr) = &pkg_mgr {
@@ -98,7 +166,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             eprintln!("Package manager: {}", mgr.name());
         }
 
-        if !args.no_install {
+        if !no_install {
             if verbose {
                 eprintln!("Installing dependencies...");
             }
@@ -115,7 +183,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     }
 
     // Find stub binary
-    let stub = find_stub(&args.target)?;
+    let stub = find_stub(&target)?;
     let stub_bytes = std::fs::read(&stub)
         .with_context(|| format!("failed to read stub binary at {}", stub.display()))?;
 
@@ -152,24 +220,22 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
         .collect();
 
-    let isolation: u32 = args.isolation.parse().unwrap_or(1);
-
     let entrypoint = vec!["run".to_string()];
 
     let meta = xbin_core::assembly::build_meta_json(
         &app_name,
         runtime_name,
-        isolation,
+        isolation_num,
         &entrypoint,
         &env_pairs,
         &[],
         &xbin_core::assembly::MetaOptions {
-            version: args.version_info,
-            author: args.author,
-            description: args.description,
-            license: args.license,
+            version: version_info,
+            author,
+            description,
+            license,
             payload_format: Some("zstd-tar".to_string()),
-            seccomp: args.seccomp,
+            seccomp,
             app_hash: None,
             rt_deps_hash: None,
         },
@@ -185,9 +251,9 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         &stub_bytes,
         &payload,
         &meta,
-        args.encrypt,
-        args.squashfs,
-        args.target.as_deref(),
+        encrypt,
+        squashfs,
+        target.as_deref(),
     )
     .context("failed to assemble xbin")?;
 
@@ -196,15 +262,54 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // Sign if key provided
     if let Some(_key_path) = &args.key {
         eprintln!("Signing...");
-        // Sign is handled by the sign command - for now skip
         eprintln!("  [xbin] note: use 'xbin sign' to sign the binary");
     }
 
     Ok(())
 }
 
+#[derive(Default, serde::Deserialize)]
+struct XbinConfig {
+    #[serde(default)]
+    build: BuildConfig,
+    #[serde(default)]
+    package: PackageConfig,
+}
+
+#[derive(Default, serde::Deserialize)]
+struct BuildConfig {
+    pub isolation: Option<String>,
+    pub seccomp: Option<bool>,
+    pub encrypt: Option<bool>,
+    pub squashfs: Option<bool>,
+    pub target: Option<String>,
+    pub no_install: Option<bool>,
+    pub env_file: Option<String>,
+}
+
+#[derive(Default, serde::Deserialize)]
+struct PackageConfig {
+    pub version: Option<String>,
+    pub author: Option<String>,
+    pub description: Option<String>,
+    pub license: Option<String>,
+}
+
+fn load_config(app_dir: &Path) -> XbinConfig {
+    let config_path = app_dir.join(".xbin.toml");
+    if !config_path.exists() {
+        return XbinConfig::default();
+    }
+    match std::fs::read_to_string(&config_path) {
+        Ok(content) => toml::from_str(&content).unwrap_or_else(|e| {
+            eprintln!("[xbin] warning: invalid .xbin.toml: {e}");
+            XbinConfig::default()
+        }),
+        Err(_) => XbinConfig::default(),
+    }
+}
+
 fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
-    // Try env var
     if let Ok(path) = std::env::var("XBIN_STUB_PATH") {
         let p = PathBuf::from(path);
         if p.exists() {
@@ -212,7 +317,6 @@ fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
         }
     }
 
-    // Try cargo target dir
     let target_dir = std::env::var("CARGO_TARGET_DIR")
         .unwrap_or_else(|_| "target".into());
 
@@ -233,12 +337,55 @@ fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
         }
     }
 
-    // Try PATH
     if let Ok(p) = which::which("xbin-stub") {
         return Ok(p);
     }
 
     anyhow::bail!("xbin-stub not found — run: make stub")
+}
+
+fn count_files(dir: &Path) -> usize {
+    let mut count = 0;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str == ".git" || name_str == "node_modules" || name_str == "__pycache__"
+                || name_str == ".venv" || name_str == "venv" || name_str == ".xbin"
+            {
+                continue;
+            }
+            if entry.path().is_dir() {
+                count += count_files(&entry.path());
+            } else {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn print_tree(dir: &Path, indent: usize) {
+    let prefix = " ".repeat(indent);
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str == ".git" || name_str == "node_modules" || name_str == "__pycache__"
+                || name_str == ".venv" || name_str == "venv" || name_str == ".xbin"
+            {
+                continue;
+            }
+            if entry.path().is_dir() {
+                eprintln!("{prefix}{name_str}/");
+                print_tree(&entry.path(), indent + 2);
+            } else {
+                eprintln!("{prefix}{name_str}");
+            }
+        }
+    }
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {

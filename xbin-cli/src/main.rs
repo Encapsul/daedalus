@@ -1,14 +1,16 @@
 mod commands;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, CommandFactory};
+use clap_complete::{generate, shells::{Bash, Elvish, Fish, PowerShell, Zsh}};
+use std::io;
 
 #[derive(Parser)]
 #[command(
     name = "xbin",
     version,
     about = "Package any app into a single self-extracting binary",
-    long_about = "x.bin compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  xbin build ./myapp -o myapp.xbin\n  xbin inspect myapp.xbin\n  xbin keygen\n  xbin sign myapp.xbin --key ~/.xbin/keys/*.key\n  xbin verify myapp.xbin\n  xbin doctor\n  xbin scan ."
+    long_about = "x.bin compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  xbin build ./myapp -o myapp.xbin\n  xbin inspect myapp.xbin\n  xbin keygen\n  xbin sign myapp.xbin --key ~/.xbin/keys/*.key\n  xbin verify myapp.xbin\n  xbin doctor\n  xbin scan .\n  xbin completion bash >> ~/.bashrc\n  xbin completion zsh >> ~/.zshrc\n  xbin completion fish > ~/.config/fish/completions/xbin.fish"
 )]
 struct Cli {
     /// Enable verbose output
@@ -50,6 +52,29 @@ enum Commands {
 
     /// Show xbin environment info
     Env(commands::env::EnvArgs),
+
+    /// Generate shell completion scripts
+    Completion {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+
+    /// Generate man pages (to a directory)
+    Man {
+        /// Output directory for man pages
+        #[arg(default_value = ".")]
+        dir: std::path::PathBuf,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum Shell {
+    Bash,
+    Zsh,
+    Fish,
+    Elvish,
+    PowerShell,
 }
 
 fn main() -> Result<()> {
@@ -68,5 +93,49 @@ fn main() -> Result<()> {
         Commands::Doctor(args) => commands::doctor::run(args),
         Commands::Clean(args) => commands::clean::run(args),
         Commands::Env(args) => commands::env::run(args),
+        Commands::Completion { shell } => {
+            let mut cmd = Cli::command();
+            let bin_name = "xbin";
+            match shell {
+                Shell::Bash => generate(Bash, &mut cmd, bin_name, &mut io::stdout()),
+                Shell::Zsh => generate(Zsh, &mut cmd, bin_name, &mut io::stdout()),
+                Shell::Fish => generate(Fish, &mut cmd, bin_name, &mut io::stdout()),
+                Shell::Elvish => generate(Elvish, &mut cmd, bin_name, &mut io::stdout()),
+                Shell::PowerShell => generate(PowerShell, &mut cmd, bin_name, &mut io::stdout()),
+            }
+            Ok(())
+        }
+        Commands::Man { dir } => {
+            generate_man_pages(&dir)
+        }
     }
+}
+
+fn generate_man_pages(dir: &std::path::PathBuf) -> Result<()> {
+    std::fs::create_dir_all(dir)?;
+
+    let cmd = Cli::command();
+
+    // Generate man page for the main command
+    let man = clap_mangen::Man::new(cmd.clone());
+    let mut buffer = Vec::new();
+    man.render(&mut buffer)?;
+    let man_path = dir.join("xbin.1");
+    std::fs::write(&man_path, &buffer)?;
+
+    // Generate man pages for subcommands
+    for sub in cmd.get_subcommands() {
+        let sub_name = sub.get_name();
+        let mut sub_cmd = cmd.clone();
+        sub_cmd = sub_cmd.subcommand(sub.clone());
+
+        let man = clap_mangen::Man::new(sub_cmd);
+        let mut buffer = Vec::new();
+        man.render(&mut buffer)?;
+        let man_path = dir.join(format!("xbin-{}.1", sub_name));
+        std::fs::write(&man_path, &buffer)?;
+    }
+
+    eprintln!("Generated man pages in {}", dir.display());
+    Ok(())
 }

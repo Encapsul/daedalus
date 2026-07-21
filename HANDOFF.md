@@ -57,9 +57,61 @@
 | `anyhow` for error context | Rust CLI Book | ✅ |
 | Global `--verbose` flag | Docker/Bun | ✅ |
 | Exit codes 0/1/2 | clig.dev + BSD sysexits | ✅ documented in help |
-| `--dry-run` for destructive ops | clig.dev | ❌ TODO |
-| Config file (`.xbin.toml`) | Docker/Bun/Wasmer | ❌ TODO |
+| `--dry-run` for destructive ops | clig.dev | ✅ xbin build --dry-run |
+| Config file (`.xbin.toml`) | Docker/Bun/Wasmer | ✅ .xbin.toml in app dir |
+| Shell completion (Rust CLI) | clap_complete | ✅ `xbin completion bash/zsh/fish` |
+| Man pages | Rust CLI Book | ✅ `xbin man [dir]` |
+| `human-panic` crash reports | Rust CLI Book | ✅ |
+| `anyhow` for error context | Rust CLI Book | ✅ |
+| Global `--verbose` flag | Docker/Bun | ✅ |
+| Exit codes 0/1/2 | clig.dev + BSD sysexits | ✅ documented in help |
 | Man pages | Rust CLI Book | ❌ TODO |
+
+## Config file (`.xbin.toml`)
+
+Place `.xbin.toml` in your app directory. CLI flags override config file values.
+
+```toml
+[package]
+version = "1.0.0"
+author = "Your Name"
+description = "My awesome app"
+license = "MIT"
+
+[build]
+isolation = "sandbox"
+seccomp = true
+encrypt = false
+squashfs = false
+target = "x86_64"
+no_install = false
+env_file = ".env"
+```
+
+### Shell completion
+
+```bash
+# Bash
+xbin completion bash >> ~/.bashrc
+
+# Zsh
+xbin completion zsh >> ~/.zshrc
+
+# Fish
+xbin completion fish > ~/.config/fish/completions/xbin.fish
+```
+
+### Man pages
+
+```bash
+xbin man /usr/local/share/man/man1/
+```
+
+### Dry run
+
+```bash
+xbin build ./myapp --dry-run --verbose
+```
 
 ---
 
