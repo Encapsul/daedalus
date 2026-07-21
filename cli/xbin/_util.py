@@ -62,8 +62,8 @@ def find_binary(
     """Locate a compiled Rust binary in standard cargo output directories.
 
     If target_arch is set, search for that architecture's binary instead
-    of the host architecture's.  Searches repo/target, /tmp/xbin-stub-target,
-    and the env_var override.
+    of the host architecture's.  Searches repo/target, repo/stub/target,
+    /tmp/xbin-stub-target, and the env_var override.
 
     Raises FileNotFoundError with error_msg if not found.
     """
@@ -73,10 +73,18 @@ def find_binary(
     repo = here.parents[2]  # cli/xbin/_util.py -> repo root
     tmp_target = Path("/tmp/xbin-stub-target")
     candidates = [
+        # Workspace-level target (cargo builds here for workspace projects)
+        repo / f"target/{target_triple}/release/{name}",
+        repo / f"target/release/{name}",
+        # Stub subcrate target
         repo / f"stub/target/{target_triple}/release/{name}",
         repo / f"stub/target/release/{name}",
+        # /tmp workaround (vfat filesystems)
         tmp_target / f"{target_triple}/release/{name}",
         tmp_target / f"release/{name}",
+        # Debug builds
+        repo / f"target/{target_triple}/debug/{name}",
+        repo / f"target/debug/{name}",
         repo / f"stub/target/{target_triple}/debug/{name}",
         repo / f"stub/target/debug/{name}",
         tmp_target / f"{target_triple}/debug/{name}",

@@ -139,18 +139,20 @@ def main(argv: list[str] | None = None) -> int:
             "  xbin doctor                           Check prerequisites\n"
             "  xbin scan                             Scan for .xbin files\n"
             "  xbin upgrade                          Upgrade to latest release\n"
+            "  xbin completion bash >> ~/.bashrc     Install bash completions\n"
+            "  xbin completion zsh >> ~/.zshrc       Install zsh completions\n"
             "\nexit codes:\n"
             "  0   success\n"
             "  1   operation failed (build error, bad input, etc.)\n"
             "  2   usage error (missing args, invalid flags)\n"
-            "\nfull docs: https://github.com/xbin-org/xbin"
+            "\nfull docs: https://github.com/Tednoob17/x.bin"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.1.0",
+        version="%(prog)s " + __import__("xbin").__version__,
     )
     parser.add_argument(
         "--no-color",
@@ -391,6 +393,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="skip confirmation prompt (for use with --fix in scripts)",
     )
+    p_doctor.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit with error if any required tool is missing",
+    )
 
     p_scan = sub.add_parser("scan", help="scan for .xbin files and show metadata")
     _SUBPARSERS["scan"] = p_scan
@@ -419,6 +426,16 @@ def main(argv: list[str] | None = None) -> int:
         nargs="?",
         default=None,
         help="command to get help for (omit for general help)",
+    )
+
+    p_completion = sub.add_parser(
+        "completion", help="generate shell completion scripts"
+    )
+    _SUBPARSERS["completion"] = p_completion
+    p_completion.add_argument(
+        "shell",
+        choices=["bash", "zsh", "fish"],
+        help="shell to generate completions for",
     )
 
     args = parser.parse_args(argv)
@@ -533,6 +550,7 @@ def main(argv: list[str] | None = None) -> int:
                 json_output=args.json,
                 fix=args.fix,
                 force=args.force,
+                strict=args.strict,
             )
 
         if args.command == "scan":
@@ -545,6 +563,11 @@ def main(argv: list[str] | None = None) -> int:
 
             upgrade(verbose=_verbose)
             return 0
+
+        if args.command == "completion":
+            from .completions import completion
+
+            return completion(args.shell)
     except (
         FileNotFoundError,
         NotADirectoryError,

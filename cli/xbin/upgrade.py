@@ -11,10 +11,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+from . import __version__ as _XBIN_VERSION
 from ._color import green, red
 
 _GITHUB_API = "https://api.github.com/repos/Tednoob17/x.bin/releases/latest"
-_XBIN_VERSION = "0.1.0"
 
 
 def _detect_platform() -> str:

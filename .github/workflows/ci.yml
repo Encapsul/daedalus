@@ -65,7 +65,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y zstd musl-tools
       - run: make stub
       - run: pip install -e ./cli
-      - run: xbin doctor
+      - run: xbin doctor --strict
       - run: xbin build examples/hello-web -o /tmp/hello-web.xbin
       - run: xbin inspect /tmp/hello-web.xbin
       - run: xbin keygen --key-dir /tmp/xbin-keys
