@@ -24,7 +24,7 @@
 - **OpenTelemetry**: `--otel-endpoint` for auto-instrumentation, OTLP export
 - **Cron/scheduled tasks**: `--cron NAME:SCHEDULE` for built-in periodic tasks
 - **Last updated**: 2026-07-21
-- **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), all commits/tags signed, GitHub key id=157872036
+- **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), all commits/tags signed, GitHub signing key id=1064819
 - **Release workflow**: `on: release: types: [published]` — create release on GitHub UI → workflow builds 4 platforms → uploads tar.gz + SHASUMS256.txt
 
 ---
@@ -43,7 +43,7 @@ git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
 ```
 
 **Key**: `~/.ssh/git_signing_key` (ed25519, email: teddams047@gmail.com)
-**GitHub key**: id=157872036, title="git-signing", type=signing
+**GitHub key**: id=1064819, title="Signing Key", type=signing (added via `gh ssh-key add --type signing`)
 
 **New tags**: always use `git tag -s vX.Y.Z -m "message"` (NOT `git tag -a`).
 **New commits**: signing is automatic (`commit.gpgsign=true`).

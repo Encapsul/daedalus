@@ -86,15 +86,10 @@ impl PyFooter {
     }
 
     fn pack<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        let core_size = if self.format_version >= 3 {
+        let total = if self.format_version >= 3 {
             format::V3_FOOTER_SIZE as usize
         } else {
             format::V2_FOOTER_SIZE as usize
-        };
-        let total = if self.format_version >= 3 {
-            core_size
-        } else {
-            core_size
         };
         let mut buf = vec![0u8; total];
 

@@ -24,6 +24,9 @@ pub const FLAG_ENCRYPTED: u8 = 0x02;
 pub const ARCH_X86_64: u8 = 0x01;
 pub const ARCH_AARCH64: u8 = 0x02;
 
+pub const SIG_BLOCK_SIZE: usize = 68;
+pub const SIG_BLOCK_SIZE_FIELD: usize = 4;
+
 /// Fixed footer at the very end of a .xbin file.
 #[derive(Debug)]
 pub struct Footer {
@@ -50,6 +53,14 @@ impl Footer {
 
     pub fn is_signed(&self) -> bool {
         self.flags & FLAG_SIGNED != 0
+    }
+
+    pub fn footer_size(&self) -> u64 {
+        if self.format_version >= 3 {
+            V3_FOOTER_SIZE
+        } else {
+            V2_FOOTER_SIZE
+        }
     }
 
     pub fn read_from<R: Read + Seek>(r: &mut R) -> io::Result<Footer> {
