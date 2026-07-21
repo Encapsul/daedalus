@@ -277,6 +277,7 @@ def doctor(
     json_output: bool = False,
     fix: bool = False,
     force: bool = False,
+    strict: bool = False,
 ) -> int:
     """Check all prerequisites. Returns 0 if all required checks pass."""
     results = _collect_checks()
@@ -294,14 +295,20 @@ def doctor(
 
     # No --fix: just report.
     if not fix:
-        if required_failed:
+        if required_failed and strict:
             if verbose:
                 from ._color import red as _red
 
                 msg = "Some required tools are missing. Install them and re-run."
                 print(f"\n{_red(msg)}")
             return 1
-        if verbose:
+        if required_failed and verbose:
+            from ._color import yellow as _yellow
+
+            print(
+                f"\n{_yellow('Some required tools are missing. Use --strict to fail on missing tools.')}"
+            )
+        if not required_failed and verbose:
             from ._color import green as _green
 
             print(f"\n{_green('All required checks passed.')}")

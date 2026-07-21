@@ -22,7 +22,7 @@ try:
 except ImportError:
     _HAS_RUST = False
 
-XBIN_VERSION = "0.1.0"
+from . import __version__ as XBIN_VERSION
 
 
 def build_meta_json(

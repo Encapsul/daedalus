@@ -1316,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "xbin-cli"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "clap",
  "ed25519-dalek",
@@ -1334,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "xbin-core"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "pyo3",
  "ruzstd",
@@ -1348,7 +1348,7 @@ dependencies = [
 
 [[package]]
 name = "xbin-stub"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "aes-gcm",
  "backhand",

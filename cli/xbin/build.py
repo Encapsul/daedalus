@@ -36,8 +36,6 @@ from .manifest import build_manifest
 from .persistent import get_persist_env
 from .pkgmgr import detect_pkgmgr, install_deps
 
-XBIN_VERSION = "0.1.0"
-
 _IGNORED_APP_DIRS = {".venv", "venv", "site-packages", "node_modules", ".git"}
 
 _LOCK_FILES = [
