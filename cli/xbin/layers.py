@@ -230,6 +230,16 @@ def tar_deterministic(root: Path) -> bytes:
 
 
 def zstd(raw: bytes) -> bytes:
+    """Compress bytes with zstd (level 19, multi-threaded).
+
+    Uses xbin_core (Rust) when available, falls back to zstd CLI.
+    """
+    try:
+        import xbin_core
+
+        return xbin_core.py_compress(raw, 19)
+    except ImportError:
+        pass
     return subprocess.run(
         ["zstd", "-19", "-T0", "-c"], input=raw, capture_output=True, check=True
     ).stdout
