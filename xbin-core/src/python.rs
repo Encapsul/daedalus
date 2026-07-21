@@ -326,6 +326,22 @@ fn py_pkgmgr_install_cmd(mgr: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+// ─── tar ─────────────────────────────────────────────────────────────────
+
+#[pyfunction]
+fn py_create_tar<'py>(py: Python<'py>, root: &str) -> PyResult<Bound<'py, PyBytes>> {
+    let tar_bytes = crate::tar::create_deterministic_tar(Path::new(root))
+        .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+    Ok(PyBytes::new(py, &tar_bytes))
+}
+
+#[pyfunction]
+fn py_create_tar_zstd<'py>(py: Python<'py>, root: &str) -> PyResult<Bound<'py, PyBytes>> {
+    let compressed = crate::tar::create_tar_zstd(Path::new(root))
+        .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+    Ok(PyBytes::new(py, &compressed))
+}
+
 // ─── module ──────────────────────────────────────────────────────────────
 
 #[pymodule]
@@ -366,6 +382,10 @@ fn xbin_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_detect_node_pkgmgr, m)?)?;
     m.add_function(wrap_pyfunction!(py_detect_pkgmgr, m)?)?;
     m.add_function(wrap_pyfunction!(py_pkgmgr_install_cmd, m)?)?;
+
+    // tar
+    m.add_function(wrap_pyfunction!(py_create_tar, m)?)?;
+    m.add_function(wrap_pyfunction!(py_create_tar_zstd, m)?)?;
 
     Ok(())
 }

@@ -8,6 +8,7 @@ pub mod compress;
 pub mod detect;
 pub mod format;
 pub mod pkgmgr;
+pub mod tar;
 
 #[cfg(feature = "python")]
 pub mod python;
