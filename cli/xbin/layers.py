@@ -211,7 +211,16 @@ def build_app_layer(
 
 
 def tar_deterministic(root: Path) -> bytes:
-    """Deterministic tar of `root` content (normalized mtime/uid/gid, sorted entries)."""
+    """Deterministic tar of `root` content (normalized mtime/uid/gid, sorted entries).
+
+    Uses xbin_core (Rust) when available, falls back to Python tarfile.
+    """
+    try:
+        import xbin_core
+
+        return xbin_core.py_create_tar(str(root))
+    except ImportError:
+        pass
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w", format=tarfile.GNU_FORMAT) as tf:
         entries = sorted(p for p in root.rglob("*"))
