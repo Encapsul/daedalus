@@ -82,7 +82,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "slice with incorrect length")]
     fn test_hkdf_wrong_length_panics() {
         let seed = vec![0u8; 16];
         let arr: &[u8; 32] = seed.as_slice().try_into().unwrap();
