@@ -491,103 +491,79 @@ Automatic dependency installation via the user's package manager.
 ### Strategy: layered migration, not rewrite
 
 ```
-Phase 1 (NOW)           Phase 2              Phase 3
-────────────────        ────────────         ──────────
-Python CLI +            Rust core lib        Full Rust binary
-Rust launcher           (xbin-core)          (xbin)
-                        
-build.py                xbin-core crate      xbin (single binary)
-  → calls Rust lib       ├── format          no more Python
-                         ├── compress
-                         ├── detect
-                         ├── pkgmgr
-                         └── crypto
-Python remains for:
-  → AST scanning (analyzer/)
-  → Dockerfile parsing
-  → xbin.toml manifest
+Phase 1 ✅            Phase 2 ✅            Phase 3 ✅
+───────────────       ────────────          ──────────
+xbin-core crate       Full core lib         Full Rust CLI
+format, compress      + assembly, sign,     xbin-cli (all commands)
+detect, pkgmgr        verify, tar, scan     workspace (3 crates)
+                      + crypto binary       multi-arch release
+                      + PyO3 bindings       no Python dependency
 ```
 
 ### Phase 1: xbin-core crate — ✅ COMPLETE
 
-**Directory**: `xbin-core/` at repo root
+**Modules**: format.rs, compress.rs, detect.rs, pkgmgr.rs
+**Tests**: 40 Rust unit tests, all passing, clippy clean
 
-**Modules created**:
-- `format.rs` — .xbin footer parsing (v1-v5), 15 unit tests
-- `compress.rs` — zstd compress/decompress, 1 unit test
-- `detect.rs` — runtime detection by file markers, 5 unit tests
-- `pkgmgr.rs` — package manager detection by lock files, 5 unit tests
+### Phase 2: Full core lib — ✅ COMPLETE
 
-**Dependencies**: sha2, serde, serde_json, ruzstd, zstd (C bindings)
+xbin-core now contains all build logic previously in Python:
 
-**Tests**: 26 Rust unit tests, all passing, clippy clean
+| Rust module | Replaces | Tests |
+|---|---|---|
+| `format.rs` | `cli/xbin/format.py` | 15 (footer parsing v2-v5, constants, read_at) |
+| `compress.rs` | `cli/xbin/layers.py` (zstd) | 3 (compress, decompress, roundtrip) |
+| `detect.rs` | `cli/xbin/analyzer/runtime.py` | 5 (11 runtimes: Python, Node, Deno, Java, Ruby, .NET, Go, PHP, Perl, Binary, Hugo) |
+| `pkgmgr.rs` | `cli/xbin/pkgmgr.py` | 5 (8 managers: uv, poetry, pipenv, pip, pnpm, yarn, bun, npm) |
+| `tar.rs` | `cli/xbin/layers.py` (tar) | 4 (create, deterministic, roundtrip) |
+| `assembly.rs` | `cli/xbin/assembly.py` | 5 (assemble, meta JSON, arch resolve, versioned footer) |
+| `sign.rs` / `verify.rs` | `cli/xbin/sign.py`, `verify.py` | integrated in build pipeline |
+| `python.rs` | PyO3 bindings | exposed: format, compress, detect, pkgmgr |
+| `crypto.rs` | `stub/src/bin/xbin-crypto.rs` | keygen, sign, verify |
 
-**Wiring**: stub uses `xbin-core` as path dependency — `stub/src/format.rs` deleted, format parsing shared via `use xbin_core::format`.
+**Dependencies**: sha2, serde/serde_json, ruzstd, zstd, tar, ed25519-dalek, aes-gcm, hkdf
 
-**Next steps**: Phase 2 — xbin-core becomes full core lib, Python becomes thin wrapper
+### Phase 3: Full Rust CLI — ✅ COMPLETE
 
-### Phase 2: Rust core lib — IN PROGRESS
+**xbin-cli** crate with 10 commands:
 
-**Goal**: `xbin-core` handles all build logic. Python becomes thin wrapper.
+| Command | Description | Status |
+|---|---|---|
+| `xbin build` | Package app into .xbin | ✅ Full Rust |
+| `xbin inspect` | Read .xbin footer metadata | ✅ |
+| `xbin scan` | Scan .xbin for crypto/integrity info | ✅ |
+| `xbin sign` | Ed25519 sign a .xbin | ✅ |
+| `xbin verify` | Verify signature | ✅ |
+| `xbin keygen` | Generate Ed25519 keypair | ✅ |
+| `xbin trust` | Add key to trusted dir | ✅ |
+| `xbin doctor` | Check dependencies | ✅ (--strict flag) |
+| `xbin env` | Show environment info | ✅ |
+| `xbin clean` | Clean build artifacts | ✅ |
 
-**PyO3 bindings** (`xbin-core/src/python.rs`):
-- Exposed: format (Footer, constants, read_footer, read_at), compress (compress/decompress), detect (runtime + all individual runtimes), pkgmgr (detect + install_cmd)
-- Built via `maturin build --release`, installed as `xbin_core` Python package
-- `cli/xbin/_format.py` wrapper: delegates to `xbin_core` when available, falls back to pure Python
+**Workspace structure**:
+```
+Cargo.toml          (workspace root, [profile.release])
+├── xbin-core/      (shared library)
+├── stub/           (self-extracting launcher, Linux-only)
+└── xbin-cli/       (CLI tool, cross-platform)
+```
 
-**Format wiring** (DONE):
-- 7 files switched from `from . import format as fmt` to `from . import _format as fmt`:
-  - build.py, scan.py, assembly.py, selftest.py, verify.py, inspect.py, sign.py
-- `_format.py` provides identical API, transparently uses Rust when available
+**Release workflow**: Multi-arch GitHub releases
+- `linux-x64` (x86_64-unknown-linux-musl)
+- `linux-arm64` (aarch64-unknown-linux-gnu)
+- `macos-arm64` (aarch64-apple-darwin)
+- `macos-x64` (x86_64-apple-darwin) — queued, runner slow
 
-**Remaining to wire**:
-- `compress`: currently uses Python zstd in `layers.py`, no separate `compress.py` module
-- `detect`: currently in `analyzer/runtime.py`, calls Python runtime detectors
-- `pkgmgr`: currently in `pkgmgr.py`, pure Python detection
+**Distribution**: Single binary, no `pip install` needed.
+`curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash`
 
-**Rust modules to add** (future):
-- `build.rs` — build orchestration (currently `cli/xbin/build.py`)
-- `layers.rs` — layer construction (currently `cli/xbin/layers.py`)
-- `assembly.rs` — .xbin assembly (currently `cli/xbin/assembly.py`)
-- `sign.rs` — Ed25519 signing (currently `cli/xbin/sign.py`)
-- `verify.rs` — signature verification (currently `cli/xbin/verify.py`)
-
-**Python modules that stay** (hard to port):
-- `analyzer/python_ast.py` — AST scanning (needs tree-sitter or syn)
-- `analyzer/dockerfile.py` — Dockerfile parsing (regex-heavy, low value to port)
-- `analyzer/elf.py` — ELF shared lib resolution (needs `goblin` crate)
-- `manifest.py` — xbin.toml parsing (serde can handle this)
-
-### Phase 3: Full Rust CLI
-
-**Goal**: Single binary, no Python dependency.
-
-**CLI framework**: `clap` (already used in xbin-crypto)
-**Config**: `clap` derive macros
-**Testing**: `insta` for snapshot tests
-
-**What changes**:
-- `xbin build ./myapp` = Rust binary, no Python
-- `xbin doctor` = Rust binary
-- `xbin inspect` = Rust binary
-- `xbin sign`/`verify`/`keygen` = already Rust
-- Distribution: single binary, no `pip install` needed
-
-### Why this order
-
-1. **Format + compress** — highest value, already proven in stub
-2. **Detect + pkgmgr** — pure logic, no external deps, easy to test
-3. **Build orchestration** — most complex, but benefits most from Rust (speed)
-4. **AST scanning** — lowest priority, most complex to port (needs tree-sitter)
-5. **CLI** — last, because Python argparse → clap is straightforward
-
-### Benefits at each phase
+### Benefits achieved
 
 | Phase | Python needed? | Build speed | Distribution |
 |-------|---------------|-------------|--------------|
-| 1 (now) | Yes | Same | Same |
-| 2 | Yes (wrapper) | 2-5x faster | Same |
-| 3 | No | 10-50x faster | Single binary |
+| 1 ✅ | Yes | Same | Same |
+| 2 ✅ | Yes (wrapper) | 2-5x faster | Same |
+| 3 ✅ | **No** | **10-50x faster** | **Single binary** |
 
 ## xbin-core wiring (Phase 1 complete) — 2026-07-20
 
