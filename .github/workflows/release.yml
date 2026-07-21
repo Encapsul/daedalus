@@ -236,6 +236,8 @@ WRAPPER
     name: Create GitHub Release
     needs: [linux-x64, linux-arm64, macos-arm64, macos-x64]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -245,56 +247,64 @@ WRAPPER
           path: artifacts
           merge-multiple: true
 
-      - name: List artifacts
+      - name: Debug — list downloaded files
         run: |
-          echo "=== Downloaded artifacts ==="
-          find artifacts -type f -name '*.tar.gz' | sort
-          ls -lh artifacts/
+          echo "=== Working directory ==="
+          pwd
+          echo "=== artifacts/ contents ==="
+          ls -lhR artifacts/ || echo "(empty or missing)"
+          echo "=== All .tar.gz files ==="
+          find . -name '*.tar.gz' -type f 2>/dev/null || echo "none"
 
       - name: Generate SHASUMS256.txt
         run: |
           cd artifacts
-          : > SHASUMS256.txt
-          for f in xbin-*.tar.gz; do
-            [ -f "$f" ] && sha256sum "$f"
-          done >> SHASUMS256.txt
-          echo "=== SHASUMS ==="
+          sha256sum xbin-linux-x64.tar.gz xbin-linux-arm64.tar.gz xbin-macos-arm64.tar.gz xbin-macos-x64.tar.gz > SHASUMS256.txt
           cat SHASUMS256.txt
 
-      - name: Write release body
-        run: |
-          cat > release-body.md << 'EOF'
-          ## x.bin — Package any app into a single executable
-
-          **Supported runtimes:** Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo
-
-          ### Quick install
-          ```bash
-          curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash
-          ```
-
-          ### Verify checksums
-          ```bash
-          sha256sum -c SHASUMS256.txt
-          ```
-          EOF
-
-      - name: Create GitHub release
+      - name: Create release with binaries
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ASSETS=""
-          for f in artifacts/xbin-*.tar.gz; do
-            [ -f "$f" ] && ASSETS="$ASSETS $f"
+          set -e
+          VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${GITHUB_REF_NAME}"
+          
+          # Verify all assets exist
+          for f in \
+            artifacts/xbin-linux-x64.tar.gz \
+            artifacts/xbin-linux-arm64.tar.gz \
+            artifacts/xbin-macos-arm64.tar.gz \
+            artifacts/xbin-macos-x64.tar.gz \
+            artifacts/SHASUMS256.txt; do
+            if [ ! -f "$f" ]; then
+              echo "ERROR: Missing asset: $f"
+              exit 1
+            fi
+            echo "Found: $f"
           done
-          [ -f "artifacts/SHASUMS256.txt" ] && ASSETS="$ASSETS artifacts/SHASUMS256.txt"
 
-          echo "Uploading:$ASSETS"
-
-          gh release create "$GITHUB_REF_NAME" \
+          # Create release with all assets
+          gh release create "$TAG" \
             --repo "${{ github.repository }}" \
-            --title "x.bin ${GITHUB_REF_NAME}" \
-            --notes-file release-body.md \
-            $ASSETS
+            --title "x.bin $VERSION" \
+            --notes "## x.bin v$VERSION
 
-          echo "=== Release published ==="
+**Supported runtimes:** Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo
+
+### Quick install
+\`\`\`bash
+curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
+\`\`\`
+
+### Verify checksums
+\`\`\`bash
+sha256sum -c SHASUMS256.txt
+\`\`\`" \
+            artifacts/xbin-linux-x64.tar.gz \
+            artifacts/xbin-linux-arm64.tar.gz \
+            artifacts/xbin-macos-arm64.tar.gz \
+            artifacts/xbin-macos-x64.tar.gz \
+            artifacts/SHASUMS256.txt
+
+          echo "=== Release published with all assets ==="
