@@ -129,11 +129,10 @@ fn generate_man_pages(dir: &std::path::PathBuf) -> Result<()> {
 
     // Generate man pages for subcommands
     for sub in cmd.get_subcommands() {
-        let sub_name = sub.get_name();
-        let mut sub_cmd = cmd.clone();
-        sub_cmd = sub_cmd.subcommand(sub.clone());
+        let sub_name = sub.get_name().to_owned();
+        let sub = sub.clone();
 
-        let man = clap_mangen::Man::new(sub_cmd)
+        let man = clap_mangen::Man::new(sub)
             .section("1")
             .manual("x.bin 0.3.0")
             .source("Ted Kouhouenou <ted.sig42@tutamail.com>");
