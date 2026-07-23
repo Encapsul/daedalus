@@ -43,6 +43,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long — Black handles wrapping; long strings are fine
+    "UP017", # datetime.UTC alias requires Python 3.11+; we support 3.10
 ]
 
 [tool.ruff.lint.isort]
