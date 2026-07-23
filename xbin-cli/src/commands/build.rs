@@ -69,6 +69,42 @@ pub struct BuildArgs {
     /// Dry run — show what would be built without building
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Incremental rebuild — reuse unchanged layers from existing .xbin
+    #[arg(long)]
+    pub update: bool,
+
+    /// Include extra files/directories in the rootfs (repeatable)
+    #[arg(long = "include", action = clap::ArgAction::Append)]
+    pub include: Vec<PathBuf>,
+
+    /// Enable persistent storage directory (`XBIN_PERSIST_DIR`)
+    #[arg(long)]
+    pub persist: bool,
+
+    /// Remove unused `node_modules` packages (tree-shaking)
+    #[arg(long)]
+    pub tree_shake: bool,
+
+    /// Minify JS/TS/CSS files before packaging
+    #[arg(long)]
+    pub minify: bool,
+
+    /// Health check HTTP port (sets `XBIN_HEALTH_PORT`)
+    #[arg(long)]
+    pub health_port: Option<u16>,
+
+    /// OpenTelemetry OTLP endpoint (sets `OTEL_EXPORTER_OTLP_ENDPOINT`)
+    #[arg(long)]
+    pub otel_endpoint: Option<String>,
+
+    /// OpenTelemetry protocol (default: grpc)
+    #[arg(long, default_value = "grpc")]
+    pub otel_protocol: String,
+
+    /// Scheduled task (repeatable): --cron NAME:SCHEDULE
+    #[arg(long = "cron", action = clap::ArgAction::Append)]
+    pub cron: Vec<String>,
 }
 
 pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
@@ -109,8 +145,9 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let isolation_num: u32 = isolation.parse().unwrap_or(1);
 
     // Detect runtime
-    let runtime = detect::detect_runtime(&app_dir)
-        .context("could not detect runtime — supported: python, node, deno, java, ruby, dotnet, go, php, perl, binary")?;
+    let runtime = detect::detect_runtime(&app_dir).context(
+        "could not detect runtime — supported: python, node, deno, java, ruby, dotnet, go, php, perl, binary",
+    )?;
     let runtime_name = runtime.name();
 
     if verbose {
@@ -148,6 +185,32 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         if no_install {
             eprintln!("  No install: yes");
         }
+        if args.update {
+            eprintln!("  Update:    yes (incremental)");
+        }
+        if args.tree_shake {
+            eprintln!("  Tree-shake: yes");
+        }
+        if args.minify {
+            eprintln!("  Minify:    yes");
+        }
+        if args.persist {
+            eprintln!("  Persist:   yes");
+        }
+        if let Some(port) = args.health_port {
+            eprintln!("  Health:    port {port}");
+        }
+        if args.otel_endpoint.is_some() {
+            eprintln!("  OTel:      {}", args.otel_endpoint.as_deref().unwrap());
+        }
+        if !args.cron.is_empty() {
+            eprintln!("  Cron:      {} task(s)", args.cron.len());
+        }
+        if !args.include.is_empty() {
+            for inc in &args.include {
+                eprintln!("  Include:   {}", inc.display());
+            }
+        }
 
         // Detect package manager
         let pkg_mgr = pkgmgr::detect_pkgmgr(&app_dir, runtime_name);
@@ -171,6 +234,46 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
 
         return Ok(());
+    }
+
+    // ── Tree-shaking: remove unused node_modules packages ──────────────
+    if args.tree_shake {
+        let removed = xbin_core::treeshake::prune_node_modules(&app_dir, verbose)
+            .context("tree-shaking failed")?;
+        if verbose {
+            eprintln!("  tree-shake: removed {removed} unused package(s)");
+        }
+    }
+
+    // ── Minification: shrink JS/TS/CSS ────────────────────────────────
+    if args.minify {
+        let minified =
+            xbin_core::minify::minify_app_dir(&app_dir, verbose).context("minification failed")?;
+        if verbose {
+            eprintln!("  minify: minified {minified} file(s)");
+        }
+    }
+
+    // ── Compute hashes for incremental update ──────────────────────────
+    let new_app_hash = xbin_core::include::hash_app_files(&app_dir);
+    let new_rt_hash = xbin_core::include::hash_lock_file(&app_dir);
+
+    // ── Incremental update: skip rebuild if nothing changed ────────────
+    if args.update && output.exists() {
+        if let Some((old_app_hash, old_rt_hash)) = read_existing_hashes(&output) {
+            if old_app_hash == new_app_hash && old_rt_hash == new_rt_hash {
+                if verbose {
+                    eprintln!("[xbin] everything up to date, nothing to rebuild");
+                }
+                return Ok(());
+            } else if old_rt_hash == new_rt_hash && old_app_hash != new_app_hash {
+                if verbose {
+                    eprintln!("[xbin] app changed, reusing runtime layer (full layer reuse not yet supported in Rust CLI — doing full rebuild)");
+                }
+            } else if verbose {
+                eprintln!("[xbin] runtime deps changed, full rebuild");
+            }
+        }
     }
 
     // Detect package manager
@@ -207,9 +310,18 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     std::fs::create_dir_all(&rootfs).context("failed to create rootfs directory")?;
 
     // Copy app files
-    // When --no-install is used, include node_modules (deps already prepared)
     copy_dir_recursive_with(&app_dir, &rootfs.join("app"), no_install)
         .context("failed to copy app files")?;
+
+    // ── Include extra files ───────────────────────────────────────────
+    if !args.include.is_empty() {
+        let app_dest = rootfs.join("app");
+        let count = xbin_core::include::copy_include_paths(&args.include, &app_dest)
+            .context("failed to copy include paths")?;
+        if verbose {
+            eprintln!("  include: copied {count} path(s) into rootfs");
+        }
+    }
 
     // Build deterministic tar
     if verbose {
@@ -251,6 +363,80 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
     }
 
+    // ── Persistent storage ────────────────────────────────────────────
+    if args.persist {
+        let persist_dir = xbin_core::persistent::get_persist_dir(&app_name);
+        let _ = xbin_core::persistent::ensure_persist_dir(&app_name);
+        env_map.insert(
+            "XBIN_PERSIST_DIR".into(),
+            serde_json::Value::String(persist_dir.to_string_lossy().into()),
+        );
+        if verbose {
+            eprintln!("  persistent storage: {}", persist_dir.display());
+        }
+    }
+
+    // ── Health check port ─────────────────────────────────────────────
+    if let Some(port) = args.health_port {
+        env_map.insert(
+            "XBIN_HEALTH_PORT".into(),
+            serde_json::Value::String(port.to_string()),
+        );
+        if verbose {
+            eprintln!("  health: endpoint enabled on port {port}");
+        }
+    }
+
+    // ── OpenTelemetry ─────────────────────────────────────────────────
+    if let Some(ref endpoint) = args.otel_endpoint {
+        let version = version_info.as_deref().unwrap_or("");
+        let otel_env = xbin_core::otel::build_otel_env(
+            &app_name,
+            version,
+            endpoint,
+            &args.otel_protocol,
+            "otlp",
+            "otlp",
+            "none",
+        );
+        for (k, v) in &otel_env {
+            env_map.insert(k.clone(), serde_json::Value::String(v.clone()));
+        }
+        if verbose {
+            eprintln!(
+                "  otel: endpoint={endpoint} protocol={}",
+                args.otel_protocol
+            );
+        }
+    }
+
+    // ── Cron/scheduled tasks ──────────────────────────────────────────
+    if !args.cron.is_empty() {
+        let mut tasks_json: Vec<serde_json::Value> = Vec::new();
+        for ct in &args.cron {
+            if let Some((name, schedule)) = ct.split_once(':') {
+                let interval = xbin_core::cron::parse_schedule(schedule);
+                tasks_json.push(serde_json::json!({
+                    "name": name,
+                    "schedule": schedule,
+                    "interval_secs": interval,
+                }));
+                if verbose {
+                    eprintln!("  cron: {name} -> every {interval}s (from {schedule})");
+                }
+            } else {
+                anyhow::bail!("--cron format: NAME:SCHEDULE (got '{ct}')");
+            }
+        }
+        env_map.insert(
+            "XBIN_CRON_TASKS".into(),
+            serde_json::Value::Array(tasks_json),
+        );
+        if verbose {
+            eprintln!("  cron: {} task(s) registered", args.cron.len());
+        }
+    }
+
     let env_pairs: Vec<(String, String)> = env_map
         .iter()
         .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
@@ -273,8 +459,8 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             license,
             payload_format: Some("zstd-tar".to_string()),
             seccomp,
-            app_hash: None,
-            rt_deps_hash: None,
+            app_hash: Some(new_app_hash),
+            rt_deps_hash: Some(new_rt_hash),
         },
     )?;
 
@@ -388,6 +574,20 @@ fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
     }
 
     anyhow::bail!("xbin-stub not found — run: make stub")
+}
+
+/// Read `app_hash` and `rt_deps_hash` from an existing `.xbin` file's metadata.
+fn read_existing_hashes(xbin_path: &Path) -> Option<(String, String)> {
+    use xbin_core::format::Footer;
+
+    let mut f = std::fs::File::open(xbin_path).ok()?;
+    let footer = Footer::read_from(&mut f).ok()?;
+    let meta_size = footer.meta_size.try_into().ok()?;
+    let meta_bytes = xbin_core::format::read_at(&mut f, footer.meta_offset, meta_size).ok()?;
+    let meta: serde_json::Value = serde_json::from_slice(&meta_bytes).ok()?;
+    let app_hash = meta.get("app_hash")?.as_str()?.to_string();
+    let rt_hash = meta.get("rt_deps_hash")?.as_str()?.to_string();
+    Some((app_hash, rt_hash))
 }
 
 fn count_files(dir: &Path) -> usize {
