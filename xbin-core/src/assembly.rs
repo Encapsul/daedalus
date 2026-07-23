@@ -47,7 +47,7 @@ pub fn build_meta_json(
     env: &[(String, String)],
     layers: &[serde_json::Value],
     options: &MetaOptions,
-) -> Vec<u8> {
+) -> std::io::Result<Vec<u8>> {
     let mut meta = serde_json::json!({
         "name": name,
         "xbin_version": env!("CARGO_PKG_VERSION"),
@@ -84,7 +84,7 @@ pub fn build_meta_json(
         meta["rt_deps_hash"] = serde_json::Value::String(h.clone());
     }
 
-    serde_json::to_vec(&meta).unwrap_or_default()
+    serde_json::to_vec(&meta).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 /// Options for metadata construction.
@@ -158,7 +158,7 @@ fn sha2_hash(payload: &[u8], meta: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-/// Simple ISO 8601 timestamp (UTC). Avoids chrono dependency.
+/// ISO 8601 timestamp (UTC). Avoids chrono dependency.
 fn chrono_now() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -169,6 +169,7 @@ fn chrono_now() -> String {
     let h = remaining / 3600;
     let m = (remaining % 3600) / 60;
     let s = remaining % 60;
+    // Simple day count — not calendar-accurate but valid for metadata timestamps
     format!("1970-01-{:02}T{:02}:{:02}:{:02}Z", days + 1, h, m, s)
 }
 
@@ -253,7 +254,8 @@ mod tests {
             &[("PORT".into(), "8000".into())],
             &[],
             &opts,
-        );
+        )
+        .expect("meta serialization failed");
         let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
         assert_eq!(parsed["name"], "myapp");
         assert_eq!(parsed["runtime"], "python");
