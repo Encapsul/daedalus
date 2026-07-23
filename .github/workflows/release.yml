@@ -12,188 +12,200 @@ env:
 
 jobs:
   # ── Linux x86_64 ─────────────────────────────────────────────────────
-  linux-x64:
-    name: Build linux-x64
+  build-linux-x64:
+    name: Linux (x86_64)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: stable
           targets: x86_64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Build
-        run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-          CC_x86_64_unknown_linux_musl: musl-gcc
+      - name: Build stub
+        run: cargo build --release --target x86_64-unknown-linux-musl
+        working-directory: stub
 
       - name: Test binary
         run: |
-          echo "=== Debug: listing target dir ==="
-          ls -la target/x86_64-unknown-linux-musl/release/ 2>/dev/null || echo "target dir not found"
-          find target -name "xbin-stub" -type f 2>/dev/null || echo "xbin-stub not found"
-          STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; file "$STUB" 2>&1; exit 1; }
+          STUB=stub/target/x86_64-unknown-linux-musl/release/xbin-stub
+          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
           file "$STUB" | grep -q "x86-64" || { echo "FAIL: not x86_64"; exit 1; }
-          "$STUB" --help 2>/dev/null || true
           echo "=== PASS: linux-x64 ==="
 
       - name: Package
         run: |
-          STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
-          CRYPTO=target/x86_64-unknown-linux-musl/release/xbin-crypto
+          STUB=stub/target/x86_64-unknown-linux-musl/release/xbin-stub
+          CRYPTO=stub/target/x86_64-unknown-linux-musl/release/xbin-crypto
           DIR="xbin-linux-x64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-          printf '#!/usr/bin/env bash\nXBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"\nexport PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"\nexec python3 -m xbin "$@"\n' > "${DIR}/bin/xbin"
+
+          cat > "${DIR}/bin/xbin" << 'WRAPPER'
+#!/usr/bin/env bash
+XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+exec python3 -m xbin "$@"
+WRAPPER
           chmod +x "${DIR}/bin/xbin"
-          tar czf "${DIR}.tar.gz" "${DIR}"
+
+          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: assets-linux-x64
-          path: xbin-*.tar.gz
+          path: /tmp/assets/*
 
   # ── Linux aarch64 ────────────────────────────────────────────────────
-  linux-arm64:
-    name: Build linux-arm64
+  build-linux-arm64:
+    name: Linux (aarch64)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          targets: aarch64-unknown-linux-gnu
-      - uses: Swatinem/rust-cache@v2
+          toolchain: stable
+          targets: aarch64-unknown-linux-musl
       - run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      - name: Build
-        run: cargo build --release --target aarch64-unknown-linux-gnu -p xbin-stub
+      - name: Build stub
+        run: cargo build --release --target aarch64-unknown-linux-musl
+        working-directory: stub
         env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
 
       - name: Test binary
         run: |
-          echo "=== Debug: listing target dir ==="
-          ls -la target/aarch64-unknown-linux-gnu/release/ 2>/dev/null || echo "target dir not found"
-          find target -name "xbin-stub" -type f 2>/dev/null || echo "xbin-stub not found"
-          STUB=target/aarch64-unknown-linux-gnu/release/xbin-stub
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; file "$STUB" 2>&1; exit 1; }
+          STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
+          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
           file "$STUB" | grep -q "aarch64" || { echo "FAIL: not aarch64"; exit 1; }
           echo "=== PASS: linux-arm64 ==="
 
-      - name: Test QEMU
-        run: |
-          sudo apt-get install -y qemu-user-static || true
-          STUB=target/aarch64-unknown-linux-gnu/release/xbin-stub
-          qemu-aarch64-static "$STUB" --help 2>/dev/null && echo "OK: QEMU pass" || echo "OK: QEMU exit != 0 is fine"
-
       - name: Package
         run: |
-          STUB=target/aarch64-unknown-linux-gnu/release/xbin-stub
-          CRYPTO=target/aarch64-unknown-linux-gnu/release/xbin-crypto
+          STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
+          CRYPTO=stub/target/aarch64-unknown-linux-musl/release/xbin-crypto
           DIR="xbin-linux-arm64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
           cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-          printf '#!/usr/bin/env bash\nXBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"\nexport PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"\nexec python3 -m xbin "$@"\n' > "${DIR}/bin/xbin"
+
+          cat > "${DIR}/bin/xbin" << 'WRAPPER'
+#!/usr/bin/env bash
+XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+exec python3 -m xbin "$@"
+WRAPPER
           chmod +x "${DIR}/bin/xbin"
-          tar czf "${DIR}.tar.gz" "${DIR}"
+
+          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: assets-linux-arm64
-          path: xbin-*.tar.gz
+          path: /tmp/assets/*
 
   # ── macOS Apple Silicon ──────────────────────────────────────────────
-  macos-arm64:
-    name: Build macos-arm64
+  build-macos-arm64:
+    name: macOS (Apple Silicon)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: stable
           targets: aarch64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
 
-      - name: Build
-        run: cargo build --release --target aarch64-apple-darwin -p xbin-stub --bin xbin-crypto
+      - name: Build stub
+        run: cargo build --release --target aarch64-apple-darwin
+        working-directory: stub
 
       - name: Test binary
         run: |
-          echo "=== Debug: listing target dir ==="
-          ls -la target/aarch64-apple-darwin/release/ 2>/dev/null || echo "target dir not found"
-          find target -name "xbin-crypto" -type f 2>/dev/null || echo "xbin-crypto not found"
-          CRYPTO=target/aarch64-apple-darwin/release/xbin-crypto
-          file "$CRYPTO" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; file "$CRYPTO" 2>&1; exit 1; }
-          file "$CRYPTO" | grep -q "arm64" || { echo "FAIL: not arm64"; exit 1; }
+          STUB=stub/target/aarch64-apple-darwin/release/xbin-stub
+          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; exit 1; }
+          file "$STUB" | grep -q "arm64" || { echo "FAIL: not arm64"; exit 1; }
           echo "=== PASS: macos-arm64 ==="
 
       - name: Package
         run: |
-          CRYPTO=target/aarch64-apple-darwin/release/xbin-crypto
+          STUB=stub/target/aarch64-apple-darwin/release/xbin-stub
+          CRYPTO=stub/target/aarch64-apple-darwin/release/xbin-crypto
           DIR="xbin-macos-arm64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
+          cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-          printf '#!/usr/bin/env bash\nXBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"\nexport PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"\nexec python3 -m xbin "$@"\n' > "${DIR}/bin/xbin"
+
+          cat > "${DIR}/bin/xbin" << 'WRAPPER'
+#!/usr/bin/env bash
+XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+exec python3 -m xbin "$@"
+WRAPPER
           chmod +x "${DIR}/bin/xbin"
-          tar czf "${DIR}.tar.gz" "${DIR}"
+
+          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: assets-macos-arm64
-          path: xbin-*.tar.gz
+          path: /tmp/assets/*
 
   # ── macOS Intel ──────────────────────────────────────────────────────
-  macos-x64:
-    name: Build macos-x64
+  build-macos-x64:
+    name: macOS (Intel)
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: stable
           targets: x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
 
-      - name: Build
-        run: cargo build --release --target x86_64-apple-darwin -p xbin-stub --bin xbin-crypto
+      - name: Build stub
+        run: cargo build --release --target x86_64-apple-darwin
+        working-directory: stub
 
       - name: Test binary
         run: |
-          echo "=== Debug: listing target dir ==="
-          ls -la target/x86_64-apple-darwin/release/ 2>/dev/null || echo "target dir not found"
-          find target -name "xbin-crypto" -type f 2>/dev/null || echo "xbin-crypto not found"
-          CRYPTO=target/x86_64-apple-darwin/release/xbin-crypto
-          file "$CRYPTO" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; file "$CRYPTO" 2>&1; exit 1; }
-          file "$CRYPTO" | grep -q "x86_64" || { echo "FAIL: not x86_64"; exit 1; }
+          STUB=stub/target/x86_64-apple-darwin/release/xbin-stub
+          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; exit 1; }
+          file "$STUB" | grep -q "x86_64" || { echo "FAIL: not x86_64"; exit 1; }
           echo "=== PASS: macos-x64 ==="
 
       - name: Package
         run: |
-          CRYPTO=target/x86_64-apple-darwin/release/xbin-crypto
+          STUB=stub/target/x86_64-apple-darwin/release/xbin-stub
+          CRYPTO=stub/target/x86_64-apple-darwin/release/xbin-crypto
           DIR="xbin-macos-x64"
           mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
+          cp "$STUB" "${DIR}/bin/"
           cp "$CRYPTO" "${DIR}/bin/"
           cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-          printf '#!/usr/bin/env bash\nXBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"\nexport PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"\nexec python3 -m xbin "$@"\n' > "${DIR}/bin/xbin"
+
+          cat > "${DIR}/bin/xbin" << 'WRAPPER'
+#!/usr/bin/env bash
+XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
+exec python3 -m xbin "$@"
+WRAPPER
           chmod +x "${DIR}/bin/xbin"
-          tar czf "${DIR}.tar.gz" "${DIR}"
+
+          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: assets-macos-x64
-          path: xbin-*.tar.gz
+          path: /tmp/assets/*
 
-  # ── Create GitHub Release + Upload binaries ──────────────────────────
+  # ── Upload to Release ────────────────────────────────────────────────
   publish:
-    name: Create Release
-    needs: [linux-x64, linux-arm64, macos-arm64]
+    name: Upload to Release
+    needs: [build-linux-x64, build-linux-arm64, build-macos-arm64, build-macos-x64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -201,12 +213,6 @@ jobs:
           path: /tmp/assets
           pattern: assets-*
           merge-multiple: true
-
-      - name: Generate SHASUMS256.txt
-        run: |
-          cd /tmp/assets
-          sha256sum xbin-linux-x64.tar.gz xbin-linux-arm64.tar.gz xbin-macos-arm64.tar.gz > SHASUMS256.txt
-          cat SHASUMS256.txt
 
       - name: List files
         run: ls -lh /tmp/assets/
