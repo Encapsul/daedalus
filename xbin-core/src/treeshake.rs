@@ -20,7 +20,7 @@ const SKIP_DIRS: &[&str] = &[
     "coverage",
 ];
 
-const JS_EXTS: &[&str] = &[".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"];
+const JS_EXTS: &[&str] = &["js", "ts", "jsx", "tsx", "mjs", "cjs"];
 
 fn req_re() -> Regex {
     Regex::new(r#"require\s*\(\s*['"]([^'"]+)['"]\s*\)"#).unwrap()

@@ -20,8 +20,8 @@ const SKIP_DIRS: &[&str] = &[
     "coverage",
 ];
 
-const JS_EXTS: &[&str] = &[".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx"];
-const CSS_EXTS: &[&str] = &[".css"];
+const JS_EXTS: &[&str] = &["js", "mjs", "cjs", "ts", "jsx", "tsx"];
+const CSS_EXTS: &[&str] = &["css"];
 
 fn is_skip_dir(name: &str) -> bool {
     SKIP_DIRS.contains(&name)
