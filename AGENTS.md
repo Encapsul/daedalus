@@ -123,6 +123,7 @@ Based on [ANSSI Secure Rust Guidelines](https://anssi-fr.github.io/rust-guide). 
 ## Boundaries
 
 **Always do:**
+- **Rebuild after every code change** — run `cargo build --release` before testing or running xbin on an app
 - Run `cargo fmt` and `cargo clippy --all-targets -- -D warnings` before committing
 - Run `cargo test --workspace` to verify no regressions
 - Preserve the `.xbin` footer format (magic `XBIN\x01`, footer magic `0xBEEF_CAFE`)

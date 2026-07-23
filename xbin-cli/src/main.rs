@@ -27,7 +27,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Build a .xbin binary from an app directory
-    Build(commands::build::BuildArgs),
+    Build(Box<commands::build::BuildArgs>),
 
     /// Inspect a .xbin file's metadata
     Inspect(commands::inspect::InspectArgs),
@@ -86,7 +86,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Build(args) => commands::build::run(args, cli.verbose),
+        Commands::Build(args) => commands::build::run(*args, cli.verbose),
         Commands::Inspect(args) => commands::inspect::run(args),
         Commands::Keygen(args) => commands::keygen::run(args),
         Commands::Sign(args) => commands::sign::run(args),
@@ -116,30 +116,119 @@ fn generate_man_pages(dir: &std::path::PathBuf) -> Result<()> {
     std::fs::create_dir_all(dir)?;
 
     let cmd = Cli::command();
+    let version = env!("CARGO_PKG_VERSION");
+    let author = "Ted Kouhouenou <ted.sig42@tutamail.com>";
+    let manual = format!("x.bin {version}");
 
-    // Generate man page for the main command
+    // ── Main man page (xbin.1) ────────────────────────────────────────
     let man = clap_mangen::Man::new(cmd.clone())
         .section("1")
-        .manual("x.bin 0.3.0")
-        .source("Ted Kouhouenou <ted.sig42@tutamail.com>");
+        .manual(&manual)
+        .source(author);
     let mut buffer = Vec::new();
     man.render(&mut buffer)?;
-    let man_path = dir.join("xbin.1");
-    std::fs::write(&man_path, &buffer)?;
 
-    // Generate man pages for subcommands
+    let extra = format!(
+        r"
+EXIT STATUS
+       0      Success.
+
+       1      General error (invalid arguments, build failure, I/O error).
+
+       2      Lint or verification error (signature mismatch, corrupt file).
+
+ENVIRONMENT
+       XBIN_CACHE_DIR
+              Override the cache directory (default: ~/.cache/xbin).
+
+       XBIN_VERBOSE
+              If set, enable verbose output (equivalent to -v).
+
+       XDG_DATA_HOME
+              Base directory for xbin keys and trusted keys.
+
+FILES
+       ~/.cache/xbin/<hash>/rootfs/
+              Extracted rootfs for each built binary, keyed by SHA-256 hash.
+
+       ~/.local/share/xbin/trusted-keys/
+              Directory of trusted public keys for signature verification.
+
+       ~/.local/share/xbin/keys/
+              Default directory for generated signing keys.
+
+SEE ALSO
+       xbin-build(1), xbin-sign(1), xbin-verify(1), xbin-keygen(1),
+       xbin-inspect(1), xbin-doctor(1)
+
+AUTHORS
+       Written by {author}.
+
+HISTORY
+       x.bin was started in 2025 by {author} to solve the problem of
+       packaging complex multi-dependency applications into a single
+       portable binary.  The Rust CLI (v0.1.0) replaced the legacy
+       Python CLI in 2026.
+
+BUGS
+       Report bugs at: https://github.com/anthropics/x.bin/issues
+"
+    );
+    buffer.extend_from_slice(extra.as_bytes());
+    std::fs::write(dir.join("xbin.1"), &buffer)?;
+
+    // ── Subcommand man pages ──────────────────────────────────────────
+    let sub_extras: &[(&str, &str)] = &[
+        ("build", "ENVIRONMENT\n       XBIN_CACHE_DIR\n              Override the cache directory.\n"),
+        ("sign", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for key lookup.\n"),
+        ("verify", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for trusted key lookup.\n"),
+        ("keygen", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for key storage.\n"),
+        ("doctor", ""),
+        ("inspect", ""),
+        ("scan", ""),
+        ("clean", "FILES\n       ~/.cache/xbin/\n              The cache directory cleaned by this command.\n"),
+        ("env", ""),
+        ("trust", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for trusted key storage.\n"),
+        ("completion", ""),
+        ("man", ""),
+    ];
+
     for sub in cmd.get_subcommands() {
         let sub_name = sub.get_name().to_owned();
         let sub = sub.clone();
 
         let man = clap_mangen::Man::new(sub)
             .section("1")
-            .manual("x.bin 0.3.0")
-            .source("Ted Kouhouenou <ted.sig42@tutamail.com>");
+            .manual(&manual)
+            .source(author);
         let mut buffer = Vec::new();
         man.render(&mut buffer)?;
-        let man_path = dir.join(format!("xbin-{}.1", sub_name));
-        std::fs::write(&man_path, &buffer)?;
+
+        let extra_footer = sub_extras
+            .iter()
+            .find(|(name, _)| *name == sub_name)
+            .map(|(_, e)| *e)
+            .unwrap_or("");
+
+        let shared = format!(
+            r"
+EXIT STATUS
+       0      Success.
+
+       1      General error.
+
+SEE ALSO
+       xbin(1)
+
+AUTHORS
+       Written by {author}.
+
+HISTORY
+       Part of x.bin since v0.1.0.
+{extra_footer}"
+        );
+        buffer.extend_from_slice(shared.as_bytes());
+        std::fs::write(dir.join(format!("xbin-{sub_name}.1")), &buffer)?;
     }
 
     eprintln!("Generated man pages in {}", dir.display());

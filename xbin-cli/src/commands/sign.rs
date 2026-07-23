@@ -51,7 +51,10 @@ pub fn run(args: SignArgs) -> Result<()> {
     key_arr.copy_from_slice(&key_bytes);
     let signing_key = SigningKey::from_bytes(&key_arr);
 
-    let mut f = std::fs::File::open(&args.file)
+    let mut f = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&args.file)
         .with_context(|| format!("failed to open {}", args.file.display()))?;
     let mut footer = Footer::read_from(&mut f).context("failed to read xbin footer")?;
 
@@ -79,12 +82,12 @@ pub fn run(args: SignArgs) -> Result<()> {
     sig_block.extend_from_slice(&sig_size.to_le_bytes());
     sig_block.extend_from_slice(&signature.to_bytes());
 
-    // Update footer
-    let old_footer_size = footer.footer_size();
     let new_sig_offset = footer.meta_offset + footer.meta_size;
+    let new_footer_offset = new_sig_offset + SIG_BLOCK_SIZE as u64;
 
-    // Write sig_block after metadata
     use std::io::{Seek, Write};
+
+    // Write sig_block right after metadata
     f.seek(std::io::SeekFrom::Start(new_sig_offset))?;
     f.write_all(&sig_block)?;
 
@@ -95,9 +98,15 @@ pub fn run(args: SignArgs) -> Result<()> {
         footer.format_version = 3;
     }
 
-    // Write new footer at end
-    f.seek(std::io::SeekFrom::End(-(old_footer_size as i64)))?;
-    f.write_all(&footer.pack())?;
+    // Write V3 footer (92 bytes) after sig_block: [sig_offset:u64le][core:84]
+    let mut v3_footer = Vec::with_capacity(xbin_core::format::V3_FOOTER_SIZE as usize);
+    v3_footer.extend_from_slice(&new_sig_offset.to_le_bytes());
+    v3_footer.extend_from_slice(&footer.pack());
+    f.seek(std::io::SeekFrom::Start(new_footer_offset))?;
+    f.write_all(&v3_footer)?;
+
+    // Truncate file to new size
+    f.set_len(new_footer_offset + xbin_core::format::V3_FOOTER_SIZE)?;
 
     if !args.quiet {
         eprintln!("Signed {}", args.file.display());
