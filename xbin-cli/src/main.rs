@@ -63,6 +63,9 @@ enum Commands {
     /// Test a .xbin file in an ephemeral sandbox
     Selftest(commands::selftest::SelftestArgs),
 
+    /// Upgrade x.bin to the latest release
+    Upgrade(commands::upgrade::UpgradeArgs),
+
     /// Show xbin environment info
     Env(commands::env::EnvArgs),
 
@@ -113,6 +116,7 @@ fn main() -> Result<()> {
         Commands::Doctor(args) => commands::doctor::run(args),
         Commands::Clean(args) => commands::clean::run(args),
         Commands::Selftest(args) => commands::selftest::run(args),
+        Commands::Upgrade(args) => commands::upgrade::run(args),
         Commands::Env(args) => commands::env::run(args),
         Commands::Completion { shell } => {
             let mut cmd = Cli::command();
@@ -204,6 +208,7 @@ BUGS
         ("keygen", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for key storage.\n"),
         ("doctor", ""),
         ("selftest", ""),
+        ("upgrade", ""),
         ("inspect", ""),
         ("scan", ""),
         ("clean", "FILES\n       ~/.cache/xbin/\n              The cache directory cleaned by this command.\n"),
