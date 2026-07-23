@@ -12,9 +12,9 @@
 - **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo (11 total)
 - **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
 - **Rust core**: `xbin-core` crate — format, compress, detect, pkgmgr, tar, assembly, sign, verify, scan, PyO3 bindings
-- **Rust CLI**: `xbin-cli` crate — 10 commands (build, inspect, scan, sign, verify, keygen, trust, doctor, env, clean)
-- **Tests**: 234 Python + 40 Rust = 274 total (0 failures)
-- **Last updated**: 2026-07-21
+- **Rust CLI**: `xbin-cli` crate — 12 commands (build, inspect, scan, sign, verify, keygen, trust, doctor, env, clean, completion, man)
+- **Tests**: 92 Rust (xbin-core + xbin-cli) + 234 Python = 326 total (0 failures)
+- **Last updated**: 2026-07-23
 - **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), all commits/tags signed, GitHub signing key id=1064819
 - **Release workflow**: `on: release: types: [published]` — create release on GitHub UI → workflow builds 4 platforms → uploads tar.gz + SHASUMS256.txt
 
@@ -66,7 +66,7 @@
 | `anyhow` for error context | Rust CLI Book | ✅ |
 | Global `--verbose` flag | Docker/Bun | ✅ |
 | Exit codes 0/1/2 | clig.dev + BSD sysexits | ✅ documented in help |
-| Man pages | Rust CLI Book | ❌ TODO |
+| Man pages | Rust CLI Book | ✅ `xbin man [dir]` |
 
 ## Config file (`.xbin.toml`)
 
@@ -928,6 +928,54 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 | Cron/scheduled tasks | `Bun.cron()` | Cron in dashboard | ✅ `--cron` flag | MEDIUM | DONE |
 | Health checks | N/A | Built-in | ✅ `--health-port` | MEDIUM | DONE |
 | OpenTelemetry | N/A | Auto-instrumented | ✅ `--otel-endpoint` | MEDIUM | DONE |
+
+### Competitive analysis: x.bin vs Bun vs Wasmer (2026-07-23)
+
+**Bun (`bun build --compile`)**:
+- Compiles JS/TS into standalone executable, embeds entire Bun runtime (~50MB)
+- Self-contained: target needs nothing installed
+- Bytecode compilation for 2x faster startup
+- Cross-compilation: 8 targets (linux/win/mac × x64/arm64, musl variants)
+- Full-stack executables (HTML/CSS/JS frontend + server)
+- Embeds files (images, configs, SQLite DBs), code signing (macOS), minification, sourcemaps
+- Massive API surface: HTTP, WebSocket, PostgreSQL, Redis, SQLite, S3, FFI
+
+**Wasmer**:
+- WebAssembly runtime — runs any language compiled to .wasm
+- Universal: Rust, Go, Python, C, Ruby, JS — all compile to WASM
+- Cloud/edge deployment platform (Wasmer Edge) + registry (wasi.dev)
+- Multiple compilation backends: Singlepass, LLVM, Cranelift, JavaScriptCore
+- SDKs in Rust, Python, JS, Go, Ruby, C
+- Security: sandboxed execution, metering (instruction limits)
+
+**Where x.bin is unique**:
+- Packaging sans recompilation — Bun oblige à re-bundler, Wasmer oblige à recompiler en WASM. x.bin prend l'app telle quelle.
+- Tiny overhead — Bun embarque ~50MB de runtime, x.bin ajoute ~100KB de stub.
+- Intégrité + signature — SHA-256 + Ed25519 sign/verify + chiffrement v4. Bun n'a que codesign macOS. Wasmer a le sandbox.
+- Cache intelligent — Si le hash est déjà extrait, on saute l'extraction.
+- Multi-langue — Python, Node, Go, Rust, PHP… sans changer une ligne de code.
+
+**Where x.bin is weaker**:
+- Bun's `--compile` produces self-contained binaries (no runtime needed on target). x.bin requires python3/node/etc. on target.
+- Bun has bytecode compilation, cross-compilation for the app itself, full-stack HTML embedding, minification, sourcemaps.
+- Wasmer has cloud deployment, WASM universality, registry, metering, SDKs in 6 languages.
+
+### Improvement roadmap based on competitive analysis (2026-07-23)
+
+| # | Improvement | Inspired by | Priority | Effort |
+|---|-------------|-------------|----------|--------|
+| 1 | **Embedded runtime option** — optionally bundle python3/node/etc. into the binary for targets without the runtime installed | Bun's self-contained approach | HIGH | LARGE |
+| 2 | **Cross-compilation for apps** — build for aarch64 from x86_64 (stub already does this, extend to app layers) | Bun's 8-target cross-compilation | HIGH | MEDIUM |
+| 3 | **Bytecode precompilation** — precompile Python `.pyc` or Node bytecode at build time for faster startup | Bun's `--bytecode` flag | MEDIUM | MEDIUM |
+| 4 | **Registry/manifest** — `xbin publish` + `xbin install <package>` for sharing apps, like wasi.dev | Wasmer Registry | MEDIUM | LARGE |
+| 5 | **Cloud deploy** — `xbin deploy` to a backend (Wasmer Edge-like) | Wasmer Edge platform | LOW | VERY LARGE |
+| 6 | **WASM support** — package .wasm + wasmer runtime in the binary | Wasmer's universal approach | LOW | VERY LARGE |
+| 7 | **Minification** — JS/CSS minification for Node apps at build time | Bun's `--minify` | MEDIUM | SMALL |
+| 8 | **Sourcemaps** — embed sourcemaps for better error reporting | Bun's `--sourcemap` | LOW | SMALL |
+| 9 | **Full-stack HTML** — embed HTML/CSS/JS frontend + server in one binary | Bun's full-stack executables | LOW | MEDIUM |
+| 10 | **Windows support** — extend beyond Linux/macOS | Bun's 3-OS support | MEDIUM | LARGE |
+| 11 | **Hot reload** — `xbin dev` for development mode | Bun's `--hot` | LOW | MEDIUM |
+| 12 | **Metering/instruction limits** — deterministic resource limits for sandboxed apps | Wasmer's metering | LOW | MEDIUM |
 
 ### Hugo real-site test — ✅ DONE
 - **Site**: `../tednoob17.github.io` — GoHugo site with risotto theme
