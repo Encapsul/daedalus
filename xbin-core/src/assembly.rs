@@ -57,6 +57,7 @@ pub fn build_meta_json(
         "entrypoint": entrypoint,
         "env": env_map(env),
         "layers": layers,
+        "cwd": "/app",
     });
 
     if let Some(v) = &options.version {

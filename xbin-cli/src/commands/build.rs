@@ -105,16 +105,9 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let isolation_num: u32 = isolation.parse().unwrap_or(1);
 
     // Detect runtime
-    let runtime = detect::detect_runtime(&app_dir);
-    let runtime_name = match &runtime {
-        Some(r) => r.name(),
-        None => {
-            anyhow::bail!(
-                "could not detect runtime in {} — supported: python, node, deno, java, ruby, dotnet, go, php, perl, binary",
-                app_dir.display()
-            );
-        }
-    };
+    let runtime = detect::detect_runtime(&app_dir)
+        .context("could not detect runtime — supported: python, node, deno, java, ruby, dotnet, go, php, perl, binary")?;
+    let runtime_name = runtime.name();
 
     if verbose {
         eprintln!("Detected runtime: {runtime_name}");
@@ -210,7 +203,9 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     std::fs::create_dir_all(&rootfs).context("failed to create rootfs directory")?;
 
     // Copy app files
-    copy_dir_recursive(&app_dir, &rootfs.join("app")).context("failed to copy app files")?;
+    // When --no-install is used, include node_modules (deps already prepared)
+    copy_dir_recursive_with(&app_dir, &rootfs.join("app"), no_install)
+        .context("failed to copy app files")?;
 
     // Build deterministic tar
     if verbose {
@@ -235,7 +230,8 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
         .collect();
 
-    let entrypoint = vec!["run".to_string()];
+    let entrypoint =
+        detect::resolve_entrypoint(&app_dir, runtime).unwrap_or_else(|| vec!["run".to_string()]);
 
     let meta = xbin_core::assembly::build_meta_json(
         &app_name,
@@ -420,7 +416,7 @@ fn print_tree(dir: &Path, indent: usize) {
     }
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+fn copy_dir_recursive_with(src: &Path, dst: &Path, include_node_modules: bool) -> Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
@@ -429,17 +425,17 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 
         let name = src_path.file_name().unwrap_or_default().to_string_lossy();
         if name == ".git"
-            || name == "node_modules"
             || name == "__pycache__"
             || name == ".venv"
             || name == "venv"
             || name == ".xbin"
+            || (name == "node_modules" && !include_node_modules)
         {
             continue;
         }
 
         if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
+            copy_dir_recursive_with(&src_path, &dst_path, include_node_modules)?;
         } else {
             std::fs::copy(&src_path, &dst_path)?;
         }

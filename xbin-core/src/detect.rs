@@ -137,6 +137,142 @@ fn detect_binary(dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Resolve the entrypoint argv for a detected runtime.
+///
+/// Returns `None` if the entry file cannot be determined.
+/// Interpreter names are bare (e.g. `python3`, `node`) — the stub uses
+/// `execvp` which resolves them via PATH. App paths use `/app/` prefix.
+pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String>> {
+    match runtime {
+        Runtime::Python => {
+            let entry =
+                find_first_file(app_dir, &["app.py", "main.py", "__main__.py", "server.py"])?;
+            Some(vec!["python3".into(), format!("/app/{}", entry)])
+        }
+        Runtime::Node => {
+            let entry = find_node_entry(app_dir)?;
+            Some(vec!["node".into(), format!("/app/{}", entry)])
+        }
+        Runtime::Deno => {
+            let entry = find_first_file(app_dir, &["main.ts", "main.js", "index.ts", "index.js"])?;
+            Some(vec![
+                "deno".into(),
+                "run".into(),
+                "--allow-all".into(),
+                format!("/app/{}", entry),
+            ])
+        }
+        Runtime::Go | Runtime::Binary => {
+            let elf = find_elf(app_dir)?;
+            Some(vec![format!("/app/{}", elf)])
+        }
+        Runtime::Java => {
+            let jar = find_first_ext(app_dir, "jar")?;
+            Some(vec!["java".into(), "-jar".into(), format!("/app/{}", jar)])
+        }
+        Runtime::Ruby => {
+            let entry = find_first_file(app_dir, &["config.ru", "app.rb", "main.rb"])?;
+            Some(vec!["ruby".into(), format!("/app/{}", entry)])
+        }
+        Runtime::Dotnet => {
+            let csproj = find_first_ext(app_dir, "csproj")?;
+            let name = csproj.trim_end_matches(".csproj");
+            Some(vec![
+                "dotnet".into(),
+                "run".into(),
+                "--project".into(),
+                format!("/app/{}", name),
+            ])
+        }
+        Runtime::Php => {
+            let entry = find_first_file(app_dir, &["index.php", "artisan", "public/index.php"])?;
+            Some(vec!["php".into(), format!("/app/{}", entry)])
+        }
+        Runtime::Perl => {
+            let entry = find_first_file(app_dir, &["app.pl", "main.pl", "bin/app"])?;
+            Some(vec!["perl".into(), format!("/app/{}", entry)])
+        }
+    }
+}
+
+/// Find the first existing file from a list of candidates.
+/// Returns the filename (not full path).
+fn find_first_file(dir: &Path, candidates: &[&str]) -> Option<String> {
+    for name in candidates {
+        if dir.join(name).is_file() {
+            return Some((*name).to_string());
+        }
+    }
+    None
+}
+
+/// Find the first file with a given extension.
+fn find_first_ext(dir: &Path, ext: &str) -> Option<String> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        if entry.path().extension().is_some_and(|e| e == ext) {
+            return entry.file_name().to_str().map(String::from);
+        }
+    }
+    None
+}
+
+/// Find a single ELF executable in the directory.
+fn find_elf(dir: &Path) -> Option<String> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.is_file() {
+            let bytes = std::fs::read(&p).ok()?;
+            if bytes.len() >= 4 && &bytes[0..4] == b"\x7fELF" {
+                return p.file_name()?.to_str().map(String::from);
+            }
+        }
+    }
+    None
+}
+
+/// Resolve Node.js entrypoint from package.json or fallback files.
+fn find_node_entry(dir: &Path) -> Option<String> {
+    // Check package.json "main" or "scripts.start"
+    let pkg_path = dir.join("package.json");
+    if pkg_path.is_file() {
+        if let Ok(contents) = std::fs::read_to_string(&pkg_path) {
+            if let Ok(pkg) = serde_json::from_str::<serde_json::Value>(&contents) {
+                // "main" field
+                if let Some(main) = pkg.get("main").and_then(|v| v.as_str()) {
+                    return Some(main.to_string());
+                }
+                // Try "scripts.start": "node server.js" etc.
+                if let Some(cmd) = pkg
+                    .get("scripts")
+                    .and_then(|s| s.get("start"))
+                    .and_then(|v| v.as_str())
+                {
+                    // Extract filename from "node app.js" style commands
+                    if let Some(filename) = cmd.split_whitespace().last() {
+                        let name = filename.trim_start_matches("./");
+                        if dir.join(name).is_file() {
+                            return Some(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Fallback: common entry files
+    find_first_file(
+        dir,
+        &[
+            "index.js",
+            "app.js",
+            "server.js",
+            "main.js",
+            "server/server.js",
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
