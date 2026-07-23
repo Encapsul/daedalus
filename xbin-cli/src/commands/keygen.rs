@@ -60,7 +60,11 @@ fn default_key_dir() -> Result<PathBuf> {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         Ok(PathBuf::from(xdg).join("xbin").join("keys"))
     } else if let Ok(home) = std::env::var("HOME") {
-        Ok(PathBuf::from(home).join(".local").join("share").join("xbin").join("keys"))
+        Ok(PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("xbin")
+            .join("keys"))
     } else {
         Ok(PathBuf::from(".xbin").join("keys"))
     }

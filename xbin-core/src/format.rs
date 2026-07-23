@@ -135,11 +135,13 @@ impl Footer {
     }
 
     pub fn sha256_hex(&self) -> String {
-        self.payload_sha256.iter().fold(String::with_capacity(64), |mut s, b| {
-            use std::fmt::Write;
-            let _ = write!(s, "{b:02x}");
-            s
-        })
+        self.payload_sha256
+            .iter()
+            .fold(String::with_capacity(64), |mut s, b| {
+                use std::fmt::Write;
+                let _ = write!(s, "{b:02x}");
+                s
+            })
     }
 }
 
@@ -163,6 +165,7 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
+    #[allow(clippy::too_many_arguments)]
     fn build_v2_footer(
         version: u8,
         arch: u8,
@@ -189,6 +192,7 @@ mod tests {
         buf
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_v3_footer(
         version: u8,
         arch: u8,
@@ -204,8 +208,15 @@ mod tests {
         let mut prefix = vec![0u8; 8];
         prefix[0..8].copy_from_slice(&sig_offset.to_le_bytes());
         let v2 = build_v2_footer(
-            version, arch, flags, payload_offset, payload_csize, payload_usize, sha256,
-            meta_offset, meta_size,
+            version,
+            arch,
+            flags,
+            payload_offset,
+            payload_csize,
+            payload_usize,
+            sha256,
+            meta_offset,
+            meta_size,
         );
         prefix.extend_from_slice(&v2);
         prefix
@@ -340,10 +351,11 @@ mod tests {
 
     #[test]
     fn sha256_hex_is_correct() {
-        let sha = [0x00, 0x01, 0x0A, 0xFF, 0xAB, 0xCD, 0xEF, 0x12,
-                    0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x11,
-                    0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99,
-                    0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x12];
+        let sha = [
+            0x00, 0x01, 0x0A, 0xFF, 0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE,
+            0xF0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD,
+            0xEE, 0xFF, 0x00, 0x12,
+        ];
         let f = Footer {
             format_version: 5,
             arch: 0,

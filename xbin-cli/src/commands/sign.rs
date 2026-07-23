@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use ed25519_dalek::{SigningKey, Signer};
-use sha2::{Sha256, Digest};
+use ed25519_dalek::{Signer, SigningKey};
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use xbin_core::format::{Footer, FLAG_SIGNED, SIG_BLOCK_SIZE};
 
@@ -41,7 +41,10 @@ pub fn run(args: SignArgs) -> Result<()> {
     let key_bytes = std::fs::read(&key_path)
         .with_context(|| format!("failed to read signing key at {}", key_path.display()))?;
     if key_bytes.len() != 32 {
-        anyhow::bail!("[xbin] error: key must be 32 bytes, got {}", key_bytes.len());
+        anyhow::bail!(
+            "[xbin] error: key must be 32 bytes, got {}",
+            key_bytes.len()
+        );
     }
 
     let mut key_arr = [0u8; 32];
@@ -50,15 +53,15 @@ pub fn run(args: SignArgs) -> Result<()> {
 
     let mut f = std::fs::File::open(&args.file)
         .with_context(|| format!("failed to open {}", args.file.display()))?;
-    let mut footer = Footer::read_from(&mut f)
-        .context("failed to read xbin footer")?;
+    let mut footer = Footer::read_from(&mut f).context("failed to read xbin footer")?;
 
     if footer.is_signed() {
         anyhow::bail!("[xbin] error: file is already signed");
     }
 
     // Read payload and metadata for hash
-    let payload = xbin_core::format::read_at(&mut f, footer.payload_offset, footer.payload_csize as usize)?;
+    let payload =
+        xbin_core::format::read_at(&mut f, footer.payload_offset, footer.payload_csize as usize)?;
     let meta = xbin_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)?;
 
     // SHA-256(payload || meta)
@@ -109,7 +112,11 @@ fn default_key_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         PathBuf::from(xdg).join("xbin").join("keys")
     } else if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".local").join("share").join("xbin").join("keys")
+        PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("xbin")
+            .join("keys")
     } else {
         PathBuf::from(".xbin").join("keys")
     }

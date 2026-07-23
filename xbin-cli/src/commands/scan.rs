@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Args;
 use std::path::{Path, PathBuf};
-use xbin_core::format::{Footer, ARCH_X86_64, ARCH_AARCH64};
+use xbin_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64};
 
 #[derive(Args)]
 pub struct ScanArgs {
@@ -44,18 +44,33 @@ pub fn run(args: ScanArgs) -> Result<()> {
         let entries: Vec<_> = files.iter().filter_map(|f| inspect_file(f)).collect();
         println!("{}", serde_json::to_string_pretty(&entries)?);
     } else {
-        eprintln!("{:<40} {:<10} {:<10} {:<8} {:<6}", "FILE", "RUNTIME", "ARCH", "SIZE", "SIGNED");
+        eprintln!(
+            "{:<40} {:<10} {:<10} {:<8} {:<6}",
+            "FILE", "RUNTIME", "ARCH", "SIZE", "SIGNED"
+        );
         eprintln!("{}", "-".repeat(80));
         for file in &files {
             if let Some(info) = inspect_file(file) {
-                let name: String = file.file_name().map_or_else(|| "?".into(), |n| n.to_string_lossy().into());
+                let name: String = file
+                    .file_name()
+                    .map_or_else(|| "?".into(), |n| n.to_string_lossy().into());
                 let runtime = info.get("runtime").and_then(|v| v.as_str()).unwrap_or("?");
                 let arch = info.get("arch").and_then(|v| v.as_str()).unwrap_or("?");
-                let size = info.get("payload_compressed_size").and_then(|v| v.as_u64()).unwrap_or(0);
-                let signed = info.get("signed").and_then(|v| v.as_bool()).unwrap_or(false);
+                let size = info
+                    .get("payload_compressed_size")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let signed = info
+                    .get("signed")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 eprintln!(
                     "{:<40} {:<10} {:<10} {:<8} {:<6}",
-                    if name.len() > 40 { &name[name.len()-37..] } else { &name },
+                    if name.len() > 40 {
+                        &name[name.len() - 37..]
+                    } else {
+                        &name
+                    },
                     runtime,
                     arch,
                     format_size(size),
@@ -75,7 +90,8 @@ fn find_xbin_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
         let path = entry.path();
         if path.is_dir() {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
-            if name == ".git" || name == "node_modules" || name == "__pycache__" || name == ".venv" {
+            if name == ".git" || name == "node_modules" || name == "__pycache__" || name == ".venv"
+            {
                 continue;
             }
             find_xbin_files(&path, files)?;
@@ -101,7 +117,8 @@ fn inspect_file(path: &Path) -> Option<serde_json::Value> {
         _ => "unknown",
     };
 
-    let meta_bytes = xbin_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize).ok()?;
+    let meta_bytes =
+        xbin_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize).ok()?;
     let meta: serde_json::Value = serde_json::from_slice(&meta_bytes).ok()?;
 
     Some(serde_json::json!({

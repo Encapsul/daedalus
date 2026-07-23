@@ -35,8 +35,8 @@ pub fn copy_into_rootfs(host_path: &Path, rootfs: &Path) -> std::io::Result<()> 
             if real_in_rootfs.exists() {
                 fs::remove_file(&dest)?;
                 if let Some(parent) = dest.parent() {
-                    let relpath = pathdiff::diff_paths(&real_in_rootfs, parent)
-                        .unwrap_or(real_in_rootfs);
+                    let relpath =
+                        pathdiff::diff_paths(&real_in_rootfs, parent).unwrap_or(real_in_rootfs);
                     std::os::unix::fs::symlink(&relpath, &dest)?;
                 }
             }
@@ -58,11 +58,7 @@ pub fn write_etc(rootfs: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn copy_dir_recursive_filter(
-    src: &Path,
-    dst: &Path,
-    skip: &[&str],
-) -> std::io::Result<()> {
+pub fn copy_dir_recursive_filter(src: &Path, dst: &Path, skip: &[&str]) -> std::io::Result<()> {
     if !src.is_dir() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -91,9 +87,7 @@ pub fn copy_dir_recursive_filter(
 pub fn build_cache_dir() -> PathBuf {
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            dirs_home().join(".cache")
-        });
+        .unwrap_or_else(|| dirs_home().join(".cache"));
     let d = base.join("xbin").join("build");
     fs::create_dir_all(&d).ok();
     d
@@ -201,7 +195,14 @@ mod tests {
         fs::create_dir_all(src.join(".xbin")).unwrap();
         fs::write(src.join("top.txt"), "top").unwrap();
 
-        let skip = [".git", "node_modules", "__pycache__", ".venv", "venv", ".xbin"];
+        let skip = [
+            ".git",
+            "node_modules",
+            "__pycache__",
+            ".venv",
+            "venv",
+            ".xbin",
+        ];
         copy_dir_recursive_filter(&src, &dst, &skip).unwrap();
 
         assert!(dst.join("keep").join("a.txt").exists());

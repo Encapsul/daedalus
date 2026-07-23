@@ -28,6 +28,11 @@ repo/
 *.cast
 *.mp4
 demo/
+demo-yc/
+
+# Internal notes
+useful_commands.md
+session-ses_07f9.md
 
 # Generated misc
 file.md

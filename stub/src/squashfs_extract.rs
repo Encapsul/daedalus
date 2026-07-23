@@ -52,8 +52,10 @@ pub fn extract_squashfs_blob(blob: &[u8], dest: &Path) -> io::Result<()> {
                 }
                 std::os::unix::fs::symlink(&sym.link, &target)?;
             }
-            InnerNode::CharacterDevice(_) | InnerNode::BlockDevice(_)
-            | InnerNode::NamedPipe | InnerNode::Socket => {
+            InnerNode::CharacterDevice(_)
+            | InnerNode::BlockDevice(_)
+            | InnerNode::NamedPipe
+            | InnerNode::Socket => {
                 // Skip device nodes, pipes, and sockets — not meaningful in
                 // userspace extraction.
             }
@@ -68,12 +70,8 @@ pub fn extract_squashfs_blob(blob: &[u8], dest: &Path) -> io::Result<()> {
 pub fn extract_squashfs_layers(blobs: &[&[u8]], dest: &Path) -> io::Result<()> {
     fs::create_dir_all(dest)?;
     for (i, blob) in blobs.iter().enumerate() {
-        extract_squashfs_blob(blob, dest).map_err(|e| {
-            io::Error::new(
-                e.kind(),
-                format!("squashfs layer {i}: {e}"),
-            )
-        })?;
+        extract_squashfs_blob(blob, dest)
+            .map_err(|e| io::Error::new(e.kind(), format!("squashfs layer {i}: {e}")))?;
     }
     Ok(())
 }

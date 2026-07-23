@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
-use xbin_core::format::{Footer, ARCH_X86_64, ARCH_AARCH64, FLAG_SIGNED};
+use xbin_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64, FLAG_SIGNED};
 
 #[derive(Args)]
 pub struct InspectArgs {
@@ -25,8 +25,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
 
     let mut f = std::fs::File::open(&args.file)
         .with_context(|| format!("failed to open {}", args.file.display()))?;
-    let footer = Footer::read_from(&mut f)
-        .context("failed to read xbin footer")?;
+    let footer = Footer::read_from(&mut f).context("failed to read xbin footer")?;
 
     let arch_name = match footer.arch {
         ARCH_X86_64 => "x86_64",
@@ -36,8 +35,8 @@ pub fn run(args: InspectArgs) -> Result<()> {
 
     let payload = xbin_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)
         .context("failed to read metadata payload")?;
-    let meta: serde_json::Value = serde_json::from_slice(&payload)
-        .context("failed to parse metadata JSON")?;
+    let meta: serde_json::Value =
+        serde_json::from_slice(&payload).context("failed to parse metadata JSON")?;
 
     if args.json {
         let info = serde_json::json!({

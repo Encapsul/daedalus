@@ -27,10 +27,8 @@ fn req_re() -> Regex {
 }
 
 fn import_re() -> Regex {
-    Regex::new(
-        r#"import\s+(?:.*?\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)"#,
-    )
-    .unwrap()
+    Regex::new(r#"import\s+(?:.*?\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)"#)
+        .unwrap()
 }
 
 fn is_skip_dir(name: &str) -> bool {
@@ -128,7 +126,7 @@ pub fn detect_used_packages(app_dir: &Path) -> HashSet<String> {
         Err(_) => return HashSet::new(),
     };
 
-    let mut stack: Vec<_> = walker.filter_map(|e| e.ok()).collect();
+    let mut stack: Vec<_> = walker.filter_map(Result::ok).collect();
 
     while let Some(entry) = stack.pop() {
         let path = entry.path();
@@ -139,7 +137,7 @@ pub fn detect_used_packages(app_dir: &Path) -> HashSet<String> {
                 }
             }
             if let Ok(read) = fs::read_dir(&path) {
-                for e in read.filter_map(|e| e.ok()) {
+                for e in read.filter_map(Result::ok) {
                     stack.push(e);
                 }
             }
@@ -178,7 +176,7 @@ pub fn prune_node_modules(app_dir: &Path, verbose: bool) -> io::Result<usize> {
     }
 
     let mut removed = 0;
-    let entries: Vec<_> = fs::read_dir(&nm)?.filter_map(|e| e.ok()).collect();
+    let entries: Vec<_> = fs::read_dir(&nm)?.filter_map(Result::ok).collect();
 
     for entry in &entries {
         let path = entry.path();
@@ -192,7 +190,7 @@ pub fn prune_node_modules(app_dir: &Path, verbose: bool) -> io::Result<usize> {
 
         if name.starts_with('@') {
             if let Ok(sub_entries) = fs::read_dir(&path) {
-                for sub in sub_entries.filter_map(|e| e.ok()) {
+                for sub in sub_entries.filter_map(Result::ok) {
                     if !sub.path().is_dir() {
                         continue;
                     }
@@ -252,10 +250,10 @@ mod tests {
         let file = dir.path().join("app.js");
         fs::write(
             &file,
-            r#"const foo = require('lodash');
+            r"const foo = require('lodash');
 const bar = require('react');
 const local = require('./helper');
-"#,
+",
         )
         .unwrap();
 
@@ -272,11 +270,11 @@ const local = require('./helper');
         let file = dir.path().join("app.mjs");
         fs::write(
             &file,
-            r#"import React from 'react';
+            r"import React from 'react';
 import { join } from 'path';
 import('fs');
 import lodash from '@scope/pkg';
-"#,
+",
         )
         .unwrap();
 
@@ -314,7 +312,11 @@ import lodash from '@scope/pkg';
             r#"{"dependencies":{"react":"^18","lodash":"^4"}}"#,
         )
         .unwrap();
-        fs::write(dir.path().join("index.js"), "const React = require('react');").unwrap();
+        fs::write(
+            dir.path().join("index.js"),
+            "const React = require('react');",
+        )
+        .unwrap();
 
         fs::create_dir_all(dir.path().join("node_modules/react")).unwrap();
         fs::create_dir_all(dir.path().join("node_modules/lodash")).unwrap();

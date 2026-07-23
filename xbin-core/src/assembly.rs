@@ -50,7 +50,7 @@ pub fn build_meta_json(
 ) -> Vec<u8> {
     let mut meta = serde_json::json!({
         "name": name,
-        "xbin_version": "0.1.0",
+        "xbin_version": env!("CARGO_PKG_VERSION"),
         "created": chrono_now(),
         "runtime": runtime,
         "isolation": isolation,

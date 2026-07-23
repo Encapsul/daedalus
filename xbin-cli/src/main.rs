@@ -1,8 +1,11 @@
 mod commands;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand, CommandFactory};
-use clap_complete::{generate, shells::{Bash, Elvish, Fish, PowerShell, Zsh}};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{
+    generate,
+    shells::{Bash, Elvish, Fish, PowerShell, Zsh},
+};
 use std::io;
 
 #[derive(Parser)]
@@ -105,9 +108,7 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::Man { dir } => {
-            generate_man_pages(&dir)
-        }
+        Commands::Man { dir } => generate_man_pages(&dir),
     }
 }
 

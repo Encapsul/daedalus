@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_minify_css_realistic() {
-        let input = r#"
+        let input = r"
             /* Main stylesheet */
             .container {
                 max-width: 1200px;
@@ -151,10 +151,10 @@ mod tests {
                 background-color: #fff;
                 padding: 1rem;
             }
-        "#;
+        ";
         let result = minify_css(input);
         assert!(result.contains(".container{"));
         assert!(!result.contains("/*"));
-        assert!(!result.contains("\n"));
+        assert!(!result.contains('\n'));
     }
 }

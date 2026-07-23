@@ -36,20 +36,26 @@ pub fn run(args: DoctorArgs) -> Result<()> {
     ];
 
     if args.json {
-        let items: Vec<_> = checks.iter().map(|c| {
-            serde_json::json!({
-                "name": c.name,
-                "ok": c.ok,
-                "detail": c.detail,
+        let items: Vec<_> = checks
+            .iter()
+            .map(|c| {
+                serde_json::json!({
+                    "name": c.name,
+                    "ok": c.ok,
+                    "detail": c.detail,
+                })
             })
-        }).collect();
+            .collect();
         println!("{}", serde_json::to_string_pretty(&items)?);
     } else {
         let mut all_ok = true;
         for check in &checks {
             let marker = if check.ok { "✓" } else { "✗" };
             let color = if check.ok { "\x1b[32m" } else { "\x1b[31m" };
-            eprintln!("  {color}{marker}\x1b[0m {:<20} {}", check.name, check.detail);
+            eprintln!(
+                "  {color}{marker}\x1b[0m {:<20} {}",
+                check.name, check.detail
+            );
             if !check.ok {
                 all_ok = false;
             }
@@ -98,7 +104,9 @@ fn check_musl_target() -> Check {
     match output {
         Ok(o) if o.status.success() => {
             let stdout = String::from_utf8_lossy(&o.stdout);
-            let has_musl = stdout.lines().any(|l| l.contains("x86_64-unknown-linux-musl"));
+            let has_musl = stdout
+                .lines()
+                .any(|l| l.contains("x86_64-unknown-linux-musl"));
             Check {
                 name: "musl target".to_string(),
                 ok: has_musl,

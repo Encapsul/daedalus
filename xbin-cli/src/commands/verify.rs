@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use ed25519_dalek::{VerifyingKey, Verifier};
-use sha2::{Sha256, Digest};
+use ed25519_dalek::{Verifier, VerifyingKey};
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use xbin_core::format::{Footer, SIG_BLOCK_SIZE_FIELD};
 
@@ -24,20 +24,24 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 
     let mut f = std::fs::File::open(&args.file)
         .with_context(|| format!("failed to open {}", args.file.display()))?;
-    let footer = Footer::read_from(&mut f)
-        .context("failed to read xbin footer")?;
+    let footer = Footer::read_from(&mut f).context("failed to read xbin footer")?;
 
     if !footer.is_signed() {
         anyhow::bail!("[xbin] error: file is not signed");
     }
 
     // Read sig block
-    let sig_data = xbin_core::format::read_at(&mut f, footer.sig_offset, SIG_BLOCK_SIZE_FIELD as usize + 64)?;
+    let sig_data = xbin_core::format::read_at(
+        &mut f,
+        footer.sig_offset,
+        SIG_BLOCK_SIZE_FIELD as usize + 64,
+    )?;
     let sig_size = u32::from_le_bytes([sig_data[0], sig_data[1], sig_data[2], sig_data[3]]);
     let signature_bytes = &sig_data[4..4 + sig_size as usize];
 
     // Read payload and metadata for hash
-    let payload = xbin_core::format::read_at(&mut f, footer.payload_offset, footer.payload_csize as usize)?;
+    let payload =
+        xbin_core::format::read_at(&mut f, footer.payload_offset, footer.payload_csize as usize)?;
     let meta = xbin_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)?;
 
     // SHA-256(payload || meta)
@@ -105,7 +109,11 @@ fn default_trusted_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         PathBuf::from(xdg).join("xbin").join("trusted-keys")
     } else if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".local").join("share").join("xbin").join("trusted-keys")
+        PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("xbin")
+            .join("trusted-keys")
     } else {
         PathBuf::from(".xbin").join("trusted-keys")
     }

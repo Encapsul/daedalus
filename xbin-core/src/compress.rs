@@ -23,30 +23,10 @@ pub fn compress_with_level(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
 
-/// Compress bytes with zstd using multiple threads (like `zstd -T0`).
-pub fn compress_mt(data: &[u8]) -> io::Result<Vec<u8>> {
-    compress_mt_with_level(data, 19)
-}
-
-/// Compress with multi-threading at a specific level.
-pub fn compress_mt_with_level(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
-    let mut encoder = zstd::Encoder::new(Vec::new(), level)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    encoder
-        .set_pledged_src_size(Some(data.len() as u64))
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    encoder
-        .write_all(data)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    encoder
-        .finish()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-}
-
 /// Decompress zstd-compressed bytes.
 pub fn decompress(data: &[u8]) -> io::Result<Vec<u8>> {
-    let mut decoder = zstd::Decoder::new(data)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let mut decoder =
+        zstd::Decoder::new(data).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     let mut output = Vec::new();
     decoder
         .read_to_end(&mut output)

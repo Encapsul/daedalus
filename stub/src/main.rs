@@ -9,7 +9,6 @@
 
 mod squashfs_extract;
 
-use xbin_core::format::{self as format, read_at, Footer};
 use serde::Deserialize;
 use std::ffi::CString;
 use std::fs::{self, File};
@@ -17,16 +16,25 @@ use std::io::{self, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::exit;
+use xbin_core::format::{self as format, read_at, Footer};
 
 /// Standard library search paths for `LD_LIBRARY_PATH`.
 /// Kept in sync with cli/xbin/build.py `LD_LIBRARY_PATH` construction.
 #[cfg(target_arch = "x86_64")]
 const LD_PATHS: &[&str] = &[
-    "lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/x86_64-linux-gnu",
+    "lib",
+    "lib64",
+    "usr/lib",
+    "usr/lib64",
+    "usr/lib/x86_64-linux-gnu",
 ];
 #[cfg(target_arch = "aarch64")]
 const LD_PATHS: &[&str] = &[
-    "lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/aarch64-linux-gnu",
+    "lib",
+    "lib64",
+    "usr/lib",
+    "usr/lib64",
+    "usr/lib/aarch64-linux-gnu",
 ];
 
 /// Binary search paths for PATH, mirroring `LD_PATHS` for executables.
@@ -111,7 +119,11 @@ fn run() -> io::Result<()> {
 
     // 2. Compute cache key and check hit BEFORE reading the payload.
     let layered = footer.format_version >= 2 && !meta.layers.is_empty();
-    let hash = if layered { cache_key_v2(&meta.layers) } else { footer.sha256_hex() };
+    let hash = if layered {
+        cache_key_v2(&meta.layers)
+    } else {
+        footer.sha256_hex()
+    };
 
     let base = cache_dir()?;
     fs::create_dir_all(&base)?;
@@ -132,7 +144,11 @@ fn run() -> io::Result<()> {
         eprintln!("[xbin] cold start: extracting {}", meta.name);
     }
 
-    let payload = read_at(&mut exe, footer.payload_offset, footer.payload_csize as usize)?;
+    let payload = read_at(
+        &mut exe,
+        footer.payload_offset,
+        footer.payload_csize as usize,
+    )?;
 
     // Verify Ed25519 signature (v3+ only).
     if footer.format_version >= 3 && footer.flags & format::FLAG_SIGNED != 0 {
@@ -198,7 +214,12 @@ fn run() -> io::Result<()> {
 ///
 /// Trusted public keys are read from `~/.xbin/trusted-keys/` (or `$XBIN_TRUSTED_DIR`).
 /// The launcher accepts the file if **any** trusted key verifies the signature.
-fn verify_ed25519(footer: &Footer, exe: &mut File, payload: &[u8], meta_bytes: &[u8]) -> io::Result<()> {
+fn verify_ed25519(
+    footer: &Footer,
+    exe: &mut File,
+    payload: &[u8],
+    meta_bytes: &[u8],
+) -> io::Result<()> {
     // Read signature block: [sig_size: u32le][signature: 64 bytes]
     let sig_data = read_at(exe, footer.sig_offset, 68)?;
     let sig_size = u32::from_le_bytes(sig_data[0..4].try_into().unwrap()) as usize;
@@ -463,10 +484,10 @@ fn setup_env(
     let mut env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
 
     if use_pivot {
-        env.insert("LD_LIBRARY_PATH".into(),
-                   LD_PATHS.join(":"));
+        env.insert("LD_LIBRARY_PATH".into(), LD_PATHS.join(":"));
     } else {
-        let mut paths: Vec<String> = LD_PATHS.iter()
+        let mut paths: Vec<String> = LD_PATHS
+            .iter()
             .map(|p| rootfs.join(p))
             .filter(|p| p.exists())
             .map(|p| p.to_string_lossy().into_owned())
@@ -483,7 +504,8 @@ fn setup_env(
     if use_pivot {
         env.insert("PATH".into(), BIN_PATHS.join(":"));
     } else {
-        let mut paths: Vec<String> = BIN_PATHS.iter()
+        let mut paths: Vec<String> = BIN_PATHS
+            .iter()
             .map(|p| rootfs.join(p))
             .filter(|p| p.exists())
             .map(|p| p.to_string_lossy().into_owned())
@@ -534,7 +556,10 @@ fn env_to_cstrings(env: &std::collections::BTreeMap<String, String>) -> Vec<CStr
 
 fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     if meta.entrypoint.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "empty entrypoint"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "empty entrypoint",
+        ));
     }
 
     let orig_cwd = std::env::current_dir().ok();
@@ -545,7 +570,9 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         pivot_root_into(rootfs)?;
         if meta.seccomp {
             if let Err(e) = install_seccomp_denylist() {
-                eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+                eprintln!(
+                    "[xbin] warning: seccomp not available, running without syscall filter: {e}"
+                );
             }
         }
     }
@@ -596,7 +623,9 @@ fn supervise_services(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         pivot_root_into(rootfs)?;
         if meta.seccomp {
             if let Err(e) = install_seccomp_denylist() {
-                eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+                eprintln!(
+                    "[xbin] warning: seccomp not available, running without syscall filter: {e}"
+                );
             }
         }
     }
@@ -649,7 +678,11 @@ fn fork_services(
                 // SAFETY: execve(2) replaces the child process. All pointers
                 // are valid CStrings, envp is null-terminated.
                 libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
-                eprintln!("[xbin] failed to exec {}: {}", svc.cmd[0], io::Error::last_os_error());
+                eprintln!(
+                    "[xbin] failed to exec {}: {}",
+                    svc.cmd[0],
+                    io::Error::last_os_error()
+                );
                 std::process::exit(127);
             }
             if verbose {
@@ -664,10 +697,19 @@ fn fork_services(
 /// Block until all services with `ready_port` are accepting connections.
 fn wait_for_health(meta: &Metadata, verbose: bool) -> io::Result<()> {
     for svc in &meta.services {
-        if svc.ready_port == 0 { continue; }
-        let timeout = if svc.ready_timeout > 0 { svc.ready_timeout } else { 30 };
+        if svc.ready_port == 0 {
+            continue;
+        }
+        let timeout = if svc.ready_timeout > 0 {
+            svc.ready_timeout
+        } else {
+            30
+        };
         if verbose {
-            eprintln!("[xbin] waiting for {}:{} (timeout {}s)", svc.name, svc.ready_port, timeout);
+            eprintln!(
+                "[xbin] waiting for {}:{} (timeout {}s)",
+                svc.name, svc.ready_port, timeout
+            );
         }
         wait_for_port(svc.ready_port, timeout)?;
         if verbose {
@@ -687,7 +729,9 @@ fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Result<()
         // SAFETY: waitpid(2) with pid=-1 waits for any child. status is
         // filled by the kernel. We only read it after a successful return.
         let pid = unsafe { libc::waitpid(-1, &mut status, 0) };
-        if pid < 0 { break; }
+        if pid < 0 {
+            break;
+        }
         remaining -= 1;
 
         if let Some((name, _)) = children.iter().find(|(_, p)| *p == pid) {
@@ -696,23 +740,31 @@ fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Result<()
                 if verbose {
                     eprintln!("[xbin] service '{}' exited with code {}", name, code);
                 }
-                if code != 0 && exit_code == 0 { exit_code = code; }
+                if code != 0 && exit_code == 0 {
+                    exit_code = code;
+                }
             } else if libc::WIFSIGNALED(status) {
                 let sig = libc::WTERMSIG(status);
                 eprintln!("[xbin] service '{}' killed by signal {}", name, sig);
-                if exit_code == 0 { exit_code = 128 + sig; }
+                if exit_code == 0 {
+                    exit_code = 128 + sig;
+                }
                 // One service died: kill the rest.
                 for (_, cp) in children {
                     if *cp != pid {
                         // SAFETY: kill(2) sends a signal to a process we own
                         // (forked from us). SIGTERM is a graceful shutdown.
-                        unsafe { libc::kill(*cp, libc::SIGTERM); }
+                        unsafe {
+                            libc::kill(*cp, libc::SIGTERM);
+                        }
                     }
                 }
             }
         }
     }
-    if exit_code != 0 { exit(exit_code); }
+    if exit_code != 0 {
+        exit(exit_code);
+    }
     Ok(())
 }
 
@@ -726,10 +778,12 @@ fn wait_for_port(port: u16, timeout_secs: u64) -> io::Result<()> {
             Err(_) if Instant::now() < deadline => {
                 std::thread::sleep(Duration::from_millis(200));
             }
-            Err(e) => return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                format!("service port {port} not ready within {timeout_secs}s: {e}"),
-            )),
+            Err(e) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("service port {port} not ready within {timeout_secs}s: {e}"),
+                ))
+            }
         }
     }
 }
@@ -962,7 +1016,15 @@ fn install_seccomp_denylist() -> io::Result<()> {
     // a BPF filter on the current process. The filter program and its data
     // are stack-allocated Vec that outlive the prctl call. On success the
     // filter is permanent — any blocked syscall kills the process with SIGSYS.
-    let rc = unsafe { libc::prctl(libc::PR_SET_SECCOMP, 2, std::ptr::from_ref(&prog) as usize, 0, 0) };
+    let rc = unsafe {
+        libc::prctl(
+            libc::PR_SET_SECCOMP,
+            2,
+            std::ptr::from_ref(&prog) as usize,
+            0,
+            0,
+        )
+    };
     if rc != 0 {
         return Err(io::Error::last_os_error());
     }
@@ -979,9 +1041,13 @@ fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
     // it recursive. This is required for pivot_root(2) to accept rootfs as a
     // mount point. The mount point is immediately detached after pivot_root.
     unsafe {
-        let rc = libc::mount(new_root_c.as_ptr(), new_root_c.as_ptr(),
-                             std::ptr::null(), libc::MS_BIND | libc::MS_REC,
-                             std::ptr::null());
+        let rc = libc::mount(
+            new_root_c.as_ptr(),
+            new_root_c.as_ptr(),
+            std::ptr::null(),
+            libc::MS_BIND | libc::MS_REC,
+            std::ptr::null(),
+        );
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -996,8 +1062,11 @@ fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
     // umount2(MNT_DETACH) lazily detaches the old root — files remain accessible
     // to existing file descriptors but are unreachable from the namespace.
     unsafe {
-        let rc = libc::syscall(libc::SYS_pivot_root,
-                               new_root_c.as_ptr(), put_old_c.as_ptr());
+        let rc = libc::syscall(
+            libc::SYS_pivot_root,
+            new_root_c.as_ptr(),
+            put_old_c.as_ptr(),
+        );
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1046,7 +1115,11 @@ fn flock_exclusive(f: &File) -> io::Result<()> {
 
 extern "C" {
     #[link_name = "execve"]
-    fn libc_execve(path: *const core::ffi::c_char, argv: *const *const core::ffi::c_char, envp: *const *const core::ffi::c_char) -> i32;
+    fn libc_execve(
+        path: *const core::ffi::c_char,
+        argv: *const *const core::ffi::c_char,
+        envp: *const *const core::ffi::c_char,
+    ) -> i32;
     #[link_name = "flock"]
     fn libc_flock(fd: i32, operation: i32) -> i32;
 }

@@ -27,7 +27,10 @@ pub fn run(args: EnvArgs) -> Result<()> {
         eprintln!("xbin {}", env!("CARGO_PKG_VERSION"));
         eprintln!("  arch:   {}", std::env::consts::ARCH);
         eprintln!("  os:     {}", std::env::consts::OS);
-        eprintln!("  rustc:  {}", rustc_version().unwrap_or_else(|| "unknown".into()));
+        eprintln!(
+            "  rustc:  {}",
+            rustc_version().unwrap_or_else(|| "unknown".into())
+        );
         match &stub {
             Some(p) => eprintln!("  stub:   {}", p.display()),
             None => eprintln!("  stub:   not found"),
