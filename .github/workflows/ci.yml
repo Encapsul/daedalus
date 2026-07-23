@@ -28,11 +28,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl
+          components: clippy, rustfmt
       - run: sudo apt-get update && sudo apt-get install -y musl-tools
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
+      - run: cargo fmt --check
+      - run: cargo clippy -p xbin-core --all-targets -- -D warnings
       - run: cargo clippy -p xbin-stub -- -D warnings
       - run: cargo clippy -p xbin-cli -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
       - run: cargo build -p xbin-cli
 
   python:
