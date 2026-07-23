@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -130,7 +130,7 @@ def write_lock(
     # [detect] section
     lines.append("[detect]")
     lines.append(f'dockerfile_sha256 = "{hash_dockerfile(app_dir)}"')
-    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     lines.append(f'detected_at = "{now}"')
     lines.append("")
 

@@ -9,7 +9,7 @@ import hashlib
 import json
 import os
 import platform
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import _format as fmt
@@ -48,7 +48,7 @@ def build_meta_json(
     meta: dict = {
         "name": name,
         "xbin_version": XBIN_VERSION,
-        "created": datetime.now(UTC).isoformat(),
+        "created": datetime.now(timezone.utc).isoformat(),
         "runtime": runtime,
         "isolation": isolation,
         "entrypoint": entrypoint,
