@@ -42,9 +42,13 @@ pub struct BuildArgs {
     #[arg(long)]
     pub no_install: bool,
 
-    /// Environment file to bake in
+    /// Environment file to bake in (KEY=VALUE per line)
     #[arg(long)]
     pub env_file: Option<PathBuf>,
+
+    /// Set environment variable (repeatable): --env KEY=VALUE
+    #[arg(long = "env", action = clap::ArgAction::Append)]
+    pub env: Vec<String>,
 
     /// Version string
     #[arg(long)]
@@ -224,6 +228,28 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let mut env_map = serde_json::Map::new();
     env_map.insert("XBIN_RUNTIME".into(), runtime_name.into());
     env_map.insert("XBIN_APP_NAME".into(), app_name.clone().into());
+
+    // Load env-file (KEY=VALUE per line, # comments, blank lines)
+    if let Some(ref ef) = env_file {
+        if let Ok(content) = std::fs::read_to_string(ef) {
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some((k, v)) = line.split_once('=') {
+                    env_map.insert(k.trim().into(), v.trim().into());
+                }
+            }
+        }
+    }
+
+    // Inline --env KEY=VALUE flags (override env-file)
+    for entry in &args.env {
+        if let Some((k, v)) = entry.split_once('=') {
+            env_map.insert(k.trim().into(), v.trim().into());
+        }
+    }
 
     let env_pairs: Vec<(String, String)> = env_map
         .iter()
