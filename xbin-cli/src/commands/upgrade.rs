@@ -169,7 +169,7 @@ fn fetch_latest_version() -> Result<String> {
 
 fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
+        .timeout(std::time::Duration::from_mins(5))
         .build()
         .context("failed to create HTTP client")?;
 
