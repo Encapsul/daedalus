@@ -54,9 +54,7 @@ pub fn decrypt_payload(
     ciphertext: &[u8],
     signing_seed: &[u8; 32],
     nonce: &[u8; NONCE_LEN],
-    tag_offset: usize,
 ) -> anyhow::Result<Vec<u8>> {
-    let _ = tag_offset;
     let key = hkdf_derive_key(signing_seed);
     let cipher =
         Aes256Gcm::new_from_slice(&key).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
@@ -82,11 +80,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "slice with incorrect length")]
     fn test_hkdf_wrong_length_panics() {
         let seed = vec![0u8; 16];
-        let arr: &[u8; 32] = seed.as_slice().try_into().unwrap();
-        hkdf_derive_key(arr);
+        let result: Result<&[u8; 32], _> = seed.as_slice().try_into();
+        assert!(result.is_err());
     }
 
     #[test]
@@ -99,7 +96,7 @@ mod tests {
         assert_eq!(meta.nonce.len(), NONCE_LEN);
         assert_eq!(meta.tag_offset, plaintext.len());
 
-        let decrypted = decrypt_payload(&ciphertext, &seed, &meta.nonce, meta.tag_offset).unwrap();
+        let decrypted = decrypt_payload(&ciphertext, &seed, &meta.nonce).unwrap();
         assert_eq!(decrypted, plaintext);
     }
 
@@ -122,7 +119,7 @@ mod tests {
         let plaintext = b"secret data";
 
         let (ciphertext, meta) = encrypt_payload(plaintext, &seed1).unwrap();
-        let result = decrypt_payload(&ciphertext, &seed2, &meta.nonce, meta.tag_offset);
+        let result = decrypt_payload(&ciphertext, &seed2, &meta.nonce);
 
         assert!(result.is_err());
     }
