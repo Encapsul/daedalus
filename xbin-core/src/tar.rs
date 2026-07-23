@@ -37,9 +37,9 @@ pub fn create_deterministic_tar(root: &Path) -> io::Result<Vec<u8>> {
             header
                 .set_groupname("")
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            header
-                .set_path(arcname)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+            // Note: set_path is NOT called here — append_data handles long
+            // paths automatically via PAX extensions when needed.
 
             if path.is_dir() {
                 header.set_entry_type(tar::EntryType::Directory);

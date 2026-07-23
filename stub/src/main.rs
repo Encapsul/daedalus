@@ -158,14 +158,10 @@ fn run() -> io::Result<()> {
         }
     }
 
-    // Verify SHA-256 integrity.
-    if layered {
-        let mut buf = payload.clone();
-        buf.extend_from_slice(&meta_bytes);
-        verify_sha256(&buf, &footer.payload_sha256)?;
-    } else {
-        verify_sha256(&payload, &footer.payload_sha256)?;
-    }
+    // Verify SHA-256 integrity (hash = SHA-256(payload || meta_bytes)).
+    let mut buf = payload.clone();
+    buf.extend_from_slice(&meta_bytes);
+    verify_sha256(&buf, &footer.payload_sha256)?;
 
     // Decrypt payload (v4+ with AES-256-GCM).
     // Happens AFTER signature + integrity verification — we only decrypt
@@ -592,19 +588,25 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     }
 
     let env = setup_env(meta, rootfs, use_pivot, orig_cwd.as_deref());
-    let env_c = env_to_cstrings(&env);
 
     if let Some(cwd) = &meta.cwd {
         let dir = resolve(cwd);
         std::env::set_current_dir(&dir).ok();
     }
 
+    // Set environment variables so execvp inherits them.
+    for (k, v) in &env {
+        std::env::set_var(k, v);
+    }
+
     let argv_ptrs = to_ptr_vec(&argv);
-    let env_ptrs = to_ptr_vec(&env_c);
-    // SAFETY: execve(2) replaces the current process. prog_c is a valid CString,
-    // argv_ptrs and env_ptrs are null-terminated. We never return on success.
+    // SAFETY: execvp(3) replaces the current process. prog_c is a valid CString,
+    // argv_ptrs is null-terminated. We never return on success.
+    // execvp searches PATH for bare command names (e.g. "python3") and uses
+    // absolute paths as-is (e.g. "/app/app.py"). Environment is inherited
+    // from the current process after set_var calls above.
     unsafe {
-        libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
+        libc_execvp(prog_c.as_ptr(), argv_ptrs.as_ptr());
     }
     Err(io::Error::last_os_error())
 }
@@ -1114,6 +1116,8 @@ fn flock_exclusive(f: &File) -> io::Result<()> {
 }
 
 extern "C" {
+    #[link_name = "execvp"]
+    fn libc_execvp(path: *const core::ffi::c_char, argv: *const *const core::ffi::c_char) -> i32;
     #[link_name = "execve"]
     fn libc_execve(
         path: *const core::ffi::c_char,
