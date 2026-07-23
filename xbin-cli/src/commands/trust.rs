@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
 #[derive(Args)]
@@ -19,13 +19,20 @@ pub struct TrustArgs {
 
 pub fn run(args: TrustArgs) -> Result<()> {
     let trusted_dir = args.trusted_dir.unwrap_or_else(default_trusted_dir);
-    std::fs::create_dir_all(&trusted_dir)
-        .with_context(|| format!("failed to create trusted key directory {}", trusted_dir.display()))?;
+    std::fs::create_dir_all(&trusted_dir).with_context(|| {
+        format!(
+            "failed to create trusted key directory {}",
+            trusted_dir.display()
+        )
+    })?;
 
     let key_bytes = std::fs::read(&args.pubkey)
         .with_context(|| format!("failed to read public key at {}", args.pubkey.display()))?;
     if key_bytes.len() != 32 {
-        anyhow::bail!("[xbin] error: public key must be 32 bytes, got {}", key_bytes.len());
+        anyhow::bail!(
+            "[xbin] error: public key must be 32 bytes, got {}",
+            key_bytes.len()
+        );
     }
 
     // Compute fingerprint
@@ -49,7 +56,11 @@ fn default_trusted_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         PathBuf::from(xdg).join("xbin").join("trusted-keys")
     } else if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".local").join("share").join("xbin").join("trusted-keys")
+        PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("xbin")
+            .join("trusted-keys")
     } else {
         PathBuf::from(".xbin").join("trusted-keys")
     }

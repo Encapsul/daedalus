@@ -4,11 +4,11 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use std::path::Path;
 
+use crate::assembly;
 use crate::compress;
 use crate::detect::{self, Runtime};
 use crate::format::{self, Footer};
 use crate::pkgmgr::{self, PkgMgr};
-use crate::assembly;
 
 // ─── format ──────────────────────────────────────────────────────────────
 

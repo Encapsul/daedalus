@@ -68,7 +68,10 @@ pub struct BuildArgs {
 }
 
 pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
-    let app_dir = args.app.canonicalize().context("failed to canonicalize app path")?;
+    let app_dir = args
+        .app
+        .canonicalize()
+        .context("failed to canonicalize app path")?;
     if !app_dir.is_dir() {
         anyhow::bail!("{} is not a directory", app_dir.display());
     }
@@ -127,13 +130,27 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         eprintln!("  Seccomp:   {seccomp}");
         eprintln!("  Encrypt:   {encrypt}");
         eprintln!("  SquashFS:  {squashfs}");
-        if let Some(ref v) = version_info { eprintln!("  Version:   {v}"); }
-        if let Some(ref a) = author { eprintln!("  Author:    {a}"); }
-        if let Some(ref d) = description { eprintln!("  Desc:      {d}"); }
-        if let Some(ref l) = license { eprintln!("  License:   {l}"); }
-        if let Some(ref t) = target { eprintln!("  Target:    {t}"); }
-        if let Some(ref e) = env_file { eprintln!("  Env file:  {}", e.display()); }
-        if no_install { eprintln!("  No install: yes"); }
+        if let Some(ref v) = version_info {
+            eprintln!("  Version:   {v}");
+        }
+        if let Some(ref a) = author {
+            eprintln!("  Author:    {a}");
+        }
+        if let Some(ref d) = description {
+            eprintln!("  Desc:      {d}");
+        }
+        if let Some(ref l) = license {
+            eprintln!("  License:   {l}");
+        }
+        if let Some(ref t) = target {
+            eprintln!("  Target:    {t}");
+        }
+        if let Some(ref e) = env_file {
+            eprintln!("  Env file:  {}", e.display());
+        }
+        if no_install {
+            eprintln!("  No install: yes");
+        }
 
         // Detect package manager
         let pkg_mgr = pkgmgr::detect_pkgmgr(&app_dir, runtime_name);
@@ -193,8 +210,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     std::fs::create_dir_all(&rootfs).context("failed to create rootfs directory")?;
 
     // Copy app files
-    copy_dir_recursive(&app_dir, &rootfs.join("app"))
-        .context("failed to copy app files")?;
+    copy_dir_recursive(&app_dir, &rootfs.join("app")).context("failed to copy app files")?;
 
     // Build deterministic tar
     if verbose {
@@ -206,10 +222,9 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         .context("failed to compress payload")?;
 
     // Build metadata
-    let app_name = app_dir.file_name().map_or_else(
-        || "app".to_string(),
-        |n| n.to_string_lossy().into(),
-    );
+    let app_name = app_dir
+        .file_name()
+        .map_or_else(|| "app".to_string(), |n| n.to_string_lossy().into());
 
     let mut env_map = serde_json::Map::new();
     env_map.insert("XBIN_RUNTIME".into(), runtime_name.into());
@@ -257,7 +272,11 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     )
     .context("failed to assemble xbin")?;
 
-    eprintln!("Built {} ({:.1}MB)", output.display(), size as f64 / (1024.0 * 1024.0));
+    eprintln!(
+        "Built {} ({:.1}MB)",
+        output.display(),
+        size as f64 / (1024.0 * 1024.0)
+    );
 
     // Sign if key provided
     if let Some(_key_path) = &args.key {
@@ -317,8 +336,7 @@ fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
         }
     }
 
-    let target_dir = std::env::var("CARGO_TARGET_DIR")
-        .unwrap_or_else(|_| "target".into());
+    let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
 
     let arch_suffix = match target_arch.as_deref() {
         Some("aarch64") => "aarch64-unknown-linux-musl",
@@ -326,8 +344,14 @@ fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
     };
 
     let candidates = [
-        PathBuf::from(&target_dir).join(arch_suffix).join("release").join("xbin-stub"),
-        PathBuf::from("stub/target").join(arch_suffix).join("release").join("xbin-stub"),
+        PathBuf::from(&target_dir)
+            .join(arch_suffix)
+            .join("release")
+            .join("xbin-stub"),
+        PathBuf::from("stub/target")
+            .join(arch_suffix)
+            .join("release")
+            .join("xbin-stub"),
         PathBuf::from("/usr/local/bin/xbin-stub"),
     ];
 
@@ -350,8 +374,12 @@ fn count_files(dir: &Path) -> usize {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
-            if name_str == ".git" || name_str == "node_modules" || name_str == "__pycache__"
-                || name_str == ".venv" || name_str == "venv" || name_str == ".xbin"
+            if name_str == ".git"
+                || name_str == "node_modules"
+                || name_str == "__pycache__"
+                || name_str == ".venv"
+                || name_str == "venv"
+                || name_str == ".xbin"
             {
                 continue;
             }
@@ -373,8 +401,12 @@ fn print_tree(dir: &Path, indent: usize) {
         for entry in entries {
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
-            if name_str == ".git" || name_str == "node_modules" || name_str == "__pycache__"
-                || name_str == ".venv" || name_str == "venv" || name_str == ".xbin"
+            if name_str == ".git"
+                || name_str == "node_modules"
+                || name_str == "__pycache__"
+                || name_str == ".venv"
+                || name_str == "venv"
+                || name_str == ".xbin"
             {
                 continue;
             }
@@ -396,8 +428,12 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
         let dst_path = dst.join(entry.file_name());
 
         let name = src_path.file_name().unwrap_or_default().to_string_lossy();
-        if name == ".git" || name == "node_modules" || name == "__pycache__"
-            || name == ".venv" || name == "venv" || name == ".xbin"
+        if name == ".git"
+            || name == "node_modules"
+            || name == "__pycache__"
+            || name == ".venv"
+            || name == "venv"
+            || name == ".xbin"
         {
             continue;
         }

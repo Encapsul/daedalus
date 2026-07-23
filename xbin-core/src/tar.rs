@@ -31,9 +31,15 @@ pub fn create_deterministic_tar(root: &Path) -> io::Result<Vec<u8>> {
             header.set_mtime(0);
             header.set_uid(0);
             header.set_gid(0);
-            header.set_username("").map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            header.set_groupname("").map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            header.set_path(arcname).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            header
+                .set_username("")
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            header
+                .set_groupname("")
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            header
+                .set_path(arcname)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
             if path.is_dir() {
                 header.set_entry_type(tar::EntryType::Directory);
@@ -90,7 +96,9 @@ fn collect_recursive(base: &Path, current: &Path, entries: &mut Vec<String>) -> 
         let path = entry.path();
 
         // Skip symlinks — they'll be followed by the tar builder
-        let file_type = entry.file_type().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         if file_type.is_symlink() {
             continue;
         }
@@ -138,7 +146,11 @@ mod tests {
 
         // Verify it's a valid tar
         let mut archive = tar::Archive::new(&tar[..]);
-        let entries: Vec<_> = archive.entries().unwrap().map(|e| e.unwrap().path().unwrap().to_string_lossy().to_string()).collect();
+        let entries: Vec<_> = archive
+            .entries()
+            .unwrap()
+            .map(|e| e.unwrap().path().unwrap().to_string_lossy().to_string())
+            .collect();
         assert!(entries.contains(&"hello.txt".to_string()));
         assert!(entries.contains(&"sub".to_string()));
         assert!(entries.contains(&"sub/data.txt".to_string()));
@@ -154,7 +166,11 @@ mod tests {
         let decompressed = crate::compress::decompress(&compressed).unwrap();
 
         let mut archive = tar::Archive::new(&decompressed[..]);
-        let entries: Vec<_> = archive.entries().unwrap().map(|e| e.unwrap().path().unwrap().to_string_lossy().to_string()).collect();
+        let entries: Vec<_> = archive
+            .entries()
+            .unwrap()
+            .map(|e| e.unwrap().path().unwrap().to_string_lossy().to_string())
+            .collect();
         assert!(entries.contains(&"app.py".to_string()));
     }
 

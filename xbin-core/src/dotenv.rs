@@ -51,15 +51,16 @@ fn strip_quotes(s: &str) -> String {
 }
 
 pub fn detect_secret_keys<S: BuildHasher>(env: &HashMap<String, String, S>) -> Vec<String> {
-    let re = Regex::new(r"(?i)(secret|password|token|api[_-]?key|private[_-]?key|credentials)")
-        .unwrap();
-    env.keys()
-        .filter(|k| re.is_match(k))
-        .cloned()
-        .collect()
+    let re =
+        Regex::new(r"(?i)(secret|password|token|api[_-]?key|private[_-]?key|credentials)").unwrap();
+    env.keys().filter(|k| re.is_match(k)).cloned().collect()
 }
 
-pub fn load_dotenv(app_dir: &Path, env_file: Option<&str>, verbose: bool) -> HashMap<String, String> {
+pub fn load_dotenv(
+    app_dir: &Path,
+    env_file: Option<&str>,
+    verbose: bool,
+) -> HashMap<String, String> {
     let filename = env_file.unwrap_or(".env");
     let path = app_dir.join(filename);
 

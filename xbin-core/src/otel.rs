@@ -13,8 +13,14 @@ pub fn build_otel_env(
     let mut env = HashMap::new();
 
     env.insert("OTEL_SERVICE_NAME".to_string(), service_name.to_string());
-    env.insert("OTEL_TRACES_EXPORTER".to_string(), traces_exporter.to_string());
-    env.insert("OTEL_METRICS_EXPORTER".to_string(), metrics_exporter.to_string());
+    env.insert(
+        "OTEL_TRACES_EXPORTER".to_string(),
+        traces_exporter.to_string(),
+    );
+    env.insert(
+        "OTEL_METRICS_EXPORTER".to_string(),
+        metrics_exporter.to_string(),
+    );
     env.insert("OTEL_LOGS_EXPORTER".to_string(), logs_exporter.to_string());
 
     let mut resource_attrs = format!("service.name={service_name}");
@@ -25,8 +31,14 @@ pub fn build_otel_env(
     env.insert("OTEL_RESOURCE_ATTRIBUTES".to_string(), resource_attrs);
 
     if !endpoint.is_empty() {
-        env.insert("OTEL_EXPORTER_OTLP_ENDPOINT".to_string(), endpoint.to_string());
-        env.insert("OTEL_EXPORTER_OTLP_PROTOCOL".to_string(), protocol.to_string());
+        env.insert(
+            "OTEL_EXPORTER_OTLP_ENDPOINT".to_string(),
+            endpoint.to_string(),
+        );
+        env.insert(
+            "OTEL_EXPORTER_OTLP_PROTOCOL".to_string(),
+            protocol.to_string(),
+        );
     }
 
     if traces_exporter != "none" || metrics_exporter != "none" {
@@ -87,7 +99,7 @@ mod tests {
         assert!(attrs.contains("service.name=myapp"));
         assert!(attrs.contains("deployment.mode=server"));
         assert!(!attrs.contains("service.version"));
-        assert!(env.get("OTEL_EXPORTER_OTLP_ENDPOINT").is_none());
+        assert!(!env.contains_key("OTEL_EXPORTER_OTLP_ENDPOINT"));
         assert_eq!(
             env.get("OTEL_PYTHON_AUTO_INSTRUMENTATION_ENABLED").unwrap(),
             "true"

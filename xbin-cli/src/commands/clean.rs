@@ -24,7 +24,11 @@ pub fn run(args: CleanArgs) -> Result<()> {
     let size = dir_size(&cache_dir)?;
 
     if !args.force {
-        eprintln!("This will remove {} ({})", cache_dir.display(), format_size(size));
+        eprintln!(
+            "This will remove {} ({})",
+            cache_dir.display(),
+            format_size(size)
+        );
         eprint!("Continue? [y/N] ");
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;

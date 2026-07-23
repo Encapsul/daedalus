@@ -100,11 +100,9 @@ fn detect_ruby(dir: &Path) -> bool {
 fn detect_dotnet(dir: &Path) -> bool {
     std::fs::read_dir(dir)
         .map(|entries| {
-            entries.filter_map(Result::ok).any(|e| {
-                e.path()
-                    .extension()
-                    .is_some_and(|ext| ext == "csproj")
-            })
+            entries
+                .filter_map(Result::ok)
+                .any(|e| e.path().extension().is_some_and(|ext| ext == "csproj"))
         })
         .unwrap_or(false)
 }

@@ -85,16 +85,10 @@ fn test_doctor_strict() {
 
 #[test]
 fn test_env_output() {
-    xbin()
-        .arg("env")
-        .assert()
-        .success();
+    xbin().arg("env").assert().success();
 }
 
 #[test]
 fn test_clean_help() {
-    xbin()
-        .args(["clean", "--help"])
-        .assert()
-        .success();
+    xbin().args(["clean", "--help"]).assert().success();
 }

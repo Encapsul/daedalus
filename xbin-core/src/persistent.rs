@@ -63,9 +63,8 @@ mod tests {
         let dir = get_persist_dir("myapp");
         assert_eq!(dir, PathBuf::from("/home/testuser/.local/share/xbin/myapp"));
 
-        match prev_xdg {
-            Some(v) => env::set_var("XDG_DATA_HOME", v),
-            None => {}
+        if let Some(v) = prev_xdg {
+            env::set_var("XDG_DATA_HOME", v);
         }
         match prev_home {
             Some(v) => env::set_var("HOME", v),
