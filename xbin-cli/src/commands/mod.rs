@@ -9,4 +9,5 @@ pub mod scan;
 pub mod selftest;
 pub mod sign;
 pub mod trust;
+pub mod upgrade;
 pub mod verify;
