@@ -30,14 +30,20 @@ pub fn run(args: VerifyArgs) -> Result<()> {
         anyhow::bail!("[xbin] error: file is not signed");
     }
 
-    // Read sig block
+    // Read sig block: [sig_size:u32le][64-byte ed25519 signature]
     let sig_data = xbin_core::format::read_at(
         &mut f,
         footer.sig_offset,
         SIG_BLOCK_SIZE_FIELD as usize + 64,
     )?;
     let sig_size = u32::from_le_bytes([sig_data[0], sig_data[1], sig_data[2], sig_data[3]]);
-    let signature_bytes = &sig_data[4..4 + sig_size as usize];
+    if sig_size != 64 {
+        anyhow::bail!(
+            "[xbin] error: unexpected sig_size {} (expected 64 for ed25519)",
+            sig_size
+        );
+    }
+    let signature_bytes = &sig_data[4..68];
 
     // Read payload and metadata for hash
     let payload =

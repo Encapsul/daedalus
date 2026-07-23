@@ -77,7 +77,7 @@ pub fn run(args: SignArgs) -> Result<()> {
     let signature = signing_key.sign(&hash);
 
     // Write sig_block: [sig_size:u32le][64-byte sig]
-    let sig_size = SIG_BLOCK_SIZE as u32;
+    let sig_size = 64u32; // ed25519 signature is always 64 bytes
     let mut sig_block = Vec::with_capacity(SIG_BLOCK_SIZE as usize);
     sig_block.extend_from_slice(&sig_size.to_le_bytes());
     sig_block.extend_from_slice(&signature.to_bytes());
