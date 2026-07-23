@@ -11,6 +11,7 @@ pub mod detect;
 pub mod dotenv;
 pub mod encrypt;
 pub mod format;
+pub mod include;
 pub mod layers;
 pub mod minify;
 pub mod otel;
