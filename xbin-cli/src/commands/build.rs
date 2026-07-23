@@ -254,7 +254,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             app_hash: None,
             rt_deps_hash: None,
         },
-    );
+    )?;
 
     // Assemble
     if verbose {
