@@ -11,20 +11,23 @@ x.bin packages any app into a single self-extracting ELF binary. Rust workspace 
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+**Build target**: repo lives on vfat (no exec bit), so build artifacts go to `/tmp/xbin-stub-target`.
+
 ### Rust
 
 ```bash
 # Lint (MUST pass before any commit)
 cargo fmt --check
-cargo clippy -p xbin-core --all-targets -- -D warnings
-cargo clippy -p xbin-stub -- -D warnings
-cargo clippy -p xbin-cli -- -D warnings
+cargo clippy --all-targets -- -D warnings
 
 # Tests
 cargo test --workspace
 
 # Format
 cargo fmt
+
+# Build release
+cargo build --release
 ```
 
 ### Python (legacy CLI in `cli/`)
@@ -35,6 +38,38 @@ ruff check xbin/
 black --check xbin/
 pytest                    # tests
 ```
+
+## Architecture
+
+### Binary format (`xbin-core/src/format.rs`)
+
+Layout: `[stub][payload][metadata][footer]`
+- Footer magic: `0xBEEF_CAFE`, format magic: `XBIN\x01`
+- Integrity hash: `SHA-256(payload || meta_bytes)` — computed at build, verified at runtime
+- Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs)
+
+### Stub launcher (`stub/src/main.rs`)
+
+The stub is the ELF header of the self-extracting binary. Flow:
+1. Read footer + metadata from `/proc/self/exe`
+2. Check cache hit (skip extraction if cached)
+3. Verify SHA-256 integrity: `SHA-256(payload || meta_bytes)`
+4. Extract payload (zstd+tar) to `~/.cache/xbin/<hash>/rootfs/`
+5. `execvp` the entrypoint (searches PATH for bare command names)
+
+**Entrypoint resolution**: `detect.rs:resolve_entrypoint()` builds argv per runtime:
+- Python: `["python3", "/app/app.py"]`
+- Node: `["node", "/app/index.js"]`
+- Go/Binary: `["/app/app"]`
+
+App files are under `/app/` in the rootfs. Interpreter names are bare (no `/`) so `execvp` finds them on PATH. App paths are absolute (start with `/`) so `make_resolve` maps them to `rootfs/<path>`.
+
+### Security (FFI)
+
+- `execvp` is used for single-service exec (PATH lookup for interpreters)
+- `execve` is used in the supervisor (needs custom env per service)
+- All `unsafe` blocks MUST have SAFETY comments
+- No `unsafe` in `xbin-core` — only in `stub/src/main.rs`
 
 ## Code style
 
@@ -88,7 +123,7 @@ Based on [ANSSI Secure Rust Guidelines](https://anssi-fr.github.io/rust-guide). 
 ## Boundaries
 
 **Always do:**
-- Run `cargo fmt` and `cargo clippy -- -D warnings` before committing
+- Run `cargo fmt` and `cargo clippy --all-targets -- -D warnings` before committing
 - Run `cargo test --workspace` to verify no regressions
 - Preserve the `.xbin` footer format (magic `XBIN\x01`, footer magic `0xBEEF_CAFE`)
 - Verify any auto-fix from clippy/cargo-fix manually (ANSSI DENV-AUTOFIX)

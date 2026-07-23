@@ -36,7 +36,16 @@ coding style — adapted for Rust and Python, not copied from C.
 
 ---
 
-## Rust (stub/)
+## Rust (xbin-core/, xbin-cli/, stub/)
+
+### Build target
+
+Repo lives on vfat (no exec bit). Build artifacts go to `/tmp/xbin-stub-target`.
+After `cargo build --release`, install manually:
+```bash
+cp /tmp/xbin-stub-target/release/xbin ~/.local/bin/xbin
+cp /tmp/xbin-stub-target/release/xbin-stub ~/.local/bin/xbin-stub
+```
 
 ### Formatting
 
@@ -51,7 +60,7 @@ We use `rustfmt` defaults otherwise. No nightly-only options.
 ### Clippy
 
 We enable a pedantic subset, not the full `clippy::pedantic` (too many false
-positives on a small codebase). Run via `cargo clippy -- -D warnings`.
+positives on a small codebase). Run via `cargo clippy --all-targets -- -D warnings`.
 
 ```toml
 # In stub/Cargo.toml, add:
@@ -92,10 +101,11 @@ Every `unsafe` block must have a comment explaining **why it is sound**.
 Format:
 
 ```rust
-// SAFETY: execve(2) is safe here — prog_c and argv are valid CStrings,
-// envp is null-terminated, and we never return on success.
+// SAFETY: execvp(3) is safe here — prog_c is a valid CString,
+// argv_ptrs is null-terminated, and we never return on success.
+// execvp searches PATH for bare command names.
 unsafe {
-    libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
+    libc_execvp(prog_c.as_ptr(), argv_ptrs.as_ptr());
 }
 ```
 
@@ -230,7 +240,7 @@ make preflight  # verify prerequisites
 
 `.github/workflows/ci.yml` runs on every push/PR to `main`:
 1. **preflight** — verify system prerequisites
-2. **rust** — `cargo build` + `cargo clippy -- -D warnings`
+2. **rust** — `cargo build` + `cargo clippy --all-targets -- -D warnings`
 3. **python** — `ruff check` + `black --check`
 4. **build** — full end-to-end: build → inspect → keygen → sign → verify
 
