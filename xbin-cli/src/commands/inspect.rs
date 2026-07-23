@@ -59,11 +59,18 @@ pub fn run(args: InspectArgs) -> Result<()> {
         eprintln!("Signed:      {}", footer.is_signed());
         eprintln!("Encrypted:   {}", footer.format_version >= 4);
         eprintln!(
-            "Payload:     {} → {}",
+            "Payload:     {} -> {}",
             format_size(footer.payload_csize),
             format_size(footer.payload_usize)
         );
         eprintln!("SHA-256:     {}", &footer.sha256_hex()[..16]);
+
+        // Signature info
+        if footer.is_signed() {
+            let sig_block_offset = footer.payload_offset + footer.payload_csize;
+            eprintln!("Sig offset:  0x{sig_block_offset:X}");
+            eprintln!("Sig size:    64 bytes (ed25519)");
+        }
 
         if let Some(name) = meta.get("name").and_then(|v| v.as_str()) {
             eprintln!("Name:        {name}");
@@ -84,12 +91,34 @@ pub fn run(args: InspectArgs) -> Result<()> {
             eprintln!("License:     {l}");
         }
 
+        // Isolation level
+        if let Some(iso) = meta.get("isolation").and_then(|v| v.as_u64()) {
+            eprintln!("Isolation:   level {iso}");
+        }
+
+        // Entrypoint
+        if let Some(ep) = meta.get("entrypoint").and_then(|v| v.as_array()) {
+            let parts: Vec<&str> = ep.iter().filter_map(|v| v.as_str()).collect();
+            eprintln!("Entrypoint:  {}", parts.join(" "));
+        }
+
+        // Created timestamp
+        if let Some(created) = meta.get("created").and_then(|v| v.as_str()) {
+            eprintln!("Created:     {created}");
+        }
+
+        // Env vars
         if let Some(env) = meta.get("env").and_then(|v| v.as_object()) {
             if !env.is_empty() {
-                eprintln!("Env vars:    {}", env.len());
+                eprintln!("Env vars:    {} var(s)", env.len());
+                for (k, v) in env {
+                    let val = v.as_str().unwrap_or("...");
+                    eprintln!("  {k}={val}");
+                }
             }
         }
 
+        // Layers
         if let Some(layers) = meta.get("layers").and_then(|v| v.as_array()) {
             eprintln!("Layers:      {}", layers.len());
             for (i, layer) in layers.iter().enumerate() {
@@ -97,6 +126,14 @@ pub fn run(args: InspectArgs) -> Result<()> {
                 let usize = layer.get("usize").and_then(|v| v.as_u64()).unwrap_or(0);
                 eprintln!("  [{i}] {name} ({})", format_size(usize));
             }
+        }
+
+        // App/runtime hashes
+        if let Some(app_hash) = meta.get("app_hash").and_then(|v| v.as_str()) {
+            eprintln!("App hash:    {}...", &app_hash[..16.min(app_hash.len())]);
+        }
+        if let Some(rt_hash) = meta.get("rt_deps_hash").and_then(|v| v.as_str()) {
+            eprintln!("RT hash:     {}...", &rt_hash[..16.min(rt_hash.len())]);
         }
     }
 
