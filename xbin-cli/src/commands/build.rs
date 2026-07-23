@@ -498,9 +498,11 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     );
 
     // Sign if key provided
-    if let Some(_key_path) = &args.key {
-        eprintln!("Signing...");
-        eprintln!("  [xbin] note: use 'xbin sign' to sign the binary");
+    if let Some(key_path) = &args.key {
+        if verbose {
+            eprintln!("Signing...");
+        }
+        super::sign::sign_file(&output, key_path, !verbose)?;
     }
 
     Ok(())

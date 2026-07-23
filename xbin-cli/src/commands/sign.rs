@@ -38,7 +38,13 @@ pub fn run(args: SignArgs) -> Result<()> {
         }
     };
 
-    let key_bytes = std::fs::read(&key_path)
+    sign_file(&args.file, &key_path, args.quiet)
+}
+
+/// Sign a `.xbin` file in-place with the given key. Used by both `xbin sign`
+/// and `xbin build --key`.
+pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> {
+    let key_bytes = std::fs::read(key_path)
         .with_context(|| format!("failed to read signing key at {}", key_path.display()))?;
     if key_bytes.len() != 32 {
         anyhow::bail!(
@@ -54,8 +60,8 @@ pub fn run(args: SignArgs) -> Result<()> {
     let mut f = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(&args.file)
-        .with_context(|| format!("failed to open {}", args.file.display()))?;
+        .open(file)
+        .with_context(|| format!("failed to open {}", file.display()))?;
     let mut footer = Footer::read_from(&mut f).context("failed to read xbin footer")?;
 
     if footer.is_signed() {
@@ -77,7 +83,7 @@ pub fn run(args: SignArgs) -> Result<()> {
     let signature = signing_key.sign(&hash);
 
     // Write sig_block: [sig_size:u32le][64-byte sig]
-    let sig_size = 64u32; // ed25519 signature is always 64 bytes
+    let sig_size = 64u32;
     let mut sig_block = Vec::with_capacity(SIG_BLOCK_SIZE as usize);
     sig_block.extend_from_slice(&sig_size.to_le_bytes());
     sig_block.extend_from_slice(&signature.to_bytes());
@@ -98,7 +104,7 @@ pub fn run(args: SignArgs) -> Result<()> {
         footer.format_version = 3;
     }
 
-    // Write V3 footer (92 bytes) after sig_block: [sig_offset:u64le][core:84]
+    // Write V3 footer (92 bytes) after sig_block
     let mut v3_footer = Vec::with_capacity(xbin_core::format::V3_FOOTER_SIZE as usize);
     v3_footer.extend_from_slice(&new_sig_offset.to_le_bytes());
     v3_footer.extend_from_slice(&footer.pack());
@@ -108,8 +114,8 @@ pub fn run(args: SignArgs) -> Result<()> {
     // Truncate file to new size
     f.set_len(new_footer_offset + xbin_core::format::V3_FOOTER_SIZE)?;
 
-    if !args.quiet {
-        eprintln!("Signed {}", args.file.display());
+    if !quiet {
+        eprintln!("Signed {}", file.display());
         eprintln!("  key:    {}", key_path.display());
         eprintln!("  offset: {new_sig_offset}");
     }
