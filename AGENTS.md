@@ -6,13 +6,14 @@ x.bin packages any app into a single self-extracting ELF binary. Rust workspace 
 
 ## Build, lint, test commands
 
+**Environment**: tools installed in `~/.local/bin`. Always prefix with:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 ### Rust
 
 ```bash
-# Build
-cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
-cargo build -p xbin-cli
-
 # Lint (MUST pass before any commit)
 cargo fmt --check
 cargo clippy -p xbin-core --all-targets -- -D warnings
@@ -32,49 +33,7 @@ cargo fmt
 cd cli
 ruff check xbin/
 black --check xbin/
-black xbin/              # auto-format
-ruff check --fix xbin/   # auto-fix
 pytest                    # tests
-```
-
-## Project structure
-
-```
-x.bin/
-├── xbin-core/           # Shared library: format, compress, detect, encrypt, layers, tar
-│   ├── src/
-│   │   ├── lib.rs       # Module index
-│   │   ├── format.rs    # .xbin binary format v2-v5, footer, magic constants
-│   │   ├── assembly.rs  # .xbin file assembly (stub + payload + meta + footer)
-│   │   ├── compress.rs  # Zstd compression/decompression
-│   │   ├── detect.rs    # Runtime detection (Python, Node, Deno, Java, etc.)
-│   │   ├── encrypt.rs   # AES-256-GCM + HKDF key derivation
-│   │   ├── layers.rs    # rootfs layer construction, /etc setup, filtered copy
-│   │   ├── tar.rs       # Deterministic tar creation
-│   │   ├── pkgmgr.rs    # Package manager detection (uv/poetry/pip, npm/pnpm/yarn)
-│   │   ├── treeshake.rs # JS/Node tree-shaking (import/require analysis)
-│   │   ├── minify.rs    # CSS minification, JS minification via terser
-│   │   ├── dotenv.rs    # .env loading + secret detection
-│   │   ├── otel.rs      # OpenTelemetry env setup
-│   │   ├── persistent.rs# Persistent config (XDG dirs)
-│   │   └── cron.rs      # Cron job scheduling
-│   ├── Cargo.toml
-│   └── pyproject.toml   # Python bindings (optional, feature-gated)
-├── xbin-cli/            # Rust CLI (clap-based, replaces Python CLI)
-│   ├── src/
-│   │   ├── main.rs      # Entry point, subcommands
-│   │   └── commands/    # build, inspect, scan, sign, verify, keygen, etc.
-│   ├── Cargo.toml
-│   └── tests/           # Integration tests (assert_cmd)
-├── stub/                # Self-extracting launcher (Linux ELF)
-│   ├── src/
-│   │   ├── main.rs      # pivot_root, seccomp BPF, namespace isolation, exec
-│   │   └── squashfs_extract.rs
-│   └── Cargo.toml
-├── cli/                 # Legacy Python CLI (being replaced)
-├── .github/workflows/   # CI (preflight, clippy, build test) + release (multi-arch)
-├── Makefile             # Build shortcuts
-└── Cargo.toml           # Workspace root
 ```
 
 ## Code style
@@ -82,27 +41,36 @@ x.bin/
 ### Rust
 
 - Edition 2021, `cargo fmt` is authoritative
-- `xbin-core` uses pedantic clippy with many allows (see `Cargo.toml [lints.clippy]`)
-- Prefer `Result::ok()` over `|e| e.ok()` (clippy redundant-closure-for-method-calls)
-- Prefer `r"..."` over `r#"..."#` when no `#` in string (clippy needless-raw-string-hashes)
-- Use `'\n'` not `"\n"` for single-char pattern matching (clippy single-char-pattern)
-- Use `.contains_key()` over `.get().is_none()` (clippy unnecessary-get-then-check)
-- Use `if let Some(v)` over `match` with `None => {}` (clippy single-match)
-- Functions with >7 params: consider a config struct (clippy too-many-arguments)
-- Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` — optimized for tiny binaries
+- Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` — tiny binaries
+- Clippy pedantic with many allows (see `xbin-core/Cargo.toml [lints.clippy]`)
+- Prefer `Result::ok()` over `|e| e.ok()`
+- Prefer `r"..."` over `r#"..."#` when no `#` in string
+- Use `'\n'` not `"\n"` for single-char pattern matching
+- Use `.contains_key()` over `.get().is_none()`
+- Use `if let Some(v)` over `match` with `None => {}`
+- Functions with >7 params: use a config struct
 
-### Python (legacy CLI)
+## Security best practices (ANSSI-Rust)
 
-- ruff + black, target Python 3.12, line-length 88
-- ruff rules: E, W, F, I, UP, B, SIM, RUF (ignore E501)
+Based on [ANSSI Secure Rust Guidelines](https://anssi-fr.github.io/rust-guide). These are **rules** (MUST) not suggestions.
+
+- **DENV-STABLE**: Use stable toolchain only. Never nightly/beta.
+- **DENV-CARGO-LOCK**: `Cargo.lock` MUST be tracked in version control.
+- **LANG-UNSAFE**: No `unsafe` blocks in `xbin-core`. Only in `stub/src/main.rs`.
+- **UNSAFE-NOUB**: Zero Undefined Behavior. No exceptions.
+- **LANG-LIMIT-PANIC**: No `panic!()` in library code. Prefer `Result<T, E>`.
+- **LANG-LIMIT-PANIC-SRC**: No `unwrap()`/`expect()` in `xbin-core` without context.
+- **LANG-ARITH**: Use checked/wrapping/saturating arithmetic where overflow is possible.
+- **MEM-NO-LEAK**: No `mem::forget` or `.leak()`.
+- **FFI-SAFEWRAPPING**: All FFI calls MUST have safe wrappers.
+- **LIBS-AUDIT**: Run `cargo audit` periodically.
 
 ## Testing
 
-- Rust unit tests are in each module under `#[cfg(test)] mod tests`
-- Integration tests in `xbin-cli/tests/` use `assert_cmd`
-- Run `cargo test --workspace` for all tests
-- Python tests: `pytest` in `cli/`
-- CI runs: preflight, clippy, build test, Python lint
+- Unit tests: `#[cfg(test)] mod tests` in each module
+- Integration tests: `xbin-cli/tests/` use `assert_cmd`
+- `cargo test --workspace` for all tests
+- Python: `pytest` in `cli/`
 
 ## Git conventions
 
@@ -110,38 +78,12 @@ x.bin/
 - Commits: signed (`git commit -S`), conventional format (`feat:`, `fix:`, `chore:`)
 - PRs: pass clippy + fmt + tests before merge
 
-## CLI design (from clig.dev)
+## CLI design (clig.dev)
 
-The x.bin CLI follows [clig.dev](https://clig.dev) guidelines:
-
-- **Human-first**: output goes to stdout, logs/errors to stderr
-- **Help**: `xbin --help`, `xbin <cmd> --help` always work; lead with examples
-- **Exit codes**: 0 = success, non-zero = failure
-- **Flags over args**: prefer `--output file` over positional args for clarity
-- **Standard flag names**: `-h`/`--help`, `--version`, `-v`/`--verbose`, `-q`/`--quiet`, `-o`/`--output`, `--dry-run`, `--json`
-- **Confirm dangerous actions**: prompt `y/N` before destructive ops, or require `--force`
-- **No prompts in CI**: if stdin is not a TTY, skip prompts and require explicit flags
-- **Composable**: JSON output with `--json`, pipe-friendly
-- **Suggest corrections**: if user types a wrong subcommand, suggest the closest match
-
-## Documentation approach
-
-Documentation is inspired by Bun, Wasmer, and other modern CLI tools:
-
-- README.md: quick start + CLI reference table (human-facing)
-- CODE_STYLE.md: Rust/Python coding conventions
-- AGENTS.md: this file (agent-facing, never shown to users)
-- Web docs in `docs/` (mdbook) for deep technical content
-- Man pages generated via `xbin man`
-
-## Release workflow
-
-1. Merge feature branch to `main`
-2. Create release on GitHub (tag `v*`)
-3. `.github/workflows/release.yml` triggers:
-   - Builds multi-arch: linux-x64, linux-arm64, macos-x64, macos-arm64
-   - Uploads binaries + SHASUMS256.txt
-   - Creates GitHub Release with assets
+- Human-first: stdout = data, stderr = logs/errors
+- Standard flags: `-h`/`--help`, `--version`, `-v`/`--verbose`, `-q`/`--quiet`, `-o`/`--output`, `--dry-run`, `--json`
+- Exit codes: 0 = success, non-zero = failure
+- No prompts in CI (require `--force` instead)
 
 ## Boundaries
 
@@ -149,15 +91,19 @@ Documentation is inspired by Bun, Wasmer, and other modern CLI tools:
 - Run `cargo fmt` and `cargo clippy -- -D warnings` before committing
 - Run `cargo test --workspace` to verify no regressions
 - Preserve the `.xbin` footer format (magic `XBIN\x01`, footer magic `0xBEEF_CAFE`)
+- Verify any auto-fix from clippy/cargo-fix manually (ANSSI DENV-AUTOFIX)
 
 **Never do:**
 - Commit secrets, keys, or `.env` files
 - Change the `.xbin` binary format without updating `format.rs` version constants
-- Remove clippy allows from `Cargo.toml` without understanding why they were added
-- Use `unsafe` in `xbin-core` (only allowed in `stub/src/main.rs` for syscalls)
+- Remove clippy allows from `Cargo.toml` without understanding why
+- Use `unsafe` in `xbin-core` (only allowed in `stub/src/main.rs`)
+- Override `debug-assertions` or `overflow-checks` in profiles
+- Panic in library code — use `Result` (ANSSI LANG-LIMIT-PANIC)
+- Leak memory via `mem::forget` or `.leak()` (ANSSI MEM-NO-LEAK)
 
 **Ask first:**
-- Modifying the stub launcher (`stub/src/main.rs`) — security-critical code
+- Modifying the stub launcher (`stub/src/main.rs`) — security-critical
 - Changing encryption/signing logic in `encrypt.rs`
-- Adding new runtime detection in `detect.rs`
-- Modifying the release workflow in `.github/workflows/release.yml`
+- Adding new `unsafe` blocks anywhere
+- Adding new FFI bindings
