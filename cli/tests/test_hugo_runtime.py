@@ -46,7 +46,9 @@ class TestHugoDetection:
 
     def test_detect_with_hugo_binary(self, hugo_runtime, tmp_path):
         (tmp_path / "hugo.toml").write_text('baseURL = "https://example.com"')
-        with patch("xbin.runtimes.hugo.shutil.which") as mock_which:
+        with patch("xbin.runtimes.hugo.shutil.which") as mock_which, patch(
+            "xbin.runtimes.hugo.subprocess.run"
+        ):
             mock_which.side_effect = lambda cmd: {
                 "hugo": "/usr/bin/hugo",
                 "python3": "/usr/bin/python3",
@@ -58,7 +60,9 @@ class TestHugoDetection:
 
     def test_hugo_builds_and_serves(self, hugo_runtime, tmp_path):
         (tmp_path / "hugo.toml").write_text('baseURL = "https://example.com"')
-        with patch("xbin.runtimes.hugo.shutil.which") as mock_which:
+        with patch("xbin.runtimes.hugo.shutil.which") as mock_which, patch(
+            "xbin.runtimes.hugo.subprocess.run"
+        ):
             mock_which.side_effect = lambda cmd: {
                 "hugo": "/usr/bin/hugo",
                 "python3": "/usr/bin/python3",
