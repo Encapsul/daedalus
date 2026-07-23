@@ -1,6 +1,5 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
-use std::fs;
 use tempfile::tempdir;
 
 fn xbin() -> Command {
@@ -15,7 +14,7 @@ fn test_help_output() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Package any app"));
+        .stdout(predicate::str::contains("x.bin compiles"));
 }
 
 #[test]
