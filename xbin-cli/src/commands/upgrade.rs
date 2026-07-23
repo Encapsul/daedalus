@@ -228,3 +228,41 @@ fn is_writable(path: &PathBuf) -> bool {
     }
     std::fs::metadata(path).is_ok_and(|m| !m.permissions().readonly())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_platform_linux_x64() {
+        // This test runs on the current platform, just verify it doesn't panic
+        let p = detect_platform();
+        assert!(p.is_ok());
+        let p = p.unwrap();
+        assert!(p.contains('-'));
+        if std::env::consts::OS == "linux" {
+            assert!(p.starts_with("linux"));
+        }
+    }
+
+    #[test]
+    fn test_sha256_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("test.txt");
+        std::fs::write(&file, b"hello world").unwrap();
+        let hash = sha256_file(&file).unwrap();
+        // SHA-256 of "hello world"
+        assert_eq!(
+            hash,
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
+    }
+
+    #[test]
+    fn test_is_writable_existing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("test.txt");
+        std::fs::write(&file, b"test").unwrap();
+        assert!(is_writable(&file));
+    }
+}

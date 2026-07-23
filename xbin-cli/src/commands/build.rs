@@ -105,9 +105,20 @@ pub struct BuildArgs {
     /// Scheduled task (repeatable): --cron NAME:SCHEDULE
     #[arg(long = "cron", action = clap::ArgAction::Append)]
     pub cron: Vec<String>,
+
+    /// Force re-detection of dependencies (overwrite `xbin.lock`)
+    #[arg(long)]
+    pub redetect: bool,
+
+    /// Quiet output — suppress all non-error messages
+    #[arg(short, long)]
+    pub quiet: bool,
 }
 
 pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
+    // Quiet mode overrides verbose
+    let verbose = verbose && !args.quiet;
+
     let app_dir = args
         .app
         .canonicalize()

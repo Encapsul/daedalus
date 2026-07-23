@@ -263,3 +263,43 @@ fn do_probe(child: &mut std::process::Child, probe_url: &str, verbose: bool) -> 
     eprintln!("[xbin] selftest: alive but probe {probe_url} failed (not responding)");
     Ok(2)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_mode_server_python_flask() {
+        let meta = serde_json::json!({
+            "runtime": "python",
+            "entrypoint": ["python3", "app.py"]
+        });
+        assert_eq!(detect_mode(&meta), "server");
+    }
+
+    #[test]
+    fn test_detect_mode_server_has_services() {
+        let meta = serde_json::json!({
+            "services": [{"name": "web"}]
+        });
+        assert_eq!(detect_mode(&meta), "server");
+    }
+
+    #[test]
+    fn test_detect_mode_cli_go() {
+        let meta = serde_json::json!({
+            "runtime": "go",
+            "entrypoint": ["/app/myapp"]
+        });
+        assert_eq!(detect_mode(&meta), "cli");
+    }
+
+    #[test]
+    fn test_detect_mode_server_node_express() {
+        let meta = serde_json::json!({
+            "runtime": "node",
+            "entrypoint": ["node", "server.js"]
+        });
+        assert_eq!(detect_mode(&meta), "server");
+    }
+}
