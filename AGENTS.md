@@ -110,6 +110,39 @@ x.bin/
 - Commits: signed (`git commit -S`), conventional format (`feat:`, `fix:`, `chore:`)
 - PRs: pass clippy + fmt + tests before merge
 
+## CLI design (from clig.dev)
+
+The x.bin CLI follows [clig.dev](https://clig.dev) guidelines:
+
+- **Human-first**: output goes to stdout, logs/errors to stderr
+- **Help**: `xbin --help`, `xbin <cmd> --help` always work; lead with examples
+- **Exit codes**: 0 = success, non-zero = failure
+- **Flags over args**: prefer `--output file` over positional args for clarity
+- **Standard flag names**: `-h`/`--help`, `--version`, `-v`/`--verbose`, `-q`/`--quiet`, `-o`/`--output`, `--dry-run`, `--json`
+- **Confirm dangerous actions**: prompt `y/N` before destructive ops, or require `--force`
+- **No prompts in CI**: if stdin is not a TTY, skip prompts and require explicit flags
+- **Composable**: JSON output with `--json`, pipe-friendly
+- **Suggest corrections**: if user types a wrong subcommand, suggest the closest match
+
+## Documentation approach
+
+Documentation is inspired by Bun, Wasmer, and other modern CLI tools:
+
+- README.md: quick start + CLI reference table (human-facing)
+- CODE_STYLE.md: Rust/Python coding conventions
+- AGENTS.md: this file (agent-facing, never shown to users)
+- Web docs in `docs/` (mdbook) for deep technical content
+- Man pages generated via `xbin man`
+
+## Release workflow
+
+1. Merge feature branch to `main`
+2. Create release on GitHub (tag `v*`)
+3. `.github/workflows/release.yml` triggers:
+   - Builds multi-arch: linux-x64, linux-arm64, macos-x64, macos-arm64
+   - Uploads binaries + SHASUMS256.txt
+   - Creates GitHub Release with assets
+
 ## Boundaries
 
 **Always do:**
