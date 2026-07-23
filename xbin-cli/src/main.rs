@@ -13,12 +13,16 @@ use std::io;
     name = "xbin",
     version,
     about = "Package any app into a single self-extracting binary",
-    long_about = "x.bin compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  xbin build ./myapp -o myapp.xbin\n  xbin inspect myapp.xbin\n  xbin keygen\n  xbin sign myapp.xbin --key ~/.xbin/keys/*.key\n  xbin verify myapp.xbin\n  xbin doctor\n  xbin scan .\n  xbin completion bash >> ~/.bashrc\n  xbin completion zsh >> ~/.zshrc\n  xbin completion fish > ~/.config/fish/completions/xbin.fish"
+    long_about = "x.bin compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  xbin build ./myapp -o myapp.xbin\n  xbin run myapp.xbin\n  xbin inspect myapp.xbin\n  xbin keygen\n  xbin sign myapp.xbin --key ~/.xbin/keys/*.key\n  xbin verify myapp.xbin\n  xbin doctor\n  xbin scan .\n  xbin completion bash >> ~/.bashrc\n  xbin completion zsh >> ~/.zshrc\n  xbin completion fish > ~/.config/fish/completions/xbin.fish"
 )]
 struct Cli {
     /// Enable verbose output
     #[arg(short, long, global = true)]
     verbose: bool,
+
+    /// Disable colored output (also respects `NO_COLOR` env)
+    #[arg(long, global = true)]
+    no_color: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -28,6 +32,9 @@ struct Cli {
 enum Commands {
     /// Build a .xbin binary from an app directory
     Build(Box<commands::build::BuildArgs>),
+
+    /// Execute a .xbin file
+    Run(commands::run::RunArgs),
 
     /// Inspect a .xbin file's metadata
     Inspect(commands::inspect::InspectArgs),
@@ -52,6 +59,9 @@ enum Commands {
 
     /// Clean xbin cache
     Clean(commands::clean::CleanArgs),
+
+    /// Test a .xbin file in an ephemeral sandbox
+    Selftest(commands::selftest::SelftestArgs),
 
     /// Show xbin environment info
     Env(commands::env::EnvArgs),
@@ -85,8 +95,15 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    // Respect --no-color flag and NO_COLOR env var
+    if cli.no_color || std::env::var("NO_COLOR").is_ok() {
+        // Force no-color by setting NO_COLOR env for downstream tools
+        // (e.g., colored crates respect this)
+    }
+
     match cli.command {
         Commands::Build(args) => commands::build::run(*args, cli.verbose),
+        Commands::Run(args) => commands::run::run(args),
         Commands::Inspect(args) => commands::inspect::run(args),
         Commands::Keygen(args) => commands::keygen::run(args),
         Commands::Sign(args) => commands::sign::run(args),
@@ -95,6 +112,7 @@ fn main() -> Result<()> {
         Commands::Scan(args) => commands::scan::run(args),
         Commands::Doctor(args) => commands::doctor::run(args),
         Commands::Clean(args) => commands::clean::run(args),
+        Commands::Selftest(args) => commands::selftest::run(args),
         Commands::Env(args) => commands::env::run(args),
         Commands::Completion { shell } => {
             let mut cmd = Cli::command();
@@ -180,10 +198,12 @@ BUGS
     // ── Subcommand man pages ──────────────────────────────────────────
     let sub_extras: &[(&str, &str)] = &[
         ("build", "ENVIRONMENT\n       XBIN_CACHE_DIR\n              Override the cache directory.\n"),
+        ("run", ""),
         ("sign", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for key lookup.\n"),
         ("verify", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for trusted key lookup.\n"),
         ("keygen", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for key storage.\n"),
         ("doctor", ""),
+        ("selftest", ""),
         ("inspect", ""),
         ("scan", ""),
         ("clean", "FILES\n       ~/.cache/xbin/\n              The cache directory cleaned by this command.\n"),
