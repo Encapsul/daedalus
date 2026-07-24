@@ -303,7 +303,7 @@ import lodash from '@scope/pkg';
         let file = dir.path().join("index.js");
         fs::write(&file, "const React = require('react');").unwrap();
 
-        let all_imports = scan_imports_in_file(&file);
+        let _all_imports = scan_imports_in_file(&file);
         let used = detect_used_packages(dir.path());
         assert!(used.contains("react"));
         assert!(!used.contains("jest"));
