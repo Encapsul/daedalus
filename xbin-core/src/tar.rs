@@ -96,10 +96,7 @@ fn collect_entries(root: &Path) -> io::Result<Vec<String>> {
 fn collect_recursive(base: &Path, current: &Path, entries: &mut Vec<String>) -> io::Result<()> {
     let read_dir = match std::fs::read_dir(current) {
         Ok(rd) => rd,
-        Err(e) => {
-            eprintln!("warning: cannot read {}: {e}", current.display());
-            return Ok(());
-        }
+        Err(_) => return Ok(()),
     };
 
     for entry in read_dir {

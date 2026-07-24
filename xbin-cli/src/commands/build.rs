@@ -113,6 +113,10 @@ pub struct BuildArgs {
     /// Quiet output — suppress all non-error messages
     #[arg(short, long)]
     pub quiet: bool,
+
+    /// Output build result as JSON to stdout
+    #[arg(long)]
+    pub json: bool,
 }
 
 pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
@@ -161,9 +165,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     )?;
     let runtime_name = runtime.name();
 
-    if verbose {
-        eprintln!("Detected runtime: {runtime_name}");
-    }
+    eprintln!("Detected runtime: {runtime_name}");
 
     // Dry run: print plan and exit
     if args.dry_run {
@@ -295,9 +297,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
 
         if !no_install {
-            if verbose {
-                eprintln!("Installing dependencies...");
-            }
+            eprintln!("Installing dependencies...");
             let cmd = mgr.install_cmd();
             let status = std::process::Command::new(&cmd[0])
                 .args(&cmd[1..])
@@ -335,9 +335,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     }
 
     // Build deterministic tar
-    if verbose {
-        eprintln!("Creating payload...");
-    }
+    eprintln!("Creating payload...");
     let tar_bytes = xbin_core::tar::create_deterministic_tar(&rootfs)
         .context("failed to create deterministic tar")?;
     let payload = xbin_core::compress::compress_with_level(&tar_bytes, 19)
@@ -476,9 +474,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     )?;
 
     // Assemble
-    if verbose {
-        eprintln!("Assembling {}...", output.display());
-    }
+    eprintln!("Assembling {}...", output.display());
 
     let size = xbin_core::assembly::assemble_xbin(
         &output,
@@ -496,6 +492,18 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         output.display(),
         size as f64 / (1024.0 * 1024.0)
     );
+
+    if args.json {
+        let result = serde_json::json!({
+            "output": output.to_string_lossy(),
+            "size_bytes": size,
+            "runtime": runtime_name,
+            "format": "zstd-tar",
+            "signed": args.key.is_some(),
+            "encrypted": encrypt,
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    }
 
     // Sign if key provided
     if let Some(key_path) = &args.key {

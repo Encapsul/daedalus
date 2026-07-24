@@ -153,7 +153,6 @@ pub fn detect_used_packages(app_dir: &Path) -> HashSet<String> {
         }
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             if is_js_ext(ext) {
-                eprintln!("scanning: {}", path.display());
                 all_imports.extend(scan_imports_in_file(&path));
             }
         }
@@ -305,9 +304,7 @@ import lodash from '@scope/pkg';
         fs::write(&file, "const React = require('react');").unwrap();
 
         let all_imports = scan_imports_in_file(&file);
-        eprintln!("all_imports: {all_imports:?}");
         let used = detect_used_packages(dir.path());
-        eprintln!("used: {used:?}");
         assert!(used.contains("react"));
         assert!(!used.contains("jest"));
     }
