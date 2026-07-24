@@ -4,8 +4,9 @@ A tool that distributes and executes code needs security in the
 architecture, not bolted on afterward. This page documents each attack
 surface, the naive flaw, and the current defense.
 
-Status: SHA-256 integrity and atomic extraction are in the MVP. Ed25519
-signatures and seccomp filtering are implemented (Phase 2).
+Status: SHA-256 integrity, atomic extraction, Ed25519 signatures, user
+namespaces + pivot_root, seccomp-bpf denylist, and AES-256-GCM encryption
+are all implemented.
 
 ## 1. Authenticity — Ed25519 signatures
 

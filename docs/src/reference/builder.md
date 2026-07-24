@@ -1,52 +1,27 @@
 # The Builder
 
 The builder analyzes an application and produces the `.xbin`. It's written in
-**pure Python** (stdlib only for the core — optional `cryptography` for
-`--encrypt`, optional `tomli` for Python 3.10).
+**Rust** as part of `xbin-core` — zero Python dependency at runtime.
 
-- **Code**: `cli/xbin/build.py`, `cli/xbin/analyzer/`, `cli/xbin/cross.py`
-- **Why Python**: the builder is business logic (walking directories,
-  parsing ELF headers, manipulating paths, assembling bytes). Python is fast
-  to write and modify, and the future AI Analyzer naturally integrates with
-  it.
+- **Code**: `xbin-core/src/` (assembly, compress, detect, pkgmgr, tar, etc.)
+- **CLI**: `xbin-cli/src/commands/build.rs` orchestrates the build pipeline
 
 ## The three steps
 
-### 1. Analysis — `analyzer/`
+### 1. Analysis — `detect.rs` + `pkgmgr.rs`
 
-- **`runtime.py`** detects the runtime and resolves the entrypoint:
+- **`detect.rs`** detects the runtime and resolves the entrypoint:
   - `app.py` / `main.py` / `server.py` → **python**;
   - `package.json` → **node**;
   - a single ELF executable → **native binary**.
   - Returns a `RuntimePlan`: interpreter to embed, entrypoint (relative to
     rootfs), `cwd`, `env`, extra directories (e.g. Python stdlib).
-- **`elf.py`** analyzes ELF64 binaries directly (without calling `ldd`):
+- **ELF analysis** is built into `detect.rs` — reads ELF64 program headers
+  directly (without calling `ldd`):
   reads `PT_DYNAMIC` headers, extracts `DT_NEEDED`, `DT_RUNPATH`, `PT_INTERP`,
   and resolves transitive dependencies in standard system search paths
   (`/lib`, `/usr/lib`, `/lib64`, etc.). Includes the dynamic loader
   `ld-linux`.
-- **`dockerfile.py`** parses Dockerfile `RUN` instructions to extract
-  declared dependencies: apt/apk system packages, pip packages, npm global
-  packages, and external binary fetches (wget/curl → tar/unzip → chmod +x
-  chains with URL and version). Handles multi-line commands (`\`
-  continuations) and `&&`/`;` chains. No Dockerfile → returns `[]`.
-- **`python_ast.py`** scans Python source via AST walking to detect
-  external binary calls (`subprocess.run`, `os.system`, etc.) that the
-  Dockerfile might miss. Extracts literal binary names; dynamic/unresolvable
-  names are flagged as `confidence="uncertain"`.
-- **`fetch.py`** takes detected dependencies and fetches them into an
-  isolated staging directory (`~/.cache/xbin/stage/{hash}/`) without
-  touching the real system. Each kind has a dedicated fetcher:
-  pip (`pip download --no-deps`), npm (`--prefix`), apt (`apt-get download` +
-  `dpkg-deb -x`), apk (`apk fetch --simulate`), external (urllib + extract).
-  Records SHA-256 per file in `manifest.json` for auditability. Warns on
-  failure but never hard-fails the build.
-- **`ldd.py`** is a thin facade that calls `elf.shared_libs()`. Either
-  module can be swapped without changing the rest of the builder.
-- **Deduplication**: if a library is found via a symlink (e.g.
-  `/lib64/ld-linux-x86-64.so.2`) and also via its real path
-  (`/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2`), the duplicate is removed to
-  keep the rootfs clean.
 
 ### 2. Rootfs construction — `_build_runtime_layer()`
 
@@ -133,8 +108,8 @@ deduplicated: if `/lib64/ld-linux-x86-64.so.2` is a symlink to
 
 ## Dependency evolution
 
-The pure-Python ELF analyzer (`elf.py`) replaces the system `ldd` call. It
-works on any machine with Python ≥ 3.10, without depending on a specific
+The ELF analyzer is built into `detect.rs` in pure Rust. It
+works on any machine with the Rust toolchain, without depending on a specific
 `ldd`. It handles ELF64, symlinks, `DT_RUNPATH`, `LD_LIBRARY_PATH`, and
 transitive resolution.
 

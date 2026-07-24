@@ -1,97 +1,48 @@
 # Dependency Detection
 
-This is where ~70% of the complexity lives — and `xbin`'s differentiator.
+This is where the builder's complexity lives — detecting what the app needs
+and bundling exactly the right files.
 
-## Three-layer detection pipeline
+## Detection pipeline
 
-The builder combines three complementary detection methods, each catching
-what the others miss:
+The Rust builder (`xbin-core`) combines runtime detection with package
+manager detection to resolve dependencies:
 
 ```
-Dockerfile ──→ dockerfile.py ──┐
-                                ├──→ merge_deps() ──→ fetch.py ──→ staging
-Python source ──→ python_ast.py ┘
+app directory ──→ detect.rs ──→ runtime + entrypoint
+                  pkgmgr.rs ──→ package manager + install strategy
+                  assembly  ──→ copy interpreter + libs + app into rootfs
 ```
 
-### Layer 1: Dockerfile analysis (`dockerfile.py`)
+### Runtime detection (`detect.rs`)
 
-Parses `RUN` instructions to extract declared dependencies:
+Identifies the runtime and resolves the entrypoint:
 
-- **apt/apk packages**: `apt-get install -y ffmpeg libssl-dev`
-- **pip packages**: `pip install flask==2.0 requests>=2.25`
-- **npm global packages**: `npm install -g typescript`
-- **External binary fetches**: detects the full chain
-  `wget/curl → tar/unzip → chmod +x` with URL and version extraction
+- `app.py` / `main.py` / `server.py` → **Python**
+- `package.json` → **Node.js**
+- `deno.json` / `deno.jsonc` → **Deno**
+- `pom.xml` / `build.gradle` → **Java**
+- `Gemfile` → **Ruby**
+- `*.csproj` / `*.sln` → **.NET/C#**
+- `go.mod` → **Go**
+- `composer.json` → **PHP**
+- `Makefile.PL` / `cpanfile` → **Perl**
+- `hugo.toml` / `hugo.yaml` → **Hugo**
+- ELF executable → **Binary**
 
-Handles real-world Dockerfiles: multi-line commands with `\` continuations,
-`&&`/`;` chains, `#` comments. No Dockerfile → returns `[]` (graceful
-degradation).
+### Package manager detection (`pkgmgr.rs`)
 
-### Layer 2: Python source AST scanning (`python_ast.py`)
+Detects which package manager an app uses (speed-based priority):
 
-Walks Python AST to find `subprocess.run`, `os.system`, `os.popen` and
-related calls that the Dockerfile might miss:
+| Runtime | Priority order |
+|---------|---------------|
+| Python | uv > poetry > pipenv > pip |
+| Node.js | pnpm > yarn > bun > npm |
 
-```python
-# This call is detected by AST scanning:
-subprocess.run(["ffmpeg", "-i", src, dst])
-os.system("convert in.png out.jpg")
-```
+### ELF dependency resolution
 
-Literal string and list arguments are extracted with high confidence.
-Dynamic or unresolvable names (variables, f-strings) are flagged as
-`confidence="uncertain"` — reported but never fetched.
-
-### Layer 3: Dependency fetching (`fetch.py`)
-
-Detected dependencies are fetched into an isolated staging directory
-(`~/.cache/xbin/stage/{hash}/`) without touching the real system:
-
-| Kind | Method | Never does |
-|---|---|---|
-| pip | `pip download --no-deps --dest` | global install |
-| npm | `npm install --prefix` | global node_modules |
-| apt | `apt-get download` + `dpkg-deb -x` | `apt-get install` |
-| apk | `apk fetch --simulate` + extract | `apk add` |
-| external | `urllib` download + extract | system modification |
-
-Each fetch records SHA-256 in `manifest.json` for auditability. Failures
-warn but never hard-fail the build.
-
-## What static analysis does NOT see
-
-Even with all three layers, some dependencies remain invisible to static
-analysis:
-
-```python
-ctypes.cdll.LoadLibrary("libcuda.so.1")              # dynamic dlopen
-importlib.import_module(plugin_name)                 # dynamically loaded plugin
-```
-
-No **static** tool can reliably find these: you need to *understand* the code,
-not just read its symbol table.
-
-## Two modes
-
-- **`auto`** (default): best-effort detection via Dockerfile + AST + ELF
-  analysis.
-- **`manifest`**: the user explicitly declares external binaries, `dlopen`
-  libs, required env vars, and data files in an `xbin.toml`. This is the
-  safety net when auto detection is not enough.
-
-```toml
-# xbin.toml (target)
-[deps]
-binaries = ["ffmpeg", "convert"]
-libraries = ["libcuda.so.1"]   # optional, GPU
-[env]
-required = ["DATABASE_URL", "SECRET_KEY", "PORT"]
-```
-
-## The ELF analyzer
-
-The builder uses a **pure-Python ELF analyzer** (`analyzer/elf.py`) that reads
-binary headers directly:
+For dynamic binaries, the builder reads ELF64 program headers directly
+(without calling `ldd`):
 
 1. Iterates `Program Headers` to find `PT_DYNAMIC` and `PT_INTERP`
 2. Extracts `DT_NEEDED` entries (required libraries) and `DT_RUNPATH` (search
@@ -105,25 +56,33 @@ binary headers directly:
 your binary ─ELF→ libc.so.6, libssl.so.3, ..., ld-linux-x86-64.so.2
 ```
 
-No `ldd` required on the host machine — works anywhere Python runs,
+No `ldd` required on the host machine — works with any Rust toolchain,
 ideal for cross-compilation and self-hosting.
 
-## The role of AI (differentiator)
+## What static analysis does NOT see
 
-AI solves **one** problem, but a real one: detecting hidden dependencies that
-even the AST scanner can't resolve (variables, config-driven binaries,
-`dlopen`). It analyzes the source code and generates an `xbin.toml` that the
-user reviews before building.
+Even with runtime detection, some dependencies remain invisible to static
+analysis:
 
-```
-xbin build ./my_app --ai-analyze
-[xbin AI] Runtime: Python 3.11 / FastAPI
-  External binaries: ffmpeg (subprocess), convert (os.system)
-  Dynamic libs:      libcuda.so.1 (ctypes, optional)
-  Env required:      DATABASE_URL, SECRET_KEY, PORT
-Generated xbin.manifest. Review before building.
+```python
+ctypes.cdll.LoadLibrary("libcuda.so.1")              # dynamic dlopen
+importlib.import_module(plugin_name)                 # dynamically loaded plugin
 ```
 
-> This is the only place where AI provides what no static tool can do.
-> Status: **Phase 3** — the interface (`--ai-analyze` → `xbin.toml`) is
-> designed so AI is a *manifest generator*, never an opaque mandatory step.
+No **static** tool can reliably find these: you need to *understand* the code,
+not just read its symbol table.
+
+## Configuration override
+
+Users can explicitly declare external binaries, `dlopen` libs, required env
+vars, and data files in an `xbin.toml`. This is the safety net when auto
+detection is not enough.
+
+```toml
+# xbin.toml (target)
+[deps]
+binaries = ["ffmpeg", "convert"]
+libraries = ["libcuda.so.1"]   # optional, GPU
+[env]
+required = ["DATABASE_URL", "SECRET_KEY", "PORT"]
+```

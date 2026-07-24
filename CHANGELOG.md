@@ -4,6 +4,27 @@ All notable changes to x.bin will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.2] - 2026-07-24
+
+### Fixed
+- ANSSI-Rust security fixes: deduplicated FFI wrappers, shared helpers, audit fixes
+- Documentation updates: corrected stale Python CLI references, version badges, unsafe rules
+
+## [0.3.1] - 2026-07-24
+
+### Added
+- Cron jobs (`--cron` flag)
+- OpenTelemetry integration (`--otel` flag)
+- Tree-shaking (`--treeshake` flag)
+- HTML/JS/CSS minification (`--minify` flag)
+- Custom health check port (`--health-port` flag)
+- Persistent storage (`--persist` flag)
+- Extra file inclusion (`--include` flag)
+- Supervisor mode for multi-service apps
+
+### Changed
+- Single-service exec uses `execvp` (PATH lookup) instead of `execve`
+
 ## [0.3.0] - 2026-07-23
 
 ### Added

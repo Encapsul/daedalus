@@ -22,7 +22,7 @@ The builder:
 1. detects the `python` runtime and entrypoint (`/app/app.py`);
 2. embeds the build machine's `python3` interpreter;
 3. embeds the **stdlib** (`/usr/lib/pythonX.Y`);
-4. resolves `.so` dependencies via the pure-Python ELF analyzer (libc, etc.);
+4. resolves `.so` dependencies via the ELF analyzer (libc, etc.);
 5. compresses and assembles the `.xbin`.
 
 ## Environment variables
@@ -82,7 +82,7 @@ xbin build ./my_app -o my_app.xbin
 # [xbin] pip install: ./my_app/requirements.txt → /app/site-packages
 ```
 
-## Current MVP limitations
+## Current limitations
 
 - **Cross-distro portability**: see [Isolation](../reference/isolation.md)
-  — fully guaranteed at level 2 (user namespaces).
+  — fully guaranteed at level 2 (user namespaces + pivot_root).
