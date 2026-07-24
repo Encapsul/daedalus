@@ -39,9 +39,9 @@ pub fn run(args: ScanArgs) -> Result<()> {
                     }))?
                 );
             } else {
-                eprintln!("Cache:  {}", cache_dir.display());
-                eprintln!("  Entries: {count}");
-                eprintln!("  Size:   {}", format_size(total_size));
+                println!("Cache:  {}", cache_dir.display());
+                println!("  Entries: {count}");
+                println!("  Size:   {}", format_size(total_size));
             }
         } else if args.json {
             println!(
@@ -49,7 +49,7 @@ pub fn run(args: ScanArgs) -> Result<()> {
                 cache_dir.display()
             );
         } else {
-            eprintln!("No cache found at {}", cache_dir.display());
+            println!("No cache found at {}", cache_dir.display());
         }
         return Ok(());
     }
@@ -79,11 +79,11 @@ pub fn run(args: ScanArgs) -> Result<()> {
         let entries: Vec<_> = files.iter().filter_map(|f| inspect_file(f)).collect();
         println!("{}", serde_json::to_string_pretty(&entries)?);
     } else {
-        eprintln!(
+        println!(
             "{:<40} {:<10} {:<10} {:<10} {:<10} {:<8} {:<6}",
             "FILE", "NAME", "RUNTIME", "ARCH", "CREATED", "SIZE", "SIGNED"
         );
-        eprintln!("{}", "-".repeat(100));
+        println!("{}", "-".repeat(100));
         for file in &files {
             if let Some(info) = inspect_file(file) {
                 let name: String = file
@@ -101,7 +101,7 @@ pub fn run(args: ScanArgs) -> Result<()> {
                     .get("signed")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                eprintln!(
+                println!(
                     "{:<40} {:<10} {:<10} {:<10} {:<10} {:<8} {:<6}",
                     if name.len() > 40 {
                         &name[name.len() - 37..]

@@ -24,6 +24,10 @@ struct Cli {
     #[arg(long, global = true)]
     no_color: bool,
 
+    /// Suppress non-error output
+    #[arg(short, long, global = true)]
+    quiet: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -100,12 +104,13 @@ fn main() -> Result<()> {
 
     // Respect --no-color flag and NO_COLOR env var
     if cli.no_color || std::env::var("NO_COLOR").is_ok() {
-        // Force no-color by setting NO_COLOR env for downstream tools
-        // (e.g., colored crates respect this)
+        std::env::set_var("NO_COLOR", "1");
     }
 
+    let effective_verbose = cli.verbose && !cli.quiet;
+
     match cli.command {
-        Commands::Build(args) => commands::build::run(*args, cli.verbose),
+        Commands::Build(args) => commands::build::run(*args, effective_verbose),
         Commands::Run(args) => commands::run::run(args),
         Commands::Inspect(args) => commands::inspect::run(args),
         Commands::Keygen(args) => commands::keygen::run(args),
@@ -115,8 +120,18 @@ fn main() -> Result<()> {
         Commands::Scan(args) => commands::scan::run(args),
         Commands::Doctor(args) => commands::doctor::run(args),
         Commands::Clean(args) => commands::clean::run(args),
-        Commands::Selftest(args) => commands::selftest::run(args),
-        Commands::Upgrade(args) => commands::upgrade::run(args),
+        Commands::Selftest(mut args) => {
+            if cli.quiet {
+                args.verbose = false;
+            }
+            commands::selftest::run(args)
+        }
+        Commands::Upgrade(mut args) => {
+            if cli.quiet {
+                args.verbose = false;
+            }
+            commands::upgrade::run(args)
+        }
         Commands::Env(args) => commands::env::run(args),
         Commands::Completion { shell } => {
             let mut cmd = Cli::command();
