@@ -3,8 +3,14 @@ use std::fs;
 use std::hash::BuildHasher;
 use std::io;
 use std::path::Path;
+use std::sync::LazyLock;
 
 use regex::Regex;
+
+static SECRET_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(secret|password|token|api[_-]?key|private[_-]?key|credentials)")
+        .expect("invalid secret regex")
+});
 
 pub fn parse_dotenv(path: &Path) -> io::Result<HashMap<String, String>> {
     let content = fs::read_to_string(path)?;
@@ -51,9 +57,10 @@ fn strip_quotes(s: &str) -> String {
 }
 
 pub fn detect_secret_keys<S: BuildHasher>(env: &HashMap<String, String, S>) -> Vec<String> {
-    let re =
-        Regex::new(r"(?i)(secret|password|token|api[_-]?key|private[_-]?key|credentials)").unwrap();
-    env.keys().filter(|k| re.is_match(k)).cloned().collect()
+    env.keys()
+        .filter(|k| SECRET_RE.is_match(k))
+        .cloned()
+        .collect()
 }
 
 pub fn load_dotenv(

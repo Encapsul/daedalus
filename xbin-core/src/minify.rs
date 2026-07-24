@@ -2,9 +2,23 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::process::Command;
+use std::sync::LazyLock;
 
 use regex::Regex;
+use which::which;
 
+static CSS_COMMENTS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s)/\*.*?\*/").expect("invalid css comments regex"));
+static CSS_WS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s+").expect("invalid css ws regex"));
+static CSS_SEL_OPEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s*\{\s*").expect("invalid css sel open regex"));
+static CSS_SEL_CLOSE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s*\}\s*").expect("invalid css sel close regex"));
+static CSS_COLON: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s*:\s*").expect("invalid css colon regex"));
+static CSS_SEMI: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s*;\s*").expect("invalid css semi regex"));
 const SKIP_DIRS: &[&str] = &[
     ".git",
     "node_modules",
@@ -28,11 +42,7 @@ fn is_skip_dir(name: &str) -> bool {
 }
 
 fn has_terser() -> bool {
-    Command::new("which")
-        .arg("terser")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    which("terser").map(|p| p.is_file()).unwrap_or(false)
 }
 
 fn minify_js_file(path: &Path) -> bool {
@@ -51,19 +61,12 @@ fn minify_js_file(path: &Path) -> bool {
 }
 
 pub fn minify_css(content: &str) -> String {
-    let comments = Regex::new(r"(?s)/\*.*?\*/").unwrap();
-    let ws = Regex::new(r"\s+").unwrap();
-    let sel_open = Regex::new(r"\s*\{\s*").unwrap();
-    let sel_close = Regex::new(r"\s*\}\s*").unwrap();
-    let colon = Regex::new(r"\s*:\s*").unwrap();
-    let semi = Regex::new(r"\s*;\s*").unwrap();
-
-    let result = comments.replace_all(content, "");
-    let result = ws.replace_all(&result, " ");
-    let result = sel_open.replace_all(&result, "{");
-    let result = sel_close.replace_all(&result, "}");
-    let result = colon.replace_all(&result, ":");
-    let result = semi.replace_all(&result, ";");
+    let result = CSS_COMMENTS.replace_all(content, "");
+    let result = CSS_WS.replace_all(&result, " ");
+    let result = CSS_SEL_OPEN.replace_all(&result, "{");
+    let result = CSS_SEL_CLOSE.replace_all(&result, "}");
+    let result = CSS_COLON.replace_all(&result, ":");
+    let result = CSS_SEMI.replace_all(&result, ";");
     result.trim().to_string()
 }
 
