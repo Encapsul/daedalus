@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
+use xbin_core::paths::default_trusted_dir;
 
 #[derive(Args)]
 pub struct TrustArgs {
@@ -50,18 +51,4 @@ pub fn run(args: TrustArgs) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn default_trusted_dir() -> PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        PathBuf::from(xdg).join("xbin").join("trusted-keys")
-    } else if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home)
-            .join(".local")
-            .join("share")
-            .join("xbin")
-            .join("trusted-keys")
-    } else {
-        PathBuf::from(".xbin").join("trusted-keys")
-    }
 }

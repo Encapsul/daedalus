@@ -3,6 +3,7 @@ use clap::Args;
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use std::path::PathBuf;
+use xbin_core::paths::default_key_dir;
 
 #[derive(Args)]
 pub struct KeygenArgs {
@@ -17,7 +18,7 @@ pub struct KeygenArgs {
 
 pub fn run(args: KeygenArgs) -> Result<()> {
     let key_dir = if args.key_dir == PathBuf::from(".") {
-        default_key_dir()?
+        default_key_dir()
     } else {
         args.key_dir.clone()
     };
@@ -54,18 +55,4 @@ pub fn run(args: KeygenArgs) -> Result<()> {
     println!("{fingerprint}");
 
     Ok(())
-}
-
-fn default_key_dir() -> Result<PathBuf> {
-    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        Ok(PathBuf::from(xdg).join("xbin").join("keys"))
-    } else if let Ok(home) = std::env::var("HOME") {
-        Ok(PathBuf::from(home)
-            .join(".local")
-            .join("share")
-            .join("xbin")
-            .join("keys"))
-    } else {
-        Ok(PathBuf::from(".xbin").join("keys"))
-    }
 }

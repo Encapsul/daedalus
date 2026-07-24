@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::Args;
 use std::path::{Path, PathBuf};
 use xbin_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64};
+use xbin_core::paths::{cache_dir, format_size};
 
 #[derive(Args)]
 pub struct ScanArgs {
@@ -229,16 +230,6 @@ fn is_leap(year: u32) -> bool {
     year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
 }
 
-fn cache_dir() -> PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
-        PathBuf::from(xdg).join("xbin")
-    } else if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".cache").join("xbin")
-    } else {
-        PathBuf::from(".xbin").join("cache")
-    }
-}
-
 fn cache_stats(dir: &Path) -> Result<(usize, u64)> {
     let mut count = 0usize;
     let mut total = 0u64;
@@ -256,14 +247,4 @@ fn cache_stats(dir: &Path) -> Result<(usize, u64)> {
         }
     }
     Ok((count, total))
-}
-
-fn format_size(bytes: u64) -> String {
-    if bytes < 1024 {
-        return format!("{bytes}B");
-    }
-    if bytes < 1024 * 1024 {
-        return format!("{:.1}KB", bytes as f64 / 1024.0);
-    }
-    format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
 }

@@ -149,7 +149,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn generate_man_pages(dir: &std::path::PathBuf) -> Result<()> {
+fn generate_man_pages(dir: &std::path::Path) -> Result<()> {
     std::fs::create_dir_all(dir)?;
 
     let cmd = Cli::command();
