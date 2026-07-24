@@ -20,61 +20,46 @@ pub fn create_deterministic_tar(root: &Path) -> io::Result<Vec<u8>> {
     let mut buf = io::Cursor::new(Vec::new());
     {
         let mut builder = tar::Builder::new(&mut buf);
-
-        // Collect all entries and sort them
         let mut entries = collect_entries(root)?;
         entries.sort();
-
-        for entry in &entries {
-            let path = root.join(entry);
-            let arcname = entry;
-
-            let mut header = tar::Header::new_gnu();
-            header.set_mtime(0);
-            header.set_uid(0);
-            header.set_gid(0);
-            header
-                .set_username("")
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            header
-                .set_groupname("")
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-
-            // Note: set_path is NOT called here — append_data handles long
-            // paths automatically via PAX extensions when needed.
-
-            if path.is_dir() {
-                header.set_entry_type(tar::EntryType::Directory);
-                header.set_mode(0o755);
-                header.set_size(0);
-                builder
-                    .append_data(&mut header, arcname, &mut io::empty())
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            } else if path.is_file() {
-                let meta = std::fs::metadata(&path)?;
-                header.set_entry_type(tar::EntryType::Regular);
-                header.set_mode(0o644);
-                header.set_size(meta.len());
-                let mut f = std::fs::File::open(&path)?;
-                builder
-                    .append_data(&mut header, arcname, &mut f)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            }
-            // Skip symlinks — we follow them via `follow(true)`
-        }
-
+        append_entries(&mut builder, root, &entries)?;
         builder
             .finish()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     }
-
     Ok(buf.into_inner())
 }
 
-/// Create a deterministic tar + compress (zstd level 19) in one step.
+/// Create a deterministic tar + compress (zstd level 3, streaming).
+///
+/// Streams tar entries directly to the zstd encoder — never buffers the
+/// full uncompressed tar in memory. Uses multithreaded zstd for speed.
+/// This is the BLAZING FAST path: level 3 + streaming + parallel.
 pub fn create_tar_zstd(root: &Path) -> io::Result<Vec<u8>> {
-    let tar_bytes = create_deterministic_tar(root)?;
-    crate::compress::compress_with_level(&tar_bytes, 19)
+    let entries = collect_entries(root)?;
+    let mut encoder = zstd::Encoder::new(Vec::new(), crate::compress::DEFAULT_LEVEL)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let _ = encoder.multithread(num_cpus());
+    {
+        let mut builder = tar::Builder::new(&mut encoder);
+        append_entries(&mut builder, root, &entries)?;
+        builder
+            .finish()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    }
+    encoder
+        .finish()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+}
+
+/// Stream tar entries directly to a writer (no in-memory buffer).
+pub fn create_tar_streaming<W: io::Write>(root: &Path, writer: W) -> io::Result<()> {
+    let entries = collect_entries(root)?;
+    let mut builder = tar::Builder::new(writer);
+    append_entries(&mut builder, root, &entries)?;
+    builder
+        .finish()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
 
 /// Extract a .tar.gz archive into a directory. Pure Rust — no external
@@ -128,6 +113,51 @@ fn collect_recursive(base: &Path, current: &Path, entries: &mut Vec<String>) -> 
         }
     }
     Ok(())
+}
+
+/// Append sorted entries to a tar builder (shared by all create_* functions).
+fn append_entries<W: io::Write>(
+    builder: &mut tar::Builder<W>,
+    root: &Path,
+    entries: &[String],
+) -> io::Result<()> {
+    for entry in entries {
+        let path = root.join(entry);
+        let mut header = tar::Header::new_gnu();
+        header.set_mtime(0);
+        header.set_uid(0);
+        header.set_gid(0);
+        header
+            .set_username("")
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        header
+            .set_groupname("")
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        if path.is_dir() {
+            header.set_entry_type(tar::EntryType::Directory);
+            header.set_mode(0o755);
+            header.set_size(0);
+            builder
+                .append_data(&mut header, entry, &mut io::empty())
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        } else if path.is_file() {
+            let meta = std::fs::metadata(&path)?;
+            header.set_entry_type(tar::EntryType::Regular);
+            header.set_mode(0o644);
+            header.set_size(meta.len());
+            let mut f = std::fs::File::open(&path)?;
+            builder
+                .append_data(&mut header, entry, &mut f)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        }
+    }
+    Ok(())
+}
+
+/// Number of CPU cores available (returns 1 if detection fails).
+fn num_cpus() -> u32 {
+    std::thread::available_parallelism().map_or(1, |n| n.get() as u32)
 }
 
 #[cfg(test)]

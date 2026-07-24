@@ -1,26 +1,41 @@
 //! Zstd compression and decompression for .xbin payload layers.
+//!
+//! Default compression: level 3 with all CPU cores — BLAZING FAST.
+//! Level 19 is ~10x slower for only ~5% smaller output. Use level 19
+//! only when binary size is critical and build time doesn't matter.
 
 use std::io::{self, Read, Write};
 
-/// Compress bytes with zstd (level 19, multi-threaded, optimized for size).
+/// Default compression level: fast, multithreaded, good ratio.
+/// Level 3 = fast, 19 = best compression.
+pub const DEFAULT_LEVEL: i32 = 3;
+
+/// Compress bytes with zstd (level 3, multi-threaded, BLAZING FAST).
 pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
-    compress_with_level(data, 19)
+    compress_with_level(data, DEFAULT_LEVEL)
 }
 
 /// Compress bytes with zstd at a specific level.
-/// Level 3 = fast, 19 = best compression. Default for x.bin layers is 19.
+/// Level 3 = fast, 19 = best compression. Default for x.bin layers is 3.
 pub fn compress_with_level(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
     let mut encoder = zstd::Encoder::new(Vec::new(), level)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     encoder
         .set_pledged_src_size(Some(data.len() as u64))
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    // Use all available CPU cores for parallel compression
+    let _ = encoder.multithread(num_cpus());
     encoder
         .write_all(data)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     encoder
         .finish()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+}
+
+/// Number of CPU cores available (returns 1 if detection fails).
+fn num_cpus() -> u32 {
+    std::thread::available_parallelism().map_or(1, |n| n.get() as u32)
 }
 
 /// Decompress zstd-compressed bytes.
