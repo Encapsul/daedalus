@@ -334,12 +334,18 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
     }
 
-    // Build deterministic tar
+    // Build deterministic tar (streaming: tar → zstd, no in-memory buffer)
     eprintln!("Creating payload...");
-    let tar_bytes = xbin_core::tar::create_deterministic_tar(&rootfs)
-        .context("failed to create deterministic tar")?;
-    let payload = xbin_core::compress::compress_with_level(&tar_bytes, 19)
-        .context("failed to compress payload")?;
+    let t0 = std::time::Instant::now();
+    let payload =
+        xbin_core::tar::create_tar_zstd(&rootfs).context("failed to create tar+zstd payload")?;
+    let compress_ms = t0.elapsed().as_millis();
+    if verbose {
+        eprintln!(
+            "  compress: {compress_ms}ms, {} MB",
+            payload.len() as f64 / 1_048_576.0
+        );
+    }
 
     // Build metadata
     let app_name = app_dir

@@ -20,7 +20,7 @@ serde_json = "1"
 
 # Compression
 ruzstd = "0.7"          # zstd decompression (pure Rust, for reading)
-zstd = "0.13"           # zstd compression (C bindings, for building)
+zstd = { version = "0.13", features = ["zstdmt"] }  # zstd compression (multithreaded)
 
 # Tar archive creation
 tar = "0.4"
