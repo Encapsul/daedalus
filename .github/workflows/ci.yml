@@ -38,6 +38,9 @@ jobs:
       - run: cargo test --workspace
       - run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
       - run: cargo build -p xbin-cli
+      - run: cargo install cargo-audit cargo-outdated --locked
+      - run: cargo audit
+      - run: cargo outdated --format json
 
   python:
     name: Python lint

@@ -52,6 +52,9 @@ pub fn run(args: DoctorArgs) -> Result<()> {
     // Auto-fix missing prerequisites
     if args.r#fix {
         if !args.force {
+            if !is_interactive() {
+                anyhow::bail!("interactive prompt required; pass --force for non-interactive use");
+            }
             eprint!("This will attempt to install missing dependencies. Continue? [y/N] ");
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
@@ -243,4 +246,8 @@ fn attempt_fix(name: &str) -> Result<String> {
         }
         _ => anyhow::bail!("no automatic fix available for '{name}'"),
     }
+}
+
+fn is_interactive() -> bool {
+    unsafe { libc::isatty(libc::STDIN_FILENO) != 0 }
 }

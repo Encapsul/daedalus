@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
-use xbin_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64, FLAG_SIGNED};
+use xbin_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64, FLAG_ENCRYPTED};
 
 #[derive(Args)]
 pub struct InspectArgs {
@@ -44,7 +44,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
             "format_version": footer.format_version,
             "arch": arch_name,
             "signed": footer.is_signed(),
-            "encrypted": footer.flags & FLAG_SIGNED == 0 && footer.format_version >= 4,
+            "encrypted": footer.flags & FLAG_ENCRYPTED != 0,
             "payload_offset": footer.payload_offset,
             "payload_compressed_size": footer.payload_csize,
             "payload_uncompressed_size": footer.payload_usize,
@@ -57,7 +57,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
         eprintln!("Format:      v{}", footer.format_version);
         eprintln!("Arch:        {arch_name}");
         eprintln!("Signed:      {}", footer.is_signed());
-        eprintln!("Encrypted:   {}", footer.format_version >= 4);
+        eprintln!("Encrypted:   {}", footer.flags & FLAG_ENCRYPTED != 0);
         eprintln!(
             "Payload:     {} -> {}",
             format_size(footer.payload_csize),

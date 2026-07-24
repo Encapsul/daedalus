@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use sha2::{Digest, Sha256};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const GITHUB_API: &str = "https://api.github.com/repos/Tednoob17/x.bin/releases/latest";
 
@@ -10,6 +10,14 @@ pub struct UpgradeArgs {
     /// Verbose output
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Skip confirmation prompt
+    #[arg(short, long)]
+    pub force: bool,
+
+    /// Do not use sudo; fail if binary is not writable
+    #[arg(long)]
+    pub no_sudo: bool,
 }
 
 pub fn run(args: UpgradeArgs) -> Result<()> {
@@ -102,13 +110,39 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
         eprintln!("[xbin] installing to {}...", install_dir.display());
     }
 
+    let needs_sudo = !is_writable(install_dir);
+    if needs_sudo && args.no_sudo {
+        anyhow::bail!(
+            "install directory {} is not writable and --no-sudo is set",
+            install_dir.display()
+        );
+    }
+    if needs_sudo && !args.force {
+        if !is_interactive() {
+            anyhow::bail!(
+                "sudo required for {}; pass --force for non-interactive use",
+                install_dir.display()
+            );
+        }
+        eprint!(
+            "[xbin] install to {} requires sudo. Continue? [y/N] ",
+            install_dir.display()
+        );
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if !input.trim().eq_ignore_ascii_case("y") {
+            eprintln!("Aborted");
+            return Ok(());
+        }
+    }
+
     for entry in std::fs::read_dir(&bin_dir).context("failed to read bin/ directory")? {
         let entry = entry?;
         let dest = install_dir.join(entry.file_name());
         if is_writable(&dest) {
             std::fs::copy(entry.path(), &dest)
                 .with_context(|| format!("failed to copy to {}", dest.display()))?;
-        } else {
+        } else if needs_sudo {
             let status = std::process::Command::new("sudo")
                 .args([
                     "cp",
@@ -120,6 +154,8 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
             if !status.success() {
                 anyhow::bail!("failed to install to {}", dest.display());
             }
+        } else {
+            anyhow::bail!("{} is not writable and sudo was not used", dest.display());
         }
     }
 
@@ -167,6 +203,8 @@ fn fetch_latest_version() -> Result<String> {
     Ok(tag.trim_start_matches('v').to_string())
 }
 
+const MAX_DOWNLOAD_BYTES: u64 = 500 * 1024 * 1024;
+
 fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_mins(5))
@@ -174,7 +212,20 @@ fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
         .context("failed to create HTTP client")?;
 
     let resp = client.get(url).send().context("failed to download")?;
+    if let Some(len) = resp.content_length() {
+        if len > MAX_DOWNLOAD_BYTES {
+            anyhow::bail!(
+                "download aborted: content length {len} exceeds limit {MAX_DOWNLOAD_BYTES}"
+            );
+        }
+    }
     let bytes = resp.bytes().context("failed to read response")?;
+    if bytes.len() > MAX_DOWNLOAD_BYTES as usize {
+        anyhow::bail!(
+            "download aborted: {} bytes exceeds limit {MAX_DOWNLOAD_BYTES}",
+            bytes.len()
+        );
+    }
     std::fs::write(dest, &bytes).context("failed to write file")?;
     Ok(())
 }
@@ -219,7 +270,7 @@ fn find_xbin_binary() -> Result<PathBuf> {
     anyhow::bail!("cannot locate xbin binary for self-update")
 }
 
-fn is_writable(path: &PathBuf) -> bool {
+fn is_writable(path: &Path) -> bool {
     if !path.exists() {
         return path
             .parent()
@@ -227,6 +278,10 @@ fn is_writable(path: &PathBuf) -> bool {
             .is_some_and(|m| !m.permissions().readonly());
     }
     std::fs::metadata(path).is_ok_and(|m| !m.permissions().readonly())
+}
+
+fn is_interactive() -> bool {
+    unsafe { libc::isatty(libc::STDIN_FILENO) != 0 }
 }
 
 #[cfg(test)]
