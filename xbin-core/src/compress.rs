@@ -34,16 +34,6 @@ pub fn decompress(data: &[u8]) -> io::Result<Vec<u8>> {
     Ok(output)
 }
 
-/// Compress a tar archive (bytes) with zstd. Returns the compressed payload.
-pub fn compress_tar_zstd(tar_bytes: &[u8]) -> io::Result<Vec<u8>> {
-    compress(tar_bytes)
-}
-
-/// Decompress a zstd payload back to raw bytes.
-pub fn decompress_zstd(data: &[u8]) -> io::Result<Vec<u8>> {
-    decompress(data)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

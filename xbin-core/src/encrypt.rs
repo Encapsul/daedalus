@@ -4,9 +4,6 @@ use hkdf::Hkdf;
 use rand::RngCore;
 use sha2::Sha256;
 
-pub const CRYPTO_NONE: u64 = 0x00;
-pub const CRYPTO_AES_256_GCM: u64 = 0x01;
-
 const NONCE_LEN: usize = 12;
 const HKDF_SALT: &[u8] = b"xbin-encrypt-v1";
 const HKDF_INFO: &[u8] = b"aes-256-gcm-key";

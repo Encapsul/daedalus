@@ -15,7 +15,6 @@ pub const V3_FOOTER_SIZE: u64 = 92;
 pub const CRYPTO_NONE: u64 = 0x00;
 pub const CRYPTO_AES_256_GCM: u64 = 0x01;
 
-pub const PAYLOAD_FORMAT_ZSTD_TAR: &str = "zstd-tar";
 pub const PAYLOAD_FORMAT_SQUASHFS: &str = "squashfs";
 
 pub const FLAG_SIGNED: u8 = 0x01;
@@ -53,14 +52,6 @@ impl Footer {
 
     pub fn is_signed(&self) -> bool {
         self.flags & FLAG_SIGNED != 0
-    }
-
-    pub fn footer_size(&self) -> u64 {
-        if self.format_version >= 3 {
-            V3_FOOTER_SIZE
-        } else {
-            V2_FOOTER_SIZE
-        }
     }
 
     pub fn read_from<R: Read + Seek>(r: &mut R) -> io::Result<Footer> {

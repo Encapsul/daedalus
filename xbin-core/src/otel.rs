@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::env;
 
 pub fn build_otel_env(
     service_name: &str,
@@ -49,26 +48,6 @@ pub fn build_otel_env(
     }
 
     env
-}
-
-pub fn get_otel_config() -> HashMap<String, String> {
-    let otel_vars = [
-        "OTEL_SERVICE_NAME",
-        "OTEL_RESOURCE_ATTRIBUTES",
-        "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "OTEL_EXPORTER_OTLP_PROTOCOL",
-        "OTEL_TRACES_EXPORTER",
-        "OTEL_METRICS_EXPORTER",
-        "OTEL_LOGS_EXPORTER",
-        "OTEL_PYTHON_AUTO_INSTRUMENTATION_ENABLED",
-    ];
-    let mut config = HashMap::new();
-    for var in otel_vars {
-        if let Ok(val) = env::var(var) {
-            config.insert(var.to_string(), val);
-        }
-    }
-    config
 }
 
 pub fn format_resource_attributes(attrs_str: &str) -> HashMap<String, String> {
