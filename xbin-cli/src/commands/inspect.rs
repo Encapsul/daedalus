@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
 use xbin_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64, FLAG_ENCRYPTED};
+use xbin_core::paths::format_size;
 
 #[derive(Args)]
 pub struct InspectArgs {
@@ -138,14 +139,4 @@ pub fn run(args: InspectArgs) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn format_size(bytes: u64) -> String {
-    if bytes < 1024 {
-        return format!("{bytes}B");
-    }
-    if bytes < 1024 * 1024 {
-        return format!("{:.1}KB", bytes as f64 / 1024.0);
-    }
-    format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
 }

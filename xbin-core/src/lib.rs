@@ -14,6 +14,7 @@ pub mod format;
 pub mod include;
 pub mod minify;
 pub mod otel;
+pub mod paths;
 pub mod persistent;
 pub mod pkgmgr;
 pub mod tar;

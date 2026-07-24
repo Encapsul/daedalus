@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use std::path::PathBuf;
+use xbin_core::paths::{cache_dir, format_size};
 
 #[derive(Args)]
 pub struct CleanArgs {
@@ -45,16 +45,6 @@ pub fn run(args: CleanArgs) -> Result<()> {
     Ok(())
 }
 
-fn cache_dir() -> PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
-        PathBuf::from(xdg).join("xbin")
-    } else if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".cache").join("xbin")
-    } else {
-        PathBuf::from(".xbin").join("cache")
-    }
-}
-
 fn dir_size(path: &std::path::Path) -> Result<u64> {
     let mut total = 0;
     for entry in std::fs::read_dir(path)? {
@@ -67,14 +57,4 @@ fn dir_size(path: &std::path::Path) -> Result<u64> {
         }
     }
     Ok(total)
-}
-
-fn format_size(bytes: u64) -> String {
-    if bytes < 1024 {
-        return format!("{bytes}B");
-    }
-    if bytes < 1024 * 1024 {
-        return format!("{:.1}KB", bytes as f64 / 1024.0);
-    }
-    format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
 }

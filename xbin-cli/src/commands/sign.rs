@@ -4,6 +4,7 @@ use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use xbin_core::format::{Footer, FLAG_SIGNED, SIG_BLOCK_SIZE};
+use xbin_core::paths::default_key_dir;
 
 #[derive(Args)]
 pub struct SignArgs {
@@ -121,18 +122,4 @@ pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> 
     }
 
     Ok(())
-}
-
-fn default_key_dir() -> PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        PathBuf::from(xdg).join("xbin").join("keys")
-    } else if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home)
-            .join(".local")
-            .join("share")
-            .join("xbin")
-            .join("keys")
-    } else {
-        PathBuf::from(".xbin").join("keys")
-    }
 }
