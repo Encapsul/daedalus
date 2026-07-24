@@ -6,6 +6,8 @@
 use std::io::{self};
 use std::path::Path;
 
+use flate2::read::GzDecoder;
+
 /// Create a deterministic tar archive from a directory.
 ///
 /// - Entries are sorted alphabetically
@@ -73,6 +75,15 @@ pub fn create_deterministic_tar(root: &Path) -> io::Result<Vec<u8>> {
 pub fn create_tar_zstd(root: &Path) -> io::Result<Vec<u8>> {
     let tar_bytes = create_deterministic_tar(root)?;
     crate::compress::compress_with_level(&tar_bytes, 19)
+}
+
+/// Extract a .tar.gz archive into a directory. Pure Rust — no external
+/// `tar` process required.
+pub fn extract_tar_gz<R: io::Read>(reader: R, dest: &Path) -> io::Result<()> {
+    let decoder = GzDecoder::new(reader);
+    let mut archive = tar::Archive::new(decoder);
+    archive.unpack(dest)?;
+    Ok(())
 }
 
 /// Recursively collect relative paths of all files and directories.
@@ -184,5 +195,27 @@ mod tests {
         let tar1 = create_deterministic_tar(root).unwrap();
         let tar2 = create_deterministic_tar(root).unwrap();
         assert_eq!(tar1, tar2);
+    }
+
+    #[test]
+    fn extract_tar_gz_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("src");
+        let dst = tmp.path().join("dst");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("hello.txt"), b"hello world").unwrap();
+
+        let tar_bytes = create_deterministic_tar(&src).unwrap();
+        let mut gz = Vec::new();
+        {
+            let mut encoder =
+                flate2::write::GzEncoder::new(&mut gz, flate2::Compression::default());
+            std::io::Write::write_all(&mut encoder, &tar_bytes).unwrap();
+        }
+
+        extract_tar_gz(&gz[..], &dst).unwrap();
+
+        let extracted = std::fs::read_to_string(dst.join("hello.txt")).unwrap();
+        assert_eq!(extracted, "hello world");
     }
 }

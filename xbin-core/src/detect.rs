@@ -3,6 +3,7 @@
 //! Detection order matches the Python registry:
 //! Python > Deno > Node > Java > Ruby > .NET > Go > PHP > Perl > Binary
 
+use std::io::Read;
 use std::path::Path;
 
 /// Detected runtime type.
@@ -120,21 +121,32 @@ fn detect_perl(dir: &Path) -> bool {
 }
 
 fn detect_binary(dir: &Path) -> bool {
-    // Check for a single ELF executable in the directory
-    std::fs::read_dir(dir)
-        .map(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .filter(|e| e.path().is_file())
-                .filter(|e| {
-                    std::fs::read(e.path())
-                        .map(|bytes| bytes.len() >= 4 && &bytes[0..4] == b"\x7fELF")
-                        .unwrap_or(false)
-                })
-                .count()
-                == 1
-        })
-        .unwrap_or(false)
+    let mut elf_count = 0;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if std::fs::File::open(&path)
+            .ok()
+            .and_then(|mut f| {
+                let mut buf = [0u8; 4];
+                f.read_exact(&mut buf).ok()?;
+                Some(&buf[..] == b"\x7fELF")
+            })
+            .unwrap_or(false)
+        {
+            elf_count += 1;
+            if elf_count > 1 {
+                return false;
+            }
+        }
+    }
+    elf_count == 1
 }
 
 /// Resolve the entrypoint argv for a detected runtime.
@@ -223,8 +235,9 @@ fn find_elf(dir: &Path) -> Option<String> {
     for entry in entries.flatten() {
         let p = entry.path();
         if p.is_file() {
-            let bytes = std::fs::read(&p).ok()?;
-            if bytes.len() >= 4 && &bytes[0..4] == b"\x7fELF" {
+            let mut buf = [0u8; 4];
+            if std::fs::File::open(&p).ok()?.read_exact(&mut buf).is_ok() && &buf[..] == b"\x7fELF"
+            {
                 return p.file_name()?.to_str().map(String::from);
             }
         }

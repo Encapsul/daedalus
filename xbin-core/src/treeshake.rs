@@ -2,8 +2,17 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::sync::LazyLock;
 
 use regex::Regex;
+
+static REQ_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"require\s*\(\s*['"]([^'"]+)['"]\s*\)"#).expect("invalid require regex")
+});
+static IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"import\s+(?:.*?\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)"#)
+        .expect("invalid import regex")
+});
 
 const SKIP_DIRS: &[&str] = &[
     ".git",
@@ -22,13 +31,12 @@ const SKIP_DIRS: &[&str] = &[
 
 const JS_EXTS: &[&str] = &["js", "ts", "jsx", "tsx", "mjs", "cjs"];
 
-fn req_re() -> Regex {
-    Regex::new(r#"require\s*\(\s*['"]([^'"]+)['"]\s*\)"#).unwrap()
+fn req_re() -> &'static Regex {
+    &REQ_RE
 }
 
-fn import_re() -> Regex {
-    Regex::new(r#"import\s+(?:.*?\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)"#)
-        .unwrap()
+fn import_re() -> &'static Regex {
+    &IMPORT_RE
 }
 
 fn is_skip_dir(name: &str) -> bool {

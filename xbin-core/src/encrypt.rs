@@ -17,19 +17,19 @@ pub struct EncryptMetadata {
     pub tag_offset: usize,
 }
 
-pub fn hkdf_derive_key(signing_seed: &[u8; 32]) -> [u8; 32] {
+pub fn hkdf_derive_key(signing_seed: &[u8; 32]) -> anyhow::Result<[u8; 32]> {
     let hk = Hkdf::<Sha256>::new(Some(HKDF_SALT), signing_seed);
     let mut key = [0u8; 32];
     hk.expand(HKDF_INFO, &mut key)
-        .expect("HKDF expand failed for 32-byte key");
-    key
+        .map_err(|e| anyhow::anyhow!("HKDF expand failed: {e}"))?;
+    Ok(key)
 }
 
 pub fn encrypt_payload(
     plaintext: &[u8],
     signing_seed: &[u8; 32],
 ) -> anyhow::Result<(Vec<u8>, EncryptMetadata)> {
-    let key = hkdf_derive_key(signing_seed);
+    let key = hkdf_derive_key(signing_seed)?;
     let cipher =
         Aes256Gcm::new_from_slice(&key).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
 
@@ -55,7 +55,7 @@ pub fn decrypt_payload(
     signing_seed: &[u8; 32],
     nonce: &[u8; NONCE_LEN],
 ) -> anyhow::Result<Vec<u8>> {
-    let key = hkdf_derive_key(signing_seed);
+    let key = hkdf_derive_key(signing_seed)?;
     let cipher =
         Aes256Gcm::new_from_slice(&key).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
     let nonce = Nonce::from(*nonce);
@@ -73,8 +73,8 @@ mod tests {
     #[test]
     fn test_hkdf_deterministic() {
         let seed = [0x42u8; 32];
-        let key1 = hkdf_derive_key(&seed);
-        let key2 = hkdf_derive_key(&seed);
+        let key1 = hkdf_derive_key(&seed).unwrap();
+        let key2 = hkdf_derive_key(&seed).unwrap();
         assert_eq!(key1, key2);
         assert_eq!(key1.len(), 32);
     }

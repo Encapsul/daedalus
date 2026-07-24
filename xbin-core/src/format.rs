@@ -72,7 +72,7 @@ impl Footer {
             r.read_exact(&mut buf)?;
 
             if &buf[8..13] == MAGIC && buf[13] >= 3 {
-                let sig_offset = u64_le(&buf[0..8]);
+                let sig_offset = u64_le(&buf[0..8])?;
                 return Self::parse(&buf[8..], sig_offset);
             }
         }
@@ -92,7 +92,11 @@ impl Footer {
     }
 
     fn parse(buf: &[u8], sig_offset: u64) -> io::Result<Footer> {
-        let footer_magic = u32::from_le_bytes(buf[80..84].try_into().unwrap());
+        let footer_magic = u32::from_le_bytes(
+            buf[80..84]
+                .try_into()
+                .map_err(|_| err("truncated footer magic"))?,
+        );
         if footer_magic != FOOTER_MAGIC {
             return Err(err("bad footer sentinel"));
         }
@@ -108,12 +112,12 @@ impl Footer {
             format_version,
             arch: buf[6],
             flags: buf[7],
-            payload_offset: u64_le(&buf[8..16]),
-            payload_csize: u64_le(&buf[16..24]),
-            payload_usize: u64_le(&buf[24..32]),
+            payload_offset: u64_le(&buf[8..16])?,
+            payload_csize: u64_le(&buf[16..24])?,
+            payload_usize: u64_le(&buf[24..32])?,
             payload_sha256,
-            meta_offset: u64_le(&buf[64..72]),
-            meta_size: u64_le(&buf[72..80]),
+            meta_offset: u64_le(&buf[64..72])?,
+            meta_size: u64_le(&buf[72..80])?,
             sig_offset,
         })
     }
@@ -145,8 +149,10 @@ impl Footer {
     }
 }
 
-fn u64_le(b: &[u8]) -> u64 {
-    u64::from_le_bytes(b.try_into().unwrap())
+fn u64_le(b: &[u8]) -> io::Result<u64> {
+    Ok(u64::from_le_bytes(
+        b.try_into().map_err(|_| err("truncated u64 field"))?,
+    ))
 }
 
 pub fn read_at<R: Read + Seek>(f: &mut R, off: u64, len: usize) -> io::Result<Vec<u8>> {

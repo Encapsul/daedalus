@@ -24,6 +24,7 @@ zstd = "0.13"           # zstd compression (C bindings, for building)
 
 # Tar archive creation
 tar = "0.4"
+flate2 = "1"
 
 # Encryption
 aes-gcm = "0.10"
@@ -33,6 +34,7 @@ anyhow = "1"
 
 # Path utilities
 pathdiff = "0.2"
+which = "7"
 
 # Hex encoding
 hex = "0.4"
