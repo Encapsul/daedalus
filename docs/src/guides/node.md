@@ -40,7 +40,7 @@ server.listen(port, () => {
 Build it:
 
 ```bash
-cd cli && PYTHONPATH=. python3 -m xbin build ../examples/hello-node -o hello-node.xbin
+xbin build ./examples/hello-node -o hello-node.xbin
 ```
 
 Run it:
@@ -70,11 +70,11 @@ app layer: node_modules from /path/to/my-node-app/node_modules
 
 ## How it works
 
-1. `runtime.py` detects `package.json` and finds the `node` binary on `$PATH`
-2. `ldd` resolves all shared libraries the Node.js runtime depends on (~18 .so files)
+1. `detect.rs` detects `package.json` and finds the `node` binary on `$PATH`
+2. The ELF analyzer resolves all shared libraries the Node.js runtime depends on (~18 .so files)
 3. The interpreter + .so files + /etc form the **runtime layer** (cached)
 4. App code + `node_modules` form the **app layer** (rebuilt on every change)
-5. The launcher sets `LD_LIBRARY_PATH` and `NODE_PATH`, then `execve`s node
+5. The launcher sets `LD_LIBRARY_PATH` and `NODE_PATH`, then `execvp`s node
 
 ## Known limitations
 

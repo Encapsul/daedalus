@@ -36,7 +36,6 @@ discriminatory behavior will not be tolerated.
 ```bash
 # Prerequisites
 rustup target add x86_64-unknown-linux-musl
-python3 -m pip install -e cli/
 
 # Build and test
 make preflight
@@ -79,14 +78,17 @@ main          ← stable, tagged releases only
 
 ### Commit style
 
+We use [Conventional Commits](https://www.conventionalcommits.org/):
+
 ```
-component: brief description (imperative mood)
+type(component): brief description (imperative mood)
 
 Optional longer description. Why the change was made, what it
 does differently, any trade-offs.
 ```
 
-Good: `builder: add auto pip-install from requirements.txt`
+Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`, `perf`
+Good: `feat(build): add auto pip-install from requirements.txt`
 Bad: `fix stuff` or `updated code`
 
 ## Code conventions
@@ -105,19 +107,19 @@ Bad: `fix stuff` or `updated code`
 - Machine-readable output: offer `--json` flag where applicable (inspect, doctor)
 - XDG compliance: use `_util.keys_dir()` / `_util.trusted_dir()` for config paths
 
-### Rust (`stub/`)
+### Rust (`xbin-core/`, `xbin-cli/`, `stub/`)
 
-- **No `unsafe`** unless absolutely necessary (and documented why)
+- **No `unsafe` in `xbin-core`** — all unsafe is confined to `stub/src/main.rs`
+- `stub/` unsafe requires a `SAFETY` comment explaining soundness
 - Pure Rust dependencies only (no C toolchain required)
 - Comments in English, doc comments (`///`) on public items
-- Follow standard Rust formatting (we use `rustfmt`)
+- Follow standard Rust formatting (`cargo fmt`)
 
 ### Documentation (`docs/`)
 
 - Written in English
 - Uses mdbook for structure
 - Images go in `docs/src/images/`
-- Keep the format spec in sync between `format.py` and `format.rs`
 
 ## Pull request process
 
@@ -125,23 +127,20 @@ Bad: `fix stuff` or `updated code`
 2. CI must pass (lint, clippy, build, end-to-end test).
 3. At least one review from a maintainer.
 4. New features should include a demo example or test where practical.
-5. PRs that change the `.xbin` format must update **both** `format.py` and
-   `format.rs`.
+5. PRs that change the `.xbin` format must update `xbin-core/src/format.rs`.
 6. Squash or rebase — no merge commits on `dev`.
 
 ### Release process
 
 ```bash
-./scripts/release.sh 0.1.0    # creates v0.1.0 tag, pushes, CI builds binaries
+./scripts/release.sh 0.3.2    # creates v0.3.2 tag, pushes, CI builds binaries
 ```
 
-The release CI builds `xbin-stub` + `xbin-crypto` for:
+The release CI builds `xbin-stub` for:
 - Linux x86_64 (`x86_64-unknown-linux-musl`)
-- Linux aarch64 (`aarch64-unknown-linux-musl`)
-- macOS ARM64 (`aarch64-apple-darwin`)
-- macOS x64 (`x86_64-apple-darwin`)
+- Linux aarch64 (`aarch64-unknown-linux-gnu`)
 
-Each archive contains `bin/xbin-stub` and `bin/xbin-crypto` (statically linked, no dependencies). A GitHub Release is created with binaries + SHA-256 checksums.
+Each archive contains `bin/xbin-stub` (statically linked, no dependencies). A GitHub Release is created with binaries + SHA-256 checksums.
 
 ## Questions?
 

@@ -32,7 +32,7 @@ Mechanism (implemented in `stub/src/main.rs`):
 4. `pivot_root(rootfs, rootfs/.old_root)` + `umount2("/.old_root", MNT_DETACH)`
 5. `std::env::set_current_dir("/")` — CWD in the new root
 6. Install seccomp-bpf denylist (blocks ~14 dangerous syscalls)
-7. `execve(entrypoint)` — the app sees only its rootfs
+7. `execvp(entrypoint)` — the app sees only its rootfs
 
 Usage:
 ```

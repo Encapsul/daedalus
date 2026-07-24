@@ -23,7 +23,7 @@ squashfs+mmap) without rewriting everything.
 ```
 
 Each layer only knows the one below it. The **`.xbin` format** is the shared
-contract: the builder (Python) writes it, the launcher (Rust) reads it. As
+contract: the builder (Rust) writes it, the launcher (Rust) reads it. As
 long as the format is respected, both sides evolve independently.
 
 ## Architecture diagram (initial sketch)
@@ -41,7 +41,7 @@ The diagram flows top to bottom:
    Clean*. This is the user surface.
 
 2. **Builder** — two sub-components:
-   - **Analyzer**: pure-Python ELF parser (DT_NEEDED, DT_RUNPATH, transitive
+   - **Analyzer**: Rust ELF parser (DT_NEEDED, DT_RUNPATH, transitive
      resolution), runtime detection, and hidden dependency detection
      (subprocess, `dlopen`) — see the *AI* annotation on the right.
    - **Packager**: builds the rootfs, compresses with zstd, assembles the
@@ -71,16 +71,16 @@ The diagram describes the **ambition**. Here is the honest current state:
 | Element | Target | Current |
 |---|---|---|
 | CLI build/run/inspect | ✅ | ✅ implemented |
-| Pure-Python ELF analyzer | ✅ | ✅ implemented (replaces host `ldd`) |
-| Dockerfile dependency detection | ✅ | ✅ implemented (apt/apk/pip/npm + external fetches) |
-| Python AST scanner (subprocess) | ✅ | ✅ implemented (subprocess/os.system calls) |
-| Dependency fetcher (staging) | ✅ | ✅ implemented (isolated, non-invasive) |
+| Rust ELF analyzer | ✅ | ✅ implemented (replaces host `ldd`) |
+| Dockerfile dependency detection | ✅ | ⚠️ removed (Python CLI only) |
+| Python AST scanner (subprocess) | ✅ | ⚠️ removed (Python CLI only) |
+| Dependency fetcher (staging) | ✅ | ⚠️ removed (Python CLI only) |
 | PATH injection (bundled binaries) | ✅ | ✅ implemented (rootfs usr/bin prepended) |
 | AI analyzer (hidden deps) | ✅ | ⏳ Phase 3 |
 | ELF + zstd + meta + SHA-256 format | ✅ | ✅ implemented |
 | `{sha256}` cache + atomic extraction | ✅ | ✅ implemented (`flock()` included) |
 | Level 0 executor (`LD_LIBRARY_PATH` + `PATH`) | ✅ | ✅ implemented |
-| User namespaces + pivot_root + seccomp | ✅ | ✅ pivot_root implemented (Phase 2) |
+| User namespaces + pivot_root + seccomp | ✅ | ✅ implemented (Phase 2) |
 | Ed25519 signatures | ✅ | ✅ implemented (Phase 2) |
 | warm start < 100 ms | ✅ | ⏳ (currently limited by embedded runtime boot, not by xbin) |
 

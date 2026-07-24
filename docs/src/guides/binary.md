@@ -33,11 +33,11 @@ No runtime interpreter is embedded. The launcher:
 
 1. extracts the binary and its `.so` dependencies to the cache;
 2. sets `LD_LIBRARY_PATH` to include the extracted library directories;
-3. `execve`s the binary directly.
+3. `execvp`s the binary directly.
 
 ## Shared library resolution
 
-The pure-Python ELF analyzer reads `DT_NEEDED`, `DT_RPATH`, and `DT_RUNPATH`
+The Rust ELF analyzer reads `DT_NEEDED`, `DT_RPATH`, and `DT_RUNPATH`
 entries from the ELF header to find all transitive shared library dependencies.
 No host `ldd` is required.
 

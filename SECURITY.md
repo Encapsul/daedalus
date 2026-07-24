@@ -8,8 +8,8 @@
 
 ## Reporting a Vulnerability
 
-**xbin is currently in MVP/Phase 1.** Security is a first-class design
-concern, not an afterthought, but some protections are still being built.
+**xbin is currently in Phase 3.** Security is a first-class design
+concern, not an afterthought.
 
 If you discover a vulnerability:
 
@@ -23,14 +23,15 @@ You should receive a response within 48 hours. If you don't, please follow up.
 
 | Protection              | Status     | Details                                      |
 |-------------------------|------------|----------------------------------------------|
-| SHA-256 integrity       | ✅ MVP     | Payload hash verified before extraction      |
-| Atomic cache extraction | ✅ MVP     | `rename()` avoids TOCTOU race conditions     |
-| `flock()` concurrency   | ✅ MVP     | Advisory lock prevents duplicate extraction  |
-| Ed25519 signatures      | 🔜 Phase 2 | Footer v2 with keygen/sign/verify            |
-| User namespaces         | 🔜 Phase 2 | `pivot_root` isolation without root          |
-| Seccomp filter          | 🔜 Phase 2 | Restrict syscalls available to embedded app  |
+| SHA-256 integrity       | ✅         | Payload hash verified before extraction      |
+| Atomic cache extraction | ✅         | `rename()` avoids TOCTOU race conditions     |
+| `flock()` concurrency   | ✅         | Advisory lock prevents duplicate extraction  |
+| Ed25519 signatures      | ✅         | Footer v3 with keygen/sign/verify            |
+| User namespaces         | ✅         | `pivot_root` isolation without root          |
+| Seccomp filter          | ✅         | Denylist blocks ~14 dangerous syscalls       |
+| AES-256-GCM encryption  | ✅         | Optional payload encryption (v4 format)      |
 
-See [docs/src/securite.md](docs/src/securite.md) for the full threat model.
+See [docs/src/security.md](docs/src/security.md) for the full threat model.
 
 ## Design principle
 
@@ -41,6 +42,7 @@ from an untrusted source.
 
 ## Scope
 
-All code under `cli/`, `stub/`, and the `.xbin` format specification in
-`docs/src/reference/format.md` is in scope. The example apps in `examples/`
-are for demonstration only and not considered security-critical.
+All code under `xbin-core/`, `xbin-cli/`, `stub/`, and the `.xbin` format
+specification in `docs/src/reference/format.md` is in scope. The example
+apps in `examples/` are for demonstration only and not considered
+security-critical. The legacy Python CLI in `cli/` is deprecated.
