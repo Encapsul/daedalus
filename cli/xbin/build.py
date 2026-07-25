@@ -156,9 +156,88 @@ def _resolve_app_path(app_path: str) -> Path:
     return app_dir  # will fail the is_dir() check downstream
 
 
+def _find_primary_php_subdir(app_dir: Path) -> Path | None:
+    """Detect monorepos: if root is Node but contains PHP apps in subdirs,
+    return the primary PHP subdirectory.
+    """
+    is_node_root = (app_dir / "package.json").is_file()
+    if not is_node_root:
+        return None
+
+    workspace_patterns: list[str] = []
+    pkg_workspaces: list[str] = []
+    try:
+        import json
+
+        pkg = json.loads((app_dir / "package.json").read_text())
+        pkg_workspaces = pkg.get("workspaces", [])
+        if isinstance(pkg_workspaces, dict):
+            pkg_workspaces = pkg_workspaces.get("packages", [])
+    except Exception:
+        pass
+
+    if (app_dir / "pnpm-workspace.yaml").is_file():
+        try:
+            text = (app_dir / "pnpm-workspace.yaml").read_text()
+            for line in text.splitlines():
+                line = line.strip()
+                if line.startswith("- "):
+                    workspace_patterns.append(line[2:].strip().strip("'").strip('"'))
+        except Exception:
+            pass
+
+    workspace_patterns.extend(pkg_workspaces)
+
+    if not workspace_patterns:
+        return None
+
+    candidates: list[Path] = []
+    for pattern in workspace_patterns:
+        for match in app_dir.glob(pattern):
+            if match.is_dir():
+                has_composer = (match / "composer.json").is_file()
+                has_plugin = False
+                for php_file in match.glob("*.php"):
+                    try:
+                        text = php_file.read_text(errors="ignore")
+                        if "Plugin Name:" in text:
+                            has_plugin = True
+                            break
+                    except Exception:
+                        continue
+                if has_composer or has_plugin:
+                    candidates.append(match)
+
+    if not candidates:
+        return None
+
+    def _score(c: Path) -> tuple[int, int]:
+        score = 0
+        if (c / "artisan").is_file():
+            score += 100
+        if (c / "wp-config.php").is_file():
+            score += 90
+        for php_file in c.glob("*.php"):
+            try:
+                text = php_file.read_text(errors="ignore")
+                if "Plugin Name:" in text:
+                    score += 80
+                    break
+            except Exception:
+                continue
+        if "plugins" in str(c):
+            score += 10
+        if "packages" in str(c):
+            score -= 5
+        return (score, -len(str(c)))
+
+    candidates.sort(key=_score, reverse=True)
+    return candidates[0]
+
+
 def build(
     app_path: str,
-    output: str | None,
+    output: str | None = None,
     key_path: str | None = None,
     isolation: int = 0,
     seccomp: bool = False,
@@ -182,6 +261,7 @@ def build(
     otel_endpoint: str | None = None,
     otel_protocol: str = "grpc",
     cron_tasks: list[str] | None = None,
+    lang: str = "en",
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -199,6 +279,44 @@ def build(
     app_dir = _resolve_app_path(app_path)
     if not app_dir.is_dir():
         raise NotADirectoryError(f"{app_dir} is not a directory")
+
+    # Auto-detect monorepos: if root is Node but contains PHP apps in subdirs,
+    # build the primary PHP subdirectory instead.
+    primary_php = _find_primary_php_subdir(app_dir)
+    if primary_php is not None:
+        if verbose:
+            print(
+                f"[xbin] monorepo detected, building PHP app at {primary_php}",
+                file=sys.stderr,
+            )
+        return build(
+            str(primary_php),
+            output,
+            key_path=key_path,
+            isolation=isolation,
+            seccomp=seccomp,
+            encrypt=encrypt,
+            squashfs=squashfs,
+            verbose=verbose,
+            redetect=redetect,
+            target=target,
+            update=update,
+            no_install=no_install,
+            env_file=env_file,
+            version=version,
+            author=author,
+            description=description,
+            license=license,
+            persist=persist,
+            include=include,
+            tree_shake=tree_shake,
+            minify=minify,
+            health_port=health_port,
+            otel_endpoint=otel_endpoint,
+            otel_protocol=otel_protocol,
+            cron_tasks=cron_tasks,
+            lang=lang,
+        )
 
     manifest_path = app_dir / "xbin.toml"
     if manifest_path.is_file():
@@ -367,7 +485,7 @@ def build(
 
     t0 = time.time()
 
-    # --- Package manager install (uv/poetry/pipenv/pip/pnpm/yarn/bun/npm) ---
+    # --- Package manager install (uv/poetry/pipenv/pip/pnpm/yarn/bun/npm/composer) ---
     if not no_install:
         pm = detect_pkgmgr(app_dir, plan.runtime)
         if pm is not None:
@@ -375,7 +493,12 @@ def build(
                 print(
                     f"[xbin] installing dependencies via {pm.name}...", file=sys.stderr
                 )
-            install_deps(app_dir, pm, verbose)
+            install_dir = install_deps(app_dir, pm, verbose, lang=lang)
+            if install_dir and install_dir.is_dir():
+                existing_paths = [sp[0] for sp in plan.site_packages]
+                if install_dir not in existing_paths:
+                    rel = f"/{str(install_dir.relative_to(app_dir)).lstrip('/')}"
+                    plan.site_packages.append((install_dir, f"/app/{rel.lstrip('/')}"))
 
     # --- Compute hashes for metadata (always, used by --update and stored) ---
     new_app_hash = _hash_app_files(app_dir)

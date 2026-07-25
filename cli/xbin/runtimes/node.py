@@ -7,6 +7,7 @@ Next.js, Nuxt, and Astro.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -19,16 +20,60 @@ class NodeRuntime(Runtime):
     def detect(self, app_dir: Path) -> RuntimePlan | None:
         if not (app_dir / "package.json").is_file():
             return None
+        if _is_primary_php_app(app_dir):
+            return None
         return _detect_node(app_dir)
 
 
-def _detect_node(app_dir: Path) -> RuntimePlan:
+def _is_primary_php_app(app_dir: Path) -> bool:
+    """Heuristic: if strong PHP framework markers exist, defer to PHP runtime."""
+    if (app_dir / "artisan").is_file():
+        return True
+    if (app_dir / "wp-config.php").is_file():
+        return True
+    if ((app_dir / "config" / "bundles.php").is_file() or (app_dir / "symfony.lock").is_file()):
+        return True
+    if (app_dir / "public" / "index.php").is_file() and (app_dir / "composer.json").is_file():
+        return True
+    # WordPress plugin/theme: main plugin file with plugin header
+    for php_file in app_dir.glob("*.php"):
+        try:
+            text = php_file.read_text(errors="ignore")
+            if "Plugin Name:" in text and "Description:" in text:
+                return True
+        except Exception:
+            continue
+    # Monorepo with PHP apps in subdirectories (plugins/, packages/)
+    for sub in ("plugins", "packages", "apps"):
+        if (app_dir / sub).is_dir():
+            for child in (app_dir / sub).iterdir():
+                if child.is_dir() and (child / "composer.json").is_file():
+                    return True
+    return False
+
+
+def _find_node() -> Path | None:
+    """Locate node, checking PATH first, then NVM directories."""
     node = shutil.which("node")
-    if not node:
+    if node:
+        return Path(node).resolve()
+
+    nvm_dir = Path.home() / ".nvm" / "versions" / "node"
+    if nvm_dir.is_dir():
+        for vdir in sorted(nvm_dir.iterdir(), reverse=True):
+            candidate = vdir / "bin" / "node"
+            if candidate.is_file():
+                return candidate.resolve()
+
+    return None
+
+
+def _detect_node(app_dir: Path) -> RuntimePlan:
+    interp = _find_node()
+    if not interp:
         raise ValueError(
             "node app detected (package.json) but no node on PATH to embed"
         )
-    interp = Path(node).resolve()
     framework = _detect_framework(app_dir)
     entrypoint = _build_entrypoint(app_dir, framework)
     env: dict[str, str] = {}
