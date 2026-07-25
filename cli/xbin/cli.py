@@ -281,6 +281,12 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME:SCHEDULE",
         help="register a cron task (e.g. --cron cleanup:'*/5 * * * *')",
     )
+    p_build.add_argument(
+        "--lang",
+        default="en",
+        metavar="LANG",
+        help="locale for subprocess output (e.g. en, fr, de; default: en)",
+    )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
     _SUBPARSERS["run"] = p_run
@@ -487,6 +493,7 @@ def main(argv: list[str] | None = None) -> int:
                 otel_endpoint=args.otel_endpoint,
                 otel_protocol=args.otel_protocol,
                 cron_tasks=args.cron,
+                lang=args.lang,
             )
             return 0
 

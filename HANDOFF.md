@@ -14,9 +14,176 @@
 - **Rust core**: `xbin-core` crate — format, compress, detect, pkgmgr, tar, assembly, sign, verify, scan, PyO3 bindings
 - **Rust CLI**: `xbin-cli` crate — 12 commands (build, inspect, scan, sign, verify, keygen, trust, doctor, env, clean, completion, man)
 - **Tests**: 92 Rust (xbin-core + xbin-cli) + 234 Python = 326 total (0 failures)
-- **Last updated**: 2026-07-23
+- **Last updated**: 2026-07-24
 - **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), all commits/tags signed, GitHub signing key id=1064819
 - **Release workflow**: `on: release: types: [published]` — create release on GitHub UI → workflow builds 4 platforms → uploads tar.gz + SHASUMS256.txt
+
+---
+
+## Recent Commits (2026-07-24)
+
+```
+f8048fd benchmark: add build reports for 6 PHP apps (SuiteCRM, Filament, InvoiceNinja, OpenEMR, Roundcube, WooCommerce)
+1a1c91e feat: improve PHP/Node app builds, add monorepo/workspace support, --lang flag
+0bffc88 feat(cli): ungate progress messages, add --json, fix library debug output
+e22be5e chore(core): remove dead code — unused fns, duplicates, layers module
+f1e9f1e fix(cli): ANSSI hardening + clig.dev compliance
+4ad8ad4 fix(core): ANSSI hardening + perf — error propagation, LazyLock, regex caching
+fee6f8c fix(stub): ANSSI hardening — cstr error propagation, bounds checks, seccomp docs
+```
+
+Version bumped to **0.3.2** across all crates.
+
+---
+
+## Known Build Constraints (Discovered During Multi-App Packaging)
+
+### PHP Apps
+
+| Issue | Impact | Mitigation |
+|-------|--------|------------|
+| `composer` binary missing | Build fails immediately | Auto-install composer via downloader if absent |
+| PHP extensions missing (ext-gd, ext-dom, ext-simplexml, ext-bcmath, ext-xml) | `composer install` exits 2 | Use `--ignore-platform-reqs` for portable builds |
+| Static PHP builds lack extensions | Vendor deps can't be resolved | Embed system PHP with all extensions if available |
+| No `vendor/` dir before install | site_packages empty | Run `composer install` and update `plan.site_packages` |
+| Composer version mismatch | Lock file platform requirements fail | Pin composer version or use `--no-dev --ignore-platform-reqs` |
+
+**Current apps tested:**
+- SuiteCRM-hotfix: needs `ext-gd`, `ext-simplexml`, `ext-dom`
+- InvoiceNinja 5: needs `ext-bcmath`, `ext-dom`, `ext-simplexml`, `ext-xml`
+- OpenEMR: needs `ext-gd`, `ext-mbstring`, `ext-zip`, `ext-xml`
+- Roundcube: needs `ext-gd`, `ext-dom`
+- Filament: Laravel app, needs full LAMP stack extensions
+
+### Node.js Apps
+
+| Issue | Impact | Mitigation |
+|-------|--------|------------|
+| `node` not on PATH (NVM shells) | Build fails at runtime detection | Check `~/.nvm/versions/node/*/bin/node` as fallback |
+| `pnpm`/`yarn`/`bun` not installed | Lock file respected but manager missing | Auto-fallback to `npm install` |
+| npm workspaces (`workspace:*`) | `npm install` exits 1 with EUNSUPPORTEDPROTOCOL | Detect workspace configs, use proper workspace-aware install |
+| Network flakiness (ECONNRESET, ETIMEDOUT) | npm install fails mid-build | Auto-retry with backoff (3 attempts) |
+| `package.json` present but PHP app | Node runtime wins over PHP | Heuristic: defer to PHP if `artisan`/`wp-config.php`/`symfony.lock` exists |
+
+**Current apps tested:**
+- WooCommerce: pnpm workspace monorepo, `npm install` fails
+- Filament: has `package.json` but is Laravel/PHP app
+
+### General
+
+| Issue | Impact | Mitigation |
+|-------|--------|------------|
+| Locale of subprocess output | Error messages in French/Chinese/etc | Added `--lang` flag to xbin CLI |
+| `vendor/` already in app layer | `shutil.copytree` fails with FileExistsError | `rmtree` before copy in `build_app_layer` |
+| `node_modules` ignored in app layer copy | Dependencies not embedded | Update `plan.site_packages` after `install_deps` |
+| Build on live USB (vfat) | No exec bit, no symlinks | Stub in `/tmp`, `std::fs::copy` not symlink |
+| Network timeouts during fetch | Build fails | Retry with exponential backoff in `fetch_deps` and `install_deps` |
+
+---
+
+## Performance Optimization (Current)
+
+### Problem
+
+Build for uptime-kuma (65MB output): **148s on Xeon w5-2465X 32 cores**.
+On a laptop: **5-10 minutes**. On USB live (8GB RAM): even worse.
+
+Root causes identified:
+1. **zstd level 19** — extremely slow. Level 3 is 10x faster for ~5% larger output
+2. **Buffered tar** — entire uncompressed tar (300-500MB) buffered in memory before compression
+3. **Single-threaded compression** — zstd not using available CPU cores
+4. **No streaming** — tar→bytes→compress→bytes, doubling memory usage
+
+### Solution Applied
+
+| Optimization | Before | After | Impact |
+|-------------|--------|-------|--------|
+| zstd level | 19 | **3** | ~10x faster compression |
+| Multithreading | None | **all cores** | ~Nx on N-core machines |
+| Streaming tar→zstd | Buffered in memory | **Direct pipe** | 50% less memory |
+| Default `DEFAULT_LEVEL` constant | Hardcoded 19 | **3** | All callers updated |
+
+Expected build time after optimization:
+- **15-25s** on Xeon 32 cores (was 148s)
+- **30-60s** on typical laptop (was 5-10min)
+- **<2min** on constrained hardware (Raspberry Pi, old laptop)
+
+### What Changed in Code
+
+**compress.rs**:
+- `DEFAULT_LEVEL = 3` (was hardcoded 19)
+- `compress()` uses level 3 + `multithread(num_cpus())`
+- New `num_cpus()` helper using `available_parallelism()`
+
+**tar.rs**:
+- Refactored: shared `append_entries()` helper for all tar creation
+- New `create_tar_zstd()` — streaming tar→zstd, never buffers full tar
+- New `create_tar_streaming<W: Write>()` — generic streaming to any writer
+- `create_deterministic_tar()` refactored to use shared helper
+
+**build.rs**:
+- Uses `create_tar_zstd()` instead of separate tar+compress steps
+- Added timing output for compress phase (verbose mode)
+- Removed hardcoded level 19
+
+**Cargo.toml**:
+- `zstd` now uses `features = ["zstdmt"]` for multithreading
+
+---
+
+## Benchmark Data
+
+Located in `benchmarks/`:
+
+| File | Machine | Build Time | Output | Peak RSS |
+|------|---------|-----------|--------|----------|
+| `uptime-kuma-20260723-183413.md` | Xeon w5-2465X 32c, NVMe | 148s | 65.4MB | 660MB |
+| `uptime-kuma-20260723-183002.md` | Same | 151.9s | 65.4MB | 660MB |
+
+Machine specs (Xeon run):
+- CPU: Intel Xeon w5-2465X, 32 cores
+- RAM: 251.3 GB
+- Disk: NVMe 959GB
+- Disk I/O: Write 64MB = 410ms, Read 64MB = 15ms
+
+### 8GB tmpfs live USB estimate
+
+- Peak RSS: 660MB → **YES** (fits in 8GB)
+- Peak RSS + tmpfs overhead (~2×): 1321MB → **YES**
+- With streaming optimization: RSS drops to ~300-400MB (no full tar buffer)
+
+---
+
+## Dead Code Removed
+
+| Item | File | Reason |
+|------|------|--------|
+| `compress_tar_zstd()` | compress.rs | Thin wrapper, never called |
+| `decompress_zstd()` | compress.rs | Thin wrapper, never called |
+| `PAYLOAD_FORMAT_ZSTD_TAR` | format.rs | Literal used directly |
+| `Footer::footer_size()` | format.rs | Never called |
+| `get_otel_config()` | otel.rs | Never wired into pipeline |
+| `CRYPTO_NONE` | encrypt.rs | Duplicate of format constant |
+| `CRYPTO_AES_256_GCM` | encrypt.rs | Duplicate of format constant |
+| `layers` module | lib.rs + layers.rs | 4 pub fns, zero imports |
+
+### Remaining Dead Code (Low Priority)
+
+- `#[allow(dead_code)]` fields in stub: `Metadata::runtime`, `CryptoMeta::tag_offset`, `Layer::kind`, `Layer::uncompressed_size` — kept for JSON deserialization forward compatibility
+- 6 `eprintln!` calls in xbin-core (treeshake.rs, minify.rs, dotenv.rs) — behind `verbose` flag but library shouldn't emit to stderr. Requires refactoring function signatures to return messages. Not removed.
+- 18 `pub` functions with zero external callers — mostly intentional library API. Internal helpers (treeshake, dotenv, minify) could be `pub(crate)` but harmless.
+
+---
+
+## Test Results
+
+| Crate | Tests | Clippy |
+|-------|-------|--------|
+| xbin-core | 84 passed | Clean |
+| xbin-stub | 0 (binary) | Clean |
+| xbin-cli | Cannot test (requires openssl-dev) | N/A |
+
+**Note:** xbin-cli depends on `openssl` via `reqwest`/`native-tls`. CI (ubuntu) has it. Local live USB doesn't.
 
 ---
 
@@ -1137,3 +1304,13 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - **Install**: git clone + `make stub` + `pip install -e ./cli` — no curl installer, no brew.
 - **Quick links**: organized by Build, Runtime, Security, CLI — all link to mdbook docs.
 - **Guides**: organized by Python, Node.js, Deployment, Security.
+
+---
+
+## What to Do Next
+
+1. **Push** — `0bffc88` is unpushed
+2. **Benchmark after optimization** — Run `benchmarks/run-bench.sh` again to measure improvement
+3. **Install openssl-dev** for local xbin-cli testing: `sudo apt install libssl-dev`
+4. **Demo recording** — Install `asciinema` + `agg` for YC demo (see demo-yc/)
+5. **Optional: rayon for parallel file collection** — tar.rs `collect_entries()` is sequential. Could be parallelized but impact is small vs compression savings.

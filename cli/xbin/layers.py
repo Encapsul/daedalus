@@ -200,6 +200,8 @@ def build_app_layer(
     for src, rootfs_rel in plan.site_packages:
         dest = layer / rootfs_rel.lstrip("/")
         dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            shutil.rmtree(dest)
         shutil.copytree(src, dest, symlinks=True)
         if verbose:
             print(f"  app layer: {src.name} from {src}", file=sys.stderr)

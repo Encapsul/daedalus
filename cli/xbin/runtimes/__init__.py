@@ -126,13 +126,13 @@ def _register_builtins() -> None:
 
     register(PythonRuntime())
     register(DenoRuntime())
+    register(PHPRuntime())
     register(NodeRuntime())
     register(JavaRuntime())
     register(RubyRuntime())
     register(DotnetRuntime())
     register(HugoRuntime())
     register(GoRuntime())
-    register(PHPRuntime())
     register(PerlRuntime())
     register(BinaryRuntime())
 
