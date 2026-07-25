@@ -1314,3 +1314,36 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 3. **Install openssl-dev** for local xbin-cli testing: `sudo apt install libssl-dev`
 4. **Demo recording** — Install `asciinema` + `agg` for YC demo (see demo-yc/)
 5. **Optional: rayon for parallel file collection** — tar.rs `collect_entries()` is sequential. Could be parallelized but impact is small vs compression savings.
+
+---
+
+## Roadmap: Features & Limitations
+
+**File**: `ROADMAP.md` — Complete roadmap of features to implement and limitations to address.
+
+### Critical Features (High Priority)
+1. Cross-platform support (macOS/Windows)
+2. Delta updates (binary patching)
+3. Runtime configuration injection
+4. Secrets management
+5. Persistent storage
+6. Observability (logging/metrics/tracing)
+7. Sandboxing (seccomp/capabilities/Landlock)
+8. Network isolation
+
+### Important Features (Medium Priority)
+9. Resource limits (cgroups)
+10. Health checks
+11. Layer caching
+12. Reproducible builds
+13. Rollback mechanism
+14. Garbage collection
+15. WebAssembly support
+
+### Nice to Have (Low Priority)
+16. Package registry
+17. Desktop integration
+18. Auto-update mechanism
+19. Multi-container orchestration
+
+See `ROADMAP.md` for detailed implementation plans and timelines.

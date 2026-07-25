@@ -28,7 +28,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     let footer = Footer::read_from(&mut f).context("failed to read xbin footer")?;
 
     if !footer.is_signed() {
-        anyhow::bail!("[xbin] error: file is not signed");
+        anyhow::bail!("file is not signed");
     }
 
     // Read sig block: [sig_size:u32le][64-byte ed25519 signature]
@@ -39,10 +39,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     )?;
     let sig_size = u32::from_le_bytes([sig_data[0], sig_data[1], sig_data[2], sig_data[3]]);
     if sig_size != 64 {
-        anyhow::bail!(
-            "[xbin] error: unexpected sig_size {} (expected 64 for ed25519)",
-            sig_size
-        );
+        anyhow::bail!("unexpected sig_size {} (expected 64 for ed25519)", sig_size);
     }
     let signature_bytes = &sig_data[4..68];
 
@@ -61,7 +58,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     let keys = load_trusted_keys(&trusted_dir)?;
     if keys.is_empty() {
         anyhow::bail!(
-            "[xbin] error: no trusted keys in {} — add keys with: xbin trust <pubkey_file>",
+            "no trusted keys in {} — add keys with: xbin trust <pubkey_file>",
             trusted_dir.display()
         );
     }
@@ -80,7 +77,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     }
 
     if !verified {
-        anyhow::bail!("[xbin] error: signature does not match any trusted key");
+        anyhow::bail!("signature does not match any trusted key");
     }
 
     if !args.quiet {

@@ -34,7 +34,7 @@ pub fn run(args: SignArgs) -> Result<()> {
             if keys.len() == 1 {
                 keys[0].path()
             } else {
-                anyhow::bail!("[xbin] error: specify key with --key");
+                anyhow::bail!("specify key with --key");
             }
         }
     };
@@ -51,10 +51,7 @@ pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> 
     let key_bytes = std::fs::read(key_path)
         .with_context(|| format!("failed to read signing key at {}", key_path.display()))?;
     if key_bytes.len() != 32 {
-        anyhow::bail!(
-            "[xbin] error: key must be 32 bytes, got {}",
-            key_bytes.len()
-        );
+        anyhow::bail!("key must be 32 bytes, got {}", key_bytes.len());
     }
 
     let mut key_arr = [0u8; 32];
@@ -67,7 +64,7 @@ pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> 
     let mut footer = Footer::read_from(&mut cursor).context("failed to read xbin footer")?;
 
     if footer.is_signed() {
-        anyhow::bail!("[xbin] error: file is already signed");
+        anyhow::bail!("file is already signed");
     }
 
     let meta_start = footer.meta_offset as usize;

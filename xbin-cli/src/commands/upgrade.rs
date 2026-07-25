@@ -18,6 +18,10 @@ pub struct UpgradeArgs {
     /// Do not use sudo; fail if binary is not writable
     #[arg(long)]
     pub no_sudo: bool,
+
+    /// Show what would be done without doing it
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 pub fn run(args: UpgradeArgs) -> Result<()> {
@@ -45,6 +49,13 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     let tag = format!("v{latest}");
     let asset = format!("xbin-{latest}-{platform}.tar.gz");
     let url = format!("https://github.com/Tednoob17/x.bin/releases/download/{tag}/{asset}");
+
+    if args.dry_run {
+        eprintln!("Would upgrade from {current} to {latest}");
+        eprintln!("  platform: {platform}");
+        eprintln!("  url:      {url}");
+        return Ok(());
+    }
 
     let tmp = tempfile::tempdir().context("failed to create temp dir")?;
     let tarball = tmp.path().join(&asset);
@@ -281,7 +292,8 @@ fn is_writable(path: &Path) -> bool {
 }
 
 fn is_interactive() -> bool {
-    unsafe { libc::isatty(libc::STDIN_FILENO) != 0 }
+    use std::io::IsTerminal;
+    std::io::stdin().is_terminal()
 }
 
 #[cfg(test)]

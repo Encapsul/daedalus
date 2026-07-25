@@ -13,6 +13,10 @@ pub struct InspectArgs {
     #[arg(long)]
     pub json: bool,
 
+    /// Write JSON output to file (requires --json)
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
     /// Dry run — show what would be done without doing it
     #[arg(long)]
     pub dry_run: bool,
@@ -52,7 +56,14 @@ pub fn run(args: InspectArgs) -> Result<()> {
             "payload_sha256": footer.sha256_hex(),
             "meta": meta,
         });
-        println!("{}", serde_json::to_string_pretty(&info)?);
+        let json_str = serde_json::to_string_pretty(&info)?;
+        if let Some(ref path) = args.output {
+            std::fs::write(path, &json_str)
+                .with_context(|| format!("failed to write to {}", path.display()))?;
+            eprintln!("Wrote JSON to {}", path.display());
+        } else {
+            println!("{json_str}");
+        }
     } else {
         eprintln!("File:        {}", args.file.display());
         eprintln!("Format:      v{}", footer.format_version);

@@ -11,11 +11,9 @@ Supported runtimes:
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import platform
 import shutil
-import subprocess
 import tarfile
 import urllib.request
 import zipfile
@@ -112,7 +110,6 @@ def download_node(verbose: bool = True) -> Path:
     cache = runtime_cache_dir() / "node"
     cache.mkdir(parents=True, exist_ok=True)
 
-    arch = _node_arch()
     platform_name = _node_platform()
     version = _NODE_LTS_VERSION
     base_name = f"node-{version}-{platform_name}"

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Args;
 use std::path::{Path, PathBuf};
 use xbin_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64};
@@ -13,6 +13,10 @@ pub struct ScanArgs {
     /// Output as JSON
     #[arg(long)]
     pub json: bool,
+
+    /// Write JSON output to file (requires --json)
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 
     /// Dry run — show what would be done without doing it
     #[arg(long)]
@@ -30,27 +34,28 @@ pub fn run(args: ScanArgs) -> Result<()> {
         if cache_dir.exists() {
             let (count, total_size) = cache_stats(&cache_dir)?;
             if args.json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&serde_json::json!({
-                        "cache_dir": cache_dir.display().to_string(),
-                        "entries": count,
-                        "total_size_bytes": total_size,
-                        "total_size": format_size(total_size),
-                    }))?
-                );
+                let json_str = serde_json::to_string_pretty(&serde_json::json!({
+                    "cache_dir": cache_dir.display().to_string(),
+                    "entries": count,
+                    "total_size_bytes": total_size,
+                    "total_size": format_size(total_size),
+                }))?;
+                write_json_output(&json_str, args.output.as_deref())?;
             } else {
-                println!("Cache:  {}", cache_dir.display());
-                println!("  Entries: {count}");
-                println!("  Size:   {}", format_size(total_size));
+                eprintln!("Cache:  {}", cache_dir.display());
+                eprintln!("  Entries: {count}");
+                eprintln!("  Size:   {}", format_size(total_size));
             }
         } else if args.json {
-            println!(
-                "{{\"cache_dir\":\"{}\",\"entries\":0,\"total_size_bytes\":0}}",
-                cache_dir.display()
-            );
+            write_json_output(
+                &format!(
+                    "{{\"cache_dir\":\"{}\",\"entries\":0,\"total_size_bytes\":0}}",
+                    cache_dir.display()
+                ),
+                args.output.as_deref(),
+            )?;
         } else {
-            println!("No cache found at {}", cache_dir.display());
+            eprintln!("No cache found at {}", cache_dir.display());
         }
         return Ok(());
     }
@@ -78,7 +83,8 @@ pub fn run(args: ScanArgs) -> Result<()> {
 
     if args.json {
         let entries: Vec<_> = files.iter().filter_map(|f| inspect_file(f)).collect();
-        println!("{}", serde_json::to_string_pretty(&entries)?);
+        let json_str = serde_json::to_string_pretty(&entries)?;
+        write_json_output(&json_str, args.output.as_deref())?;
     } else {
         println!(
             "{:<40} {:<10} {:<10} {:<10} {:<10} {:<8} {:<6}",
@@ -247,4 +253,15 @@ fn cache_stats(dir: &Path) -> Result<(usize, u64)> {
         }
     }
     Ok((count, total))
+}
+
+fn write_json_output(json_str: &str, output: Option<&Path>) -> Result<()> {
+    if let Some(path) = output {
+        std::fs::write(path, json_str)
+            .with_context(|| format!("failed to write to {}", path.display()))?;
+        eprintln!("Wrote JSON to {}", path.display());
+    } else {
+        println!("{json_str}");
+    }
+    Ok(())
 }

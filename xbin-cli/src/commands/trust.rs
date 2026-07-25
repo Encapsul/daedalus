@@ -16,24 +16,19 @@ pub struct TrustArgs {
     /// Quiet output
     #[arg(short, long)]
     pub quiet: bool,
+
+    /// Show what would be done without doing it
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 pub fn run(args: TrustArgs) -> Result<()> {
     let trusted_dir = args.trusted_dir.unwrap_or_else(default_trusted_dir);
-    std::fs::create_dir_all(&trusted_dir).with_context(|| {
-        format!(
-            "failed to create trusted key directory {}",
-            trusted_dir.display()
-        )
-    })?;
 
     let key_bytes = std::fs::read(&args.pubkey)
         .with_context(|| format!("failed to read public key at {}", args.pubkey.display()))?;
     if key_bytes.len() != 32 {
-        anyhow::bail!(
-            "[xbin] error: public key must be 32 bytes, got {}",
-            key_bytes.len()
-        );
+        anyhow::bail!("public key must be 32 bytes, got {}", key_bytes.len());
     }
 
     // Compute fingerprint
@@ -42,6 +37,20 @@ pub fn run(args: TrustArgs) -> Result<()> {
     let fingerprint = hex::encode(hasher.finalize());
 
     let dest = trusted_dir.join(format!("{fingerprint}.pub"));
+
+    if args.dry_run {
+        eprintln!("Would trust key {}", args.pubkey.display());
+        eprintln!("  fingerprint: {fingerprint}");
+        eprintln!("  stored at:   {}", dest.display());
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(&trusted_dir).with_context(|| {
+        format!(
+            "failed to create trusted key directory {}",
+            trusted_dir.display()
+        )
+    })?;
     std::fs::copy(&args.pubkey, &dest)?;
 
     if !args.quiet {
