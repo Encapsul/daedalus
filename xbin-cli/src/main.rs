@@ -1,12 +1,13 @@
 mod commands;
+mod error;
 
-use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{
     generate,
     shells::{Bash, Elvish, Fish, PowerShell, Zsh},
 };
 use std::io;
+use std::process::ExitCode;
 
 #[derive(Parser)]
 #[command(
@@ -97,7 +98,7 @@ enum Shell {
     PowerShell,
 }
 
-fn main() -> Result<()> {
+fn main() -> ExitCode {
     human_panic::setup_panic!();
 
     let cli = Cli::parse();
@@ -109,14 +110,34 @@ fn main() -> Result<()> {
 
     let effective_verbose = cli.verbose && !cli.quiet;
 
-    match cli.command {
+    let result = match cli.command {
         Commands::Build(args) => commands::build::run(*args, effective_verbose),
         Commands::Run(args) => commands::run::run(args),
         Commands::Inspect(args) => commands::inspect::run(args),
-        Commands::Keygen(args) => commands::keygen::run(args),
-        Commands::Sign(args) => commands::sign::run(args),
-        Commands::Verify(args) => commands::verify::run(args),
-        Commands::Trust(args) => commands::trust::run(args),
+        Commands::Keygen(mut args) => {
+            if cli.quiet {
+                args.quiet = true;
+            }
+            commands::keygen::run(args)
+        }
+        Commands::Sign(mut args) => {
+            if cli.quiet {
+                args.quiet = true;
+            }
+            commands::sign::run(args)
+        }
+        Commands::Verify(mut args) => {
+            if cli.quiet {
+                args.quiet = true;
+            }
+            commands::verify::run(args)
+        }
+        Commands::Trust(mut args) => {
+            if cli.quiet {
+                args.quiet = true;
+            }
+            commands::trust::run(args)
+        }
         Commands::Scan(args) => commands::scan::run(args),
         Commands::Doctor(args) => commands::doctor::run(args),
         Commands::Clean(args) => commands::clean::run(args),
@@ -146,6 +167,14 @@ fn main() -> Result<()> {
             Ok(())
         }
         Commands::Man { dir } => generate_man_pages(&dir),
+    };
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("Error: {err:#}");
+            error::exit_code_for_error(&err)
+        }
     }
 }
 
@@ -173,6 +202,12 @@ EXIT STATUS
        1      General error (invalid arguments, build failure, I/O error).
 
        2      Lint or verification error (signature mismatch, corrupt file).
+
+       3      Data error (parse failure, invalid format).
+
+       4      Permission error (insufficient privileges, file not writable).
+
+       5      Not found (file, directory, or dependency missing).
 
 ENVIRONMENT
        XBIN_CACHE_DIR
@@ -256,6 +291,14 @@ EXIT STATUS
        0      Success.
 
        1      General error.
+
+       2      Verification error.
+
+       3      Data error.
+
+       4      Permission error.
+
+       5      Not found.
 
 SEE ALSO
        xbin(1)

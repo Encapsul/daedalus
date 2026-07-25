@@ -249,5 +249,6 @@ fn attempt_fix(name: &str) -> Result<String> {
 }
 
 fn is_interactive() -> bool {
-    unsafe { libc::isatty(libc::STDIN_FILENO) != 0 }
+    use std::io::IsTerminal;
+    std::io::stdin().is_terminal()
 }

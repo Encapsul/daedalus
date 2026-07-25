@@ -141,9 +141,8 @@ def detect_node_pkgmgr(app_dir: Path) -> PkgManager | None:
     if not (app_dir / "package.json").is_file():
         return None
     for pm in _NODE_PKG_MGRS:
-        if (app_dir / pm.lock_file).is_file():
-            if _find_binary(pm.name):
-                return pm
+        if (app_dir / pm.lock_file).is_file() and _find_binary(pm.name):
+            return pm
     # Fallback: if lock file exists but manager missing, fall back to npm
     for pm in _NODE_PKG_MGRS:
         if (app_dir / pm.lock_file).is_file():
