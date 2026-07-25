@@ -1,42 +1,47 @@
-# AGENTS.md — Instructions for coding agents
+# AGENTS.md
 
-## Project overview
+## Project
 
-x.bin packages any app into a single self-extracting ELF binary. Rust workspace with 3 crates: `xbin-core` (library), `xbin-cli` (CLI), `xbin-stub` (launcher). Legacy Python CLI in `cli/` is being replaced by the Rust CLI.
+x.bin packages any app into a single self-extracting ELF binary. Rust workspace (3 crates): `xbin-core` (library), `xbin-cli` (CLI, cross-platform), `stub` (launcher, Linux-only). Legacy Python CLI in `cli/` is being replaced by the Rust CLI.
 
-## Build, lint, test commands
+## Critical gotchas
 
-**Environment**: tools installed in `~/.local/bin`. Always prefix with:
+- **vfat filesystem**: repo lives on vfat (no exec bit). Cargo target dir is `/tmp/xbin-stub-target` (set in `.cargo/config.toml`). Build artifacts cannot live in the repo tree.
+- **PATH**: tools installed in `~/.local/bin`. Prefix with `export PATH="$HOME/.local/bin:$PATH"` when running pip-installed tools.
+- **musl target**: stub builds with `--target $(uname -m)-unknown-linux-musl` for static linking. Requires `rustup target add` and a C compiler (musl-tools on Ubuntu).
+- **CI runs clippy per-crate**, not workspace-wide: `cargo clippy -p xbin-core --all-targets -- -D warnings`, then same for `xbin-stub`, then `xbin-cli`.
+
+## Commands
+
+### Rust (primary)
+
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-**Build target**: repo lives on vfat (no exec bit), so build artifacts go to `/tmp/xbin-stub-target`.
-
-### Rust
-
-```bash
-# Lint (MUST pass before any commit)
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-
-# Tests
-cargo test --workspace
-
-# Format
-cargo fmt
-
-# Build release
-cargo build --release
+cargo fmt --check                          # format check
+cargo clippy --all-targets -- -D warnings  # lint (MUST pass before commit)
+cargo test --workspace                     # all tests
+cargo build --release                      # release build
+cargo audit                                # dependency vulnerabilities (run in CI)
 ```
 
 ### Python (legacy CLI in `cli/`)
 
 ```bash
-cd cli
-ruff check xbin/
-black --check xbin/
-pytest                    # tests
+cd cli && ruff check xbin/
+cd cli && black --check xbin/
+cd cli && python -m pytest tests/ -q
+```
+
+### Verification loop (MANDATORY before finishing any change)
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test --workspace
+```
+
+If you edited Python in `cli/`, also:
+```bash
+cd cli && ruff check xbin/ && black --check xbin/ && python -m pytest tests/ -q
 ```
 
 ## Architecture
@@ -50,96 +55,78 @@ Layout: `[stub][payload][metadata][footer]`
 
 ### Stub launcher (`stub/src/main.rs`)
 
-The stub is the ELF header of the self-extracting binary. Flow:
-1. Read footer + metadata from `/proc/self/exe`
-2. Check cache hit (skip extraction if cached)
-3. Verify SHA-256 integrity: `SHA-256(payload || meta_bytes)`
-4. Extract payload (zstd+tar) to `~/.cache/xbin/<hash>/rootfs/`
-5. `execvp` the entrypoint (searches PATH for bare command names)
+Reads footer+metadata from `/proc/self/exe` → cache check → SHA-256 verify → extract (zstd+tar or squashfs) to `~/.cache/xbin/<hash>/rootfs/` → `execvp` entrypoint.
 
-**Entrypoint resolution**: `detect.rs:resolve_entrypoint()` builds argv per runtime:
-- Python: `["python3", "/app/app.py"]`
+Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
+- Python: `["python3", "/app/app.py"]` (interpreter bare on PATH, app path absolute)
 - Node: `["node", "/app/index.js"]`
 - Go/Binary: `["/app/app"]`
 
-App files are under `/app/` in the rootfs. Interpreter names are bare (no `/`) so `execvp` finds them on PATH. App paths are absolute (start with `/`) so `make_resolve` maps them to `rootfs/<path>`.
+### Unsafe boundary
 
-### Security (FFI)
+- **`xbin-core` and `xbin-cli`**: zero `unsafe`. Memory safety via Rust type system.
+- **`stub/src/main.rs`**: the only crate with `unsafe`. All `unsafe` blocks MUST have `SAFETY` comments. No `unsafe` outside FFI calls and `static mut`.
 
-- `execvp` is used for single-service exec (PATH lookup for interpreters)
-- `execve` is used in the supervisor (needs custom env per service)
-- All `unsafe` blocks MUST have SAFETY comments
-- No `unsafe` in `xbin-core` — only in `stub/src/main.rs`
+## Code style (high-signal)
 
-## Code style
+- Edition 2021, `cargo fmt` is authoritative. `max_width = 100` in `stub/rustfmt.toml`.
+- Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` — tiny binaries.
+- Clippy pedantic subset — do NOT add new `#[allow]` without a comment. See `xbin-core/Cargo.toml [lints.clippy]`.
+- Rust functions: ≤ 30 lines. Python functions: ≤ 40 lines.
+- Functions with >7 params: use a config struct.
+- Prefer `Result::ok()` over `|e| e.ok()`. Prefer `if let Some(v)` over `match` with `None => {}`.
+- Comments explain WHY, never WHAT.
 
-### Rust
+## Security rules (ANSSI-Rust, MUST follow)
 
-- Edition 2021, `cargo fmt` is authoritative
-- Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` — tiny binaries
-- Clippy pedantic with many allows (see `xbin-core/Cargo.toml [lints.clippy]`)
-- Prefer `Result::ok()` over `|e| e.ok()`
-- Prefer `r"..."` over `r#"..."#` when no `#` in string
-- Use `'\n'` not `"\n"` for single-char pattern matching
-- Use `.contains_key()` over `.get().is_none()`
-- Use `if let Some(v)` over `match` with `None => {}`
-- Functions with >7 params: use a config struct
-
-## Security best practices (ANSSI-Rust)
-
-Based on [ANSSI Secure Rust Guidelines](https://anssi-fr.github.io/rust-guide). These are **rules** (MUST) not suggestions.
-
-- **DENV-STABLE**: Use stable toolchain only. Never nightly/beta.
-- **DENV-CARGO-LOCK**: `Cargo.lock` MUST be tracked in version control.
-- **LANG-UNSAFE**: No `unsafe` blocks in `xbin-core`. Only in `stub/src/main.rs`.
-- **UNSAFE-NOUB**: Zero Undefined Behavior. No exceptions.
-- **LANG-LIMIT-PANIC**: No `panic!()` in library code. Prefer `Result<T, E>`.
-- **LANG-LIMIT-PANIC-SRC**: No `unwrap()`/`expect()` in `xbin-core` without context.
-- **LANG-ARITH**: Use checked/wrapping/saturating arithmetic where overflow is possible.
-- **MEM-NO-LEAK**: No `mem::forget` or `.leak()`.
-- **FFI-SAFEWRAPPING**: All FFI calls MUST have safe wrappers.
-- **LIBS-AUDIT**: Run `cargo audit` periodically.
-
-## Testing
-
-- Unit tests: `#[cfg(test)] mod tests` in each module
-- Integration tests: `xbin-cli/tests/` use `assert_cmd`
-- `cargo test --workspace` for all tests
-- Python: `pytest` in `cli/`
-
-## Git conventions
-
-- Branches: `feat/*`, `fix/*`, `dev`, `main`
-- Commits: signed (`git commit -S`), conventional format (`feat:`, `fix:`, `chore:`)
-- PRs: pass clippy + fmt + tests before merge
-
-## CLI design (clig.dev)
-
-- Human-first: stdout = data, stderr = logs/errors
-- Standard flags: `-h`/`--help`, `--version`, `-v`/`--verbose`, `-q`/`--quiet`, `-o`/`--output`, `--dry-run`, `--json`
-- Exit codes: 0 = success, non-zero = failure
-- No prompts in CI (require `--force` instead)
+- DENV-STABLE: stable toolchain only, never nightly/beta.
+- No `panic!()` in library code. Prefer `Result<T, E>`.
+- No `unwrap()`/`expect()` in `xbin-core` without context.
+- Use checked/wrapping/saturating arithmetic where overflow is possible.
+- No `mem::forget` or `.leak()` (memory leak).
+- All FFI calls MUST have safe wrappers.
+- Ed25519 keys must have the Ed25519 bit set (CVE-2023-48022).
+- No hardcoded secrets anywhere.
 
 ## Boundaries
 
 **Always do:**
-- **Rebuild after every code change** — run `cargo build --release` before testing or running xbin on an app
-- Run `cargo fmt` and `cargo clippy --all-targets -- -D warnings` before committing
-- Run `cargo test --workspace` to verify no regressions
-- Preserve the `.xbin` footer format (magic `XBIN\x01`, footer magic `0xBEEF_CAFE`)
-- Verify any auto-fix from clippy/cargo-fix manually (ANSSI DENV-AUTOFIX)
+- Rebuild after every code change: `cargo build --release` before testing xbin on an app.
+- Run verification loop before committing.
+- Preserve the `.xbin` footer format (magic constants in `format.rs`).
+- Verify any auto-fix from `cargo clippy --fix` manually (ANSSI DENV-AUTOFIX).
 
 **Never do:**
-- Commit secrets, keys, or `.env` files
-- Change the `.xbin` binary format without updating `format.rs` version constants
-- Remove clippy allows from `Cargo.toml` without understanding why
-- Use `unsafe` in `xbin-core` (only allowed in `stub/src/main.rs`)
-- Override `debug-assertions` or `overflow-checks` in profiles
-- Panic in library code — use `Result` (ANSSI LANG-LIMIT-PANIC)
-- Leak memory via `mem::forget` or `.leak()` (ANSSI MEM-NO-LEAK)
+- Commit secrets, keys, or `.env` files.
+- Change the `.xbin` binary format without updating `format.rs` version constants.
+- Remove clippy allows from `Cargo.toml` without understanding why.
+- Use `unsafe` in `xbin-core` or `xbin-cli`.
+- Override `debug-assertions` or `overflow-checks` in profiles.
+- Panic in library code or leak memory.
 
 **Ask first:**
-- Modifying the stub launcher (`stub/src/main.rs`) — security-critical
-- Changing encryption/signing logic in `encrypt.rs`
-- Adding new `unsafe` blocks anywhere
-- Adding new FFI bindings
+- Modifying `stub/src/main.rs` — security-critical launcher.
+- Changing encryption/signing logic in `encrypt.rs`.
+- Adding new `unsafe` blocks or FFI bindings.
+
+## Testing
+
+- Unit tests: `#[cfg(test)] mod tests` in each module.
+- Integration tests: `xbin-cli/tests/` use `assert_cmd`.
+- `cargo test --workspace` for all Rust tests.
+- Python tests: `pytest` in `cli/`.
+- `xbin-cli` depends on `openssl` via `reqwest`/`native-tls` — may not build without `libssl-dev`.
+
+## Git conventions
+
+- Branches: `feat/*`, `fix/*`, `dev`, `main`.
+- Commits: signed (`git commit -S`), conventional format (`feat:`, `fix:`, `chore:`).
+- PRs: must pass clippy + fmt + tests before merge.
+
+## Other instruction files
+
+- `CLAUDE.md` — Claude Code specific guidance (agents/commands/skills pattern).
+- `CODE_STYLE.md` — detailed style rules with rationale.
+- `RULES.md` — ANSSI-Rust rules (also in `.cursor/rules/` format).
+- `HANDOFF.md` — project status, known build constraints, performance data.
+- `.opencode/` — agents, skills, and commands for OpenCode sessions.
