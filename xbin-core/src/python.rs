@@ -128,7 +128,11 @@ impl PyFooter {
     fn unpack(data: &[u8]) -> PyResult<Self> {
         let mut sig_offset = 0u64;
         let core = if data.len() == format::V3_FOOTER_SIZE as usize {
-            sig_offset = u64::from_le_bytes(data[0..8].try_into().unwrap());
+            sig_offset = u64::from_le_bytes(
+                data[0..8]
+                    .try_into()
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+            );
             &data[8..]
         } else if data.len() == format::V2_FOOTER_SIZE as usize {
             data
@@ -146,7 +150,11 @@ impl PyFooter {
                 "bad magic: not a .xbin file",
             ));
         }
-        let footer_magic = u32::from_le_bytes(core[80..84].try_into().unwrap());
+        let footer_magic = u32::from_le_bytes(
+            core[80..84]
+                .try_into()
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+        );
         if footer_magic != format::FOOTER_MAGIC {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "bad footer sentinel",
@@ -160,12 +168,32 @@ impl PyFooter {
             format_version: core[5],
             arch: core[6],
             flags: core[7],
-            payload_offset: u64::from_le_bytes(core[8..16].try_into().unwrap()),
-            payload_csize: u64::from_le_bytes(core[16..24].try_into().unwrap()),
-            payload_usize: u64::from_le_bytes(core[24..32].try_into().unwrap()),
+            payload_offset: u64::from_le_bytes(
+                core[8..16]
+                    .try_into()
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+            ),
+            payload_csize: u64::from_le_bytes(
+                core[16..24]
+                    .try_into()
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+            ),
+            payload_usize: u64::from_le_bytes(
+                core[24..32]
+                    .try_into()
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+            ),
             payload_sha256: sha.to_vec(),
-            meta_offset: u64::from_le_bytes(core[64..72].try_into().unwrap()),
-            meta_size: u64::from_le_bytes(core[72..80].try_into().unwrap()),
+            meta_offset: u64::from_le_bytes(
+                core[64..72]
+                    .try_into()
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+            ),
+            meta_size: u64::from_le_bytes(
+                core[72..80]
+                    .try_into()
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+            ),
             sig_offset,
         })
     }
