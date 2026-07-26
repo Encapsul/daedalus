@@ -8,6 +8,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::format::{self, Footer, CRYPTO_AES_256_GCM};
+use crate::metadata::BunFeatures;
 
 /// Determine the format version based on build options.
 pub fn fmt_version(squashfs: bool, encrypt: bool, signed: bool) -> u8 {
@@ -25,10 +26,9 @@ pub fn fmt_version(squashfs: bool, encrypt: bool, signed: bool) -> u8 {
 /// Determine architecture from target string or host.
 pub fn resolve_arch(target_arch: Option<&str>) -> u8 {
     match target_arch {
-        Some("aarch64") => format::ARCH_AARCH64,
+        Some("aarch64" | "arm64") => format::ARCH_AARCH64,
+        Some("x86_64") => format::ARCH_X86_64,
         _ => {
-            // Default to x86_64 — aarch64 detection happens at compile time
-            // or is passed explicitly via --target
             if cfg!(target_arch = "aarch64") {
                 format::ARCH_AARCH64
             } else {
@@ -39,6 +39,7 @@ pub fn resolve_arch(target_arch: Option<&str>) -> u8 {
 }
 
 /// Build the metadata JSON bytes.
+#[allow(clippy::too_many_arguments)]
 pub fn build_meta_json(
     name: &str,
     runtime: &str,
@@ -47,6 +48,7 @@ pub fn build_meta_json(
     env: &[(String, String)],
     layers: &[serde_json::Value],
     options: &MetaOptions,
+    bun_features: &BunFeatures,
 ) -> std::io::Result<Vec<u8>> {
     let mut meta = serde_json::json!({
         "name": name,
@@ -83,6 +85,36 @@ pub fn build_meta_json(
     }
     if let Some(h) = &options.rt_deps_hash {
         meta["rt_deps_hash"] = serde_json::Value::String(h.clone());
+    }
+
+    if bun_features.health_check.enabled {
+        meta["health_check"] = serde_json::to_value(&bun_features.health_check)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    }
+
+    if bun_features.embedded_runtime.interpreter.is_some() {
+        meta["embedded_runtime"] = serde_json::to_value(&bun_features.embedded_runtime)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    }
+
+    if bun_features.wasm.enabled {
+        meta["wasm"] = serde_json::to_value(&bun_features.wasm)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    }
+
+    if bun_features.build_cache.enabled {
+        meta["build_cache"] = serde_json::to_value(&bun_features.build_cache)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    }
+
+    if !bun_features.cross_compile_targets.is_empty() {
+        meta["cross_compile_targets"] = serde_json::Value::Array(
+            bun_features
+                .cross_compile_targets
+                .iter()
+                .map(|t| serde_json::Value::String(t.clone()))
+                .collect(),
+        );
     }
 
     serde_json::to_vec(&meta).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
@@ -299,6 +331,7 @@ mod tests {
             app_hash: None,
             rt_deps_hash: None,
         };
+        let bun_features = BunFeatures::default();
         let json = build_meta_json(
             "myapp",
             "python",
@@ -307,6 +340,7 @@ mod tests {
             &[("PORT".into(), "8000".into())],
             &[],
             &opts,
+            &bun_features,
         )
         .expect("meta serialization failed");
         let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();

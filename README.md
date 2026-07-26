@@ -74,6 +74,54 @@ Each runtime has specific detection logic and framework support that triggers wh
 - **`.xbin.toml`** configuration file support
 - **Rust-based CLI** with zero Python dependency at runtime
 
+### Advanced build options
+
+```bash
+# Embed interpreter for self-contained binaries (Bun-inspired)
+xbin build ./myapp --embed-interpreter python3 -o myapp.xbin
+
+# Enable WASM support (Wasmer-inspired)
+xbin build ./myapp --wasm --wasmtime-path /usr/bin/wasmtime -o myapp.xbin
+
+# Cross-compilation (Bun-inspired)
+xbin build ./myapp --cross-compile aarch64,arm64 -o myapp.xbin
+
+# HTTP health check endpoint (Wasmer-inspired)
+xbin build ./myapp --health-port 8080 --health-endpoint /health -o myapp.xbin
+
+# Intelligent build caching (Wasmer-inspired)
+xbin build ./myapp --use-cache --clear-cache -o myapp.xbin
+```
+
+#### Embedded Runtime Options
+
+The `--embed-interpreter` flag bundles an interpreter into the binary:
+
+| Option | Description |
+|--------|-------------|
+| `python3` | Embed Python 3 interpreter |
+| `node` | Embed Node.js runtime |
+| `deno` | Embed Deno runtime |
+| `ruby` | Embed Ruby interpreter |
+| `php` | Embed PHP interpreter |
+| `perl` | Embed Perl interpreter |
+| `java` | Embed Java runtime |
+| `go` | Embed Go runtime |
+| `wasm` | Embed WASM runtime |
+| `custom` | Use custom interpreter path (requires `--interpreter-path`) |
+
+#### Build Cache
+
+Intelligent caching skips extraction when the app hash matches:
+
+```bash
+# Use cache for faster rebuilds
+xbin build ./myapp --use-cache
+
+# Clear cache before building
+xbin build ./myapp --clear-cache
+```
+
 ## Configuration
 
 Place a `.xbin.toml` in your app directory. CLI flags override config file values.
