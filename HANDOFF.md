@@ -1448,3 +1448,60 @@ echo '[database]\nurl = "mysql://openemr:pass@mysql.example.com/openemr"' > xbin
 4. **Validate secrets** at startup
 5. **Support rotation** without rebuild
 6. **Audit access** to sensitive data
+
+---
+
+## Implementation Status: COMPLETED ✓
+
+### What Was Built
+
+1. **`stub/src/config.rs`** - Configuration module with:
+   - `AppConfig` struct with `database` and `secrets` fields
+   - `DatabaseConfig` struct for database connection details
+   - Multi-layered config loading (CLI → local config → env vars → global config)
+   - `prompt_for_secrets()` for interactive masked input
+   - Unit tests for all config functionality
+
+2. **Updated `stub/src/main.rs`**:
+   - Load config at startup
+   - Merge secrets as `XBIN_SECRET_*` environment variables
+   - Merge database URL as `DATABASE_URL`
+
+3. **Dependencies added** (`stub/Cargo.toml`):
+   - `toml = "0.8"` - config file parsing
+   - `dirs = "5"` - standard directories
+   - `atty = "0.2"` - TTY detection
+
+### Live Test Results
+
+**Simple PHP App (1.1MB):**
+```
+DATABASE_URL: mysql://openemr:openemr123@127.0.0.1/openemr
+XBIN_SECRET_API_KEY: my-secret-api-key
+XBIN_SECRET_DB_PASSWORD: my-db-password
+```
+
+**openEMR (92MB):**
+```
+Built /tmp/openemr-final.xbin (91.2MB)
+Config loaded correctly from xbin.toml
+```
+
+### Usage Example
+
+```bash
+# Build the binary
+xbin build myapp/ -o myapp.xbin --embed-interpreter php
+
+# Create config file
+cat > myapp.xbin.toml << EOF
+[database]
+url = "mysql://user:pass@host/db"
+
+[secrets]
+api_key = "secret-value"
+EOF
+
+# Run (secrets loaded from config)
+./myapp.xbin
+```
