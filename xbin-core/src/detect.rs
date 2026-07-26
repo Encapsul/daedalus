@@ -41,42 +41,70 @@ impl Runtime {
 }
 
 /// Detect the runtime for an app directory by checking marker files.
-/// Returns the first match in priority order.
+/// Returns the first match in priority order, preferring runtimes with entry files.
 pub fn detect_runtime(app_dir: &Path) -> Option<Runtime> {
-    if detect_python(app_dir) {
-        return Some(Runtime::Python);
-    }
-    if detect_deno(app_dir) {
-        return Some(Runtime::Deno);
-    }
-    if detect_node(app_dir) {
-        return Some(Runtime::Node);
-    }
-    if detect_java(app_dir) {
-        return Some(Runtime::Java);
-    }
-    if detect_ruby(app_dir) {
-        return Some(Runtime::Ruby);
-    }
-    if detect_dotnet(app_dir) {
-        return Some(Runtime::Dotnet);
-    }
-    if detect_go(app_dir) {
-        return Some(Runtime::Go);
-    }
-    if detect_php(app_dir) {
+    let detected = detect_runtime_candidates(app_dir);
+
+    // Check for entry files and prefer runtimes that have them
+    let php_has_entry = detect_php(app_dir)
+        && find_first_file(app_dir, &["index.php", "artisan", "public/index.php"]).is_some();
+    let node_has_entry = detect_node(app_dir) && find_node_entry(app_dir).is_some();
+    let python_has_entry = detect_python(app_dir)
+        && find_first_file(app_dir, &["app.py", "main.py", "__main__.py", "server.py"]).is_some();
+
+    // Priority: prefer runtime with entry file, then fallback to detection order
+    if php_has_entry && detected.iter().any(|(r, _)| *r == Runtime::Php) {
         return Some(Runtime::Php);
     }
-    if detect_perl(app_dir) {
-        return Some(Runtime::Perl);
+    if node_has_entry && detected.iter().any(|(r, _)| *r == Runtime::Node) {
+        return Some(Runtime::Node);
     }
-    if detect_hugo(app_dir) {
-        return Some(Runtime::Hugo);
+    if python_has_entry && detected.iter().any(|(r, _)| *r == Runtime::Python) {
+        return Some(Runtime::Python);
     }
-    if detect_binary(app_dir) {
-        return Some(Runtime::Binary);
+
+    detected.into_iter().next().map(|(r, _)| r)
+}
+
+/// Detect all runtime candidates, returning (runtime, `has_marker`) pairs.
+fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
+    let mut candidates = Vec::new();
+
+    if detect_python(dir) {
+        candidates.push((Runtime::Python, true));
     }
-    None
+    if detect_deno(dir) {
+        candidates.push((Runtime::Deno, true));
+    }
+    if detect_node(dir) {
+        candidates.push((Runtime::Node, true));
+    }
+    if detect_java(dir) {
+        candidates.push((Runtime::Java, true));
+    }
+    if detect_ruby(dir) {
+        candidates.push((Runtime::Ruby, true));
+    }
+    if detect_dotnet(dir) {
+        candidates.push((Runtime::Dotnet, true));
+    }
+    if detect_go(dir) {
+        candidates.push((Runtime::Go, true));
+    }
+    if detect_php(dir) {
+        candidates.push((Runtime::Php, true));
+    }
+    if detect_perl(dir) {
+        candidates.push((Runtime::Perl, true));
+    }
+    if detect_hugo(dir) {
+        candidates.push((Runtime::Hugo, true));
+    }
+    if detect_binary(dir) {
+        candidates.push((Runtime::Binary, true));
+    }
+
+    candidates
 }
 
 fn detect_python(dir: &Path) -> bool {
