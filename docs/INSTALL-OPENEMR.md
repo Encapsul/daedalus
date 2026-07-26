@@ -1,171 +1,120 @@
-# Installing x.bin and Building openEMR
-
-This guide explains how to build and run openEMR using x.bin.
+# Building openEMR with x.bin
 
 ## Prerequisites
 
-- Linux x86_64 (or cross-compile for ARM64)
+- Linux x86_64
 - Rust with musl target
 - MySQL/MariaDB
-- PHP extensions: gd, mbstring, zip, xml
 
-## Step 1: Build x.bin from Source
+## Step 1: Build x.bin
 
 ```bash
-# Clone the repository
+# Clone x.bin
 git clone https://github.com/Tednoob17/x.bin.git
 cd x.bin
 
-# Install Rust musl target
+# Install dependencies
 rustup target add x86_64-unknown-linux-musl
-
-# Install system dependencies
-sudo apt-get update
 sudo apt-get install -y musl-tools zstd
 
-# Build the stub launcher
+# Build stub and CLI
 make stub
-
-# Build the CLI
 cargo build --release -p xbin-cli
-
-# Verify installation
-./target/release/xbin doctor --strict
 ```
 
 ## Step 2: Clone openEMR
 
 ```bash
-# Clone openEMR (latest commit)
 cd /tmp
 git clone --depth 1 https://github.com/openemr/openemr.git
 cd openemr
 ```
 
-## Step 3: Configure openEMR for x.bin
+## Step 3: Configure openEMR
 
-openEMR requires a MySQL database. Create the configuration:
+### Option A: Use existing sqlconf.php (if available)
+
+Edit `sites/default/sqlconf.php` with your database credentials.
+
+### Option B: Create sqlconf.php
 
 ```bash
-# Create database and user
-sudo mysql -e "CREATE DATABASE IF NOT EXISTS openemr CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-sudo mysql -e "CREATE USER IF NOT EXISTS 'openemr'@'localhost' IDENTIFIED BY 'change_me_in_production';"
-sudo mysql -e "GRANT ALL PRIVILEGES ON openemr.* TO 'openemr'@'localhost';"
-sudo mysql -e "FLUSH PRIVILEGES;"
-
-# Create sqlconf.php for openEMR
-mkdir -p sites/default
 cat > sites/default/sqlconf.php << 'EOF'
 <?php
 $GLOBALS['dbhost'] = 'localhost';
 $GLOBALS['dbport'] = '3306';
 $GLOBALS['dbtype'] = 'mysql';
 $GLOBALS['dbusername'] = 'openemr';
-$GLOBALS['dbpassword'] = 'change_me_in_production';
+$GLOBALS['dbpassword'] = 'your_password';
 $GLOBALS['dbname'] = 'openemr';
 EOF
 ```
 
-## Step 4: Build openEMR with x.bin
+## Step 4: Build openEMR
 
 ```bash
-# Build the .xbin file
+# From openEMR directory
 cd /tmp/openemr
-/path/to/x.bin/target/release/xbin build . -o /tmp/openemr.xbin
 
-# The build may take several minutes due to:
-# - PHP dependencies via Composer
-# - Node.js assets for the frontend
-# - Large payload (250+ MB)
+# Build the binary
+/path/to/x.bin/target/release/xbin build . -o /tmp/openemr.xbin --embed-interpreter php
+```
+
+Expected output:
+```
+Detected runtime: php
+Creating payload...
+Assembling /tmp/openemr.xbin...
+Built /tmp/openemr.xbin (91MB)
 ```
 
 ## Step 5: Run openEMR
 
 ```bash
-# Run the binary
 cd /tmp
 /tmp/openemr.xbin
-
-# openEMR will start on http://127.0.0.1:8080
 ```
 
-## Step 6: Complete Setup
+openEMR will start and listen on http://127.0.0.1:8080
 
-OpenEMR requires database setup. Visit the web interface and follow the installation wizard, or run:
+## Configuration Options
+
+### Set database via environment variables
 
 ```bash
-# Connect to MySQL and run openEMR setup
-mysql -u openemr -p openemr < /tmp/openemr/sql/normal/openemr*.sql
+export DATABASE_URL="mysql://openemr:your_password@localhost/openemr"
+/tmp/openemr.xbin
 ```
 
-## Runtime Configuration
+### Set database via config file
 
-For production use, configure the database connection via:
+Create `xbin.toml` in the same directory as the binary:
 
 ```bash
-# Option 1: Environment variables
-export DATABASE_URL="mysql://openemr:password@hostname/openemr"
-./openemr.xbin
-
-# Option 2: Create xbin.toml
-cat > xbin.toml << 'EOF'
+cat > /tmp/xbin.toml << 'EOF'
 [database]
-url = "mysql://openemr:password@hostname/openemr"
+url = "mysql://openemr:your_password@localhost/openemr"
+
+[secrets]
+db_password = "your_password"
 EOF
-./openemr.xbin
+
+/tmp/openemr.xbin
 ```
 
-## Troubleshooting
+## Verify the Build
 
-### Database Connection Issues
-- Ensure MySQL/MariaDB is running
-- Verify credentials in `sites/default/sqlconf.php`
-- Check firewall settings
-
-### Port Already in Use
 ```bash
-# Kill any existing process on port 8080
-pkill -f "python.*8080" 2>/dev/null || true
-```
+file /tmp/openemr.xbin
+# Output: ELF 64-bit LSB pie executable, x86-64, static-pie linked
 
-### Missing PHP Extensions
-```bash
-# Install required PHP extensions
-sudo apt-get install -y php-gd php-mbstring php-zip php-xml php-curl
+ls -lh /tmp/openemr.xbin
+# Output: -rwxr-xr-x 1 user user 91M ... openemr.xbin
 ```
 
 ## Notes
 
-- openEMR is a complex medical application requiring proper database setup
-- The binary contains a PHP runtime but needs an external database
-- For a simpler demo, consider using the `hello-web` example in `examples/hello-web`
-
-## Verification
-
-After building, verify the binary:
-
-```bash
-# Check binary type
-file /tmp/openemr.xbin
-# Expected: ELF 64-bit LSB pie executable, x86-64, static-pie linked
-
-# Check binary size
-ls -lh /tmp/openemr.xbin
-# Expected: ~92MB for openEMR
-```
-
-## Quick Test (Simple PHP)
-
-For a quick verification without MySQL, test with the simple PHP example:
-
-```bash
-# Build simple PHP app
-cd /tmp/simple-php-app
-/path/to/x.bin/target/release/xbin build . -o /tmp/simple-php.xbin --embed-interpreter php
-
-# Run it
-/tmp/simple-php.xbin &
-sleep 2
-curl http://127.0.0.1:8080/
-# Expected: Hello from x.bin PHP binary!
-```
+- openEMR requires a MySQL/MariaDB database to run
+- The binary bundles the PHP runtime
+- No MySQL connection = binary starts but openEMR web interface won't work
+- For quick testing, use the simple PHP example in `docs/INSTALL-OPENEMR.md`
