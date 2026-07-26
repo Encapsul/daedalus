@@ -2,7 +2,7 @@
 
 ## Project
 
-x.bin packages any app into a single self-extracting ELF binary. Rust workspace (3 crates): `xbin-core` (library), `xbin-cli` (CLI, cross-platform), `stub` (launcher, Linux-only). Legacy Python CLI in `cli/` is being replaced by the Rust CLI.
+x.bin packages any app into a single self-extracting ELF binary. Rust workspace (3 crates): `xbin-core` (library), `xbin-cli` (CLI, cross-platform), `stub` (launcher, Linux-only).
 
 ## Critical gotchas
 
@@ -25,10 +25,10 @@ cargo audit                                # dependency vulnerabilities (run in 
 
 ### Python (legacy CLI in `cli/`, deprecated)
 
+This directory has been removed. The Rust CLI (`xbin-cli`) is now the only CLI.
+
 ```bash
-cd cli && ruff check xbin/       # only if editing legacy Python CLI
-cd cli && black --check xbin/
-cd cli && python -m pytest tests/ -q
+# No Python CLI to lint/test — removed
 ```
 
 ### Verification loop (MANDATORY before finishing any change)
@@ -109,7 +109,6 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 - Unit tests: `#[cfg(test)] mod tests` in each module.
 - Integration tests: `xbin-cli/tests/` use `assert_cmd`.
 - `cargo test --workspace` for all Rust tests.
-- Python tests: `pytest` in `cli/`.
 - `xbin-cli` depends on `openssl` via `reqwest`/`native-tls` — may not build without `libssl-dev`.
 
 ## Git conventions
