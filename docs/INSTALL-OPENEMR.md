@@ -1,4 +1,4 @@
-# Building openEMR with x.bin - Complete Demo
+# Building openEMR with x.bin - Complete Guide
 
 ## Prerequisites
 
@@ -20,6 +20,10 @@ sudo apt-get install -y musl-tools zstd libssl-dev pkg-config
 # Build stub and CLI
 cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
 cargo build --release -p xbin-cli
+
+# Optional: Install to ~/.local/bin
+cargo build --release -p xbin-cli
+install -m 755 target/release/xbin ~/.local/bin/xbin
 ```
 
 ## Step 2: Clone openEMR
@@ -46,34 +50,17 @@ $GLOBALS['dbname'] = 'openemr';
 EOF
 ```
 
-## Step 4: Build openEMR with All Features
+## Step 4: Build openEMR with Advanced Features
 
 ```bash
 cd /tmp/openemr
 
-# Build with health check, signing, and encryption
+# Build with health check
 /path/to/x.bin/target/release/xbin build . \
   -o /tmp/openemr.xbin \
   --embed-interpreter php \
-  --health-port 8080 \
-  --health-endpoint /health \
-  --sign \
-  --encrypt \
-  --seccomp \
-  --isolation 1
+  --health-port 8080
 ```
-
-### Build Options Explained
-
-| Flag | Purpose |
-|------|---------|
-| `--embed-interpreter php` | Bundle PHP runtime in the binary |
-| `--health-port 8080` | Enable health check endpoint |
-| `--health-endpoint /health` | Health check path |
-| `--sign` | Sign the binary (requires key) |
-| `--encrypt` | Encrypt payload |
-| `--seccomp` | Enable syscall filtering |
-| `--isolation 1` | Isolation level (0=none, 1=LD_LIBRARY_PATH, 2=pivot_root) |
 
 ## Step 5: Runtime Configuration
 
@@ -81,13 +68,12 @@ cd /tmp/openemr
 
 ```bash
 export DATABASE_URL="mysql://openemr:openemr@localhost/openemr"
-export DB_HOST="localhost"
-export DB_USER="openemr"
-export DB_PASSWORD="openemr"
 /tmp/openemr.xbin
 ```
 
 ### Option 2: Config File (Recommended)
+
+Create `xbin.toml` in the same directory as the binary:
 
 ```bash
 cat > /tmp/xbin.toml << 'EOF'
@@ -96,12 +82,6 @@ url = "mysql://openemr:openemr@localhost/openemr"
 
 [secrets]
 db_password = "openemr"
-api_key = "your-api-key-here"
-
-[health_check]
-enabled = true
-port = 8080
-endpoint = "/_health"
 EOF
 
 /tmp/openemr.xbin
@@ -123,44 +103,48 @@ mysql -u root -e "FLUSH PRIVILEGES;"
 /tmp/openemr.xbin
 ```
 
-## Step 7: Verify
+## Runtime Commands (After Building)
 
+### Inspect a binary
 ```bash
-# Check health endpoint
-curl http://localhost:8080/_health
-
-# Check main interface
-curl http://localhost:8080/
-
-# Inspect binary
-/path/to/x.bin/target/release/xbin inspect /tmp/openemr.xbin
+xbin inspect /tmp/openemr.xbin
+xbin inspect --json /tmp/openemr.xbin -o metadata.json
 ```
 
-## Other Useful Build Examples
-
-### Simple build (no interpreter embedded)
+### Verify signature
 ```bash
-xbin build /tmp/openemr -o openemr.xbin
+xbin verify /tmp/openemr.xbin
+xbin verify --json /tmp/openemr.xbin
 ```
 
-### Build with custom interpreter path
+### Run a binary
 ```bash
-xbin build /tmp/openemr -o openemr.xbin \
-  --embed-interpreter custom \
-  --interpreter-path /usr/bin/php8.1
+xbin run /tmp/openemr.xbin
+xbin run --verbose /tmp/openemr.xbin
 ```
 
-### Build with environment variables baked in
+### Sign a binary
 ```bash
-xbin build /tmp/openemr -o openemr.xbin \
-  --embed-interpreter php \
-  --env DB_HOST=localhost \
-  --env DB_USER=openemr
+# Generate key first
+xbin keygen
+
+# Sign the binary
+xbin sign /tmp/openemr.xbin --key ~/.xbin/keys/*.key
 ```
 
-### Dry run to see what would be built
+### Trust a public key
 ```bash
-xbin build /tmp/openemr --dry-run
+xbin trust ~/.xbin/keys/public.key
+```
+
+### Scan for .xbin files
+```bash
+xbin scan /tmp/
+```
+
+### Clean cache
+```bash
+xbin clean
 ```
 
 ## Verify the Build
@@ -169,3 +153,30 @@ xbin build /tmp/openemr --dry-run
 file /tmp/openemr.xbin
 ls -lh /tmp/openemr.xbin
 ```
+
+## Build Options Reference
+
+| Flag | Purpose |
+|------|---------|
+| `--embed-interpreter <runtime>` | Bundle runtime (php, python, node, etc.) |
+| `--health-port <PORT>` | Enable HTTP health check endpoint |
+| `--health-endpoint <PATH>` | Health check path (default: /health) |
+| `--sign` | Sign the binary with Ed25519 key |
+| `--encrypt` | Encrypt payload with AES-256-GCM |
+| `--seccomp` | Enable syscall filtering |
+| `--isolation <LEVEL>` | Isolation level (0=none, 1=LD_LIBRARY_PATH, 2=pivot_root) |
+| `--squashfs` | Use SquashFS instead of tar+zstd |
+| `--env <KEY=VALUE>` | Set environment variable |
+| `--env-file <FILE>` | Load env vars from file |
+| `--dry-run` | Show what would be built |
+| `--version-info <VERSION>` | Set version string |
+| `--author <NAME>` | Set author |
+| `--description <TEXT>` | Set description |
+| `--license <TEXT>` | Set license |
+| `--target <ARCH>` | Target architecture (x86_64, aarch64) |
+| `--no-install` | Skip dependency installation |
+| `--tree-shake` | Remove unused node_modules |
+| `--minify` | Minify JS/TS/CSS |
+| `--use-cache` | Use build cache |
+| `--clear-cache` | Clear build cache |
+| `--cross-compile <TARGETS>` | Cross-compile for multiple targets |
