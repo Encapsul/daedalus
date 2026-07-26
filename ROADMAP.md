@@ -429,10 +429,9 @@ x.bin transforme n'importe quelle application en un binaire ELF auto-extractible
 ## Dette Technique
 
 ### Problèmes Actuels
-1. CLI Python legacy dans cli/ - migration vers Rust nécessaire
-2. Pas d'intégration tests pour cross-compilation
-3. Pas de benchmarks pour les nouvelles features
-4. Lacunes documentation pour les nouvelles features
+1. Pas d'intégration tests pour cross-compilation
+2. Pas de benchmarks pour les nouvelles features
+3. Lacunes documentation pour les nouvelles features
 
 ### Refactoring Nécessaire
 1. Abstraire le code spécifique plateforme
