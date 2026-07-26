@@ -23,10 +23,10 @@ cargo build --release                      # release build
 cargo audit                                # dependency vulnerabilities (run in CI)
 ```
 
-### Python (legacy CLI in `cli/`)
+### Python (legacy CLI in `cli/`, deprecated)
 
 ```bash
-cd cli && ruff check xbin/
+cd cli && ruff check xbin/       # only if editing legacy Python CLI
 cd cli && black --check xbin/
 cd cli && python -m pytest tests/ -q
 ```
@@ -37,11 +37,6 @@ cd cli && python -m pytest tests/ -q
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test --workspace
-```
-
-If you edited Python in `cli/`, also:
-```bash
-cd cli && ruff check xbin/ && black --check xbin/ && python -m pytest tests/ -q
 ```
 
 ## Architecture

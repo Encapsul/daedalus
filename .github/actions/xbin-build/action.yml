@@ -1,0 +1,231 @@
+name: 'xbin Build'
+description: 'Package any app into a single self-extracting .xbin binary'
+
+inputs:
+  app-path:
+    description: 'Path to the app directory'
+    required: false
+    default: '.'
+  runtime:
+    description: 'Force runtime detection (python, node, deno, go, ruby, java, php, perl, hugo, binary)'
+    required: false
+  target:
+    description: 'Target architecture (x86_64, aarch64)'
+    required: false
+    default: 'x86_64'
+  key:
+    description: 'Ed25519 signing key content (PEM or raw bytes)'
+    required: false
+  sign:
+    description: 'Sign the binary with the provided key'
+    required: false
+    default: 'false'
+  encrypt:
+    description: 'Encrypt the payload (requires --key)'
+    required: false
+    default: 'false'
+  include:
+    description: 'Extra files/dirs to include (newline-separated paths)'
+    required: false
+  output:
+    description: 'Output binary path'
+    required: false
+    default: 'app.xbin'
+  xbin-version:
+    description: 'xbin version to install (e.g. v0.3.2, latest)'
+    required: false
+    default: 'latest'
+  xbin-repo:
+    description: 'GitHub repo to download xbin from'
+    required: false
+    default: 'Tednoob17/x.bin'
+  build-args:
+    description: 'Extra arguments to pass to xbin build'
+    required: false
+
+outputs:
+  binary-path:
+    description: 'Path to the built .xbin binary'
+    value: ${{ steps.build.outputs.binary-path }}
+  runtime:
+    description: 'Detected runtime'
+    value: ${{ steps.build.outputs.runtime }}
+  size:
+    description: 'Binary size in bytes'
+    value: ${{ steps.build.outputs.size }}
+
+runs:
+  using: 'composite'
+  steps:
+    # ── Detect platform ──────────────────────────────────────────────
+    - name: Detect OS and architecture
+      id: detect
+      shell: bash
+      run: |
+        OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+        ARCH="$(uname -m)"
+
+        case "$OS" in
+          linux)  OS_NAME="linux" ;;
+          darwin) OS_NAME="macos" ;;
+          *)      echo "error: unsupported OS: $OS" && exit 1 ;;
+        esac
+
+        case "$ARCH" in
+          x86_64|amd64)  ARCH_NAME="x64" ;;
+          aarch64|arm64) ARCH_NAME="arm64" ;;
+          *)             echo "error: unsupported arch: $ARCH" && exit 1 ;;
+        esac
+
+        TARBALL="xbin-${OS_NAME}-${ARCH_NAME}.tar.gz"
+        echo "os=${OS_NAME}" >> "$GITHUB_OUTPUT"
+        echo "arch=${ARCH_NAME}" >> "$GITHUB_OUTPUT"
+        echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+        echo "platform=${OS_NAME}-${ARCH_NAME}" >> "$GITHUB_OUTPUT"
+
+    # ── Resolve version ──────────────────────────────────────────────
+    - name: Resolve xbin version
+      id: version
+      shell: bash
+      run: |
+        VERSION="${{ inputs.xbin-version }}"
+        REPO="${{ inputs.xbin-repo }}"
+
+        if [ "$VERSION" = "latest" ]; then
+          # Follow redirect to get latest release tag
+          VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+            | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+          if [ -z "$VERSION" ]; then
+            echo "error: could not resolve latest version" && exit 1
+          fi
+        fi
+
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "xbin version: ${VERSION}"
+
+    # ── Download and install ─────────────────────────────────────────
+    - name: Install xbin ${{ steps.version.outputs.version }}
+      shell: bash
+      run: |
+        REPO="${{ inputs.xbin-repo }}"
+        VERSION="${{ steps.version.outputs.version }}"
+        TARBALL="${{ steps.detect.outputs.tarball }}"
+        PLATFORM="${{ steps.detect.outputs.platform }}"
+
+        DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
+        echo "Downloading: ${DOWNLOAD_URL}"
+
+        TMPDIR="$(mktemp -d)"
+        curl -fsSL "$DOWNLOAD_URL" -o "${TMPDIR}/${TARBALL}"
+
+        # Extract — tarball contains xbin-{platform}/ directory
+        tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+
+        # Find the xbin binary inside the extracted directory
+        XBIN_DIR="${TMPDIR}/xbin-${PLATFORM}"
+        if [ ! -d "$XBIN_DIR" ]; then
+          # Fallback: find any directory that contains bin/xbin
+          XBIN_DIR="$(find "$TMPDIR" -maxdepth 1 -type d -name 'xbin-*' | head -1)"
+        fi
+
+        if [ ! -f "${XBIN_DIR}/bin/xbin" ]; then
+          echo "error: xbin binary not found in ${XBIN_DIR}/bin/"
+          echo "Contents:"
+          find "$XBIN_DIR" -type f 2>/dev/null || true
+          exit 1
+        fi
+
+        # Make executable and add to PATH
+        chmod +x "${XBIN_DIR}/bin/xbin"
+        echo "${XBIN_DIR}/bin" >> "$GITHUB_PATH"
+
+        # Also ensure python3 is available (needed by the wrapper script)
+        if ! command -v python3 &>/dev/null; then
+          echo "warning: python3 not found, xbin may not work"
+        fi
+
+        echo "Installed xbin: $(which xbin)"
+        xbin --version 2>/dev/null || echo "xbin installed (version check skipped)"
+
+    # ── Write signing key if provided ────────────────────────────────
+    - name: Write signing key
+      if: inputs.key != ''
+      shell: bash
+      run: |
+        KEY_DIR="$(mktemp -d)"
+        KEY_FILE="${KEY_DIR}/signing.key"
+        echo "${{ inputs.key }}" > "$KEY_FILE"
+        chmod 600 "$KEY_FILE"
+        echo "XBIN_KEY_FILE=${KEY_FILE}" >> "$GITHUB_ENV"
+
+    # ── Build ────────────────────────────────────────────────────────
+    - name: Build .xbin binary
+      id: build
+      shell: bash
+      run: |
+        ARGS=()
+
+        # App path
+        ARGS+=("${{ inputs.app-path }}")
+
+        # Output
+        ARGS+=("--output" "${{ inputs.output }}")
+
+        # Runtime override
+        if [ -n "${{ inputs.runtime }}" ]; then
+          ARGS+=("--runtime" "${{ inputs.runtime }}")
+        fi
+
+        # Signing
+        if [ "${{ inputs.sign }}" = "true" ] && [ -n "$XBIN_KEY_FILE" ]; then
+          ARGS+=("--key" "$XBIN_KEY_FILE")
+        fi
+
+        # Encryption
+        if [ "${{ inputs.encrypt }}" = "true" ]; then
+          ARGS+=("--encrypt")
+        fi
+
+        # Include extra files
+        if [ -n "${{ inputs.include }}" ]; then
+          while IFS= read -r path; do
+            [ -n "$path" ] && ARGS+=("--include" "$path")
+          done <<< "${{ inputs.include }}"
+        fi
+
+        # Extra build args
+        if [ -n "${{ inputs.build-args }}" ]; then
+          # shellcheck disable=SC2206
+          ARGS+=(${{ inputs.build-args }})
+        fi
+
+        echo "Running: xbin build ${ARGS[*]}"
+        xbin build "${ARGS[@]}"
+
+        # Collect outputs
+        OUTPUT_FILE="${{ inputs.output }}"
+        if [ -f "$OUTPUT_FILE" ]; then
+          SIZE=$(stat -c%s "$OUTPUT_FILE" 2>/dev/null || stat -f%z "$OUTPUT_FILE" 2>/dev/null || echo "0")
+          echo "binary-path=${OUTPUT_FILE}" >> "$GITHUB_OUTPUT"
+          echo "size=${SIZE}" >> "$GITHUB_OUTPUT"
+          echo "Built: ${OUTPUT_FILE} (${SIZE} bytes)"
+        else
+          echo "error: output file not found: ${OUTPUT_FILE}"
+          exit 1
+        fi
+
+        # Try to detect runtime from inspect output
+        if command -v xbin &>/dev/null; then
+          RUNTIME=$(xbin inspect "$OUTPUT_FILE" --json 2>/dev/null \
+            | grep -o '"runtime":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
+          echo "runtime=${RUNTIME}" >> "$GITHUB_OUTPUT"
+        fi
+
+    # ── Cleanup ──────────────────────────────────────────────────────
+    - name: Cleanup signing key
+      if: always() && inputs.key != ''
+      shell: bash
+      run: |
+        if [ -n "$XBIN_KEY_FILE" ] && [ -f "$XBIN_KEY_FILE" ]; then
+          rm -f "$XBIN_KEY_FILE"
+        fi

@@ -148,23 +148,6 @@ main() {
     sudo cp "${extracted_dir}/bin/"* "$INSTALL_DIR/"
   fi
 
-  # Install Python CLI lib if present
-  if [ -d "$extracted_dir/lib/python/xbin" ]; then
-    local xbin_lib="${INSTALL_DIR}/../lib/xbin/python"
-    info "installing Python CLI to ${xbin_lib}..."
-    mkdir -p "$xbin_lib"
-    if [ -w "$(dirname "$xbin_lib")" ] 2>/dev/null; then
-      cp -r "${extracted_dir}/lib/python/xbin" "$xbin_lib/"
-    else
-      sudo cp -r "${extracted_dir}/lib/python/xbin" "$xbin_lib/"
-    fi
-    # Update wrapper script with correct lib path
-    local wrapper="$INSTALL_DIR/xbin"
-    if [ -f "$wrapper" ]; then
-      sed -i "s|/lib/python|/../lib/xbin/python|g" "$wrapper" 2>/dev/null || true
-    fi
-  fi
-
   ok "installed xbin ${version} to ${INSTALL_DIR}"
   info "run 'xbin --version' to verify"
 }
