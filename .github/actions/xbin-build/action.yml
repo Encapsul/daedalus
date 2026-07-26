@@ -116,7 +116,10 @@ runs:
         echo "Downloading: ${DOWNLOAD_URL}"
 
         TMPDIR="$(mktemp -d)"
-        curl -fsSL "$DOWNLOAD_URL" -o "${TMPDIR}/${TARBALL}"
+        if ! curl -fsSL "$DOWNLOAD_URL" -o "${TMPDIR}/${TARBALL}"; then
+          echo "error: download failed (no release yet?)."
+          exit 1
+        fi
 
         # Extract — tarball contains xbin-{platform}/ directory
         tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
