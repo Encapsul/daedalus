@@ -1346,3 +1346,105 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 19. Multi-container orchestration
 
 See `ROADMAP.md` for detailed implementation plans and timelines.
+
+---
+
+## Database Configuration & Secrets Management
+
+### Problem Statement
+
+When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secrets (URLs, credentials) must be handled securely. The binary should NOT contain embedded secrets.
+
+### Current Approach (Needs Improvement)
+
+- Secrets are embedded via `--env-file` during build
+- Users must rebuild to change secrets
+- No runtime configuration mechanism
+
+### Recommended Solution
+
+**Multi-layered configuration system:**
+
+1. **Arguments CLI** (highest priority)
+   ```bash
+   ./app.xbin --db-url "postgresql://user:pass@neon.tech/db"
+   ```
+
+2. **Local config file** (fallback)
+   ```bash
+   # xbin.toml in same directory as binary
+   [database]
+   url = "postgresql://..."
+   
+   [secrets]
+   api_key = "xxx"  # Never commit real secrets!
+   ```
+
+3. **Environment variables** (standard Unix)
+   ```bash
+   export DATABASE_URL="postgresql://..."
+   ./app.xbin
+   ```
+
+4. **Interactive prompt** (when TTY available)
+   ```bash
+   ./app.xbin
+   Enter DATABASE_URL: ********
+   ```
+
+### Implementation Plan
+
+**Phase 1: Stub Enhancement**
+- Add `config.rs` module to stub
+- Implement multi-source config loading
+- Add interactive prompt with masked input
+- Support `xbin.toml` format
+
+**Phase 2: CLI Integration**
+- Add `--config` flag to specify config file
+- Add `--prompt` flag for interactive mode
+- Validate secrets at startup
+- Mask secrets in logs/output
+
+**Phase 3: Security Hardening**
+- Encrypt sensitive values in config files
+- Add secret rotation support
+- Audit trail for secret access
+- Integration with secret managers (Vault, AWS Secrets)
+
+### File Locations
+
+```
+~/.xbin/config.toml          # Global config (Unix)
+%APPDATA%\xbin\config.toml   # Global config (Windows)
+./xbin.toml                   # Local config (same dir as binary)
+./config.toml                 # Alternative local config
+```
+
+### Example: openEMR with External Database
+
+```bash
+# Build openEMR (no secrets embedded)
+xbin build openemr/ -o openemr.xbin
+
+# Runtime configuration options:
+# Option 1: Environment variables
+export DATABASE_URL="mysql://openemr:pass@mysql.example.com/openemr"
+./openemr.xbin
+
+# Option 2: Local config file
+echo '[database]\nurl = "mysql://openemr:pass@mysql.example.com/openemr"' > xbin.toml
+./openemr.xbin
+
+# Option 3: CLI arguments
+./openemr.xbin --db-url "mysql://openemr:pass@mysql.example.com/openemr"
+```
+
+### Security Best Practices
+
+1. **Never commit real secrets** to git
+2. **Use `.env.example`** for local development
+3. **Mask secrets** in prompts and output (********)
+4. **Validate secrets** at startup
+5. **Support rotation** without rebuild
+6. **Audit access** to sensitive data
