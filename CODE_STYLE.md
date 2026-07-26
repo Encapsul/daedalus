@@ -1,5 +1,19 @@
 # CODE_STYLE.md — x.bin coding conventions
 
+## References
+
+| Document | What we follow |
+|----------|---------------|
+| [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) | Naming, interop, docs, predictability, type safety |
+| [Rust CLI Book](https://rust-cli.github.io/book/) | Config files, exit codes, human/machine output, progress |
+| [The Rustonomicon](https://doc.rust-lang.org/nomicon/) | Unsafe Rust patterns (FFI, memory, concurrency) |
+| [clig.dev](https://clig.dev) | CLI UX: help, output, errors, flags, interactivity |
+| [Better CLI](https://bettercli.org/) | Lifecycle, distribution, security, analytics |
+| [clap docs](https://docs.rs/clap) | Arg parsing, derive macros, shell completion |
+| [anyhow docs](https://docs.rs/anyhow) | Error handling with context |
+| [Black](https://black.readthedocs.io/) | Python formatting (line-length 88, py312) |
+| [ruff](https://docs.astral.sh/ruff/) | Python linting (E/W/F/I/UP/B/SIM/RUF) |
+
 ## Philosophy
 
 We follow the principles behind 42/Epitech's "Norm" and the Linux kernel
@@ -22,7 +36,16 @@ coding style — adapted for Rust and Python, not copied from C.
 
 ---
 
-## Rust (stub/)
+## Rust (xbin-core/, xbin-cli/, stub/)
+
+### Build target
+
+Repo lives on vfat (no exec bit). Build artifacts go to `/tmp/xbin-stub-target`.
+After `cargo build --release`, install manually:
+```bash
+cp /tmp/xbin-stub-target/release/xbin ~/.local/bin/xbin
+cp /tmp/xbin-stub-target/release/xbin-stub ~/.local/bin/xbin-stub
+```
 
 ### Formatting
 
@@ -37,12 +60,12 @@ We use `rustfmt` defaults otherwise. No nightly-only options.
 ### Clippy
 
 We enable a pedantic subset, not the full `clippy::pedantic` (too many false
-positives on a small codebase). Run via `cargo clippy -- -D warnings`.
+positives on a small codebase). Run via `cargo clippy -p xbin-core --all-targets -- -D warnings`.
 
 ```toml
 # In stub/Cargo.toml, add:
 [lints]
-clippy:: pedantic = { level = "warn", priority = -1 }
+clippy::pedantic = { level = "warn", priority = -1 }
 # Then override specific noisy lints:
 clippy::module_name_repetitions = "allow"
 clippy::must_use_candidate = "allow"
@@ -62,26 +85,30 @@ clippy::expect_used = "warn"
 - `unwrap_used` / `expect_used` — warn (not deny); the codebase already avoids
   them, but a targeted `expect("reason")` is acceptable in parse paths.
 
-### Function length: ≤ 40 lines
+### Function length: ≤ 30 lines
 
-Measured as the line count from `fn` keyword to closing `}`. The reasoning:
-40 lines fits on one screen at 100-col width with line numbers visible. If a
-function exceeds 40 lines, it's a signal to extract a helper — not a hard ban,
-but a review flag.
+Measured as the line count from `fn` keyword to closing `}`. Rust is more
+concise than Python; functions should be short. If a function exceeds 30
+lines, it's a signal to extract a helper — not a hard ban, but a review
+flag.
 
 **Current state:** `supervise_services` is 104 lines — it should be split into
 `fork_services()`, `wait_for_health()`, `wait_for_children()`.
 
 ### Unsafe rules
 
-Every `unsafe` block must have a comment explaining **why it is sound**.
-Format:
+`xbin-core/` and `xbin-cli/` have **zero** `unsafe` — memory safety is
+guaranteed by Rust's type system and borrow checker.
+
+`stub/src/main.rs` is the only crate with `unsafe`. Every `unsafe` block
+must have a `SAFETY` comment explaining **why it is sound**:
 
 ```rust
-// SAFETY: execve(2) is safe here — prog_c and argv are valid CStrings,
-// envp is null-terminated, and we never return on success.
+// SAFETY: execvp(3) is safe here — prog_c is a valid CString,
+// argv_ptrs is null-terminated, and we never return on success.
+// execvp searches PATH for bare command names.
 unsafe {
-    libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
+    libc_execvp(prog_c.as_ptr(), argv_ptrs.as_ptr());
 }
 ```
 
@@ -108,7 +135,7 @@ purpose and its role in the system. This is already the pattern in
 ```toml
 # In cli/pyproject.toml, add:
 [tool.black]
-target-version = ["py313"]
+target-version = ["py312"]
 line-length = 88
 ```
 
@@ -121,7 +148,7 @@ Black is non-negotiable. It eliminates all formatting bikeshedding.
 ```toml
 # In cli/pyproject.toml, add:
 [tool.ruff]
-target-version = "py313"
+target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
@@ -173,11 +200,10 @@ def read_footer(path: str) -> Footer:
 - `from __future__ import annotations` is already used everywhere, so modern
   syntax (`str | None`) works with no cost.
 
-### Function length: ≤ 60 lines
+### Function length: ≤ 40 lines
 
-Measured from `def` to closing `}` (or end of body). 60 lines is roughly
-one screen at standard terminal height. Python functions tend to be longer
-than Rust because of indentation and verbosity, so the threshold is higher.
+Measured from `def` to closing `}` (or end of body). 40 lines is roughly
+one screen at standard terminal height.
 
 **Current state:** Functions have been extracted to stay under the limit.
 `_build_manifest` was 171 lines — now split into 10+ helpers.
@@ -216,7 +242,7 @@ make preflight  # verify prerequisites
 
 `.github/workflows/ci.yml` runs on every push/PR to `main`:
 1. **preflight** — verify system prerequisites
-2. **rust** — `cargo build` + `cargo clippy -- -D warnings`
+2. **rust** — `cargo build` + `cargo clippy -p xbin-core --all-targets -- -D warnings`
 3. **python** — `ruff check` + `black --check`
 4. **build** — full end-to-end: build → inspect → keygen → sign → verify
 
@@ -266,7 +292,7 @@ PRs that fail CI cannot be merged.
 |---|---|---|
 | Formatter | `rustfmt` (100 cols) | `Black` (88 cols) |
 | Linter | `clippy` (pedantic subset) | `ruff` (E/W/F/I/UP/B/SIM/RUF) |
-| Function length | ≤ 40 lines | ≤ 60 lines |
+| Function length | ≤ 30 lines | ≤ 40 lines |
 | Type hints | N/A (Rust is typed) | Mandatory on all functions |
 | Comments explain | WHY, never WHAT | WHY, never WHAT |
 | Nesting | Early returns / guard clauses | Early returns / guard clauses |

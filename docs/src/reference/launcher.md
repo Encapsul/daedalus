@@ -7,7 +7,7 @@ The launcher ("stub") is the small program embedded at the head of every
 - **Code**: `stub/src/main.rs` + `stub/src/format.rs`
 - **Language**: Rust, statically compiled for `x86_64-unknown-linux-musl` →
   zero dynamic dependencies, runs everywhere.
-- **Size**: ~600 KB (target < 200 KB after dependency optimization).
+- **Size**: ~600 KB (musl static, opt-level=z, LTO, strip, panic=abort).
 
 ## Why Rust + musl?
 
@@ -32,14 +32,14 @@ ldd stub/target/x86_64-unknown-linux-musl/release/xbin-stub
 ./my_app.xbin
    │
    1. open("/proc/self/exe")          ← reliable self-location
-   2. read footer (last 84 bytes), validate magic
+   2. read footer (last 92 bytes for v3), validate magic
    3. read JSON metadata
    4. read payload, verify SHA-256         ← integrity
    5. cache hit? → ~/.cache/xbin/{sha256}/.ready
         yes → reuse
         no  → extract (zstd → tar) to tmp, atomic rename()
    6. build argv + env (inject LD_LIBRARY_PATH + PATH)
-   7. execve(entrypoint)              ← replaces the process
+   7. execvp(entrypoint)              ← replaces the process
 ```
 
 ## Why `/proc/self/exe` and not `argv[0]`?
@@ -120,5 +120,5 @@ if !ready_marker.exists() {
 }
 
 // 5. Replace the current process with the app.
-exec_app(&meta, &rootfs)
+exec_app(&meta, &rootfs)  // uses execvp for single-service, execve in supervisor
 ```

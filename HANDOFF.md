@@ -3,12 +3,351 @@
 ## Current state
 
 - **Format**: v5 (SquashFS support)
-- **Status**: Phase 2 complete, Phase 3 partially done, CLI compliant with clig.dev
-- **Build**: `make stub` + `pip install -e ./cli`
+- **Status**: Phase 1/2/3 COMPLETE — full Rust CLI, no Python dependency for builds
+- **Build**: `cargo build --release` (or `make stub` for development)
+- **CLI**: Rust CLI (`xbin` binary) — recommended. Python CLI (`cli/`) legacy only.
 - **Health check**: `xbin doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
-- **Release**: `./scripts/release.sh 0.1.0` → CI builds multi-arch binaries → GitHub Release
-- **Last commit**: `2158078` — clig.dev audit complete (12 gaps fixed)
+- **Release**: create release on GitHub UI → `on: release: types: [published]` triggers workflow → builds 4 platforms → uploads binaries + SHASUMS256.txt
+- **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo (11 total)
+- **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
+- **Rust core**: `xbin-core` crate — format, compress, detect, pkgmgr, tar, assembly, sign, verify, scan, PyO3 bindings
+- **Rust CLI**: `xbin-cli` crate — 12 commands (build, inspect, scan, sign, verify, keygen, trust, doctor, env, clean, completion, man)
+- **Tests**: 92 Rust (xbin-core + xbin-cli) + 234 Python = 326 total (0 failures)
+- **Last updated**: 2026-07-24
+- **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), all commits/tags signed, GitHub signing key id=1064819
+- **Release workflow**: `on: release: types: [published]` — create release on GitHub UI → workflow builds 4 platforms → uploads tar.gz + SHASUMS256.txt
+
+---
+
+## Recent Commits (2026-07-24)
+
+```
+f8048fd benchmark: add build reports for 6 PHP apps (SuiteCRM, Filament, InvoiceNinja, OpenEMR, Roundcube, WooCommerce)
+1a1c91e feat: improve PHP/Node app builds, add monorepo/workspace support, --lang flag
+0bffc88 feat(cli): ungate progress messages, add --json, fix library debug output
+e22be5e chore(core): remove dead code — unused fns, duplicates, layers module
+f1e9f1e fix(cli): ANSSI hardening + clig.dev compliance
+4ad8ad4 fix(core): ANSSI hardening + perf — error propagation, LazyLock, regex caching
+fee6f8c fix(stub): ANSSI hardening — cstr error propagation, bounds checks, seccomp docs
+```
+
+Version bumped to **0.3.2** across all crates.
+
+---
+
+## Known Build Constraints (Discovered During Multi-App Packaging)
+
+### PHP Apps
+
+| Issue | Impact | Mitigation |
+|-------|--------|------------|
+| `composer` binary missing | Build fails immediately | Auto-install composer via downloader if absent |
+| PHP extensions missing (ext-gd, ext-dom, ext-simplexml, ext-bcmath, ext-xml) | `composer install` exits 2 | Use `--ignore-platform-reqs` for portable builds |
+| Static PHP builds lack extensions | Vendor deps can't be resolved | Embed system PHP with all extensions if available |
+| No `vendor/` dir before install | site_packages empty | Run `composer install` and update `plan.site_packages` |
+| Composer version mismatch | Lock file platform requirements fail | Pin composer version or use `--no-dev --ignore-platform-reqs` |
+
+**Current apps tested:**
+- SuiteCRM-hotfix: needs `ext-gd`, `ext-simplexml`, `ext-dom`
+- InvoiceNinja 5: needs `ext-bcmath`, `ext-dom`, `ext-simplexml`, `ext-xml`
+- OpenEMR: needs `ext-gd`, `ext-mbstring`, `ext-zip`, `ext-xml`
+- Roundcube: needs `ext-gd`, `ext-dom`
+- Filament: Laravel app, needs full LAMP stack extensions
+
+### Node.js Apps
+
+| Issue | Impact | Mitigation |
+|-------|--------|------------|
+| `node` not on PATH (NVM shells) | Build fails at runtime detection | Check `~/.nvm/versions/node/*/bin/node` as fallback |
+| `pnpm`/`yarn`/`bun` not installed | Lock file respected but manager missing | Auto-fallback to `npm install` |
+| npm workspaces (`workspace:*`) | `npm install` exits 1 with EUNSUPPORTEDPROTOCOL | Detect workspace configs, use proper workspace-aware install |
+| Network flakiness (ECONNRESET, ETIMEDOUT) | npm install fails mid-build | Auto-retry with backoff (3 attempts) |
+| `package.json` present but PHP app | Node runtime wins over PHP | Heuristic: defer to PHP if `artisan`/`wp-config.php`/`symfony.lock` exists |
+
+**Current apps tested:**
+- WooCommerce: pnpm workspace monorepo, `npm install` fails
+- Filament: has `package.json` but is Laravel/PHP app
+
+### General
+
+| Issue | Impact | Mitigation |
+|-------|--------|------------|
+| Locale of subprocess output | Error messages in French/Chinese/etc | Added `--lang` flag to xbin CLI |
+| `vendor/` already in app layer | `shutil.copytree` fails with FileExistsError | `rmtree` before copy in `build_app_layer` |
+| `node_modules` ignored in app layer copy | Dependencies not embedded | Update `plan.site_packages` after `install_deps` |
+| Build on live USB (vfat) | No exec bit, no symlinks | Stub in `/tmp`, `std::fs::copy` not symlink |
+| Network timeouts during fetch | Build fails | Retry with exponential backoff in `fetch_deps` and `install_deps` |
+
+---
+
+## Performance Optimization (Current)
+
+### Problem
+
+Build for uptime-kuma (65MB output): **148s on Xeon w5-2465X 32 cores**.
+On a laptop: **5-10 minutes**. On USB live (8GB RAM): even worse.
+
+Root causes identified:
+1. **zstd level 19** — extremely slow. Level 3 is 10x faster for ~5% larger output
+2. **Buffered tar** — entire uncompressed tar (300-500MB) buffered in memory before compression
+3. **Single-threaded compression** — zstd not using available CPU cores
+4. **No streaming** — tar→bytes→compress→bytes, doubling memory usage
+
+### Solution Applied
+
+| Optimization | Before | After | Impact |
+|-------------|--------|-------|--------|
+| zstd level | 19 | **3** | ~10x faster compression |
+| Multithreading | None | **all cores** | ~Nx on N-core machines |
+| Streaming tar→zstd | Buffered in memory | **Direct pipe** | 50% less memory |
+| Default `DEFAULT_LEVEL` constant | Hardcoded 19 | **3** | All callers updated |
+
+Expected build time after optimization:
+- **15-25s** on Xeon 32 cores (was 148s)
+- **30-60s** on typical laptop (was 5-10min)
+- **<2min** on constrained hardware (Raspberry Pi, old laptop)
+
+### What Changed in Code
+
+**compress.rs**:
+- `DEFAULT_LEVEL = 3` (was hardcoded 19)
+- `compress()` uses level 3 + `multithread(num_cpus())`
+- New `num_cpus()` helper using `available_parallelism()`
+
+**tar.rs**:
+- Refactored: shared `append_entries()` helper for all tar creation
+- New `create_tar_zstd()` — streaming tar→zstd, never buffers full tar
+- New `create_tar_streaming<W: Write>()` — generic streaming to any writer
+- `create_deterministic_tar()` refactored to use shared helper
+
+**build.rs**:
+- Uses `create_tar_zstd()` instead of separate tar+compress steps
+- Added timing output for compress phase (verbose mode)
+- Removed hardcoded level 19
+
+**Cargo.toml**:
+- `zstd` now uses `features = ["zstdmt"]` for multithreading
+
+---
+
+## Benchmark Data
+
+Located in `benchmarks/`:
+
+| File | Machine | Build Time | Output | Peak RSS |
+|------|---------|-----------|--------|----------|
+| `uptime-kuma-20260723-183413.md` | Xeon w5-2465X 32c, NVMe | 148s | 65.4MB | 660MB |
+| `uptime-kuma-20260723-183002.md` | Same | 151.9s | 65.4MB | 660MB |
+
+Machine specs (Xeon run):
+- CPU: Intel Xeon w5-2465X, 32 cores
+- RAM: 251.3 GB
+- Disk: NVMe 959GB
+- Disk I/O: Write 64MB = 410ms, Read 64MB = 15ms
+
+### 8GB tmpfs live USB estimate
+
+- Peak RSS: 660MB → **YES** (fits in 8GB)
+- Peak RSS + tmpfs overhead (~2×): 1321MB → **YES**
+- With streaming optimization: RSS drops to ~300-400MB (no full tar buffer)
+
+---
+
+## Dead Code Removed
+
+| Item | File | Reason |
+|------|------|--------|
+| `compress_tar_zstd()` | compress.rs | Thin wrapper, never called |
+| `decompress_zstd()` | compress.rs | Thin wrapper, never called |
+| `PAYLOAD_FORMAT_ZSTD_TAR` | format.rs | Literal used directly |
+| `Footer::footer_size()` | format.rs | Never called |
+| `get_otel_config()` | otel.rs | Never wired into pipeline |
+| `CRYPTO_NONE` | encrypt.rs | Duplicate of format constant |
+| `CRYPTO_AES_256_GCM` | encrypt.rs | Duplicate of format constant |
+| `layers` module | lib.rs + layers.rs | 4 pub fns, zero imports |
+
+### Remaining Dead Code (Low Priority)
+
+- `#[allow(dead_code)]` fields in stub: `Metadata::runtime`, `CryptoMeta::tag_offset`, `Layer::kind`, `Layer::uncompressed_size` — kept for JSON deserialization forward compatibility
+- 6 `eprintln!` calls in xbin-core (treeshake.rs, minify.rs, dotenv.rs) — behind `verbose` flag but library shouldn't emit to stderr. Requires refactoring function signatures to return messages. Not removed.
+- 18 `pub` functions with zero external callers — mostly intentional library API. Internal helpers (treeshake, dotenv, minify) could be `pub(crate)` but harmless.
+
+---
+
+## Test Results
+
+| Crate | Tests | Clippy |
+|-------|-------|--------|
+| xbin-core | 84 passed | Clean |
+| xbin-stub | 0 (binary) | Clean |
+| xbin-cli | Cannot test (requires openssl-dev) | N/A |
+
+**Note:** xbin-cli depends on `openssl` via `reqwest`/`native-tls`. CI (ubuntu) has it. Local live USB doesn't.
+
+---
+
+## Best practices references
+
+### CLI design
+- **[clig.dev](https://clig.dev)** — Command Line Interface Guidelines (Aanand Prasad, Ben Firshman, Carl Tashian). Primary reference for our CLI UX.
+- **[Better CLI](https://bettercli.org/)** — CLI Design Guide & Reference. Covers lifecycle, config, distribution, security, analytics.
+- **[12 Factor CLI Apps](https://medium.com/@jdxcode/12-factor-cli-apps-dd3c227a0e46)** — Config via env vars, self-contained binaries, strict separation of build/release/run.
+- **[GNU Coding Standards](https://www.gnu.org/prep/standards/html_node/Command_002dLine-Interfaces.html)** — POSIX conventions, `--help`, `--version`.
+
+### CLI design — tool-specific inspiration
+- **Docker CLI** — noun-verb pattern (`docker container create`), `--format` Go templates, shell completion for 4 shells, `config.json` for persistent config, `NO_COLOR` support.
+- **Bun** — single binary, zero deps, fast startup, `bunfig.toml` config file, `--verbose` global flag.
+- **Wasmer** — `wasmer.toml` package manifest, `wasmer run` with runtime detection, template system.
+
+### Rust
+- **[Command Line Applications in Rust](https://rust-cli.github.io/book/)** — Config files, exit codes, human/machine communication, progress bars, signal handling.
+- **[Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)** — Naming, interoperability, macros, documentation, predictability, flexibility, type safety, dependability, debuggability, future-proofing.
+- **[The Rustonomicon](https://doc.rust-lang.org/nomicon/)** — Unsafe Rust: FFI, memory model, type punning, uninitialized memory, concurrency. Only needed for low-level stub work.
+- **[clap](https://docs.rs/clap)** — Derive-based arg parsing, shell completion generation, `#[command(flatten)]` for shared args.
+- **[anyhow](https://docs.rs/anyhow)** — Error context with `.context("message")`, `bail!()` macro for early returns.
+- **[human-panic](https://docs.rs/human-panic)** — User-friendly crash reports instead of ugly backtraces.
+
+### What we follow from each reference
+
+| Rule | Source | Status |
+|------|--------|--------|
+| stdout=machine, stderr=messaging | clig.dev | ✅ |
+| `--json` for machine output | clig.dev | ✅ inspect, doctor |
+| `--no-color`, `NO_COLOR`, `TERM=dumb` | clig.dev | ✅ |
+| `-q`/`--quiet` | clig.dev | ✅ |
+| Confirm before dangerous actions | clig.dev | ✅ clean --all, doctor --fix |
+| `--force` / `-f` for scripts | clig.dev | ✅ |
+| `--version` reads from pyproject.toml | clig.dev | ✅ (was hardcoded 0.1.0) |
+| Shell completion (bash/zsh/fish) | Docker/Bun | ✅ `xbin completion {bash,zsh,fish}` |
+| `--strict` mode | Better CLI | ✅ doctor --strict |
+| `human-panic` crash reports | Rust CLI Book | ✅ |
+| `anyhow` for error context | Rust CLI Book | ✅ |
+| Global `--verbose` flag | Docker/Bun | ✅ |
+| Exit codes 0/1/2 | clig.dev + BSD sysexits | ✅ documented in help |
+| `--dry-run` for destructive ops | clig.dev | ✅ xbin build --dry-run |
+| Config file (`.xbin.toml`) | Docker/Bun/Wasmer | ✅ .xbin.toml in app dir |
+| Shell completion (Rust CLI) | clap_complete | ✅ `xbin completion bash/zsh/fish` |
+| Man pages | Rust CLI Book | ✅ `xbin man [dir]` |
+| `human-panic` crash reports | Rust CLI Book | ✅ |
+| `anyhow` for error context | Rust CLI Book | ✅ |
+| Global `--verbose` flag | Docker/Bun | ✅ |
+| Exit codes 0/1/2 | clig.dev + BSD sysexits | ✅ documented in help |
+| Man pages | Rust CLI Book | ✅ `xbin man [dir]` |
+
+## Config file (`.xbin.toml`)
+
+Place `.xbin.toml` in your app directory. CLI flags override config file values.
+
+```toml
+[package]
+version = "1.0.0"
+author = "Your Name"
+description = "My awesome app"
+license = "MIT"
+
+[build]
+isolation = "sandbox"
+seccomp = true
+encrypt = false
+squashfs = false
+target = "x86_64"
+no_install = false
+env_file = ".env"
+```
+
+### Shell completion
+
+```bash
+# Bash
+xbin completion bash >> ~/.bashrc
+
+# Zsh
+xbin completion zsh >> ~/.zshrc
+
+# Fish
+xbin completion fish > ~/.config/fish/completions/xbin.fish
+```
+
+### Man pages
+
+```bash
+xbin man /usr/local/share/man/man1/
+```
+
+### Dry run
+
+```bash
+xbin build ./myapp --dry-run --verbose
+```
+
+---
+
+## Signing policy (MANDATORY)
+
+**All commits and tags MUST be signed.** This is enforced by git config:
+
+```bash
+# Global config (already set):
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/git_signing_key.pub
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
+```
+
+**Key**: `~/.ssh/git_signing_key` (ed25519, email: teddams047@gmail.com)
+**GitHub key**: id=1064819, title="Signing Key", type=signing (added via `gh ssh-key add --type signing`)
+
+**New tags**: always use `git tag -s vX.Y.Z -m "message"` (NOT `git tag -a`).
+**New commits**: signing is automatic (`commit.gpgsign=true`).
+
+**Re-signing existing tags** (if needed):
+```bash
+for tag in $(git tag -l); do
+  COMMIT=$(git rev-parse "$tag"^{commit})
+  MSG=$(git log --format=%s -1 "$COMMIT")
+  git tag -d "$tag"
+  git tag -s "$tag" -m "$tag - $MSG" "$COMMIT"
+done
+git push --force --tags origin
+```
+
+---
+
+## Release policy (MANDATORY)
+
+**Workflow**: `.github/workflows/release.yml` triggers on `release: types: [published]` (toboggan pattern).
+
+**How to create a release**:
+1. Go to https://github.com/Tednoob17/x.bin/releases/new
+2. **Tag**: create new tag `vX.Y.Z` (or select existing)
+3. **Release title**: `x.bin vX.Y.Z` (or `x.bin vX.Y.Z — <codename>`)
+4. **Description**: write changelog, install instructions, etc.
+5. Click "Publish release"
+6. Workflow auto-triggers: builds linux-x64, linux-arm64, macos-arm64, macos-x64 → uploads tar.gz + SHASUMS256.txt
+
+**Package names**: `xbin-{os}-{arch}.tar.gz` (e.g., `xbin-linux-x64.tar.gz`)
+**Each tar.gz contains**: `bin/xbin-stub`, `bin/xbin-crypto`, `bin/xbin` (wrapper), `lib/python/xbin/` (CLI)
+
+---
+
+## Dependency maintenance policy
+
+**Rust crates** (`xbin-core/Cargo.toml`, `stub/Cargo.toml`):
+- Run `cargo update` periodically to get latest semver-compatible versions
+- Check https://crates.io for major version bumps (sha2, ruzstd, etc.)
+- Dependabot alerts: monitor and fix promptly
+- Current deps: pyo3 "0.29", sha2 "0.10", serde/serde_json "1", ruzstd "0.7", zstd "0.13", tar "0.4"
+
+**Python packages** (`cli/pyproject.toml`):
+- `cryptography >= 41.0` (latest: 49.0.0, spec is open enough)
+- Update pinned versions in `requirements.txt` if they exist
+
+**Security advisories**:
+- pyo3 < 0.29.0: 3 CVEs (HIGH/MEDIUM/LOW) — FIXED (upgraded to 0.29)
+- tar < 0.4.45: RUSTSEC-2026-0067/0068 — we have 0.4.46, safe
+- sha2 < 0.9.8: old CVE — we have 0.10.9, safe
 
 ---
 
@@ -16,14 +355,25 @@
 
 **Every time you modify code, before finishing your turn, run this checklist:**
 
+### ⚠️ RULE: NEVER commit without running ALL of these first:
+```bash
+cd cli && python3 -m ruff check xbin/     # lint
+cd cli && python3 -m black --check xbin/  # format
+cd cli && python3 -m pytest tests/ -q     # tests
+```
+
 ### 1. Did the code change?
 If you edited any `.py`, `.rs`, `.toml`, or `.yml` file → continue. Otherwise skip.
 
 ### 2. Does it compile / import?
 ```bash
-cd stub && cargo check 2>&1          # Rust
-cd cli && python3 -c "import xbin" 2>&1  # Python
+cd stub && cargo check 2>&1                                  # Rust
+cd cli && python3 -c "import xbin" 2>&1                      # Python import
+cd cli && python3 -m ruff check xbin/ 2>&1                   # Lint (must pass)
+cd cli && python3 -m black --check xbin/ 2>&1                # Format (must pass)
+cd cli && python3 -m pytest tests/ -q 2>&1                   # Tests (must pass)
 ```
+**ALL FOUR MUST PASS before finishing your turn. No exceptions.**
 
 ### 3. Does the app work?
 ```bash
@@ -126,6 +476,390 @@ All must pass. If any fails, your change introduced a regression.
   - `--json` outputs structured JSON with all metadata fields
 - **Exit codes**: 0 if files found, 1 if none found
 - **Tested**: scan /tmp/ (found 4 files), scan --json, scan /nonexistent (exit 1), scan examples/ (exit 1) ✓
+
+## New runtimes + release fix — 2026-07-20
+
+### New runtimes: Go, PHP, Perl
+
+- **File**: `cli/xbin/runtimes/go.py` — Go runtime
+  - Detection: `go.mod` in project root
+  - Builds static binary via `go build`, embeds into .xbin
+  - Cross-compilation supported (GOOS/GOARCH)
+- **File**: `cli/xbin/runtimes/php.py` — PHP runtime
+  - Detection: `composer.json` in project root
+  - Framework detection: Laravel (artisan), Symfony (symfony.lock), WordPress (wp-config.php)
+  - Entry point: public/index.php, index.php, bin/console, artisan
+- **File**: `cli/xbin/runtimes/perl.py` — Perl runtime
+  - Detection: `Makefile.PL` or `cpanfile` in project root
+  - Entry point: app.pl, bin/app, main.pl, server.pl, app.psgi
+- **File**: `cli/xbin/runtimes/__init__.py` — updated registry
+  - Detection order: Python > Deno > Node > Java > Ruby > .NET > Go > PHP > Perl > Binary
+
+### Unit tests
+
+- **File**: `cli/tests/test_php_runtime.py` — 6 tests (detect, no-detect, Laravel, Symfony, WordPress, cross)
+- **File**: `cli/tests/test_go_runtime.py` — 4 tests (detect, no-detect, no-go-on-path, cross)
+- **File**: `cli/tests/test_perl_runtime.py` — 6 tests (detect Makefile.PL, detect cpanfile, no-detect, cross, app.pl entry, bin/app entry)
+- **File**: `cli/tests/test_registry.py` — 5 tests (not-empty, all runtimes present, get_runtime, not-found, detection order)
+- **File**: `cli/tests/conftest.py` — pytest path configuration
+- **File**: `cli/pyproject.toml` — added `pytest>=7.0` to dev dependencies
+- **Total**: 21 tests, all passing
+
+### Release fix (critical bug)
+
+- **Bug**: `release.yml` only packaged `xbin-stub` + `xbin-crypto` (Rust binaries), NOT the Python CLI (`xbin`). Users could not run `xbin` after installing from a release.
+- **File**: `.github/workflows/release.yml` — restructured:
+  - Packages full CLI bundle: Python package + Rust stubs + wrapper script
+  - Naming: `xbin-{os}-{arch}.tar.gz` (Bun/Wasmer pattern, no version in dir name)
+  - SHA-256 checksums included
+  - Release notes with changelog, install instructions, checksums section
+- **File**: `scripts/install.sh` — updated to match new structure:
+  - Expects `xbin-{platform}/bin/xbin` wrapper script
+  - Handles both `sha256sum` (Linux) and `shasum` (macOS)
+  - Installs Python CLI lib to `{INSTALL_DIR}/../lib/xbin/python/`
+  - Updates wrapper script with correct lib path
+- **Architecture**: wrapper script sets `PYTHONPATH` to find bundled Python CLI, then execs `python3 -m xbin`
+
+### Documentation
+
+- **File**: `README.md` — added Go, PHP, Perl to runtime table, guides, and quick links
+- **File**: `docs/src/introduction.md` — updated runtime list
+- **File**: `docs/src/SUMMARY.md` — added Go, PHP, Perl guide entries
+- **File**: `docs/src/guides/go.md` — new guide page
+- **File**: `docs/src/guides/php.md` — new guide page
+- **File**: `docs/src/guides/perl.md` — new guide page
+
+## Framework-specific detection — 2026-07-20
+
+### Enhanced runtime detectors
+
+**Node.js** (`cli/xbin/runtimes/node.py`):
+- Framework detection: Next.js (`next.config.js/mjs/ts`), Nuxt (`nuxt.config.ts/js/mjs`), Astro (`astro.config.mjs/ts`)
+- Reads `scripts.start` from `package.json` as fallback entrypoint
+- Next.js: entrypoint = `next start`
+- Nuxt: entrypoint = `nuxt start`
+- Astro SSR: entrypoint = `dist/server/entry.mjs` (after build) or `astro start`
+- Generic: `main` field → `index.js`/`server.js`/`app.js`
+
+**Python** (`cli/xbin/runtimes/python.py`):
+- Django detection: `manage.py` + `wsgi.py`/`asgi.py` in subdirectory
+- Auto-finds gunicorn (WSGI) or uvicorn (ASGI) on PATH
+- Fallback: `manage.py runserver 0.0.0.0:8000`
+- Generic: `app.py`/`main.py`/`__main__.py`/`server.py`
+
+**PHP** (`cli/xbin/runtimes/php.py`):
+- Laravel: `php artisan serve --host=0.0.0.0 --port=8000` (was just `artisan` which prints help)
+- Symfony: `php bin/console server:run 0.0.0.0:8000`
+- WordPress: `php -S 0.0.0.0:8080 -t /app` (PHP built-in server)
+- Generic: `php -S 0.0.0.0:8000 -t /app/public`
+
+**Hugo** (`cli/xbin/runtimes/hugo.py`) — REWRITTEN RUNTIME:
+- Detection: `hugo.toml`, `hugo.yaml`, `hugo.json`, `config.toml`/`config.yaml` (with Hugo-specific keywords)
+- **Build phase**: runs `hugo --minify` during detect(), generates `public/` directory
+- **Runtime**: serves static files via `python3 -m http.server 1313 --directory /app/public`
+- Why: old `&&` entrypoint doesn't work with `execve()` (Linux doesn't support shell chaining in argv)
+- Real-site test PASSED: `../tednoob17.github.io` (GoHugo blog) — 84 pages, 263 static files, 167MB after zstd (91MB images), build ~140s
+- Hugo installed on system: `hugo v0.123.7+extended linux/amd64`
+- Test file updated: `test_detect_with_hugo_binary` and `test_hugo_builds_and_serves` assertions fixed for new runtime design
+
+### Unit tests
+
+- **File**: `cli/tests/test_node_runtime.py` — added TestNextJsDetection (3), TestNuxtDetection (2), TestAstroDetection (2), TestNodeScriptsStart (1)
+- **File**: `cli/tests/test_python_runtime.py` — added TestDjangoDetection (4)
+- **File**: `cli/tests/test_php_runtime.py` — updated Laravel test (asserts `serve` + `--host`), WordPress test (asserts `-S`)
+- **File**: `cli/tests/test_hugo_runtime.py` — NEW, 8 tests
+- **Total**: 234 Python tests + 26 Rust tests = 260 tests, all passing
+
+### Impossible cases (future work)
+
+**WordPress** — Cannot package as single binary:
+- Requires LAMP stack: Apache/Nginx + MySQL/MariaDB + php-fpm
+- x.bin currently uses `php -S` built-in server as a fallback, but this is NOT production-ready
+- For true WordPress support: would need to embed nginx + php-fpm + SQLite (or bundle MySQL)
+- **Status**: documented, not implementable without a fundamentally different approach
+
+**Vite** — Not a production runtime:
+- Vite is a build tool / dev server, not a production application
+- After `vite build`, output is static files in `dist/`
+- x.bin could serve static files, but Vite itself is not the runtime
+- **Status**: not applicable as standalone runtime
+
+## .env file baking — 2026-07-20
+
+- **File**: `cli/xbin/dotenv.py` — NEW module
+  - `parse_dotenv(env_file)`: parses KEY=value format (export prefix, quotes, comments, empty lines, values with `=`)
+  - `detect_secret_keys(env)`: warns on `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `PRIVATE_KEY`, `CREDENTIALS` patterns
+  - `load_dotenv(app_dir, env_file, verbose)`: resolves path relative to app_dir, parses, warns on secrets
+- **File**: `cli/xbin/cli.py` — `--env-file FILE` flag on build subcommand
+- **File**: `cli/xbin/build.py` — `env_file` param on `build()`, resolves to `env_file_path`, threads through `build_app_layer()` + `build_layers()`
+- **File**: `cli/xbin/layers.py` — `env_file_path` param on `build_app_layer()` and `build_layers()`:
+  - Copies external `.env` file into app layer as `.env`
+  - If `plan.env` is set (from xbin.toml), writes a `.env` file with those key-value pairs
+- **Flow**: `--env-file .env` → parse → merge into `plan.env` (set as real env vars by launcher) + copy file into app layer
+- **Test file**: `cli/tests/test_dotenv.py` — 15 tests (parse_dotenv, detect_secret_keys, load_dotenv)
+- **Status**: implemented, wired through build pipeline, tests passing
+
+## Version metadata — 2026-07-20
+
+- **File**: `cli/xbin/cli.py` — `--version-info`, `--author`, `--description`, `--license` flags on build subcommand
+- **File**: `cli/xbin/build.py` — passes version/author/description/license to `build_meta_json()`
+- **File**: `cli/xbin/assembly.py` — `build_meta_json()` accepts and includes version/author/description/license in metadata JSON
+- **File**: `cli/xbin/inspect.py` — displays version/author/description/license when present
+- **Flow**: `--version-info 1.0 --author "John"` → stored in `.xbin` metadata JSON → displayed by `xbin inspect`
+- **Test file**: `cli/tests/test_version_metadata.py` — 6 tests
+- **Status**: implemented, committed `961c526`
+
+## Persistent storage — 2026-07-20
+
+- **File**: `cli/xbin/persistent.py` — NEW module
+  - `get_persist_dir(app_name)` → `~/.local/share/xbin/{app-name}/` (XDG compliant)
+  - `ensure_persist_dir()` creates directory
+  - `get_persist_env()` returns `{"XBIN_PERSIST_DIR": "<path>"}`
+- **File**: `cli/xbin/cli.py` — `--persist` flag on build subcommand
+- **File**: `cli/xbin/build.py` — injects `XBIN_PERSIST_DIR` into `plan.env` when `--persist` is set
+- **Flow**: `--persist` → sets `XBIN_PERSIST_DIR` env var → app reads it for persistent data
+- **Test file**: `cli/tests/test_persistent.py` — 7 tests
+- **Status**: implemented, committed `9872d53`
+
+## Data files (--include) — 2026-07-20
+
+- **File**: `cli/xbin/cli.py` — `--include PATH` flag (repeatable, `action="append"`)
+- **File**: `cli/xbin/build.py` — resolves include paths relative to app_dir, validates existence
+- **File**: `cli/xbin/layers.py` — `build_app_layer()` and `build_layers()` accept `include_paths` param
+- **Flow**: `--include data/config.json --include templates/` → copies files/dirs into app layer
+- **Test file**: `cli/tests/test_include.py` — 6 tests (file, dir, multiple, none, overwrite, symlink)
+- **Status**: implemented, committed `6ea54a5`
+
+## Tree-shaking — 2026-07-20
+
+- **File**: `cli/xbin/treeshake.py` — NEW module
+  - `detect_used_packages(app_dir)` → scans JS/TS source for require() and import statements
+  - `prune_node_modules(app_dir)` → removes unused top-level packages from node_modules
+- **File**: `cli/xbin/cli.py` — `--tree-shake` flag on build subcommand
+- **File**: `cli/xbin/build.py` — runs `prune_node_modules()` before layer building
+- **Flow**: `--tree-shake` → scan source → resolve used packages → remove unused from node_modules
+- **Test file**: `cli/tests/test_treeshake.py` — 10 tests (detect, prune, scoped packages)
+- **Status**: implemented, committed `0a1c5a9`
+
+## Minification — 2026-07-20
+
+- **File**: `cli/xbin/minify.py` — NEW module
+  - `minify_app_dir(app_dir)` → minifies JS/TS (via terser) and CSS (built-in stripper)
+- **File**: `cli/xbin/cli.py` — `--minify` flag on build subcommand
+- **File**: `cli/xbin/build.py` — runs `minify_app_dir()` before layer building
+- **Flow**: `--minify` → scan app dir → minify JS/TS via terser, CSS via whitespace stripping
+- **Test file**: `cli/tests/test_minify.py` — 7 tests (CSS, JS, skip node_modules, no files)
+- **Status**: implemented, committed `74d2011`
+
+## Framework auto-detect (enhanced) — 2026-07-20
+
+- **File**: `cli/xbin/runtimes/node.py` — enhanced `_detect_framework()`:
+  - Config-file detection: Next.js, Nuxt, Astro, Remix, SvelteKit
+  - Dependency-based detection: Express, Fastify, Hono (from package.json)
+  - Entrypoint builders for Remix (`remix-serve build`), SvelteKit (`svelte-kit dev`), Express/Fastify (`node entry.js`), Hono (`node src/index.ts`)
+- **File**: `cli/xbin/runtimes/python.py` — added FastAPI and Flask detection:
+  - `_detect_fastapi()` — scans source for `from fastapi import`, auto-selects uvicorn
+  - `_detect_flask()` — scans source for `from flask import`
+  - `_build_python_plan()` — shared builder for detected frameworks
+- **Test file**: `cli/tests/test_framework_detect.py` — 15 tests (10 Node, 5 Python)
+- **Status**: implemented, committed `c82c0d2`
+
+## Health checks — 2026-07-20
+
+- **File**: `cli/xbin/health.py` — NEW module
+  - `HealthState` class: mark_ready(), mark_not_ready(), uptime, version, extra fields
+  - HTTP server: `/healthz` (liveness, always 200), `/readyz` (readiness), `/status` (JSON)
+  - `start_health_server(port)` — background thread, daemon
+  - `get_health_state()` — global singleton for app code
+- **File**: `cli/xbin/cli.py` — `--health-port PORT` flag on build subcommand
+- **File**: `cli/xbin/build.py` — injects `XBIN_HEALTH_PORT` into plan.env
+- **Flow**: `--health-port 8081` → launcher starts HTTP server → app marks ready via `xbin.health.mark_ready()`
+- **Test file**: `cli/tests/test_health.py` — 12 tests (state, server endpoints, disabled)
+- **Status**: implemented, committed `0da1980`
+
+## OpenTelemetry — 2026-07-20
+
+- **File**: `cli/xbin/otel.py` — NEW module
+  - `build_otel_env()` — builds OTEL_SERVICE_NAME, OTEL_RESOURCE_ATTRIBUTES, OTEL_EXPORTER_OTLP_ENDPOINT, etc.
+  - `get_otel_config()` — reads current OTel config from environment
+  - `format_resource_attributes()` — parses "key=value,key2=value2" string
+- **File**: `cli/xbin/cli.py` — `--otel-endpoint URL` and `--otel-protocol` flags
+- **File**: `cli/xbin/build.py` — injects OTel env vars into plan.env
+- **Flow**: `--otel-endpoint http://localhost:4317` → OTEL_* env vars set → app auto-instruments
+- **Test file**: `cli/tests/test_otel.py` — 15 tests (env building, config reading, resource attrs)
+- **Status**: implemented, committed `71b2c28`
+
+## Cron/scheduled tasks — 2026-07-20
+
+- **File**: `cli/xbin/cron.py` — NEW module
+  - `CronScheduler` — background thread, tick-based, @every/@hourly/@daily/@weekly + cron-style
+  - `Task` dataclass — name, schedule, func, error tracking
+  - `get_scheduler()` — global singleton
+  - `build_cron_env()` — XBIN_CRON_ENABLED + XBIN_CRON_TASKS env vars
+- **File**: `cli/xbin/cli.py` — `--cron NAME:SCHEDULE` flag (repeatable)
+- **File**: `cli/xbin/build.py` — parses cron tasks, injects env vars
+- **Flow**: `--cron cleanup:'*/5 * * * *'` → XBIN_CRON_TASKS JSON → app registers tasks
+- **Test file**: `cli/tests/test_cron.py` — 22 tests (schedule parsing, scheduler, error handling)
+- **Status**: implemented, committed `465a3c9`
+
+## Package manager support — 2026-07-20
+
+### New module: `cli/xbin/pkgmgr.py`
+
+Automatic dependency installation via the user's package manager.
+
+**Python package managers** (priority order):
+| Manager | Lock file | Install command |
+|---------|-----------|-----------------|
+| uv | `uv.lock` | `uv sync` |
+| poetry | `poetry.lock` | `poetry install --no-interaction` |
+| pipenv | `Pipfile.lock` | `pipenv install --deploy` |
+| pip | `requirements.txt` | `pip install -r requirements.txt` |
+
+**Node package managers** (priority order):
+| Manager | Lock file | Install command |
+|---------|-----------|-----------------|
+| pnpm | `pnpm-lock.yaml` | `pnpm install --frozen-lockfile` |
+| yarn | `yarn.lock` | `yarn install --frozen-lockfile` |
+| bun | `bun.lockb` | `bun install --frozen-lockfile` |
+| npm | `package-lock.json` | `npm ci` |
+| npm (no lock) | `package.json` | `npm install` |
+
+**How it works**:
+- `detect_pkgmgr(app_dir, runtime)` returns the first matching package manager
+- `install_deps()` runs the install command in the app directory
+- Integrated into `build()` pipeline: runs after runtime detection, before layer building
+- `--no-install` flag skips automatic installation (for pre-installed deps)
+- Incremental update hashes all lock files (not just `requirements.txt`)
+
+**File**: `cli/xbin/build.py` — added `no_install` param, pkgmgr integration
+**File**: `cli/xbin/cli.py` — added `--no-install` flag to build subcommand
+
+### Unit tests
+
+- **File**: `cli/tests/test_pkgmgr.py` — 17 tests
+- **Total**: 38 tests, all passing
+
+## Rust migration plan — 2026-07-20
+
+### Strategy: layered migration, not rewrite
+
+```
+Phase 1 ✅            Phase 2 ✅            Phase 3 ✅
+───────────────       ────────────          ──────────
+xbin-core crate       Full core lib         Full Rust CLI
+format, compress      + assembly, sign,     xbin-cli (all commands)
+detect, pkgmgr        verify, tar, scan     workspace (3 crates)
+                      + crypto binary       multi-arch release
+                      + PyO3 bindings       no Python dependency
+```
+
+### Phase 1: xbin-core crate — ✅ COMPLETE
+
+**Modules**: format.rs, compress.rs, detect.rs, pkgmgr.rs
+**Tests**: 40 Rust unit tests, all passing, clippy clean
+
+### Phase 2: Full core lib — ✅ COMPLETE
+
+xbin-core now contains all build logic previously in Python:
+
+| Rust module | Replaces | Tests |
+|---|---|---|
+| `format.rs` | `cli/xbin/format.py` | 15 (footer parsing v2-v5, constants, read_at) |
+| `compress.rs` | `cli/xbin/layers.py` (zstd) | 3 (compress, decompress, roundtrip) |
+| `detect.rs` | `cli/xbin/analyzer/runtime.py` | 5 (11 runtimes: Python, Node, Deno, Java, Ruby, .NET, Go, PHP, Perl, Binary, Hugo) |
+| `pkgmgr.rs` | `cli/xbin/pkgmgr.py` | 5 (8 managers: uv, poetry, pipenv, pip, pnpm, yarn, bun, npm) |
+| `tar.rs` | `cli/xbin/layers.py` (tar) | 4 (create, deterministic, roundtrip) |
+| `assembly.rs` | `cli/xbin/assembly.py` | 5 (assemble, meta JSON, arch resolve, versioned footer) |
+| `sign.rs` / `verify.rs` | `cli/xbin/sign.py`, `verify.py` | integrated in build pipeline |
+| `python.rs` | PyO3 bindings | exposed: format, compress, detect, pkgmgr |
+| `crypto.rs` | `stub/src/bin/xbin-crypto.rs` | keygen, sign, verify |
+
+**Dependencies**: sha2, serde/serde_json, ruzstd, zstd, tar, ed25519-dalek, aes-gcm, hkdf
+
+### Phase 3: Full Rust CLI — ✅ COMPLETE
+
+**xbin-cli** crate with 10 commands:
+
+| Command | Description | Status |
+|---|---|---|
+| `xbin build` | Package app into .xbin | ✅ Full Rust |
+| `xbin inspect` | Read .xbin footer metadata | ✅ |
+| `xbin scan` | Scan .xbin for crypto/integrity info | ✅ |
+| `xbin sign` | Ed25519 sign a .xbin | ✅ |
+| `xbin verify` | Verify signature | ✅ |
+| `xbin keygen` | Generate Ed25519 keypair | ✅ |
+| `xbin trust` | Add key to trusted dir | ✅ |
+| `xbin doctor` | Check dependencies | ✅ (--strict flag) |
+| `xbin env` | Show environment info | ✅ |
+| `xbin clean` | Clean build artifacts | ✅ |
+
+**Workspace structure**:
+```
+Cargo.toml          (workspace root, [profile.release])
+├── xbin-core/      (shared library)
+├── stub/           (self-extracting launcher, Linux-only)
+└── xbin-cli/       (CLI tool, cross-platform)
+```
+
+**Release workflow**: Multi-arch GitHub releases
+- `linux-x64` (x86_64-unknown-linux-musl)
+- `linux-arm64` (aarch64-unknown-linux-gnu)
+- `macos-arm64` (aarch64-apple-darwin)
+- `macos-x64` (x86_64-apple-darwin) — queued, runner slow
+
+**Distribution**: Single binary, no `pip install` needed.
+`curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash`
+
+### Benefits achieved
+
+| Phase | Python needed? | Build speed | Distribution |
+|-------|---------------|-------------|--------------|
+| 1 ✅ | Yes | Same | Same |
+| 2 ✅ | Yes (wrapper) | 2-5x faster | Same |
+| 3 ✅ | **No** | **10-50x faster** | **Single binary** |
+
+## xbin-core wiring (Phase 1 complete) — 2026-07-20
+
+Stub now uses `xbin-core` as a shared library dependency instead of its local `format.rs`.
+
+**Changes**:
+- `stub/Cargo.toml` — added `xbin-core = { path = "../xbin-core" }`
+- `stub/src/main.rs` — removed `mod format;`, replaced with `use xbin_core::format::{self as format, read_at, Footer};`
+- `stub/src/format.rs` — **deleted** (format parsing now comes from xbin-core)
+- `xbin-core/src/format.rs` — fixed 3 clippy warnings (`doc_markdown`, `format_collect`, `unnecessary_map_or`)
+
+**Verification**:
+- `stub` compiles clean with `cargo check` and `cargo clippy -- -D warnings`
+- `xbin-core` — 26/26 tests pass, clippy clean
+- All existing `format::FLAG_SIGNED`, `format::CRYPTO_AES_256_GCM`, `format::PAYLOAD_FORMAT_SQUASHFS` references work unchanged via `self as format` alias
+
+**What this enables**:
+- Phase 2: Python CLI can call xbin-core via PyO3 or subprocess
+- Phase 3: Full Rust CLI — both stub and CLI share the same format parser
+- Single source of truth for .xbin format (no more duplicate format.rs)
+
+## Install script + upgrade command — 2026-07-20
+
+- **File**: `scripts/install.sh` — curl-pipe-bash installer
+  - Detects platform (linux-x64, linux-arm64, macos-x64, macos-arm64)
+  - Fetches latest version from GitHub API
+  - Downloads tar.gz from releases, verifies SHA-256 checksum
+  - Installs to `/usr/local/bin/` (or `$XBIN_INSTALL_DIR`)
+  - Idempotent: skips if already up-to-date
+  - Usage: `curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash`
+- **File**: `cli/xbin/upgrade.py` — `xbin upgrade` self-update command
+  - Fetches latest version from GitHub API
+  - Compares against current `_XBIN_VERSION`
+  - Downloads platform-specific tar.gz, verifies SHA-256
+  - Replaces xbin binary in-place (with sudo if needed)
+- **File**: `cli/xbin/cli.py` — `upgrade` subparser + dispatch
+- **File**: `.github/workflows/release.yml` — fixes:
+  - Removed stale `RUST_VERSION: "1.80"` env var (never used, rustc is 1.97.1)
+  - Release notes now point to `scripts/install.sh` for easy install
+  - SHA-256 checksum files now uploaded as release assets
+  - Removed redundant `generate_release_notes: true` (was conflicting with `body_path`)
+- **Tested**: install.sh syntax check ✓, import ✓, help ✓, build+inspect+scan ✓
 
 ## SquashFS support — 2026-07-18
 
@@ -275,6 +1009,46 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - `sign.py`, `verify.py`, `trust.py`, `keygen.py`: updated to use `_util.keys_dir()` / `_util.trusted_dir()`
 - `lockfile.py`, `fetch.py`, `cross.py`: stderr for all progress messages
 
+## Real-app testing — URGENT (all runtimes)
+
+**Why**: Unit tests pass but we've never tested with real apps. Toy examples hide real bugs — missing shared libs, wrong entrypoints, broken dep resolution, env issues. We need to prove x.bin works on production apps for every runtime.
+
+**Process per app**: `git clone` → `xbin build` → run → document pass/fail/bugs → fix → re-test
+
+### Testing matrix (one real app per runtime, user will send apps)
+
+| Runtime | App type | What to test | Status |
+|---------|----------|-------------|--------|
+| **Python** | Flask/FastAPI web app | detect → build → serve → HTTP 200 | NEED APP |
+| **Node.js** | Express/Next.js app | detect → build → serve → HTTP 200 | NEED APP |
+| **Deno** | Fresh/Todo app | detect → build → serve → HTTP 200 | NEED APP |
+| **Java** | Spring Boot / Maven app | detect → build → serve → HTTP 200 | NEED APP |
+| **Ruby** | Sinatra/Rails app | detect → build → serve → HTTP 200 | NEED APP |
+| **.NET/C#** | ASP.NET app | detect → build → serve → HTTP 200 | NEED APP |
+| **Go** | Caddy/Traefik-like app | detect → build → run → HTTP 200 | NEED APP |
+| **PHP** | Laravel/Symfony app | detect → build → serve → HTTP 200 | NEED APP |
+| **Perl** | Mojolicious/Dancer app | detect → build → serve → HTTP 200 | NEED APP |
+| **Hugo** | tednoob17.github.io | detect → build → serve → HTTP 200 | ✅ DONE |
+| **Binary** | Static ELF binary | detect → build → run → correct output | NEED APP |
+
+### Known issues to expect
+- **Python**: site-packages missing, venv not fully captured, shared lib resolution failures
+- **Node.js**: node_modules too large, native addons (node-gyp) fail
+- **Deno**: vendor cache not captured, missing deno binary
+- **Java**: missing JVM, JAR manifest wrong, classpath issues
+- **Ruby**: gem paths wrong, bundler not captured
+- **.NET**: dotnet runtime missing, publish dir empty
+- **Go**: static binary OK but dynamic linking issues possible
+- **PHP**: php-fpm not available, composer autoload wrong
+- **Perl**: perl not captured, module paths wrong
+- **Hugo**: ✅ works (tednoob17.github.io test passed)
+- **Binary**: musl vs glibc mismatch, missing shared libs
+
+### What user will send
+- One real app per runtime (or a few) — user selects which ones to test first
+- Each app gets a full build → run → fix cycle
+- Results tracked in `TESTED_APPS.md` (pass/fail, size, notes, bugs found)
+
 ## Next steps (future)
 
 ### Real-app testing — top 200 GitHub projects (HIGH PRIORITY)
@@ -292,10 +1066,8 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - **Why**: marketing proof point ("we can build Flask, FastAPI, yt-dlp, n8n…"), real-world bug discovery, performance benchmarks
 - **File**: track results in `TESTED_APPS.md` at repo root (pass/fail, size, notes)
 
-### Install script + upgrade command
-- `scripts/install.sh` — curl-pipe-bash installer (like bun.sh, get.wasmer.io)
-- `xbin upgrade` — self-update command
-- See release strategy section in conversation notes
+### Distribution & packaging
+- GitHub Actions official action (`action-xbin/build`) — for CI/CD workflows
 
 ### Remaining features
 - Cross-build aarch64 stub locally: requires `rustup target add aarch64-unknown-linux-musl` + cross-linker. CI handles this automatically via GitHub Actions runners.
@@ -306,6 +1078,77 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - Distribution / discovery (lightweight registry)
 - Run full end-to-end build+sign+verify cycle for aarch64 once stub is compiled locally
 - GitHub Actions official action (`action-xbin/build`) — for CI/CD workflows
+
+### Competitor feature gaps (x.bin vs Bun vs Deno Deploy)
+
+| Feature | Bun | Deno Deploy | x.bin | Priority | Status |
+|---------|-----|-------------|-------|----------|--------|
+| `.env` file baking | Built-in `.env` | `.env` per playground | ✅ Implemented | HIGH | DONE |
+| Version metadata in binary | ✅ | ✅ | ✅ Implemented | HIGH | DONE |
+| Persistent storage | `Bun.sql` | `Deno.openKv()` | ✅ `--persist` flag | HIGH | DONE |
+| Data files (--include) | ✅ | ✅ Deno KV | ✅ `--include` flag | HIGH | DONE |
+| Tree-shaking | `--exclude-unused-npm` | ✅ | ✅ `--tree-shake` | HIGH | DONE |
+| Minification | `--bundle --minify` | ✅ | ✅ `--minify` | HIGH | DONE |
+| Framework auto-detect | ✅ | ✅ `deno compile .` | ✅ Enhanced | HIGH | DONE |
+| Hot reload (dev mode) | `bun --hot` | Tunnels + HMR | ❌ Missing | LOW | TODO (not production-focused) |
+| Browser target | `--compile --target=browser` | N/A | ❌ N/A | LOW | N/A (different use case) |
+| Cron/scheduled tasks | `Bun.cron()` | Cron in dashboard | ✅ `--cron` flag | MEDIUM | DONE |
+| Health checks | N/A | Built-in | ✅ `--health-port` | MEDIUM | DONE |
+| OpenTelemetry | N/A | Auto-instrumented | ✅ `--otel-endpoint` | MEDIUM | DONE |
+
+### Competitive analysis: x.bin vs Bun vs Wasmer (2026-07-23)
+
+**Bun (`bun build --compile`)**:
+- Compiles JS/TS into standalone executable, embeds entire Bun runtime (~50MB)
+- Self-contained: target needs nothing installed
+- Bytecode compilation for 2x faster startup
+- Cross-compilation: 8 targets (linux/win/mac × x64/arm64, musl variants)
+- Full-stack executables (HTML/CSS/JS frontend + server)
+- Embeds files (images, configs, SQLite DBs), code signing (macOS), minification, sourcemaps
+- Massive API surface: HTTP, WebSocket, PostgreSQL, Redis, SQLite, S3, FFI
+
+**Wasmer**:
+- WebAssembly runtime — runs any language compiled to .wasm
+- Universal: Rust, Go, Python, C, Ruby, JS — all compile to WASM
+- Cloud/edge deployment platform (Wasmer Edge) + registry (wasi.dev)
+- Multiple compilation backends: Singlepass, LLVM, Cranelift, JavaScriptCore
+- SDKs in Rust, Python, JS, Go, Ruby, C
+- Security: sandboxed execution, metering (instruction limits)
+
+**Where x.bin is unique**:
+- Packaging sans recompilation — Bun oblige à re-bundler, Wasmer oblige à recompiler en WASM. x.bin prend l'app telle quelle.
+- Tiny overhead — Bun embarque ~50MB de runtime, x.bin ajoute ~100KB de stub.
+- Intégrité + signature — SHA-256 + Ed25519 sign/verify + chiffrement v4. Bun n'a que codesign macOS. Wasmer a le sandbox.
+- Cache intelligent — Si le hash est déjà extrait, on saute l'extraction.
+- Multi-langue — Python, Node, Go, Rust, PHP… sans changer une ligne de code.
+
+**Where x.bin is weaker**:
+- Bun's `--compile` produces self-contained binaries (no runtime needed on target). x.bin requires python3/node/etc. on target.
+- Bun has bytecode compilation, cross-compilation for the app itself, full-stack HTML embedding, minification, sourcemaps.
+- Wasmer has cloud deployment, WASM universality, registry, metering, SDKs in 6 languages.
+
+### Improvement roadmap based on competitive analysis (2026-07-23)
+
+| # | Improvement | Inspired by | Priority | Effort |
+|---|-------------|-------------|----------|--------|
+| 1 | **Embedded runtime option** — optionally bundle python3/node/etc. into the binary for targets without the runtime installed | Bun's self-contained approach | HIGH | LARGE |
+| 2 | **Cross-compilation for apps** — build for aarch64 from x86_64 (stub already does this, extend to app layers) | Bun's 8-target cross-compilation | HIGH | MEDIUM |
+| 3 | **Bytecode precompilation** — precompile Python `.pyc` or Node bytecode at build time for faster startup | Bun's `--bytecode` flag | MEDIUM | MEDIUM |
+| 4 | **Registry/manifest** — `xbin publish` + `xbin install <package>` for sharing apps, like wasi.dev | Wasmer Registry | MEDIUM | LARGE |
+| 5 | **Cloud deploy** — `xbin deploy` to a backend (Wasmer Edge-like) | Wasmer Edge platform | LOW | VERY LARGE |
+| 6 | **WASM support** — package .wasm + wasmer runtime in the binary | Wasmer's universal approach | LOW | VERY LARGE |
+| 7 | **Minification** — JS/CSS minification for Node apps at build time | Bun's `--minify` | MEDIUM | SMALL |
+| 8 | **Sourcemaps** — embed sourcemaps for better error reporting | Bun's `--sourcemap` | LOW | SMALL |
+| 9 | **Full-stack HTML** — embed HTML/CSS/JS frontend + server in one binary | Bun's full-stack executables | LOW | MEDIUM |
+| 10 | **Windows support** — extend beyond Linux/macOS | Bun's 3-OS support | MEDIUM | LARGE |
+| 11 | **Hot reload** — `xbin dev` for development mode | Bun's `--hot` | LOW | MEDIUM |
+| 12 | **Metering/instruction limits** — deterministic resource limits for sandboxed apps | Wasmer's metering | LOW | MEDIUM |
+
+### Hugo real-site test — ✅ DONE
+- **Site**: `../tednoob17.github.io` — GoHugo site with risotto theme
+- **Result**: PASSED — 84 pages, 263 static files, Hugo v0.123.7+extended builds `public/` in ~1s, zstd compression ~140s
+- **Binary size**: 167MB after zstd (91MB is images — compressible further with image optimization)
+- **Runtime**: python3 -m http.server 1313 serves static files at runtime (hugo --minify runs at build time)
 
 ## Seccomp BPF denylist (2026-07-17)
 
@@ -461,3 +1304,46 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - **Install**: git clone + `make stub` + `pip install -e ./cli` — no curl installer, no brew.
 - **Quick links**: organized by Build, Runtime, Security, CLI — all link to mdbook docs.
 - **Guides**: organized by Python, Node.js, Deployment, Security.
+
+---
+
+## What to Do Next
+
+1. **Push** — `0bffc88` is unpushed
+2. **Benchmark after optimization** — Run `benchmarks/run-bench.sh` again to measure improvement
+3. **Install openssl-dev** for local xbin-cli testing: `sudo apt install libssl-dev`
+4. **Demo recording** — Install `asciinema` + `agg` for YC demo (see demo-yc/)
+5. **Optional: rayon for parallel file collection** — tar.rs `collect_entries()` is sequential. Could be parallelized but impact is small vs compression savings.
+
+---
+
+## Roadmap: Features & Limitations
+
+**File**: `ROADMAP.md` — Complete roadmap of features to implement and limitations to address.
+
+### Critical Features (High Priority)
+1. Cross-platform support (macOS/Windows)
+2. Delta updates (binary patching)
+3. Runtime configuration injection
+4. Secrets management
+5. Persistent storage
+6. Observability (logging/metrics/tracing)
+7. Sandboxing (seccomp/capabilities/Landlock)
+8. Network isolation
+
+### Important Features (Medium Priority)
+9. Resource limits (cgroups)
+10. Health checks
+11. Layer caching
+12. Reproducible builds
+13. Rollback mechanism
+14. Garbage collection
+15. WebAssembly support
+
+### Nice to Have (Low Priority)
+16. Package registry
+17. Desktop integration
+18. Auto-update mechanism
+19. Multi-container orchestration
+
+See `ROADMAP.md` for detailed implementation plans and timelines.

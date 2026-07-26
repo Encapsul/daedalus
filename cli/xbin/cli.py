@@ -138,18 +138,21 @@ def main(argv: list[str] | None = None) -> int:
             "  xbin inspect myapp.xbin               Show layers, deps, and metadata\n"
             "  xbin doctor                           Check prerequisites\n"
             "  xbin scan                             Scan for .xbin files\n"
+            "  xbin upgrade                          Upgrade to latest release\n"
+            "  xbin completion bash >> ~/.bashrc     Install bash completions\n"
+            "  xbin completion zsh >> ~/.zshrc       Install zsh completions\n"
             "\nexit codes:\n"
             "  0   success\n"
             "  1   operation failed (build error, bad input, etc.)\n"
             "  2   usage error (missing args, invalid flags)\n"
-            "\nfull docs: https://github.com/xbin-org/xbin"
+            "\nfull docs: https://github.com/Tednoob17/x.bin"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.1.0",
+        version="%(prog)s " + __import__("xbin").__version__,
     )
     parser.add_argument(
         "--no-color",
@@ -202,6 +205,87 @@ def main(argv: list[str] | None = None) -> int:
         "--update",
         action="store_true",
         help="incremental rebuild: reuse unchanged layers from existing .xbin",
+    )
+    p_build.add_argument(
+        "--no-install",
+        action="store_true",
+        help="skip automatic dependency installation (deps must already be installed)",
+    )
+    p_build.add_argument(
+        "--env-file",
+        metavar="FILE",
+        help="load env vars from FILE (e.g. .env) and bake into the .xbin",
+    )
+    p_build.add_argument(
+        "--version-info",
+        metavar="VERSION",
+        help="embed app version in binary metadata (e.g. 1.2.3)",
+    )
+    p_build.add_argument(
+        "--author",
+        help="embed author name in binary metadata",
+    )
+    p_build.add_argument(
+        "--description",
+        help="embed app description in binary metadata",
+    )
+    p_build.add_argument(
+        "--license",
+        help="embed license identifier in binary metadata (e.g. MIT, Apache-2.0)",
+    )
+    p_build.add_argument(
+        "--persist",
+        action="store_true",
+        help="enable persistent storage (creates ~/.local/share/xbin/{app}/ dir, "
+        "sets XBIN_PERSIST_DIR env var at runtime)",
+    )
+    p_build.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="embed additional file or directory in the binary (can be repeated)",
+    )
+    p_build.add_argument(
+        "--tree-shake",
+        action="store_true",
+        help="remove unused packages from node_modules before packaging (saves space)",
+    )
+    p_build.add_argument(
+        "--minify",
+        action="store_true",
+        help="minify JS/TS/CSS files before packaging (saves space)",
+    )
+    p_build.add_argument(
+        "--health-port",
+        type=int,
+        default=0,
+        metavar="PORT",
+        help="enable health check endpoint on PORT (0=disabled, default: 0)",
+    )
+    p_build.add_argument(
+        "--otel-endpoint",
+        metavar="URL",
+        help="OTLP collector endpoint for OpenTelemetry (e.g. http://localhost:4317)",
+    )
+    p_build.add_argument(
+        "--otel-protocol",
+        choices=["grpc", "http/protobuf"],
+        default="grpc",
+        help="OTLP protocol (default: grpc)",
+    )
+    p_build.add_argument(
+        "--cron",
+        action="append",
+        default=[],
+        metavar="NAME:SCHEDULE",
+        help="register a cron task (e.g. --cron cleanup:'*/5 * * * *')",
+    )
+    p_build.add_argument(
+        "--lang",
+        default="en",
+        metavar="LANG",
+        help="locale for subprocess output (e.g. en, fr, de; default: en)",
     )
 
     p_run = sub.add_parser("run", help="run a .xbin file")
@@ -315,6 +399,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="skip confirmation prompt (for use with --fix in scripts)",
     )
+    p_doctor.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit with error if any required tool is missing",
+    )
 
     p_scan = sub.add_parser("scan", help="scan for .xbin files and show metadata")
     _SUBPARSERS["scan"] = p_scan
@@ -330,6 +419,9 @@ def main(argv: list[str] | None = None) -> int:
         help="output as JSON",
     )
 
+    p_upgrade = sub.add_parser("upgrade", help="upgrade x.bin to the latest release")
+    _SUBPARSERS["upgrade"] = p_upgrade
+
     p_help = sub.add_parser(
         "help",
         help="show help for a command",
@@ -340,6 +432,16 @@ def main(argv: list[str] | None = None) -> int:
         nargs="?",
         default=None,
         help="command to get help for (omit for general help)",
+    )
+
+    p_completion = sub.add_parser(
+        "completion", help="generate shell completion scripts"
+    )
+    _SUBPARSERS["completion"] = p_completion
+    p_completion.add_argument(
+        "shell",
+        choices=["bash", "zsh", "fish"],
+        help="shell to generate completions for",
     )
 
     args = parser.parse_args(argv)
@@ -377,6 +479,21 @@ def main(argv: list[str] | None = None) -> int:
                 redetect=args.redetect,
                 target=args.target,
                 update=args.update,
+                no_install=args.no_install,
+                env_file=args.env_file,
+                version=args.version_info or "",
+                author=args.author or "",
+                description=args.description or "",
+                license=args.license or "",
+                persist=args.persist,
+                include=args.include,
+                tree_shake=args.tree_shake,
+                minify=args.minify,
+                health_port=args.health_port,
+                otel_endpoint=args.otel_endpoint,
+                otel_protocol=args.otel_protocol,
+                cron_tasks=args.cron,
+                lang=args.lang,
             )
             return 0
 
@@ -440,12 +557,24 @@ def main(argv: list[str] | None = None) -> int:
                 json_output=args.json,
                 fix=args.fix,
                 force=args.force,
+                strict=args.strict,
             )
 
         if args.command == "scan":
             from .scan import scan
 
             return scan(args.paths, json_output=args.json)
+
+        if args.command == "upgrade":
+            from .upgrade import upgrade
+
+            upgrade(verbose=_verbose)
+            return 0
+
+        if args.command == "completion":
+            from .completions import completion
+
+            return completion(args.shell)
     except (
         FileNotFoundError,
         NotADirectoryError,

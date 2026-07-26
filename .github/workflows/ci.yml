@@ -28,33 +28,24 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl
+          components: clippy, rustfmt
       - run: sudo apt-get update && sudo apt-get install -y musl-tools
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: stub
-      - run: cargo build --release --target x86_64-unknown-linux-musl
-        working-directory: stub
-      - run: cargo clippy -- -D warnings
-        working-directory: stub
-
-  python:
-    name: Python lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install ruff black
-      - run: ruff check xbin/
-        working-directory: cli
-      - run: black --check xbin/
-        working-directory: cli
+      - run: cargo fmt --check
+      - run: cargo clippy -p xbin-core --all-targets -- -D warnings
+      - run: cargo clippy -p xbin-stub -- -D warnings
+      - run: cargo clippy -p xbin-cli -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
+      - run: cargo build -p xbin-cli
+      - run: cargo install cargo-audit cargo-outdated --locked
+      - run: cargo audit
+      - run: cargo outdated --format json
 
   build:
     name: End-to-end build test
     runs-on: ubuntu-latest
-    needs: [rust, python]
+    needs: [rust]
     env:
       CC_x86_64_unknown_linux_musl: musl-gcc
     steps:
@@ -63,18 +54,20 @@ jobs:
         with:
           targets: x86_64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: stub
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
       - run: sudo apt-get update && sudo apt-get install -y zstd musl-tools
       - run: make stub
-      - run: pip install -e ./cli
-      - run: xbin doctor
-      - run: xbin build examples/hello-web -o /tmp/hello-web.xbin
-      - run: xbin inspect /tmp/hello-web.xbin
-      - run: xbin keygen --key-dir /tmp/xbin-keys
-      - run: xbin sign /tmp/hello-web.xbin --key /tmp/xbin-keys/*.key
-      - run: mkdir -p /tmp/xbin-trusted && cp /tmp/xbin-keys/*.pub /tmp/xbin-trusted/
-      - run: xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted
+      - run: cargo build -p xbin-cli
+      - name: xbin doctor
+        run: ./target/release/xbin doctor --strict
+      - name: xbin build hello-web
+        run: ./target/release/xbin build examples/hello-web -o /tmp/hello-web.xbin
+      - name: xbin inspect
+        run: ./target/release/xbin inspect /tmp/hello-web.xbin
+      - name: xbin keygen
+        run: ./target/release/xbin keygen --key-dir /tmp/xbin-keys
+      - name: xbin sign
+        run: ./target/release/xbin sign /tmp/hello-web.xbin --key /tmp/xbin-keys/*.key
+      - name: xbin trust
+        run: mkdir -p /tmp/xbin-trusted && cp /tmp/xbin-keys/*.pub /tmp/xbin-trusted/
+      - name: xbin verify
+        run: ./target/release/xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted

@@ -4,10 +4,8 @@
 
 - Linux x86_64
 - Rust with musl target: `rustup target add x86_64-unknown-linux-musl`
-- Python >= 3.10
 - `zstd` (available on most distributions)
 - C compiler (`gcc` or `musl-tools`) — required by `backhand` (squashfs)
-- No `ldd` required — pure-Python ELF analyzer is built-in
 
 Verify all prerequisites in one command:
 
@@ -32,7 +30,7 @@ make stub
 ## 2. Build & run a Python app
 
 ```bash
-cd cli && PYTHONPATH=. python3 -m xbin build ../examples/hello-web -o hello-web.xbin
+xbin build ./examples/hello-web -o hello-web.xbin
 
 ./hello-web.xbin
 # Server listening on http://127.0.0.1:8080
@@ -43,7 +41,7 @@ Open http://127.0.0.1:8080 in your browser.
 ## 3. Build & run a Node.js app
 
 ```bash
-cd cli && PYTHONPATH=. python3 -m xbin build ../examples/hello-node -o hello-node.xbin
+xbin build ./examples/hello-node -o hello-node.xbin
 
 ./hello-node.xbin
 # Server listening on http://127.0.0.1:8080
@@ -54,7 +52,7 @@ See the [Node.js guide](./node.md) for details on dependencies and `node_modules
 ## 4. Inspect a .xbin
 
 ```bash
-cd cli && PYTHONPATH=. python3 -m xbin inspect ../hello-web.xbin
+xbin inspect hello-web.xbin
 ```
 
 ```
@@ -71,16 +69,16 @@ integrity sha256: 4232327e...
 
 ```bash
 # Generate a keypair
-python3 -m xbin keygen --key-dir $XDG_DATA_HOME/xbin/keys
+xbin keygen --key-dir $XDG_DATA_HOME/xbin/keys
 
 # Sign a .xbin
-python3 -m xbin sign hello-web.xbin --key $XDG_DATA_HOME/xbin/keys/<fingerprint>.key
+xbin sign hello-web.xbin --key $XDG_DATA_HOME/xbin/keys/<fingerprint>.key
 
 # Copy public key to trusted directory
 cp $XDG_DATA_HOME/xbin/keys/<fingerprint>.pub $XDG_DATA_HOME/xbin/trusted-keys/
 
 # Verify
-python3 -m xbin verify hello-web.xbin
+xbin verify hello-web.xbin
 ```
 
 ## Debug
