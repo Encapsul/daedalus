@@ -12,6 +12,7 @@ pub mod dotenv;
 pub mod encrypt;
 pub mod format;
 pub mod include;
+pub mod metadata;
 pub mod minify;
 pub mod otel;
 pub mod paths;

@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use std::path::{Path, PathBuf};
 use xbin_core::detect;
+use xbin_core::metadata::{BunFeatures, EmbeddedInterpreter};
 use xbin_core::pkgmgr;
 
 #[derive(Args)]
@@ -117,6 +118,38 @@ pub struct BuildArgs {
     /// Output build result as JSON to stdout
     #[arg(long)]
     pub json: bool,
+
+    /// Embed interpreter in the binary (python3, node, deno, ruby, php, perl, java, go, wasm, custom)
+    #[arg(long)]
+    pub embed_interpreter: Option<String>,
+
+    /// Custom path to embedded interpreter (for --embed-interpreter custom)
+    #[arg(long)]
+    pub interpreter_path: Option<String>,
+
+    /// Enable WASM support with wasmtime
+    #[arg(long)]
+    pub wasm: bool,
+
+    /// Path to wasmtime binary
+    #[arg(long)]
+    pub wasmtime_path: Option<PathBuf>,
+
+    /// Cross-compile for target architectures (comma-separated, e.g., aarch64,arm64)
+    #[arg(long)]
+    pub cross_compile: Option<String>,
+
+    /// Use intelligent build cache (skip extraction if hash matches)
+    #[arg(long)]
+    pub use_cache: bool,
+
+    /// Clear build cache before building
+    #[arg(long)]
+    pub clear_cache: bool,
+
+    /// Health check endpoint path (default: /health)
+    #[arg(long)]
+    pub health_endpoint: Option<String>,
 }
 
 pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
@@ -460,6 +493,73 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let entrypoint =
         detect::resolve_entrypoint(&app_dir, runtime).unwrap_or_else(|| vec!["run".to_string()]);
 
+    let mut bun_features = BunFeatures::default();
+
+    if let Some(ref interp) = args.embed_interpreter {
+        let interpreter = match interp.to_lowercase().as_str() {
+            "python3" | "python" => EmbeddedInterpreter::Python3,
+            "node" => EmbeddedInterpreter::Node,
+            "deno" => EmbeddedInterpreter::Deno,
+            "ruby" => EmbeddedInterpreter::Ruby,
+            "php" => EmbeddedInterpreter::Php,
+            "perl" => EmbeddedInterpreter::Perl,
+            "java" => EmbeddedInterpreter::Java,
+            "go" => EmbeddedInterpreter::Go,
+            "wasm" => EmbeddedInterpreter::Wasm,
+            other => EmbeddedInterpreter::Custom(other.to_string()),
+        };
+        bun_features.embedded_runtime.interpreter = Some(interpreter);
+        if let Some(path) = &args.interpreter_path {
+            bun_features.embedded_runtime.interpreter_path = Some(path.clone());
+        }
+        if verbose {
+            eprintln!(
+                "  embedded runtime: {}",
+                bun_features.embedded_runtime.interpreter.as_ref().unwrap()
+            );
+        }
+    }
+
+    if args.wasm {
+        bun_features.wasm.enabled = true;
+        if let Some(ref path) = args.wasmtime_path {
+            bun_features.wasm.wasmtime_path = Some(path.display().to_string());
+        }
+        if verbose {
+            eprintln!("  wasm: enabled");
+        }
+    }
+
+    if let Some(port) = args.health_port {
+        bun_features.health_check.enabled = true;
+        bun_features.health_check.port = port;
+        if let Some(ref ep) = args.health_endpoint {
+            bun_features.health_check.endpoint.clone_from(ep);
+        }
+        if verbose {
+            eprintln!("  health check: port {}", port);
+        }
+    }
+
+    if let Some(ref cross) = args.cross_compile {
+        let targets: Vec<String> = cross.split(',').map(|s| s.trim().to_string()).collect();
+        bun_features.cross_compile_targets = targets;
+        if verbose {
+            eprintln!("  cross-compile: {:?}", bun_features.cross_compile_targets);
+        }
+    }
+
+    bun_features.build_cache.enabled = args.use_cache;
+    if args.clear_cache {
+        let cache_dir = xbin_core::paths::build_cache_dir(&app_dir);
+        if cache_dir.exists() {
+            std::fs::remove_dir_all(&cache_dir).ok();
+            if verbose {
+                eprintln!("  cache: cleared {}", cache_dir.display());
+            }
+        }
+    }
+
     let meta = xbin_core::assembly::build_meta_json(
         &app_name,
         runtime_name,
@@ -477,6 +577,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             app_hash: Some(new_app_hash),
             rt_deps_hash: Some(new_rt_hash),
         },
+        &bun_features,
     )?;
 
     // Assemble

@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 
 #[allow(clippy::cast_precision_loss)]
 pub fn format_size(bytes: u64) -> String {
@@ -19,6 +20,16 @@ pub fn cache_dir() -> PathBuf {
     } else {
         PathBuf::from(".xbin").join("cache")
     }
+}
+
+pub fn build_cache_dir(app_dir: &Path) -> PathBuf {
+    let app_name = app_dir.file_name().unwrap_or_default().to_string_lossy();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    app_name.hash(&mut hasher);
+    let hash = hasher.finish();
+    cache_dir()
+        .join("builds")
+        .join(format!("{app_name}_{hash:x}"))
 }
 
 pub fn default_key_dir() -> PathBuf {
