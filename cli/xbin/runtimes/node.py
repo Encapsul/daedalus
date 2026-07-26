@@ -30,9 +30,13 @@ def _is_primary_php_app(app_dir: Path) -> bool:
         return True
     if (app_dir / "wp-config.php").is_file():
         return True
-    if ((app_dir / "config" / "bundles.php").is_file() or (app_dir / "symfony.lock").is_file()):
+    if (app_dir / "config" / "bundles.php").is_file() or (
+        app_dir / "symfony.lock"
+    ).is_file():
         return True
-    if (app_dir / "public" / "index.php").is_file() and (app_dir / "composer.json").is_file():
+    if (app_dir / "public" / "index.php").is_file() and (
+        app_dir / "composer.json"
+    ).is_file():
         return True
     # WordPress plugin/theme: main plugin file with plugin header
     for php_file in app_dir.glob("*.php"):

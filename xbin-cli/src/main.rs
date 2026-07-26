@@ -178,7 +178,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn generate_man_pages(dir: &std::path::Path) -> Result<()> {
+fn generate_man_pages(dir: &std::path::Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
 
     let cmd = Cli::command();
