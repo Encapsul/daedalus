@@ -57,11 +57,17 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y zstd musl-tools
       - run: make stub
       - run: cargo build -p xbin-cli
-      - run: export PATH="$PWD/target/release:$PATH"
-      - run: xbin doctor --strict
-      - run: xbin build examples/hello-web -o /tmp/hello-web.xbin
-      - run: xbin inspect /tmp/hello-web.xbin
-      - run: xbin keygen --key-dir /tmp/xbin-keys
-      - run: xbin sign /tmp/hello-web.xbin --key /tmp/xbin-keys/*.key
-      - run: mkdir -p /tmp/xbin-trusted && cp /tmp/xbin-keys/*.pub /tmp/xbin-trusted/
-      - run: xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted
+      - name: xbin doctor
+        run: ./target/release/xbin doctor --strict
+      - name: xbin build hello-web
+        run: ./target/release/xbin build examples/hello-web -o /tmp/hello-web.xbin
+      - name: xbin inspect
+        run: ./target/release/xbin inspect /tmp/hello-web.xbin
+      - name: xbin keygen
+        run: ./target/release/xbin keygen --key-dir /tmp/xbin-keys
+      - name: xbin sign
+        run: ./target/release/xbin sign /tmp/hello-web.xbin --key /tmp/xbin-keys/*.key
+      - name: xbin trust
+        run: mkdir -p /tmp/xbin-trusted && cp /tmp/xbin-keys/*.pub /tmp/xbin-trusted/
+      - name: xbin verify
+        run: ./target/release/xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted
