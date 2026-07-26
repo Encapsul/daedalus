@@ -22,35 +22,33 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-musl
 
-      - name: Build stub
-        run: cargo build --release --target x86_64-unknown-linux-musl
-        working-directory: stub
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Test binary
+      - name: Build stub
+        run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
+
+      - name: Build CLI
+        run: cargo build --release -p xbin-cli
+
+      - name: Test binaries
         run: |
-          STUB=stub/target/x86_64-unknown-linux-musl/release/xbin-stub
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
-          file "$STUB" | grep -q "x86-64" || { echo "FAIL: not x86_64"; exit 1; }
+          STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
+          CLI=target/release/xbin
+          file "$STUB" | grep -q "ELF" || { echo "FAIL: stub not ELF"; exit 1; }
+          file "$CLI" | grep -q "ELF" || { echo "FAIL: cli not ELF"; exit 1; }
           echo "=== PASS: linux-x64 ==="
 
       - name: Package
         run: |
-          STUB=stub/target/x86_64-unknown-linux-musl/release/xbin-stub
-          CRYPTO=stub/target/x86_64-unknown-linux-musl/release/xbin-crypto
+          STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
+          CLI=target/release/xbin
+          CRYPTO=target/x86_64-unknown-linux-musl/release/xbin-crypto
           DIR="xbin-linux-x64"
-          mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
+          mkdir -p "${DIR}/bin"
           cp "$STUB" "${DIR}/bin/"
-          cp "$CRYPTO" "${DIR}/bin/"
-          cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-
-          cat > "${DIR}/bin/xbin" << 'WRAPPER'
-#!/usr/bin/env bash
-XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-exec python3 -m xbin "$@"
-WRAPPER
-          chmod +x "${DIR}/bin/xbin"
-
+          cp "$CLI" "${DIR}/bin/"
+          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
+          chmod +x "${DIR}/bin/"*
           tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
@@ -68,39 +66,35 @@ WRAPPER
         with:
           toolchain: stable
           targets: aarch64-unknown-linux-musl
-      - run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
 
       - name: Build stub
-        run: cargo build --release --target aarch64-unknown-linux-musl
-        working-directory: stub
+        run: cargo build --release --target aarch64-unknown-linux-musl -p xbin-stub
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Test binary
+      - name: Build CLI
+        run: cargo build --release -p xbin-cli
+
+      - name: Test binaries
         run: |
-          STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: not ELF"; exit 1; }
-          file "$STUB" | grep -q "aarch64" || { echo "FAIL: not aarch64"; exit 1; }
+          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
+          CLI=target/release/xbin
+          file "$STUB" | grep -q "ELF" || { echo "FAIL: stub not ELF"; exit 1; }
+          file "$STUB" | grep -q "aarch64" || { echo "FAIL: stub not aarch64"; exit 1; }
           echo "=== PASS: linux-arm64 ==="
 
       - name: Package
         run: |
-          STUB=stub/target/aarch64-unknown-linux-musl/release/xbin-stub
-          CRYPTO=stub/target/aarch64-unknown-linux-musl/release/xbin-crypto
+          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
+          CLI=target/release/xbin
+          CRYPTO=target/aarch64-unknown-linux-musl/release/xbin-crypto
           DIR="xbin-linux-arm64"
-          mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
+          mkdir -p "${DIR}/bin"
           cp "$STUB" "${DIR}/bin/"
-          cp "$CRYPTO" "${DIR}/bin/"
-          cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-
-          cat > "${DIR}/bin/xbin" << 'WRAPPER'
-#!/usr/bin/env bash
-XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-exec python3 -m xbin "$@"
-WRAPPER
-          chmod +x "${DIR}/bin/xbin"
-
+          cp "$CLI" "${DIR}/bin/"
+          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
+          chmod +x "${DIR}/bin/"*
           tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
@@ -117,37 +111,32 @@ WRAPPER
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          targets: aarch64-apple-darwin
 
       - name: Build stub
-        run: cargo build --release --target aarch64-apple-darwin
-        working-directory: stub
+        run: cargo build --release -p xbin-stub
 
-      - name: Test binary
+      - name: Build CLI
+        run: cargo build --release -p xbin-cli
+
+      - name: Test binaries
         run: |
-          STUB=stub/target/aarch64-apple-darwin/release/xbin-stub
-          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; exit 1; }
-          file "$STUB" | grep -q "arm64" || { echo "FAIL: not arm64"; exit 1; }
+          STUB=target/release/xbin-stub
+          CLI=target/release/xbin
+          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: stub not Mach-O"; exit 1; }
+          file "$CLI" | grep -q "Mach-O" || { echo "FAIL: cli not Mach-O"; exit 1; }
           echo "=== PASS: macos-arm64 ==="
 
       - name: Package
         run: |
-          STUB=stub/target/aarch64-apple-darwin/release/xbin-stub
-          CRYPTO=stub/target/aarch64-apple-darwin/release/xbin-crypto
+          STUB=target/release/xbin-stub
+          CLI=target/release/xbin
+          CRYPTO=target/release/xbin-crypto
           DIR="xbin-macos-arm64"
-          mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
+          mkdir -p "${DIR}/bin"
           cp "$STUB" "${DIR}/bin/"
-          cp "$CRYPTO" "${DIR}/bin/"
-          cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-
-          cat > "${DIR}/bin/xbin" << 'WRAPPER'
-#!/usr/bin/env bash
-XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-exec python3 -m xbin "$@"
-WRAPPER
-          chmod +x "${DIR}/bin/xbin"
-
+          cp "$CLI" "${DIR}/bin/"
+          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
+          chmod +x "${DIR}/bin/"*
           tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
@@ -164,37 +153,32 @@ WRAPPER
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          targets: x86_64-apple-darwin
 
       - name: Build stub
-        run: cargo build --release --target x86_64-apple-darwin
-        working-directory: stub
+        run: cargo build --release -p xbin-stub
 
-      - name: Test binary
+      - name: Build CLI
+        run: cargo build --release -p xbin-cli
+
+      - name: Test binaries
         run: |
-          STUB=stub/target/x86_64-apple-darwin/release/xbin-stub
-          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: not Mach-O"; exit 1; }
-          file "$STUB" | grep -q "x86_64" || { echo "FAIL: not x86_64"; exit 1; }
+          STUB=target/release/xbin-stub
+          CLI=target/release/xbin
+          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: stub not Mach-O"; exit 1; }
+          file "$CLI" | grep -q "Mach-O" || { echo "FAIL: cli not Mach-O"; exit 1; }
           echo "=== PASS: macos-x64 ==="
 
       - name: Package
         run: |
-          STUB=stub/target/x86_64-apple-darwin/release/xbin-stub
-          CRYPTO=stub/target/x86_64-apple-darwin/release/xbin-crypto
+          STUB=target/release/xbin-stub
+          CLI=target/release/xbin
+          CRYPTO=target/release/xbin-crypto
           DIR="xbin-macos-x64"
-          mkdir -p "${DIR}/bin" "${DIR}/lib/python/xbin"
+          mkdir -p "${DIR}/bin"
           cp "$STUB" "${DIR}/bin/"
-          cp "$CRYPTO" "${DIR}/bin/"
-          cp -r cli/xbin/* "${DIR}/lib/python/xbin/"
-
-          cat > "${DIR}/bin/xbin" << 'WRAPPER'
-#!/usr/bin/env bash
-XBIN_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-export PYTHONPATH="${XBIN_HOME}/lib/python:${PYTHONPATH:-}"
-exec python3 -m xbin "$@"
-WRAPPER
-          chmod +x "${DIR}/bin/xbin"
-
+          cp "$CLI" "${DIR}/bin/"
+          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
+          chmod +x "${DIR}/bin/"*
           tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4

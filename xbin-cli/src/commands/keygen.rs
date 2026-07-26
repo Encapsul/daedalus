@@ -79,7 +79,5 @@ pub fn run(args: KeygenArgs) -> Result<()> {
         eprintln!("  public key:  {}", pub_path.display());
     }
 
-    println!("{fingerprint}");
-
     Ok(())
 }

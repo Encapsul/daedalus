@@ -126,37 +126,6 @@ fn detect_mode(meta: &serde_json::Value) -> String {
 
     let runtime = meta.get("runtime").and_then(|v| v.as_str()).unwrap_or("");
     if runtime == "python" || runtime == "node" {
-        let entry = meta
-            .get("entrypoint")
-            .and_then(|v| v.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .to_lowercase()
-            })
-            .unwrap_or_default();
-
-        let server_hints = [
-            "flask",
-            "uvicorn",
-            "gunicorn",
-            "django",
-            "http.server",
-            "fastapi",
-            "starlette",
-            "bottle",
-            "tornado",
-            "aiohttp",
-            "express",
-            "hono",
-            "fastify",
-            "http",
-        ];
-        if server_hints.iter().any(|h| entry.contains(h)) {
-            return "server".into();
-        }
         return "server".into();
     }
 
