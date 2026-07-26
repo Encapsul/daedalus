@@ -18,6 +18,7 @@ pub enum Runtime {
     Go,
     Php,
     Perl,
+    Hugo,
     Binary,
 }
 
@@ -33,6 +34,7 @@ impl Runtime {
             Self::Go => "go",
             Self::Php => "php",
             Self::Perl => "perl",
+            Self::Hugo => "hugo",
             Self::Binary => "binary",
         }
     }
@@ -67,6 +69,9 @@ pub fn detect_runtime(app_dir: &Path) -> Option<Runtime> {
     }
     if detect_perl(app_dir) {
         return Some(Runtime::Perl);
+    }
+    if detect_hugo(app_dir) {
+        return Some(Runtime::Hugo);
     }
     if detect_binary(app_dir) {
         return Some(Runtime::Binary);
@@ -118,6 +123,12 @@ fn detect_php(dir: &Path) -> bool {
 
 fn detect_perl(dir: &Path) -> bool {
     dir.join("Makefile.PL").is_file() || dir.join("cpanfile").is_file()
+}
+
+fn detect_hugo(dir: &Path) -> bool {
+    dir.join("config.toml").is_file()
+        || dir.join("hugo.toml").is_file()
+        || dir.join("config.yaml").is_file()
 }
 
 fn detect_binary(dir: &Path) -> bool {
@@ -178,6 +189,7 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             let elf = find_elf(app_dir)?;
             Some(vec![format!("/app/{}", elf)])
         }
+        Runtime::Hugo => Some(vec!["hugo".into(), "server".into()]),
         Runtime::Java => {
             let jar = find_first_ext(app_dir, "jar")?;
             Some(vec!["java".into(), "-jar".into(), format!("/app/{}", jar)])
@@ -325,5 +337,12 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("README.md"), "hi").unwrap();
         assert_eq!(detect_runtime(dir.path()), None);
+    }
+
+    #[test]
+    fn detect_hugo_app() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("config.toml"), "[server]").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Hugo));
     }
 }
