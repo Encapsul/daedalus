@@ -2,6 +2,7 @@
 target/
 .cargo/config.toml
 /xbin
+xbin
 
 # Python
 __pycache__/
