@@ -139,3 +139,33 @@ sudo apt-get install -y php-gd php-mbstring php-zip php-xml php-curl
 - openEMR is a complex medical application requiring proper database setup
 - The binary contains a PHP runtime but needs an external database
 - For a simpler demo, consider using the `hello-web` example in `examples/hello-web`
+
+## Verification
+
+After building, verify the binary:
+
+```bash
+# Check binary type
+file /tmp/openemr.xbin
+# Expected: ELF 64-bit LSB pie executable, x86-64, static-pie linked
+
+# Check binary size
+ls -lh /tmp/openemr.xbin
+# Expected: ~92MB for openEMR
+```
+
+## Quick Test (Simple PHP)
+
+For a quick verification without MySQL, test with the simple PHP example:
+
+```bash
+# Build simple PHP app
+cd /tmp/simple-php-app
+/path/to/x.bin/target/release/xbin build . -o /tmp/simple-php.xbin --embed-interpreter php
+
+# Run it
+/tmp/simple-php.xbin &
+sleep 2
+curl http://127.0.0.1:8080/
+# Expected: Hello from x.bin PHP binary!
+```
