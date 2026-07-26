@@ -1,244 +1,170 @@
-<p align="center">
-  <a href="https://github.com/Tednoob17/x.bin">
-    <picture>
-      <source srcset="logo-dark.png" media="(prefers-color-scheme: dark)">
-      <img width=300 src="logo.png" alt="x.bin logo">
-    </picture>
-  </a>
-</p>
-<h1 align="center">x.bin</h1>
+# x.bin
 
-<p align="center">
-  <a href="https://tednoob17.github.io/x.bin/"><img src="https://img.shields.io/badge/docs-mdbook-blue" alt="docs"></a>
-  <a href="https://github.com/Tednoob17/x.bin/stargazers"><img src="https://img.shields.io/github/stars/Tednoob17/x.bin" alt="stars"></a>
-  <a href="https://tednoob17.github.io/x.bin/roadmap.html"><img src="https://img.shields.io/badge/status-MVP-brightgreen" alt="status"></a>
-  <a href="https://github.com/Tednoob17/x.bin/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license"></a>
-  <img src="https://img.shields.io/badge/rust-1.80%2B-000000?logo=rust&logoColor=white" alt="rust">
-  <img src="https://img.shields.io/badge/python-%3E%3D3.10-3670A0?logo=python&logoColor=ffdd54" alt="python">
-</p>
+[![CI](https://img.shields.io/github/actions/workflow/status/Tednoob17/x.bin/ci.yml?branch=main&label=build)](https://github.com/Tednoob17/x.bin/actions)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.3.2-green.svg)](https://github.com/Tednoob17/x.bin/releases)
+[![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
+[![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey.svg)]()
+[![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Tednoob17/x.bin/pulls)
 
-<div align="center">
-  <a href="https://tednoob17.github.io/x.bin/">Documentation</a>
-  <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-  <a href="https://github.com/Tednoob17/x.bin/issues">Issues</a>
-  <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-  <a href="https://tednoob17.github.io/x.bin/roadmap.html">Roadmap</a>
-</div>
+Package any app into a single self-extracting binary.
 
-<br />
+x.bin compiles any web, server, or CLI application into a single self-contained ELF executable. Supported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo.
 
-x.bin packages a Python or Node.js web/server/CLI app — code, runtime, shared libraries, and dependencies — into a **single self-extracting ELF executable**. No runtime to install. No Docker. No dependency resolution on the target machine. The file just runs.
-
-- **Single file.** One `.xbin` = launcher + runtime + app + deps. Copy it anywhere.
-- **Secure by default.** Ed25519 signatures verified before anything touches disk. SHA-256 integrity check.
-- **Fast rebuilds.** Layered format means editing code only recompresses the small app layer — not the runtime.
-- **Language-agnostic.** Python, Node.js, or native binary — same CLI, same format.
-
-## Install
-
-Linux x86_64. Kernel 5.6+ recommended. User namespace isolation requires 5.11+.
-
-```sh
-git clone https://github.com/Tednoob17/x.bin.git && cd x.bin
-make preflight     # verify all prerequisites
-make stub          # build Rust launcher + crypto binaries
-make install       # pip install --user -e ./cli
-export PATH="$HOME/.local/bin:$PATH"  # add xbin to PATH (once per shell)
-```
-
-<details>
-<summary>Other installation options</summary>
-
-- **pipx** (isolated CLI install)
-  ```sh
-  pipx install -e ./cli
-  ```
-
-- **Upgrade** (from existing install)
-  ```sh
-  git pull && make stub
-  ```
-
-- **Encrypt support** (optional, for `--encrypt` flag)
-  ```sh
-  pip install -e "./cli[encrypt]"
-  ```
-
-</details>
-
-## Quickstart
-
-Build a Python app, run it, inspect it, sign it, verify it:
+## Quick start
 
 ```bash
-$ xbin doctor                         # check prerequisites
-  [ ]   Python          3.12.3
-  [ ]   cargo           cargo 1.97.1
-  ...
-
-$ xbin doctor --fix                   # auto-install missing prerequisites
-$ xbin doctor --fix --force           # skip confirmation (for scripts/CI)
-
-$ xbin build examples/hello-web -o hello-web.xbin
-[xbin] building 'hello-web'
-  runtime: python
-  runtime layer: reused from build cache (no recompression) ✓
-[xbin] wrote hello-web.xbin (7.1MB, unsigned) in 0.6s
-
-$ chmod +x hello-web.xbin && ./hello-web.xbin
-Server listening on http://127.0.0.1:8080
-
-$ xbin inspect hello-web.xbin
-  format: v3
-  runtime: python 3.12
-  layers: 2 (runtime 26.1MB, app 84KB)
-  entrypoint: python -m app
-
-$ xbin keygen --key-dir ~/.xbin/keys -q
-bf68e4e5471d...
-
-$ xbin sign hello-web.xbin --key ~/.xbin/keys/bf68e4e5.key
-[xbin] signed hello-web.xbin
-
-$ xbin verify hello-web.xbin --trusted-dir ~/.xbin/trusted
-[xbin] signature verified for hello-web.xbin
+curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash
+xbin doctor
+cd your-app && xbin build . -o myapp.xbin
+./myapp.xbin
 ```
 
-#### Cross-build for aarch64 (from x86_64)
+## Overview
 
-> **Note**: The Python side (vendored interpreter + target wheels) works automatically.
-> The aarch64 stub itself must be pre-built: `rustup target add aarch64-unknown-linux-musl && make stub`.
-> CI handles this automatically via GitHub Actions.
+x.bin transforms any application directory into a portable, self-extracting binary that can run on target machines without requiring the host runtime. This includes:
+
+- **Python applications** — Django, FastAPI, Flask
+- **Node.js applications** — Next.js, Express, Fastify
+- **Go binaries** — Standalone executables
+- **Docker-like isolation** — Sandboxed, portable execution
+
+The tool handles runtime detection, dependency installation, compression, and signing through a unified, language-agnostic pipeline.
+
+## Supported runtimes
+
+| Runtime | Detection | Framework support |
+|---------|-----------|-------------------|
+| Python | `requirements.txt`, `pyproject.toml`, `Pipfile` | Django, FastAPI, Flask |
+| Node.js | `package.json` | Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono |
+| Deno | `deno.json`, `deno.jsonc` | Fresh |
+| Java | `pom.xml`, `build.gradle` | Spring Boot |
+| Ruby | `Gemfile` | Sinatra, Rails |
+| .NET/C# | `*.csproj`, `*.sln` | ASP.NET |
+| Go | `go.mod` | Static binary |
+| PHP | `composer.json` | Laravel, Symfony, WordPress |
+| Perl | `Makefile.PL`, `cpanfile` | Mojolicious, Dancer |
+| Hugo | `hugo.toml`, `hugo.yaml` | Static site generator |
+| Binary | ELF executable | Any static or dynamic binary |
+
+Each runtime has specific detection logic and framework support that triggers when building.
+
+## CLI commands
+
+| Command | Description |
+|---------|-------------|
+| `xbin build <dir>` | Package an app directory into a `.xbin` file |
+| `xbin inspect <file>` | Read metadata from a `.xbin` file |
+| `xbin scan [dir]` | Find `.xbin` files recursively and display metadata |
+| `xbin sign <file>` | Sign a `.xbin` with an Ed25519 private key |
+| `xbin verify <file>` | Verify the signature of a `.xbin` against trusted keys |
+| `xbin keygen` | Generate an Ed25519 keypair for signing |
+| `xbin trust <keyfile>` | Add a public key to the trusted keys directory |
+| `xbin doctor` | Check system prerequisites and report missing dependencies |
+| `xbin env` | Show xbin environment and build configuration |
+| `xbin clean` | Remove xbin cache and build artifacts |
+| `xbin completion <shell>` | Generate shell completions for bash, zsh, fish, elvish, or powershell |
+| `xbin man [dir]` | Generate man pages to the specified directory |
+
+### Key features
+- **Global `--verbose`** flag for detailed output on any command
+- **`--strict`** mode on `xbin doctor` for strict validation
+- **`--dry-run`** flag on build, inspect, scan for preview operations
+- **`.xbin.toml`** configuration file support
+- **Rust-based CLI** with zero Python dependency at runtime
+
+## Configuration
+
+Place a `.xbin.toml` in your app directory. CLI flags override config file values.
+
+```toml
+[package]
+version = "1.0.0"
+author = "Your Name"
+description = "My awesome app"
+license = "MIT"
+
+[build]
+isolation = "sandbox"
+seccomp = true
+encrypt = false
+squashfs = false
+target = "x86_64"
+no_install = false
+env_file = ".env"
+```
+
+### Build flags
 
 ```bash
-$ xbin build my-app -o my-app-aarch64.xbin --target aarch64
-# Downloads vendored Python for aarch64, pip downloads target wheels,
-# produces an aarch64 .xbin (requires aarch64 stub pre-built)
+xbin build ./myapp \
+  --output myapp.xbin \
+  --target aarch64 \
+  --squashfs \
+  --encrypt \
+  --env-file .env \
+  --dry-run \
+  --verbose
 ```
 
-#### Incremental rebuilds
+### Shell completion
 
 ```bash
-$ xbin build my-app                    # full build
-$ # ... edit app code ...
-$ xbin build my-app --update           # reuses unchanged runtime layer, rebuilds app layer only
+# Bash
+xbin completion bash >> ~/.bashrc
+
+# Zsh
+xbin completion zsh >> ~/.zshrc
+
+# Fish
+xbin completion fish > ~/.config/fish/completions/xbin.fish
 ```
 
-#### Here is what you can do next:
+### Man pages
 
-- [Package a Python app](https://tednoob17.github.io/x.bin/guides/python.html)
-- [Package a Node.js app](https://tednoob17.github.io/x.bin/guides/node.html)
-- [Sign and verify your builds](https://tednoob17.github.io/x.bin/security.html)
-- [Read the full documentation](https://tednoob17.github.io/x.bin/)
-
-## Quick links
-
-- Build
-  - [Dockerfile dependency detection](https://tednoob17.github.io/x.bin/guides/dependencies.html)
-  - [Python source AST scanning](https://tednoob17.github.io/x.bin/guides/dependencies.html)
-  - [Dependency fetcher (pip/npm/apt)](https://tednoob17.github.io/x.bin/guides/dependencies.html)
-  - [Incremental rebuilds](https://tednoob17.github.io/x.bin/reference/format.html)
-  - [Scan for .xbin files](https://tednoob17.github.io/x.bin/reference/builder.html)
-  - [Layered format (v3)](https://tednoob17.github.io/x.bin/reference/format.html)
-
-- Runtime
-  - [Python apps](https://tednoob17.github.io/x.bin/guides/python.html)
-  - [Node.js apps](https://tednoob17.github.io/x.bin/guides/node.html)
-  - [Isolation modes](https://tednoob17.github.io/x.bin/reference/isolation.html)
-  - [Shared library resolution](https://tednoob17.github.io/x.bin/reference/launcher.html)
-  - [PATH and LD_LIBRARY_PATH injection](https://tednoob17.github.io/x.bin/reference/launcher.html)
-
-- Security
-  - [Ed25519 signatures](https://tednoob17.github.io/x.bin/security.html)
-  - [Trust model (`$XDG_DATA_HOME/xbin/trusted-keys/`)](https://tednoob17.github.io/x.bin/security.html)
-  - [SHA-256 integrity verification](https://tednoob17.github.io/x.bin/reference/format.html)
-  - [Seccomp syscall filtering](https://tednoob17.github.io/x.bin/reference/isolation.html)
-
-- CLI
-  - [`xbin build`](https://tednoob17.github.io/x.bin/reference/builder.html)
-  - [`xbin build --target aarch64`](https://tednoob17.github.io/x.bin/reference/builder.html) (cross-compile)
-  - [`xbin build --squashfs`](https://tednoob17.github.io/x.bin/reference/builder.html) (SquashFS format)
-  - [`xbin inspect --json`](https://tednoob17.github.io/x.bin/reference/builder.html) (machine-readable output)
-  - [`xbin sign` / `verify`](https://tednoob17.github.io/x.bin/security.html)
-  - [`xbin keygen`](https://tednoob17.github.io/x.bin/security.html)
-  - [`xbin doctor`](https://tednoob17.github.io/x.bin/guides/quickstart.html) (check prerequisites)
-  - [`xbin doctor --fix`](https://tednoob17.github.io/x.bin/guides/quickstart.html) (auto-install missing deps)
-  - [`xbin doctor --json`](https://tednoob17.github.io/x.bin/guides/quickstart.html) (machine-readable output)
-  - [`xbin clean --all -f`](https://tednoob17.github.io/x.bin/reference/cache.html) (force clean cache)
-  - [`xbin help [command]`](https://tednoob17.github.io/x.bin/) (discoverability)
-
-## Guides
-
-- Python
-  - [Package a Python web app](https://tednoob17.github.io/x.bin/guides/python.html)
-  - [Dockerfile-based Python apps](https://tednoob17.github.io/x.bin/guides/dependencies.html)
-  - [Automatic `requirements.txt` install](https://tednoob17.github.io/x.bin/guides/dependencies.html)
-
-- Node.js
-  - [Package a Node.js app](https://tednoob17.github.io/x.bin/guides/node.html)
-  - [Automatic `package.json` install](https://tednoob17.github.io/x.bin/guides/dependencies.html)
-
-- Deployment
-  - [Single-binary deployment](https://tednoob17.github.io/x.bin/guides/quickstart.html)
-
-- Security
-  - [Signing and verification workflow](https://tednoob17.github.io/x.bin/security.html)
-  - [Managing trust keys](https://tednoob17.github.io/x.bin/security.html)
-
-## How it works
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  my-app.xbin =                                               │
-│    [ ELF launcher ][ zstd/squashfs layers ][ metadata ][ footer ]│
-│      Rust/musl        runtime + app          JSON      92B   │
-│      ~615KB            layers                 entrypoint v5  │
-└──────────────────────────────────────────────────────────────┘
+```bash
+xbin man /usr/local/share/man/man1/
 ```
 
-**At build time**, `xbin build`:
-1. Detects the runtime (Python, Node, or native binary)
-2. Scans Dockerfile for declared system/pip/npm packages and external binary fetches
-3. Scans Python AST for subprocess/os.system calls
-4. Resolves shared libraries via a pure-Python ELF analyzer (no host `ldd` needed)
-5. Fetches detected dependencies into isolated staging (`pip download`, `npm install`, etc.)
-6. Packages interpreter + stdlib + `.so` into a **runtime layer**
-7. Packages app code + dependencies into an **app layer**
-8. Compresses each layer with `zstd` (default) or `mksquashfs` (`--squashfs`)
-9. For cross-builds: downloads vendored Python for target arch, pip downloads target wheels
+## Build from source
 
-**At runtime**, the launcher:
-1. Opens `/proc/self/exe` (not `argv[0]`)
-2. Reads the versioned footer at end-of-file, validates magic
-3. If signed: verifies the Ed25519 signature — **before anything touches disk**
-4. Verifies SHA-256 integrity of the payload
-5. Checks the local cache — extracts if missing (atomic `rename()`)
-6. Enters user namespace + `pivot_root` (isolation level 2)
-7. Installs seccomp-bpf denylist (blocks dangerous syscalls)
-8. `execve()` — replaces itself with the embedded app
+Requires Rust toolchain and `cargo`.
 
-## Example apps
-
-| Example | What it demonstrates |
-|---|---|
-| [`hello-web`](/examples/hello-web) | Python stdlib HTTP server — zero dependencies |
-| [`bottle-web`](/examples/bottle-web) | Third-party dependency vendored in `.venv` |
-| [`bottle-web-pip`](/examples/bottle-web-pip) | `requirements.txt` installed automatically at build time |
-| [`hello-node`](/examples/hello-node) | Same CLI, Node.js runtime |
-
-```sh
-make example      # builds hello-web
+```bash
+git clone https://github.com/Tednoob17/x.bin.git
+cd x.bin
+cargo build --release
+# Binary at target/release/xbin
 ```
 
-## Community
+### Cargo workspace
 
-- [GitHub Issues](https://github.com/Tednoob17/x.bin/issues) — bug reports, feature requests
-- [Roadmap](https://tednoob17.github.io/x.bin/roadmap.html) — what's coming next
+| Crate | Purpose |
+|-------|---------|
+| `xbin-core` | Shared library: format, compression, detection, signing, assembly |
+| `stub` | Self-extracting launcher (Linux ELF) |
+| `xbin-cli` | CLI tool (cross-platform) |
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.html) for guidelines. PRs welcome.
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/my-feature`)
+3. Commit with signed commits (`git commit -S -m "feat: ..."`)
+4. Push and open a pull request
+
+Run checks before submitting:
+
+```bash
+cargo fmt --check
+cargo clippy -p xbin-core --all-targets -- -D warnings
+cargo test --workspace
+```
+
+### Coding conventions
+
+See [CODE_STYLE.md](CODE_STYLE.md) for Rust and Python style guidelines, best practices, and formatting rules.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE) for details.

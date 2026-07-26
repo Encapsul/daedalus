@@ -9,13 +9,20 @@ import hashlib
 import json
 import os
 import platform
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
+from . import _format as fmt
 from . import crypto
-from . import format as fmt
 
-XBIN_VERSION = "0.1.0"
+try:
+    from xbin_core import py_assemble_xbin as _rust_assemble
+
+    _HAS_RUST = True
+except ImportError:
+    _HAS_RUST = False
+
+from . import __version__ as XBIN_VERSION
 
 
 def build_meta_json(
@@ -32,18 +39,30 @@ def build_meta_json(
     payload_format: str = "",
     app_hash: str = "",
     rt_deps_hash: str = "",
+    version: str = "",
+    author: str = "",
+    description: str = "",
+    license: str = "",
 ) -> bytes:
     """Build the metadata JSON bytes for the .xbin footer."""
     meta: dict = {
         "name": name,
         "xbin_version": XBIN_VERSION,
-        "created": datetime.now(UTC).isoformat(),
+        "created": datetime.now(timezone.utc).isoformat(),
         "runtime": runtime,
         "isolation": isolation,
         "entrypoint": entrypoint,
         "env": env,
         "layers": layers,
     }
+    if version:
+        meta["version"] = version
+    if author:
+        meta["author"] = author
+    if description:
+        meta["description"] = description
+    if license:
+        meta["license"] = license
     if payload_format:
         meta["payload_format"] = payload_format
     if seccomp:
@@ -90,6 +109,17 @@ def assemble_xbin(
 
     Returns the total file size.
     """
+    if not key_path and _HAS_RUST:
+        stub_bytes = stub.read_bytes()
+        return _rust_assemble(
+            str(out_path),
+            stub_bytes,
+            payload,
+            meta_bytes,
+            encrypt,
+            squashfs,
+            target_arch,
+        )
     stub_bytes = stub.read_bytes()
     # v5 when squashfs (payload_format in metadata), v4 when encrypting,
     # v3 when signing, v2 otherwise.

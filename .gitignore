@@ -1,5 +1,7 @@
 # Rust
-stub/target/
+target/
+.cargo/config.toml
+/xbin
 
 # Python
 __pycache__/
@@ -19,6 +21,7 @@ benchmarks/report.md
 benchmarks/results.json
 benchmarks/apps/
 
+
 # Repo (extracted source trees)
 repo/
 
@@ -26,11 +29,16 @@ repo/
 *.cast
 *.mp4
 demo/
+demo-yc/
+
+# Internal notes
+useful_commands.md
+session-ses_07f9.md
 
 # Generated misc
 file.md
 ideaaa
-
+useful_commands.md
 # mdbook
 docs/book/
 

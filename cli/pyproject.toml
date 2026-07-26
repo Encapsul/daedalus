@@ -1,14 +1,14 @@
 [project]
 name = "xbin"
-version = "0.1.0"
+version = "0.3.0"
 description = "Ship your web app like a binary. Run anywhere."
 requires-python = ">=3.10"
 dependencies = []  # core: stdlib only
 
 [project.optional-dependencies]
-encrypt = ["cryptography>=41.0"]   # needed for --encrypt (AES-256-GCM)
+encrypt = ["cryptography>=49.0.0"]   # needed for --encrypt (AES-256-GCM)
 python310 = ["tomli>=2.0"]         # tomllib is stdlib in 3.11+, needed as fallback for 3.10
-dev = ["ruff>=0.1", "black>=24.0"] # linting and formatting
+dev = ["ruff>=0.1", "black>=24.0", "pytest>=7.0"] # linting, formatting, testing
 all = ["xbin[encrypt,python310,dev]"]
 
 [project.scripts]
@@ -43,6 +43,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long — Black handles wrapping; long strings are fine
+    "UP017", # datetime.UTC alias requires Python 3.11+; we support 3.10
 ]
 
 [tool.ruff.lint.isort]

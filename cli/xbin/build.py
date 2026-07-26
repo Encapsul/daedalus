@@ -29,13 +29,34 @@ from .cross import (
     is_cross_build,
     resolve_cross_python,
 )
+from .dotenv import load_dotenv
 from .encrypt import encrypt_payload
 from .layers import build_layers
 from .manifest import build_manifest
-
-XBIN_VERSION = "0.1.0"
+from .persistent import get_persist_env
+from .pkgmgr import detect_pkgmgr, install_deps
 
 _IGNORED_APP_DIRS = {".venv", "venv", "site-packages", "node_modules", ".git"}
+
+_LOCK_FILES = [
+    "requirements.txt",
+    "uv.lock",
+    "poetry.lock",
+    "Pipfile.lock",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "bun.lockb",
+]
+
+
+def _hash_lock_file(app_dir: Path) -> str:
+    """Hash the first matching lock file for change detection."""
+    for name in _LOCK_FILES:
+        p = app_dir / name
+        if p.is_file() and p.stat().st_size > 0:
+            return hashlib.sha256(p.read_bytes()).hexdigest()
+    return ""
 
 
 def _hash_app_files(app_dir: Path) -> str:
@@ -61,7 +82,7 @@ def _read_existing_xbin(xbin_path: Path, verbose: bool) -> tuple[bytes, dict] | 
 
     Returns (runtime_blob, metadata_dict) or None if not readable.
     """
-    from . import format as fmt
+    from . import _format as fmt
 
     try:
         footer = fmt.read_footer(str(xbin_path))
@@ -135,9 +156,88 @@ def _resolve_app_path(app_path: str) -> Path:
     return app_dir  # will fail the is_dir() check downstream
 
 
+def _find_primary_php_subdir(app_dir: Path) -> Path | None:
+    """Detect monorepos: if root is Node but contains PHP apps in subdirs,
+    return the primary PHP subdirectory.
+    """
+    is_node_root = (app_dir / "package.json").is_file()
+    if not is_node_root:
+        return None
+
+    workspace_patterns: list[str] = []
+    pkg_workspaces: list[str] = []
+    try:
+        import json
+
+        pkg = json.loads((app_dir / "package.json").read_text())
+        pkg_workspaces = pkg.get("workspaces", [])
+        if isinstance(pkg_workspaces, dict):
+            pkg_workspaces = pkg_workspaces.get("packages", [])
+    except Exception:
+        pass
+
+    if (app_dir / "pnpm-workspace.yaml").is_file():
+        try:
+            text = (app_dir / "pnpm-workspace.yaml").read_text()
+            for line in text.splitlines():
+                line = line.strip()
+                if line.startswith("- "):
+                    workspace_patterns.append(line[2:].strip().strip("'").strip('"'))
+        except Exception:
+            pass
+
+    workspace_patterns.extend(pkg_workspaces)
+
+    if not workspace_patterns:
+        return None
+
+    candidates: list[Path] = []
+    for pattern in workspace_patterns:
+        for match in app_dir.glob(pattern):
+            if match.is_dir():
+                has_composer = (match / "composer.json").is_file()
+                has_plugin = False
+                for php_file in match.glob("*.php"):
+                    try:
+                        text = php_file.read_text(errors="ignore")
+                        if "Plugin Name:" in text:
+                            has_plugin = True
+                            break
+                    except Exception:
+                        continue
+                if has_composer or has_plugin:
+                    candidates.append(match)
+
+    if not candidates:
+        return None
+
+    def _score(c: Path) -> tuple[int, int]:
+        score = 0
+        if (c / "artisan").is_file():
+            score += 100
+        if (c / "wp-config.php").is_file():
+            score += 90
+        for php_file in c.glob("*.php"):
+            try:
+                text = php_file.read_text(errors="ignore")
+                if "Plugin Name:" in text:
+                    score += 80
+                    break
+            except Exception:
+                continue
+        if "plugins" in str(c):
+            score += 10
+        if "packages" in str(c):
+            score -= 5
+        return (score, -len(str(c)))
+
+    candidates.sort(key=_score, reverse=True)
+    return candidates[0]
+
+
 def build(
     app_path: str,
-    output: str | None,
+    output: str | None = None,
     key_path: str | None = None,
     isolation: int = 0,
     seccomp: bool = False,
@@ -147,6 +247,21 @@ def build(
     redetect: bool = False,
     target: str | None = None,
     update: bool = False,
+    no_install: bool = False,
+    env_file: str | None = None,
+    version: str = "",
+    author: str = "",
+    description: str = "",
+    license: str = "",
+    persist: bool = False,
+    include: list[str] | None = None,
+    tree_shake: bool = False,
+    minify: bool = False,
+    health_port: int = 0,
+    otel_endpoint: str | None = None,
+    otel_protocol: str = "grpc",
+    cron_tasks: list[str] | None = None,
+    lang: str = "en",
 ) -> str:
     """Build a .xbin (v3/v4/v5 format, multi-layer). Returns the output path.
 
@@ -164,6 +279,44 @@ def build(
     app_dir = _resolve_app_path(app_path)
     if not app_dir.is_dir():
         raise NotADirectoryError(f"{app_dir} is not a directory")
+
+    # Auto-detect monorepos: if root is Node but contains PHP apps in subdirs,
+    # build the primary PHP subdirectory instead.
+    primary_php = _find_primary_php_subdir(app_dir)
+    if primary_php is not None:
+        if verbose:
+            print(
+                f"[xbin] monorepo detected, building PHP app at {primary_php}",
+                file=sys.stderr,
+            )
+        return build(
+            str(primary_php),
+            output,
+            key_path=key_path,
+            isolation=isolation,
+            seccomp=seccomp,
+            encrypt=encrypt,
+            squashfs=squashfs,
+            verbose=verbose,
+            redetect=redetect,
+            target=target,
+            update=update,
+            no_install=no_install,
+            env_file=env_file,
+            version=version,
+            author=author,
+            description=description,
+            license=license,
+            persist=persist,
+            include=include,
+            tree_shake=tree_shake,
+            minify=minify,
+            health_port=health_port,
+            otel_endpoint=otel_endpoint,
+            otel_protocol=otel_protocol,
+            cron_tasks=cron_tasks,
+            lang=lang,
+        )
 
     manifest_path = app_dir / "xbin.toml"
     if manifest_path.is_file():
@@ -206,6 +359,110 @@ def build(
         print(f"  runtime: {plan.runtime}", file=sys.stderr)
         print(f"  entrypoint: {' '.join(plan.entrypoint)}", file=sys.stderr)
 
+    # --- Load .env file and merge into plan.env ---
+    env_file_path: Path | None = None
+    if env_file:
+        dotenv_env = load_dotenv(app_dir, env_file, verbose=verbose)
+        plan.env.update(dotenv_env)
+        # Resolve env_file_path for copying into app layer.
+        candidate = Path(env_file)
+        if not candidate.is_absolute():
+            candidate = app_dir / env_file
+        if candidate.is_file():
+            env_file_path = candidate
+
+    # --- Persistent storage ---
+    if persist:
+        persist_env = get_persist_env(name)
+        plan.env.update(persist_env)
+        if verbose:
+            print(
+                f"  persistent storage: ~/.local/share/xbin/{name}/",
+                file=sys.stderr,
+            )
+
+    # --- Resolve include paths ---
+    include_paths: list[Path] = []
+    if include:
+        for inc in include:
+            inc_path = Path(inc)
+            if not inc_path.is_absolute():
+                inc_path = app_dir / inc
+            if not inc_path.exists():
+                raise FileNotFoundError(f"--include: path not found: {inc}")
+            include_paths.append(inc_path)
+            if verbose:
+                print(
+                    f"  include: {inc_path.name} ({'dir' if inc_path.is_dir() else 'file'})",
+                    file=sys.stderr,
+                )
+
+    # --- Tree-shaking: remove unused node_modules packages ---
+    if tree_shake:
+        from .treeshake import prune_node_modules
+
+        removed = prune_node_modules(app_dir, verbose=verbose)
+        if verbose:
+            print(
+                f"  tree-shake: removed {removed} unused package(s)",
+                file=sys.stderr,
+            )
+
+    # --- Minification: shrink JS/TS/CSS ---
+    if minify:
+        from .minify import minify_app_dir
+
+        minified = minify_app_dir(app_dir, verbose=verbose)
+        if verbose:
+            print(
+                f"  minify: minified {minified} file(s)",
+                file=sys.stderr,
+            )
+
+    # --- OpenTelemetry setup ---
+    if otel_endpoint:
+        from .otel import build_otel_env
+
+        otel_env = build_otel_env(
+            service_name=plan.env.get("XBIN_APP_NAME", "app"),
+            version=version,
+            endpoint=otel_endpoint,
+            protocol=otel_protocol,
+        )
+        plan.env.update(otel_env)
+        if verbose:
+            print(
+                f"  otel: endpoint={otel_endpoint} protocol={otel_protocol}",
+                file=sys.stderr,
+            )
+
+    # --- Cron/scheduled tasks ---
+    if cron_tasks:
+        from .cron import build_cron_env
+
+        parsed_tasks = []
+        for ct in cron_tasks:
+            if ":" not in ct:
+                raise ValueError(f"--cron format: NAME:SCHEDULE (got '{ct}')")
+            name, _, schedule = ct.partition(":")
+            parsed_tasks.append({"name": name, "schedule": schedule})
+        cron_env = build_cron_env(parsed_tasks)
+        plan.env.update(cron_env)
+        if verbose:
+            print(
+                f"  cron: {len(parsed_tasks)} task(s) registered",
+                file=sys.stderr,
+            )
+
+    # --- Health check port ---
+    if health_port:
+        plan.env["XBIN_HEALTH_PORT"] = str(health_port)
+        if verbose:
+            print(
+                f"  health: endpoint enabled on port {health_port}",
+                file=sys.stderr,
+            )
+
     # --- Cross-compilation setup ---
     cross_root: Path | None = None
     if target and is_cross_build(target):
@@ -228,19 +485,36 @@ def build(
 
     t0 = time.time()
 
+    # --- Package manager install (uv/poetry/pipenv/pip/pnpm/yarn/bun/npm/composer) ---
+    if not no_install:
+        pm = detect_pkgmgr(app_dir, plan.runtime)
+        if pm is not None:
+            if verbose:
+                print(
+                    f"[xbin] installing dependencies via {pm.name}...", file=sys.stderr
+                )
+            install_dir = install_deps(app_dir, pm, verbose, lang=lang)
+            if install_dir and install_dir.is_dir():
+                existing_paths = [sp[0] for sp in plan.site_packages]
+                if install_dir not in existing_paths:
+                    rel = f"/{str(install_dir.relative_to(app_dir)).lstrip('/')}"
+                    plan.site_packages.append((install_dir, f"/app/{rel.lstrip('/')}"))
+
     # --- Compute hashes for metadata (always, used by --update and stored) ---
     new_app_hash = _hash_app_files(app_dir)
-    req = app_dir / "requirements.txt"
-    new_rt_hash = hashlib.sha256(req.read_bytes()).hexdigest() if req.is_file() else ""
+    new_rt_hash = _hash_lock_file(app_dir)
 
     # --- Incremental update: reuse existing layers when possible ---
     reuse_rt_blob: bytes | None = None
+    reuse_rt_usize: int = 0
     if update and out_path.is_file():
         existing = _read_existing_xbin(out_path, verbose)
         if existing is not None:
             old_rt_blob, old_meta = existing
             old_app_hash = old_meta.get("app_hash", "")
             old_rt_hash = old_meta.get("rt_deps_hash", "")
+            old_layers = old_meta.get("layers", [])
+            old_rt_usize = old_layers[0].get("usize", 0) if old_layers else 0
 
             if old_app_hash == new_app_hash and old_rt_hash == new_rt_hash:
                 if verbose:
@@ -253,6 +527,7 @@ def build(
                 if verbose:
                     print("[xbin] app changed, reusing runtime layer", file=sys.stderr)
                 reuse_rt_blob = old_rt_blob
+                reuse_rt_usize = old_rt_usize
             else:
                 if verbose:
                     reason = (
@@ -271,7 +546,14 @@ def build(
             with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
                 app_dir_layer = Path(tmp) / "app"
                 app_dir_layer.mkdir()
-                build_app_layer(app_dir, plan, app_dir_layer, verbose)
+                build_app_layer(
+                    app_dir,
+                    plan,
+                    app_dir_layer,
+                    verbose,
+                    env_file_path=env_file_path,
+                    include_paths=include_paths,
+                )
                 app_sqfs = mksquashfs(app_dir_layer)
             rt_sqfs = reuse_rt_blob
             if verbose:
@@ -291,6 +573,8 @@ def build(
                 squashfs=True,
                 cross_python_root=cross_root,
                 target_arch=target,
+                env_file_path=env_file_path,
+                include_paths=include_paths,
             )
         stub_bytes = stub.read_bytes()
         rt_offset = len(stub_bytes)
@@ -313,7 +597,7 @@ def build(
         ]
         payload_format = "squashfs"
     else:
-        rt_usize = 0
+        rt_usize = reuse_rt_usize
         app_usize = 0
         if reuse_rt_blob is not None:
             # Reuse existing runtime blob, only rebuild app layer.
@@ -324,7 +608,14 @@ def build(
             with tempfile.TemporaryDirectory(prefix="xbin-build-") as tmp:
                 app_dir_layer = Path(tmp) / "app"
                 app_dir_layer.mkdir()
-                build_app_layer(app_dir, plan, app_dir_layer, verbose)
+                build_app_layer(
+                    app_dir,
+                    plan,
+                    app_dir_layer,
+                    verbose,
+                    env_file_path=env_file_path,
+                    include_paths=include_paths,
+                )
                 app_tar = tar_deterministic(app_dir_layer)
             from .layers import compress_layer_cached
 
@@ -346,6 +637,8 @@ def build(
                 squashfs=False,
                 cross_python_root=cross_root,
                 target_arch=target,
+                env_file_path=env_file_path,
+                include_paths=include_paths,
             )
             rt_usize = len(rt_tar)
             app_usize = len(app_tar)
@@ -399,6 +692,10 @@ def build(
         payload_format=payload_format,
         app_hash=new_app_hash,
         rt_deps_hash=new_rt_hash,
+        version=version,
+        author=author,
+        description=description,
+        license=license,
     )
     size = assemble_xbin(
         out_path,

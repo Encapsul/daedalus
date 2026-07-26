@@ -5,8 +5,8 @@ import hashlib
 import os
 import sys
 
+from . import _format as fmt
 from . import crypto
-from . import format as fmt
 from ._util import trusted_dir as _trusted_dir
 
 

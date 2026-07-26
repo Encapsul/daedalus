@@ -28,9 +28,10 @@ WORK="/tmp/xbin-bench"
 APPS_DIR="$WORK/apps"
 PORT_BASE=19800
 
-# Xbin command — not installed globally, run via module.
+# Xbin command — use the Rust CLI binary.
+XBIN_BIN="$REPO_ROOT/target/release/xbin"
 xbin() {
-    PYTHONPATH="$REPO_ROOT/cli" python3 -m xbin "$@"
+    "$XBIN_BIN" "$@"
 }
 
 # Detect cargo bin (for stub build).

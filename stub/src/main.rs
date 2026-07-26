@@ -7,10 +7,8 @@
 //! Level 0 isolation (MVP): `LD_LIBRARY_PATH`, no chroot. Levels 1/2
 //! (chroot, user namespaces) in Phase 2 — see docs/src/roadmap.md.
 
-mod format;
 mod squashfs_extract;
 
-use format::{read_at, Footer};
 use serde::Deserialize;
 use std::ffi::CString;
 use std::fs::{self, File};
@@ -18,16 +16,25 @@ use std::io::{self, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::exit;
+use xbin_core::format::{self as format, read_at, Footer};
 
 /// Standard library search paths for `LD_LIBRARY_PATH`.
 /// Kept in sync with cli/xbin/build.py `LD_LIBRARY_PATH` construction.
 #[cfg(target_arch = "x86_64")]
 const LD_PATHS: &[&str] = &[
-    "lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/x86_64-linux-gnu",
+    "lib",
+    "lib64",
+    "usr/lib",
+    "usr/lib64",
+    "usr/lib/x86_64-linux-gnu",
 ];
 #[cfg(target_arch = "aarch64")]
 const LD_PATHS: &[&str] = &[
-    "lib", "lib64", "usr/lib", "usr/lib64", "usr/lib/aarch64-linux-gnu",
+    "lib",
+    "lib64",
+    "usr/lib",
+    "usr/lib64",
+    "usr/lib/aarch64-linux-gnu",
 ];
 
 /// Binary search paths for PATH, mirroring `LD_PATHS` for executables.
@@ -112,7 +119,11 @@ fn run() -> io::Result<()> {
 
     // 2. Compute cache key and check hit BEFORE reading the payload.
     let layered = footer.format_version >= 2 && !meta.layers.is_empty();
-    let hash = if layered { cache_key_v2(&meta.layers) } else { footer.sha256_hex() };
+    let hash = if layered {
+        cache_key_v2(&meta.layers)
+    } else {
+        footer.sha256_hex()
+    };
 
     let base = cache_dir()?;
     fs::create_dir_all(&base)?;
@@ -133,7 +144,11 @@ fn run() -> io::Result<()> {
         eprintln!("[xbin] cold start: extracting {}", meta.name);
     }
 
-    let payload = read_at(&mut exe, footer.payload_offset, footer.payload_csize as usize)?;
+    let payload = read_at(
+        &mut exe,
+        footer.payload_offset,
+        footer.payload_csize as usize,
+    )?;
 
     // Verify Ed25519 signature (v3+ only).
     if footer.format_version >= 3 && footer.flags & format::FLAG_SIGNED != 0 {
@@ -143,14 +158,10 @@ fn run() -> io::Result<()> {
         }
     }
 
-    // Verify SHA-256 integrity.
-    if layered {
-        let mut buf = payload.clone();
-        buf.extend_from_slice(&meta_bytes);
-        verify_sha256(&buf, &footer.payload_sha256)?;
-    } else {
-        verify_sha256(&payload, &footer.payload_sha256)?;
-    }
+    // Verify SHA-256 integrity (hash = SHA-256(payload || meta_bytes)).
+    let mut buf = payload.clone();
+    buf.extend_from_slice(&meta_bytes);
+    verify_sha256(&buf, &footer.payload_sha256)?;
 
     // Decrypt payload (v4+ with AES-256-GCM).
     // Happens AFTER signature + integrity verification — we only decrypt
@@ -175,10 +186,10 @@ fn run() -> io::Result<()> {
     if !ready_marker.exists() {
         let is_squashfs = meta.payload_format == format::PAYLOAD_FORMAT_SQUASHFS;
         if is_squashfs {
-            let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered);
+            let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered)?;
             extract_squashfs_atomic(&blobs, &cache_root, &rootfs)?;
         } else {
-            let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered);
+            let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered)?;
             extract_atomic(&blobs, &cache_root, &rootfs)?;
         }
     }
@@ -199,7 +210,12 @@ fn run() -> io::Result<()> {
 ///
 /// Trusted public keys are read from `~/.xbin/trusted-keys/` (or `$XBIN_TRUSTED_DIR`).
 /// The launcher accepts the file if **any** trusted key verifies the signature.
-fn verify_ed25519(footer: &Footer, exe: &mut File, payload: &[u8], meta_bytes: &[u8]) -> io::Result<()> {
+fn verify_ed25519(
+    footer: &Footer,
+    exe: &mut File,
+    payload: &[u8],
+    meta_bytes: &[u8],
+) -> io::Result<()> {
     // Read signature block: [sig_size: u32le][signature: 64 bytes]
     let sig_data = read_at(exe, footer.sig_offset, 68)?;
     let sig_size = u32::from_le_bytes(sig_data[0..4].try_into().unwrap()) as usize;
@@ -280,12 +296,7 @@ fn cache_key_v2(layers: &[Layer]) -> String {
     for l in layers {
         h.update(l.sha256.as_bytes());
     }
-    let out = h.finalize();
-    let mut s = String::with_capacity(64);
-    for b in out {
-        s.push_str(&format!("{:02x}", b));
-    }
-    s
+    hex::encode(h.finalize())
 }
 
 fn slice_layers<'a>(
@@ -293,16 +304,20 @@ fn slice_layers<'a>(
     region_offset: u64,
     meta: &Metadata,
     layered: bool,
-) -> Vec<&'a [u8]> {
+) -> io::Result<Vec<&'a [u8]>> {
     if !layered {
-        return vec![payload];
+        return Ok(vec![payload]);
     }
     meta.layers
         .iter()
         .map(|l| {
             let start = (l.offset - region_offset) as usize;
-            let end = start + l.csize as usize;
-            &payload[start..end]
+            let end = start
+                .checked_add(l.csize as usize)
+                .ok_or_else(|| err("layer size overflow"))?;
+            payload
+                .get(start..end)
+                .ok_or_else(|| err("layer extends beyond payload boundary"))
         })
         .collect()
 }
@@ -326,15 +341,12 @@ fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Derive a 32-byte AES key from an Ed25519 signing seed via HKDF-SHA256.
+/// Uses the shared implementation in xbin-core.
 fn hkdf_derive_key(signing_seed: &[u8]) -> [u8; 32] {
-    use hkdf::Hkdf;
-    use sha2::Sha256;
-    let salt = b"xbin-encrypt-v1";
-    let info = b"aes-256-gcm-key";
-    let hk = Hkdf::<Sha256>::new(Some(salt), signing_seed);
-    let mut key = [0u8; 32];
-    hk.expand(info, &mut key).expect("HKDF expand failed");
-    key
+    let seed: &[u8; 32] = signing_seed
+        .try_into()
+        .expect("signing_seed must be exactly 32 bytes");
+    xbin_core::encrypt::hkdf_derive_key(seed).expect("HKDF key derivation failed")
 }
 
 /// Decrypt an AES-256-GCM payload.
@@ -385,38 +397,31 @@ fn cache_dir() -> io::Result<PathBuf> {
 }
 
 fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
-    let parent = cache_root.parent().unwrap_or(Path::new("/tmp"));
-    fs::create_dir_all(parent)?;
-
-    let tmp = parent.join(format!(".tmp-{}-{}", std::process::id(), nanos()));
-    let tmp_rootfs = tmp.join("rootfs");
-    fs::create_dir_all(&tmp_rootfs)?;
-
-    for blob in blobs {
-        let decoder = ruzstd::StreamingDecoder::new(io::Cursor::new(*blob))
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("zstd: {e}")))?;
-        let mut archive = tar::Archive::new(decoder);
-        archive.set_preserve_permissions(true);
-        archive.set_overwrite(true);
-        archive.unpack(&tmp_rootfs)?;
-    }
-
-    File::create(tmp.join(".ready"))?.write_all(b"1")?;
-
-    match fs::rename(&tmp, cache_root) {
-        Ok(()) => Ok(()),
-        Err(_) if rootfs.exists() => {
-            let _ = fs::remove_dir_all(&tmp);
-            Ok(())
+    atomic_extract(cache_root, rootfs, |tmp_rootfs| {
+        for blob in blobs {
+            let decoder = ruzstd::StreamingDecoder::new(io::Cursor::new(*blob))
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("zstd: {e}")))?;
+            let mut archive = tar::Archive::new(decoder);
+            archive.set_preserve_permissions(true);
+            archive.set_overwrite(true);
+            archive.unpack(tmp_rootfs)?;
         }
-        Err(e) => {
-            let _ = fs::remove_dir_all(&tmp);
-            Err(e)
-        }
-    }
+        Ok(())
+    })
 }
 
 fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
+    atomic_extract(cache_root, rootfs, |tmp_rootfs| {
+        squashfs_extract::extract_squashfs_layers(blobs, tmp_rootfs)
+    })
+}
+
+/// Shared atomic extraction: create tmp dir, run extraction closure, write .ready, rename.
+fn atomic_extract(
+    cache_root: &Path,
+    rootfs: &Path,
+    extract_fn: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<()> {
     let parent = cache_root.parent().unwrap_or(Path::new("/tmp"));
     fs::create_dir_all(parent)?;
 
@@ -424,7 +429,7 @@ fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) ->
     let tmp_rootfs = tmp.join("rootfs");
     fs::create_dir_all(&tmp_rootfs)?;
 
-    squashfs_extract::extract_squashfs_layers(blobs, &tmp_rootfs)?;
+    extract_fn(&tmp_rootfs)?;
 
     File::create(tmp.join(".ready"))?.write_all(b"1")?;
 
@@ -460,14 +465,14 @@ fn setup_env(
     rootfs: &Path,
     use_pivot: bool,
     orig_cwd: Option<&Path>,
-) -> std::collections::BTreeMap<String, String> {
+) -> io::Result<std::collections::BTreeMap<String, String>> {
     let mut env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
 
     if use_pivot {
-        env.insert("LD_LIBRARY_PATH".into(),
-                   LD_PATHS.join(":"));
+        env.insert("LD_LIBRARY_PATH".into(), LD_PATHS.join(":"));
     } else {
-        let mut paths: Vec<String> = LD_PATHS.iter()
+        let mut paths: Vec<String> = LD_PATHS
+            .iter()
             .map(|p| rootfs.join(p))
             .filter(|p| p.exists())
             .map(|p| p.to_string_lossy().into_owned())
@@ -484,7 +489,8 @@ fn setup_env(
     if use_pivot {
         env.insert("PATH".into(), BIN_PATHS.join(":"));
     } else {
-        let mut paths: Vec<String> = BIN_PATHS.iter()
+        let mut paths: Vec<String> = BIN_PATHS
+            .iter()
             .map(|p| rootfs.join(p))
             .filter(|p| p.exists())
             .map(|p| p.to_string_lossy().into_owned())
@@ -506,7 +512,7 @@ fn setup_env(
         env.insert(k.clone(), v.replace("${ROOTFS}", &rootfs_str));
     }
 
-    env
+    Ok(env)
 }
 
 /// Resolve a rootfs path: absolute if using `pivot_root`, relative to rootfs otherwise.
@@ -523,7 +529,7 @@ fn make_resolve<'a>(rootfs: &'a Path, use_pivot: bool) -> impl Fn(&str) -> PathB
 }
 
 /// Convert a `BTreeMap<String,String>` to a null-terminated `Vec<CString>` for execve.
-fn env_to_cstrings(env: &std::collections::BTreeMap<String, String>) -> Vec<CString> {
+fn env_to_cstrings(env: &std::collections::BTreeMap<String, String>) -> io::Result<Vec<CString>> {
     env.iter()
         .map(|(k, v)| cstr(format!("{k}={v}").as_bytes()))
         .collect()
@@ -535,7 +541,10 @@ fn env_to_cstrings(env: &std::collections::BTreeMap<String, String>) -> Vec<CStr
 
 fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     if meta.entrypoint.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "empty entrypoint"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "empty entrypoint",
+        ));
     }
 
     let orig_cwd = std::env::current_dir().ok();
@@ -546,7 +555,9 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         pivot_root_into(rootfs)?;
         if meta.seccomp {
             if let Err(e) = install_seccomp_denylist() {
-                eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+                eprintln!(
+                    "[xbin] warning: seccomp not available, running without syscall filter: {e}"
+                );
             }
         }
     }
@@ -554,31 +565,37 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
     let resolve = make_resolve(rootfs, use_pivot);
 
     let prog = resolve(&meta.entrypoint[0]);
-    let prog_c = cstr(prog.as_os_str().as_bytes());
+    let prog_c = cstr(prog.as_os_str().as_bytes())?;
 
     let mut argv: Vec<CString> = Vec::new();
     argv.push(prog_c.clone());
     for a in &meta.entrypoint[1..] {
-        argv.push(cstr(resolve(a).as_os_str().as_bytes()));
+        argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
     }
     for a in std::env::args_os().skip(1) {
-        argv.push(cstr(a.as_bytes()));
+        argv.push(cstr(a.as_bytes())?);
     }
 
-    let env = setup_env(meta, rootfs, use_pivot, orig_cwd.as_deref());
-    let env_c = env_to_cstrings(&env);
+    let env = setup_env(meta, rootfs, use_pivot, orig_cwd.as_deref())?;
 
     if let Some(cwd) = &meta.cwd {
         let dir = resolve(cwd);
         std::env::set_current_dir(&dir).ok();
     }
 
+    // Set environment variables so execvp inherits them.
+    for (k, v) in &env {
+        std::env::set_var(k, v);
+    }
+
     let argv_ptrs = to_ptr_vec(&argv);
-    let env_ptrs = to_ptr_vec(&env_c);
-    // SAFETY: execve(2) replaces the current process. prog_c is a valid CString,
-    // argv_ptrs and env_ptrs are null-terminated. We never return on success.
+    // SAFETY: execvp(3) replaces the current process. prog_c is a valid CString,
+    // argv_ptrs is null-terminated. We never return on success.
+    // execvp searches PATH for bare command names (e.g. "python3") and uses
+    // absolute paths as-is (e.g. "/app/app.py"). Environment is inherited
+    // from the current process after set_var calls above.
     unsafe {
-        libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
+        libc_execvp(prog_c.as_ptr(), argv_ptrs.as_ptr());
     }
     Err(io::Error::last_os_error())
 }
@@ -597,12 +614,14 @@ fn supervise_services(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         pivot_root_into(rootfs)?;
         if meta.seccomp {
             if let Err(e) = install_seccomp_denylist() {
-                eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+                eprintln!(
+                    "[xbin] warning: seccomp not available, running without syscall filter: {e}"
+                );
             }
         }
     }
 
-    let base_env = setup_env(meta, rootfs, use_pivot, None);
+    let base_env = setup_env(meta, rootfs, use_pivot, None)?;
     let resolve = make_resolve(rootfs, use_pivot);
 
     let children = fork_services(meta, &base_env, &resolve, rootfs, verbose)?;
@@ -622,19 +641,19 @@ fn fork_services(
     let mut children = Vec::new();
     for svc in &meta.services {
         let prog = resolve(&svc.cmd[0]);
-        let prog_c = cstr(prog.as_os_str().as_bytes());
+        let prog_c = cstr(prog.as_os_str().as_bytes())?;
 
         let mut argv: Vec<CString> = Vec::new();
         argv.push(prog_c.clone());
         for a in &svc.cmd[1..] {
-            argv.push(cstr(resolve(a).as_os_str().as_bytes()));
+            argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
         }
 
         let mut env = base_env.clone();
         for (k, v) in &svc.env {
             env.insert(k.clone(), v.replace("${ROOTFS}", &rootfs.to_string_lossy()));
         }
-        let env_c = env_to_cstrings(&env);
+        let env_c = env_to_cstrings(&env)?;
 
         // SAFETY: fork(2) creates a copy of the calling process. The child
         // calls execve (which never returns on success) or exit(127).
@@ -650,7 +669,11 @@ fn fork_services(
                 // SAFETY: execve(2) replaces the child process. All pointers
                 // are valid CStrings, envp is null-terminated.
                 libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
-                eprintln!("[xbin] failed to exec {}: {}", svc.cmd[0], io::Error::last_os_error());
+                eprintln!(
+                    "[xbin] failed to exec {}: {}",
+                    svc.cmd[0],
+                    io::Error::last_os_error()
+                );
                 std::process::exit(127);
             }
             if verbose {
@@ -665,10 +688,19 @@ fn fork_services(
 /// Block until all services with `ready_port` are accepting connections.
 fn wait_for_health(meta: &Metadata, verbose: bool) -> io::Result<()> {
     for svc in &meta.services {
-        if svc.ready_port == 0 { continue; }
-        let timeout = if svc.ready_timeout > 0 { svc.ready_timeout } else { 30 };
+        if svc.ready_port == 0 {
+            continue;
+        }
+        let timeout = if svc.ready_timeout > 0 {
+            svc.ready_timeout
+        } else {
+            30
+        };
         if verbose {
-            eprintln!("[xbin] waiting for {}:{} (timeout {}s)", svc.name, svc.ready_port, timeout);
+            eprintln!(
+                "[xbin] waiting for {}:{} (timeout {}s)",
+                svc.name, svc.ready_port, timeout
+            );
         }
         wait_for_port(svc.ready_port, timeout)?;
         if verbose {
@@ -688,7 +720,9 @@ fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Result<()
         // SAFETY: waitpid(2) with pid=-1 waits for any child. status is
         // filled by the kernel. We only read it after a successful return.
         let pid = unsafe { libc::waitpid(-1, &mut status, 0) };
-        if pid < 0 { break; }
+        if pid < 0 {
+            break;
+        }
         remaining -= 1;
 
         if let Some((name, _)) = children.iter().find(|(_, p)| *p == pid) {
@@ -697,23 +731,31 @@ fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Result<()
                 if verbose {
                     eprintln!("[xbin] service '{}' exited with code {}", name, code);
                 }
-                if code != 0 && exit_code == 0 { exit_code = code; }
+                if code != 0 && exit_code == 0 {
+                    exit_code = code;
+                }
             } else if libc::WIFSIGNALED(status) {
                 let sig = libc::WTERMSIG(status);
                 eprintln!("[xbin] service '{}' killed by signal {}", name, sig);
-                if exit_code == 0 { exit_code = 128 + sig; }
+                if exit_code == 0 {
+                    exit_code = 128 + sig;
+                }
                 // One service died: kill the rest.
                 for (_, cp) in children {
                     if *cp != pid {
                         // SAFETY: kill(2) sends a signal to a process we own
                         // (forked from us). SIGTERM is a graceful shutdown.
-                        unsafe { libc::kill(*cp, libc::SIGTERM); }
+                        unsafe {
+                            libc::kill(*cp, libc::SIGTERM);
+                        }
                     }
                 }
             }
         }
     }
-    if exit_code != 0 { exit(exit_code); }
+    if exit_code != 0 {
+        exit(exit_code);
+    }
     Ok(())
 }
 
@@ -727,21 +769,28 @@ fn wait_for_port(port: u16, timeout_secs: u64) -> io::Result<()> {
             Err(_) if Instant::now() < deadline => {
                 std::thread::sleep(Duration::from_millis(200));
             }
-            Err(e) => return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                format!("service port {port} not ready within {timeout_secs}s: {e}"),
-            )),
+            Err(e) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("service port {port} not ready within {timeout_secs}s: {e}"),
+                ))
+            }
         }
     }
 }
 
 fn install_signal_handler(children: &[(String, i32)]) {
+    use std::sync::atomic::{compiler_fence, Ordering};
     // SAFETY: We write to a static mut exactly once, before any signal handler
     // is installed. After install_signal_handler returns, CHILD_PIDS is only
     // read (never written) by signal_forward, so there is no data race.
     unsafe {
         CHILD_PIDS = children.iter().map(|(_, p)| *p).collect();
     }
+    // Prevent compiler from reordering the write past the signal() registration.
+    // On x86_64, TSO ensures store visibility. On aarch64, the kernel signal()
+    // syscall provides the necessary memory barriers.
+    compiler_fence(Ordering::Release);
     // SAFETY: signal(2) registers a C function pointer as a signal handler.
     // signal_forward only calls kill(2) (async-signal-safe) and reads CHILD_PIDS
     // (which is immutable after this point).
@@ -871,6 +920,9 @@ fn install_seccomp_denylist() -> io::Result<()> {
     const SYS_SWAPOFF: u32 = 234;
     #[cfg(target_arch = "aarch64")]
     const SYS_ACCT: u32 = 89;
+    // kexec_load does not exist on aarch64 (generic syscall table excludes it).
+    // On x86_64, kexec_load is syscall 246. We keep the constant for both
+    // architectures to avoid conditional compilation in the shared filter.
     #[cfg(target_arch = "aarch64")]
     const SYS_KEXEC_LOAD: u32 = 106;
     #[cfg(target_arch = "aarch64")]
@@ -929,6 +981,12 @@ fn install_seccomp_denylist() -> io::Result<()> {
     //   [18] jmp_eq SYS_KEXEC_FILE_LOAD → KILL at [19] (skip 0, fall through)
     //   [19] ret SECCOMP_RET_KILL_PROCESS
     //   [20] ret SECCOMP_RET_ALLOW
+    //
+    // NOTE: On x86_64, SYS_SWAPON(175) == SYS_INIT_MODULE(175) and
+    // SYS_SWAPOFF(176) == SYS_DELETE_MODULE(176) — kernel ABI duplicates.
+    // On aarch64, SYS_KEXEC_LOAD(106) == SYS_DELETE_MODULE(106) — kexec_load
+    // does not exist on aarch64, so the value collides with delete_module.
+    // All duplicates are harmless (both entries KILL), kept for clarity.
     #[allow(clippy::similar_names)]
     let filter: Vec<libc::sock_filter> = vec![
         arch_load(BPF_LD, 0, 0, 4),
@@ -963,7 +1021,15 @@ fn install_seccomp_denylist() -> io::Result<()> {
     // a BPF filter on the current process. The filter program and its data
     // are stack-allocated Vec that outlive the prctl call. On success the
     // filter is permanent — any blocked syscall kills the process with SIGSYS.
-    let rc = unsafe { libc::prctl(libc::PR_SET_SECCOMP, 2, std::ptr::from_ref(&prog) as usize, 0, 0) };
+    let rc = unsafe {
+        libc::prctl(
+            libc::PR_SET_SECCOMP,
+            2,
+            std::ptr::from_ref(&prog) as usize,
+            0,
+            0,
+        )
+    };
     if rc != 0 {
         return Err(io::Error::last_os_error());
     }
@@ -974,15 +1040,19 @@ fn install_seccomp_denylist() -> io::Result<()> {
 /// The old root is mounted at `rootfs/.old_root` and immediately detached.
 fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
     let new_root = std::fs::canonicalize(rootfs)?;
-    let new_root_c = cstr(new_root.as_os_str().as_bytes());
+    let new_root_c = cstr(new_root.as_os_str().as_bytes())?;
 
     // SAFETY: mount(2) bind-mounts rootfs onto itself. MS_BIND|MS_REC makes
     // it recursive. This is required for pivot_root(2) to accept rootfs as a
     // mount point. The mount point is immediately detached after pivot_root.
     unsafe {
-        let rc = libc::mount(new_root_c.as_ptr(), new_root_c.as_ptr(),
-                             std::ptr::null(), libc::MS_BIND | libc::MS_REC,
-                             std::ptr::null());
+        let rc = libc::mount(
+            new_root_c.as_ptr(),
+            new_root_c.as_ptr(),
+            std::ptr::null(),
+            libc::MS_BIND | libc::MS_REC,
+            std::ptr::null(),
+        );
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -990,15 +1060,18 @@ fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
 
     let put_old = new_root.join(".old_root");
     std::fs::create_dir_all(&put_old)?;
-    let put_old_c = cstr(put_old.as_os_str().as_bytes());
+    let put_old_c = cstr(put_old.as_os_str().as_bytes())?;
 
-    let old_root_c = cstr(b"/.old_root");
+    let old_root_c = cstr(b"/.old_root")?;
     // SAFETY: pivot_root(2) (syscall 155 on x86_64) switches the root mount.
     // umount2(MNT_DETACH) lazily detaches the old root — files remain accessible
     // to existing file descriptors but are unreachable from the namespace.
     unsafe {
-        let rc = libc::syscall(libc::SYS_pivot_root,
-                               new_root_c.as_ptr(), put_old_c.as_ptr());
+        let rc = libc::syscall(
+            libc::SYS_pivot_root,
+            new_root_c.as_ptr(),
+            put_old_c.as_ptr(),
+        );
         if rc != 0 {
             return Err(io::Error::last_os_error());
         }
@@ -1016,8 +1089,9 @@ fn write_proc(path: &str, contents: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn cstr(bytes: &[u8]) -> CString {
-    CString::new(bytes).unwrap_or_else(|_| CString::new("").unwrap())
+fn cstr(bytes: &[u8]) -> io::Result<CString> {
+    CString::new(bytes)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "path contains null byte"))
 }
 
 fn to_ptr_vec(v: &[CString]) -> Vec<*const core::ffi::c_char> {
@@ -1046,8 +1120,14 @@ fn flock_exclusive(f: &File) -> io::Result<()> {
 }
 
 extern "C" {
+    #[link_name = "execvp"]
+    fn libc_execvp(path: *const core::ffi::c_char, argv: *const *const core::ffi::c_char) -> i32;
     #[link_name = "execve"]
-    fn libc_execve(path: *const core::ffi::c_char, argv: *const *const core::ffi::c_char, envp: *const *const core::ffi::c_char) -> i32;
+    fn libc_execve(
+        path: *const core::ffi::c_char,
+        argv: *const *const core::ffi::c_char,
+        envp: *const *const core::ffi::c_char,
+    ) -> i32;
     #[link_name = "flock"]
     fn libc_flock(fd: i32, operation: i32) -> i32;
 }

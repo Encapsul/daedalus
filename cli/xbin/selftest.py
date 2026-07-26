@@ -22,7 +22,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import format as fmt
+from . import _format as fmt
 
 
 def selftest(

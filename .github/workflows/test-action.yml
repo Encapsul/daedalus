@@ -1,0 +1,61 @@
+name: Test xbin Action
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/actions/xbin-build/**'
+
+jobs:
+  test-action:
+    name: Test xbin-build action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build and install xbin so the action can find it
+      - name: Build xbin from source
+        run: |
+          cargo build --release -p xbin-cli
+          ./target/release/xbin --version
+
+      # Create a minimal test app
+      - name: Create test app
+        run: |
+          mkdir -p /tmp/test-app
+          cat > /tmp/test-app/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head><title>Test</title></head>
+          <body><h1>Hello from x.bin action!</h1></body>
+          </html>
+          EOF
+
+      # Test the action
+      - name: Build test binary with action
+        uses: ./.github/actions/xbin-build
+        id: xbin
+        with:
+          app-path: '/tmp/test-app'
+          output: '/tmp/test-app.xbin'
+
+      # Verify output
+      - name: Verify output
+        run: |
+          echo "Binary path: ${{ steps.xbin.outputs.binary-path }}"
+          echo "Runtime: ${{ steps.xbin.outputs.runtime }}"
+          echo "Size: ${{ steps.xbin.outputs.size }}"
+
+          test -f "${{ steps.xbin.outputs.binary-path }}" || {
+            echo "ERROR: binary not found"
+            exit 1
+          }
+
+          echo "PASS: binary exists"
+
+      # Upload artifact
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-binary
+          path: /tmp/test-app.xbin

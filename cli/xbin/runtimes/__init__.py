@@ -1,8 +1,9 @@
 """Runtime detection, registry, and shared data structures.
 
-Each runtime (Python, Node, Deno, Java, Ruby, .NET, binary) lives in its own
-file and implements the ``Runtime`` base class.  Detection order is fixed by
-the registry: Python > Deno > Node > Binary.
+Each runtime (Python, Node, Deno, Java, Ruby, .NET, Hugo, Go, PHP, Perl, binary)
+lives in its own file and implements the ``Runtime`` base class.
+Detection order is fixed by the registry:
+Python > Deno > Node > Java > Ruby > .NET > Hugo > Go > PHP > Perl > Binary.
 """
 
 from __future__ import annotations
@@ -65,14 +66,35 @@ def register(rt: Runtime) -> None:
 
 
 def detect_runtime(app_dir: Path) -> RuntimePlan:
-    """Try every registered runtime in order.  Raises ValueError on failure."""
+    """Try every registered runtime in order.  Raises ValueError on failure.
+
+    Uses xbin_core (Rust) for fast pre-check when available, then falls back
+    to the full Python detection loop for RuntimePlan construction.
+    """
+    # Fast path: Rust pre-check narrows down which runtime to try first
+    try:
+        import xbin_core
+
+        rust_name = xbin_core.py_detect_runtime(str(app_dir))
+        if rust_name is not None:
+            for rt in _RUNTIME_REGISTRY:
+                if rt.name == rust_name:
+                    plan = rt.detect(app_dir)
+                    if plan is not None:
+                        return plan
+    except ImportError:
+        pass
+
+    # Fallback: full Python detection loop
     for rt in _RUNTIME_REGISTRY:
         plan = rt.detect(app_dir)
         if plan is not None:
             return plan
     raise ValueError(
         "could not detect runtime: no app.py/main.py, no deno.json/package.json, "
-        "no pom.xml/build.gradle, no Gemfile, no *.csproj, no single ELF binary. "
+        "no pom.xml/build.gradle, no Gemfile, no *.csproj, no go.mod, "
+        "no composer.json, no Makefile.PL/cpanfile, no hugo.toml/config.toml, "
+        "no single ELF binary. "
         "Use a manifest (xbin.toml) to declare entrypoint."
     )
 
@@ -88,22 +110,30 @@ def get_runtime(name: str) -> Runtime:
 def _register_builtins() -> None:
     """Register the built-in runtimes.  Called at module load time.
 
-    Detection order: Python > Deno > Node > Java > Ruby > .NET > Binary.
+    Detection order: Python > Deno > Node > Java > Ruby > .NET > Hugo > Go > PHP > Perl > Binary.
     """
     from .binary import BinaryRuntime
     from .deno import DenoRuntime
     from .dotnet import DotnetRuntime
+    from .go import GoRuntime
+    from .hugo import HugoRuntime
     from .java import JavaRuntime
     from .node import NodeRuntime
+    from .perl import PerlRuntime
+    from .php import PHPRuntime
     from .python import PythonRuntime
     from .ruby import RubyRuntime
 
     register(PythonRuntime())
     register(DenoRuntime())
+    register(PHPRuntime())
     register(NodeRuntime())
     register(JavaRuntime())
     register(RubyRuntime())
     register(DotnetRuntime())
+    register(HugoRuntime())
+    register(GoRuntime())
+    register(PerlRuntime())
     register(BinaryRuntime())
 
 

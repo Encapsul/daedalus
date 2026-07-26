@@ -19,8 +19,16 @@
 # Guides
 
 - [Quickstart](./guides/quickstart.md)
-- [Building a Python App](./guides/python.md)
-- [Building a Node.js App](./guides/node.md)
+- [Python](./guides/python.md)
+- [Node.js](./guides/node.md)
+- [Java](./guides/java.md)
+- [Ruby](./guides/ruby.md)
+- [.NET / C#](./guides/dotnet.md)
+- [Deno](./guides/deno.md)
+- [Go](./guides/go.md)
+- [PHP](./guides/php.md)
+- [Perl](./guides/perl.md)
+- [Native Binary](./guides/binary.md)
 - [Dependency Detection](./guides/dependencies.md)
 
 # Project
