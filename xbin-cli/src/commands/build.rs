@@ -560,6 +560,10 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
     }
 
+    bun_features
+        .validate()
+        .map_err(|e| anyhow::anyhow!("Invalid build options: {}", e))?;
+
     let meta = xbin_core::assembly::build_meta_json(
         &app_name,
         runtime_name,

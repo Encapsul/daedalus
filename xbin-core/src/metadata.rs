@@ -78,7 +78,7 @@ impl Default for BuildCacheConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            max_entries: 100,
+            max_entries: 50,
             ttl_hours: Some(24),
         }
     }
@@ -143,6 +143,53 @@ impl BunFeatures {
         self.cross_compile_targets = targets;
         self
     }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(EmbeddedInterpreter::Custom(path)) = &self.embedded_runtime.interpreter {
+            if path.is_empty() {
+                return Err("Custom interpreter path cannot be empty".to_string());
+            }
+            let path = std::path::Path::new(path);
+            if path.exists() && !std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(true) {
+                return Err(format!(
+                    "Custom interpreter path is not a file: {}",
+                    path.display()
+                ));
+            }
+        }
+
+        if self.health_check.enabled {
+            if self.health_check.port == 0 {
+                return Err(
+                    "Health check port cannot be 0 - specify a valid port (1-65535)".to_string(),
+                );
+            }
+            if self.health_check.endpoint.is_empty() {
+                return Err("Health check endpoint cannot be empty".to_string());
+            }
+            if !self.health_check.endpoint.starts_with('/') {
+                return Err(format!(
+                    "Health check endpoint must start with '/': {}",
+                    self.health_check.endpoint
+                ));
+            }
+        }
+
+        if self.wasm.enabled {
+            if let Some(ref path) = self.wasm.wasmtime_path {
+                let p = std::path::Path::new(path);
+                if !p.exists() {
+                    return Err(format!("wasmtime binary not found at: {}", path));
+                }
+            }
+        }
+
+        if self.build_cache.enabled && self.build_cache.max_entries > 1000 {
+            return Err(format!("Build cache max_entries {} is too high - use 1000 or less to prevent memory issues", self.build_cache.max_entries));
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -177,7 +224,7 @@ mod tests {
     fn build_cache_defaults() {
         let bc = BuildCacheConfig::default();
         assert!(bc.enabled);
-        assert_eq!(bc.max_entries, 100);
+        assert_eq!(bc.max_entries, 50);
         assert_eq!(bc.ttl_hours, Some(24));
     }
 
