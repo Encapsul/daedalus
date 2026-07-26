@@ -7,6 +7,7 @@
 //! Level 0 isolation (MVP): `LD_LIBRARY_PATH`, no chroot. Levels 1/2
 //! (chroot, user namespaces) in Phase 2 — see docs/src/roadmap.md.
 
+mod config;
 mod squashfs_extract;
 
 use serde::Deserialize;
@@ -110,6 +111,9 @@ fn main() {
 fn run() -> io::Result<()> {
     let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
 
+    // Load configuration (multi-layered: CLI args → local config → env vars → global config)
+    let app_config = config::AppConfig::load();
+
     // 1. Read footer + metadata (small, fast).
     let mut exe = File::open("/proc/self/exe")?;
     let footer = Footer::read_from(&mut exe)?;
@@ -136,7 +140,7 @@ fn run() -> io::Result<()> {
         if verbose {
             eprintln!("[xbin] warm start: cache hit {}", hash);
         }
-        return exec_app(&meta, &rootfs);
+        return exec_app(&meta, &rootfs, &app_config);
     }
 
     // 3. Cold path: read payload + verify + extract.
@@ -196,9 +200,9 @@ fn run() -> io::Result<()> {
 
     // 4. Exec into the extracted rootfs.
     if !meta.services.is_empty() {
-        supervise_services(&meta, &rootfs)
+        supervise_services(&meta, &rootfs, &app_config)
     } else {
-        exec_app(&meta, &rootfs)
+        exec_app(&meta, &rootfs, &app_config)
     }
 }
 
@@ -465,6 +469,7 @@ fn setup_env(
     rootfs: &Path,
     use_pivot: bool,
     orig_cwd: Option<&Path>,
+    app_config: &config::AppConfig,
 ) -> io::Result<std::collections::BTreeMap<String, String>> {
     let mut env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
 
@@ -512,6 +517,18 @@ fn setup_env(
         env.insert(k.clone(), v.replace("${ROOTFS}", &rootfs_str));
     }
 
+    // Merge secrets from config file
+    if let Some(secrets) = &app_config.secrets {
+        for (k, v) in secrets {
+            env.insert(format!("XBIN_SECRET_{}", k.to_uppercase()), v.clone());
+        }
+    }
+
+    // Merge database URL from config
+    if let Some(url) = app_config.get_database_url() {
+        env.insert("DATABASE_URL".into(), url);
+    }
+
     Ok(env)
 }
 
@@ -539,7 +556,7 @@ fn env_to_cstrings(env: &std::collections::BTreeMap<String, String>) -> io::Resu
 // Single-service exec
 // ---------------------------------------------------------------------------
 
-fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
+fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> io::Result<()> {
     if meta.entrypoint.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -576,7 +593,7 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         argv.push(cstr(a.as_bytes())?);
     }
 
-    let env = setup_env(meta, rootfs, use_pivot, orig_cwd.as_deref())?;
+    let env = setup_env(meta, rootfs, use_pivot, orig_cwd.as_deref(), app_config)?;
 
     if let Some(cwd) = &meta.cwd {
         let dir = resolve(cwd);
@@ -605,7 +622,11 @@ fn exec_app(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Supervise multiple services: fork+exec each, health-check ports, wait for all.
-fn supervise_services(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
+fn supervise_services(
+    meta: &Metadata,
+    rootfs: &Path,
+    app_config: &config::AppConfig,
+) -> io::Result<()> {
     let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
     let use_pivot = meta.isolation >= 2;
 
@@ -621,7 +642,7 @@ fn supervise_services(meta: &Metadata, rootfs: &Path) -> io::Result<()> {
         }
     }
 
-    let base_env = setup_env(meta, rootfs, use_pivot, None)?;
+    let base_env = setup_env(meta, rootfs, use_pivot, None, app_config)?;
     let resolve = make_resolve(rootfs, use_pivot);
 
     let children = fork_services(meta, &base_env, &resolve, rootfs, verbose)?;
