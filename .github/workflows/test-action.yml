@@ -14,6 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Build and install xbin so the action can find it
+      - name: Build xbin from source
+        run: |
+          cargo build --release -p xbin-cli
+          ./target/release/xbin --version
+
       # Create a minimal test app
       - name: Create test app
         run: |
@@ -27,12 +33,11 @@ jobs:
           EOF
 
       # Test the action
-      - name: Build test binary
+      - name: Build test binary with action
         uses: ./.github/actions/xbin-build
         id: xbin
         with:
           app-path: '/tmp/test-app'
-          runtime: 'hugo'
           output: '/tmp/test-app.xbin'
 
       # Verify output
