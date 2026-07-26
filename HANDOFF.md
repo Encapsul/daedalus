@@ -367,17 +367,16 @@ If you edited any `.py`, `.rs`, `.toml`, or `.yml` file → continue. Otherwise 
 
 ### 2. Does it compile / import?
 ```bash
-cd stub && cargo check 2>&1                                  # Rust
-cd cli && python3 -c "import xbin" 2>&1                      # Python import
-cd cli && python3 -m ruff check xbin/ 2>&1                   # Lint (must pass)
-cd cli && python3 -m black --check xbin/ 2>&1                # Format (must pass)
-cd cli && python3 -m pytest tests/ -q 2>&1                   # Tests (must pass)
+cargo check                                          # Rust core & CLI
+cargo clippy -p xbin-core --all-targets -- -D warnings  # Lint
+cargo fmt --check                                    # Format
+cargo test --workspace                               # Tests
 ```
 **ALL FOUR MUST PASS before finishing your turn. No exceptions.**
 
 ### 3. Does the app work?
 ```bash
-cd cli && PYTHONPATH=. python3 -m xbin build ../examples/hello-web -o /tmp/test.xbin 2>&1
+cargo build -p xbin-cli && ./target/release/xbin build examples/hello-web -o /tmp/test.xbin 2>&1
 ```
 If this fails, your change broke the build. Fix it before proceeding.
 
@@ -518,7 +517,7 @@ All must pass. If any fails, your change introduced a regression.
   - Handles both `sha256sum` (Linux) and `shasum` (macOS)
   - Installs Python CLI lib to `{INSTALL_DIR}/../lib/xbin/python/`
   - Updates wrapper script with correct lib path
-- **Architecture**: wrapper script sets `PYTHONPATH` to find bundled Python CLI, then execs `python3 -m xbin`
+- **Architecture**: Rust CLI binary (`xbin-cli`) built with `cargo`, installed to `target/release/xbin`
 
 ### Documentation
 
@@ -908,12 +907,12 @@ All implemented in the session of 2026-07-09:
 ## End-to-end test results
 
 ```
-$ python3 -m xbin build examples/hello-web -o /tmp/hello-web.xbin       → OK (7.1MB)
-$ python3 -m xbin keygen --key-dir /tmp/xbin-keys                        → OK, fingerprint printed
-$ python3 -m xbin sign /tmp/hello-web.xbin --key <keyfile>               → OK, sig_offset=7117820
-$ python3 -m xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted → OK, exit 0
+$ cargo build -p xbin-cli && ./target/release/xbin build examples/hello-web -o /tmp/hello-web.xbin       → OK (7.1MB)
+$ ./target/release/xbin keygen --key-dir /tmp/xbin-keys                        → OK, fingerprint printed
+$ ./target/release/xbin sign /tmp/hello-web.xbin --key <keyfile>               → OK, sig_offset=7117820
+$ ./target/release/xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted → OK, exit 0
 $ dd if=/dev/urandom of=/tmp/hello-web.xbin bs=1 seek=688788 count=1    → corrupt payload
-$ python3 -m xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted → FAIL, exit 1 (no crash)
+$ ./target/release/xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted → FAIL, exit 1 (no crash)
 ```
 
 ## Design audit fixes (2026-07-17)
@@ -1301,7 +1300,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - **File**: `README.md` — full rewrite modeled after Bun's README style.
 - **Structure**: centered logo placeholder → title → badges → nav links → "What is x.bin?" → Install → Quick links (4 categories) → Guides (4 categories) → How it works → Example apps → Contributing → License.
 - **Logo**: references `logo.png` in repo root — user will create their own.
-- **Install**: git clone + `make stub` + `pip install -e ./cli` — no curl installer, no brew.
+- **Install**: git clone + `make stub` + `cargo build -p xbin-cli` — Rust CLI is primary
 - **Quick links**: organized by Build, Runtime, Security, CLI — all link to mdbook docs.
 - **Guides**: organized by Python, Node.js, Deployment, Security.
 
