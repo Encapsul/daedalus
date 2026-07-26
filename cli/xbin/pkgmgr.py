@@ -107,12 +107,17 @@ def _ensure_composer(verbose: bool = True) -> Path | None:
             import urllib.request
 
             if verbose:
-                print(f"  [xbin] downloading composer to {composer_phar}", file=sys.stderr)
+                print(
+                    f"  [xbin] downloading composer to {composer_phar}", file=sys.stderr
+                )
             urllib.request.urlretrieve(url, str(composer_phar))
             composer_phar.chmod(0o755)
         except Exception as e:
             if verbose:
-                print(f"  [xbin] warning: failed to download composer: {e}", file=sys.stderr)
+                print(
+                    f"  [xbin] warning: failed to download composer: {e}",
+                    file=sys.stderr,
+                )
             return None
 
     return composer_phar
@@ -263,9 +268,13 @@ def install_deps(
     if pm.name in ("pnpm", "yarn", "bun", "npm"):
         nvm_bin = Path.home() / ".nvm" / "versions" / "node"
         if nvm_bin.is_dir():
-            node_dirs = [str(d / "bin") for d in nvm_bin.iterdir() if (d / "bin").is_dir()]
+            node_dirs = [
+                str(d / "bin") for d in nvm_bin.iterdir() if (d / "bin").is_dir()
+            ]
             if node_dirs:
-                env["PATH"] = os.pathsep.join(node_dirs) + os.pathsep + env.get("PATH", "")
+                env["PATH"] = (
+                    os.pathsep.join(node_dirs) + os.pathsep + env.get("PATH", "")
+                )
 
     env["LC_ALL"] = lang
     env["LANG"] = lang
@@ -288,7 +297,13 @@ def install_deps(
         last_error = stderr
         retryable = any(
             keyword in stderr.lower()
-            for keyword in ("econnreset", "etimedout", "network", "timeout", "temporary failure")
+            for keyword in (
+                "econnreset",
+                "etimedout",
+                "network",
+                "timeout",
+                "temporary failure",
+            )
         )
         if retryable and attempt < max_retries - 1:
             if verbose:

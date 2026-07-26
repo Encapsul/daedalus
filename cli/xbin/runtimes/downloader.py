@@ -8,6 +8,7 @@ Supported runtimes:
   - node (Node.js LTS from nodejs.org)
   - php (static build from GitHub releases)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -63,6 +64,7 @@ def _node_platform() -> str:
 # ---------------------------------------------------------------------------
 # Download helpers
 # ---------------------------------------------------------------------------
+
 
 def _download(url: str, dest: Path, verbose: bool = True) -> None:
     if verbose:
@@ -120,7 +122,10 @@ def download_node(verbose: bool = True) -> Path:
     expected_bin = cache / base_name / "bin" / "node"
     if expected_bin.is_file():
         if verbose:
-            print(f"  [xbin] using cached Node.js at {expected_bin}", file=__import__("sys").stderr)
+            print(
+                f"  [xbin] using cached Node.js at {expected_bin}",
+                file=__import__("sys").stderr,
+            )
         return expected_bin
 
     archive_path = cache / archive_name
@@ -134,7 +139,10 @@ def download_node(verbose: bool = True) -> Path:
 
     if expected_bin.is_file():
         if verbose:
-            print(f"  [xbin] Node.js ready at {expected_bin}", file=__import__("sys").stderr)
+            print(
+                f"  [xbin] Node.js ready at {expected_bin}",
+                file=__import__("sys").stderr,
+            )
         return expected_bin
 
     raise RuntimeError(f"Node.js binary not found after extraction at {expected_bin}")
@@ -171,17 +179,23 @@ def find_node(verbose: bool = True) -> Path:
     nvm_node = _find_nvm_node()
     if nvm_node:
         if verbose:
-            print(f"  [xbin] found Node.js in NVM: {nvm_node}", file=__import__("sys").stderr)
+            print(
+                f"  [xbin] found Node.js in NVM: {nvm_node}",
+                file=__import__("sys").stderr,
+            )
         return nvm_node
 
     if verbose:
-        print("  [xbin] Node.js not found, downloading...", file=__import__("sys").stderr)
+        print(
+            "  [xbin] Node.js not found, downloading...", file=__import__("sys").stderr
+        )
     return download_node(verbose=verbose)
 
 
 # ---------------------------------------------------------------------------
 # PHP downloader (static build from shivammathur/php-binary)
 # ---------------------------------------------------------------------------
+
 
 def download_php(verbose: bool = True) -> Path:
     """Download a static PHP binary if not already cached.
@@ -198,7 +212,10 @@ def download_php(verbose: bool = True) -> Path:
 
     if binary_path.is_file():
         if verbose:
-            print(f"  [xbin] using cached PHP at {binary_path}", file=__import__("sys").stderr)
+            print(
+                f"  [xbin] using cached PHP at {binary_path}",
+                file=__import__("sys").stderr,
+            )
         return binary_path
 
     url = f"https://github.com/shivammathur/php-binary/releases/download/{version}/{binary_name}.tar.xz"
@@ -227,7 +244,10 @@ def find_php(verbose: bool = True) -> Path:
         return Path(php).resolve()
 
     if verbose:
-        print("  [xbin] PHP not found, downloading static build...", file=__import__("sys").stderr)
+        print(
+            "  [xbin] PHP not found, downloading static build...",
+            file=__import__("sys").stderr,
+        )
     return download_php(verbose=verbose)
 
 
@@ -250,5 +270,8 @@ def find_runtime(name: str, verbose: bool = True) -> Path | None:
         return finder(verbose=verbose)
     except Exception as e:
         if verbose:
-            print(f"  [xbin] warning: auto-download of {name} failed: {e}", file=__import__("sys").stderr)
+            print(
+                f"  [xbin] warning: auto-download of {name} failed: {e}",
+                file=__import__("sys").stderr,
+            )
         return None
