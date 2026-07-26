@@ -18,6 +18,14 @@ pub struct SignArgs {
     /// Quiet output
     #[arg(short, long)]
     pub quiet: bool,
+
+    /// Force overwrite without confirmation
+    #[arg(short, long)]
+    pub force: bool,
+
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 pub fn run(args: SignArgs) -> Result<()> {
@@ -39,7 +47,28 @@ pub fn run(args: SignArgs) -> Result<()> {
         }
     };
 
-    sign_file(&args.file, &key_path, args.quiet)
+    if !args.force && !args.quiet {
+        eprint!("Sign {}? [y/N] ", args.file.display());
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if !input.trim().eq_ignore_ascii_case("y") {
+            eprintln!("Aborted");
+            return Ok(());
+        }
+    }
+
+    sign_file(&args.file, &key_path, args.quiet)?;
+
+    if args.json {
+        let info = serde_json::json!({
+            "file": args.file.display().to_string(),
+            "signed": true,
+            "key": key_path.display().to_string(),
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    }
+
+    Ok(())
 }
 
 /// Sign a `.xbin` file in-place with the given key. Used by both `xbin sign`

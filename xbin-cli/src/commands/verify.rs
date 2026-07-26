@@ -6,6 +6,18 @@ use std::path::PathBuf;
 use xbin_core::format::{Footer, SIG_BLOCK_SIZE_FIELD};
 use xbin_core::paths::default_trusted_dir;
 
+fn write_json_output(value: &serde_json::Value, output: Option<&std::path::Path>) -> Result<()> {
+    let json_str = serde_json::to_string_pretty(value)?;
+    if let Some(path) = output {
+        std::fs::write(path, &json_str)
+            .with_context(|| format!("failed to write to {}", path.display()))?;
+        eprintln!("Wrote JSON to {}", path.display());
+    } else {
+        println!("{json_str}");
+    }
+    Ok(())
+}
+
 #[derive(Args)]
 pub struct VerifyArgs {
     /// Path to the .xbin file
@@ -18,6 +30,14 @@ pub struct VerifyArgs {
     /// Quiet output
     #[arg(short, long)]
     pub quiet: bool,
+
+    /// Output verification result as JSON
+    #[arg(long)]
+    pub json: bool,
+
+    /// Write JSON output to file (requires --json)
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 }
 
 pub fn run(args: VerifyArgs) -> Result<()> {
@@ -28,7 +48,16 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     let footer = Footer::read_from(&mut f).context("failed to read xbin footer")?;
 
     if !footer.is_signed() {
-        anyhow::bail!("file is not signed");
+        if args.json {
+            let info = serde_json::json!({
+                "file": args.file.display().to_string(),
+                "signed": false,
+            });
+            write_json_output(&info, args.output.as_deref())?;
+        } else {
+            eprintln!("file is not signed");
+        }
+        return Ok(());
     }
 
     // Read sig block: [sig_size:u32le][64-byte ed25519 signature]
@@ -65,10 +94,12 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 
     let sig = ed25519_dalek::Signature::from_slice(signature_bytes)?;
     let mut verified = false;
+    let mut verified_key: Option<String> = None;
 
     for (key_path, vk) in &keys {
         if vk.verify(&hash, &sig).is_ok() {
             verified = true;
+            verified_key = Some(key_path.display().to_string());
             if !args.quiet {
                 eprintln!("Verified against {}", key_path.display());
             }
@@ -76,11 +107,17 @@ pub fn run(args: VerifyArgs) -> Result<()> {
         }
     }
 
-    if !verified {
+    if args.json {
+        let info = serde_json::json!({
+            "file": args.file.display().to_string(),
+            "signed": true,
+            "verified": verified,
+            "key": verified_key,
+        });
+        write_json_output(&info, args.output.as_deref())?;
+    } else if !verified {
         anyhow::bail!("signature does not match any trusted key");
-    }
-
-    if !args.quiet {
+    } else if !args.quiet {
         eprintln!("OK: signature verified");
     }
 

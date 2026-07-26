@@ -14,6 +14,14 @@ pub struct KeygenArgs {
     /// Quiet output
     #[arg(short, long)]
     pub quiet: bool,
+
+    /// Force overwrite existing keys
+    #[arg(short, long)]
+    pub force: bool,
+
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 pub fn run(args: KeygenArgs) -> Result<()> {
@@ -34,6 +42,18 @@ pub fn run(args: KeygenArgs) -> Result<()> {
     let key_path = key_dir.join(format!("{fingerprint}.key"));
     let pub_path = key_dir.join(format!("{fingerprint}.pub"));
 
+    if key_path.exists() || pub_path.exists() {
+        if args.force {
+            std::fs::remove_file(&key_path).ok();
+            std::fs::remove_file(&pub_path).ok();
+        } else {
+            anyhow::bail!(
+                "key pair already exists at {}. Use --force to overwrite",
+                key_dir.display()
+            );
+        }
+    }
+
     std::fs::write(&key_path, signing_key.to_bytes())
         .with_context(|| format!("failed to write private key to {}", key_path.display()))?;
     std::fs::write(&pub_path, verifying_key.as_bytes())
@@ -45,7 +65,14 @@ pub fn run(args: KeygenArgs) -> Result<()> {
         std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
     }
 
-    if !args.quiet {
+    if args.json {
+        let info = serde_json::json!({
+            "fingerprint": fingerprint,
+            "private_key": key_path.display().to_string(),
+            "public_key": pub_path.display().to_string(),
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    } else if !args.quiet {
         eprintln!("Generated Ed25519 keypair");
         eprintln!("  fingerprint: {fingerprint}");
         eprintln!("  private key: {}", key_path.display());
