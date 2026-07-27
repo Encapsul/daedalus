@@ -4,6 +4,8 @@ TOOLS := /tmp/xbin-stub-target
 STUB := $(TOOLS)/$(TARGET)/release/xbin-stub
 CRYPTO := $(TOOLS)/$(TARGET)/release/xbin-crypto
 CLI := target/release/xbin
+STUB_ALT := target/$(TARGET)/release/xbin-stub
+CRYPTO_ALT := target/$(TARGET)/release/xbin-crypto
 
 .PHONY: all preflight stub cli install example run inspect docs docs-serve lint fmt clean
 
@@ -22,13 +24,29 @@ preflight:
 # Build the Rust stub (statically linked musl ELF).
 stub:
 	cargo build --release -p xbin-stub --target $(TARGET)
-	@echo "stub:   $$(ls -la $(STUB) | awk '{print $$5}') bytes"
-	@echo "crypto: $$(ls -la $(CRYPTO) | awk '{print $$5}') bytes"
+	@if [ -f $(STUB) ]; then \
+		echo "stub:   $$(ls -la $(STUB) | awk '{print $$5}') bytes"; \
+	elif [ -f $(STUB_ALT) ]; then \
+		echo "stub:   $$(ls -la $(STUB_ALT) | awk '{print $$5}') bytes"; \
+	else \
+		echo "stub:   NOT FOUND"; \
+	fi
+	@if [ -f $(CRYPTO) ]; then \
+		echo "crypto: $$(ls -la $(CRYPTO) | awk '{print $$5}') bytes"; \
+	elif [ -f $(CRYPTO_ALT) ]; then \
+		echo "crypto: $$(ls -la $(CRYPTO_ALT) | awk '{print $$5}') bytes"; \
+	else \
+		echo "crypto:   NOT FOUND"; \
+	fi
 
 # Build the Rust CLI.
 cli:
 	cargo build --release -p xbin-cli
-	@echo "cli:    $$(ls -la $(CLI) | awk '{print $$5}') bytes"
+	@if [ -f $(CLI) ]; then \
+		echo "cli:    $$(ls -la $(CLI) | awk '{print $$5}') bytes"; \
+	else \
+		echo "cli:    NOT FOUND"; \
+	fi
 
 .PHONY: install install-system install-local
 
