@@ -363,13 +363,35 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
 
         if !no_install {
-            eprintln!("Installing dependencies ({})...", mgr.name());
             let cmd = mgr.install_cmd();
-            let status = std::process::Command::new(&cmd[0])
-                .args(&cmd[1..])
+
+            // Check if the binary exists before trying to run it
+            if !is_command_available(cmd[0]) {
+                eprintln!(
+                    "[xbin] skipping {} — `{}` not found on PATH",
+                    mgr.name(),
+                    cmd[0]
+                );
+                continue;
+            }
+
+            eprintln!("Installing dependencies ({})...", mgr.name());
+
+            // For composer: auto-download composer.phar if not on PATH
+            let (prog, extra_args) = if matches!(mgr, pkgmgr::PkgMgr::Composer) {
+                ensure_composer(&app_dir, verbose)?
+            } else {
+                (cmd[0].to_string(), Vec::new())
+            };
+
+            let mut full_args: Vec<String> = extra_args;
+            full_args.extend(cmd.iter().skip(1).map(|s| s.to_string()));
+
+            let status = std::process::Command::new(&prog)
+                .args(&full_args)
                 .current_dir(&app_dir)
                 .status()
-                .context("failed to run dependency installation command")?;
+                .context(format!("failed to run `{}` — is it installed?", prog))?;
             if !status.success() {
                 eprintln!(
                     "[xbin] warning: {} installation failed (exit code {})",
@@ -713,6 +735,73 @@ fn load_config(app_dir: &Path) -> XbinConfig {
         }),
         Err(_) => XbinConfig::default(),
     }
+}
+
+/// Check if a command is available on PATH.
+fn is_command_available(name: &str) -> bool {
+    std::process::Command::new("sh")
+        .args(["-c", &format!("command -v {name}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Returns `(program, extra_args)` to prepend to the install command.
+fn ensure_composer(app_dir: &Path, verbose: bool) -> Result<(String, Vec<String>)> {
+    // Try system composer first
+    if std::process::Command::new("composer")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+    {
+        return Ok(("composer".into(), Vec::new()));
+    }
+
+    // Try php with system composer.phar
+    if std::process::Command::new("php")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+    {
+        let phar = app_dir.join("composer.phar");
+        if !phar.exists() {
+            if verbose {
+                eprintln!("  downloading composer.phar...");
+            }
+            let status = std::process::Command::new("php")
+                .args([
+                    "-r",
+                    "copy('https://getcomposer.org/download/latest-stable/composer.phar', 'composer.phar');",
+                ])
+                .current_dir(app_dir)
+                .status()
+                .context("failed to download composer.phar")?;
+            if !status.success() {
+                anyhow::bail!(
+                    "composer not found and failed to download composer.phar — \
+                     install composer: https://getcomposer.org/download"
+                );
+            }
+            // Make it executable
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&phar, std::fs::Permissions::from_mode(0o755)).ok();
+            }
+        }
+        return Ok(("php".into(), vec![phar.to_string_lossy().to_string()]));
+    }
+
+    anyhow::bail!(
+        "composer not found — install it: https://getcomposer.org/download \
+         or install php + composer"
+    )
 }
 
 fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
