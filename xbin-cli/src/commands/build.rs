@@ -367,12 +367,26 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
             // Check if the binary exists before trying to run it
             if !is_command_available(cmd[0]) {
-                eprintln!(
-                    "[xbin] skipping {} — `{}` not found on PATH",
-                    mgr.name(),
-                    cmd[0]
-                );
-                continue;
+                // For node/npm: download static node to temp dir
+                if matches!(
+                    mgr,
+                    pkgmgr::PkgMgr::Npm
+                        | pkgmgr::PkgMgr::Pnpm
+                        | pkgmgr::PkgMgr::Yarn
+                        | pkgmgr::PkgMgr::Bun
+                ) {
+                    let bin_dir = ensure_node(verbose)?;
+                    // Prepend to PATH for this process only
+                    let current = std::env::var("PATH").unwrap_or_default();
+                    std::env::set_var("PATH", format!("{}:{current}", bin_dir.display()));
+                } else {
+                    eprintln!(
+                        "[xbin] skipping {} — `{}` not found on PATH",
+                        mgr.name(),
+                        cmd[0]
+                    );
+                    continue;
+                }
             }
 
             eprintln!("Installing dependencies ({})...", mgr.name());
@@ -746,6 +760,93 @@ fn is_command_available(name: &str) -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+/// Ensure node + npm are available for the build.
+/// Downloads a static node to `/tmp/xbin-build-tools/node/` if not on PATH.
+/// Does NOT pollute the user's system PATH.
+fn ensure_node(verbose: bool) -> Result<PathBuf> {
+    let tools_dir = PathBuf::from("/tmp/xbin-build-tools/node");
+    let node_bin = tools_dir.join("bin/node");
+    let npm_bin = tools_dir.join("bin/npm");
+
+    // Already downloaded
+    if node_bin.exists() && npm_bin.exists() {
+        if verbose {
+            eprintln!("  using cached node from {}", tools_dir.display());
+        }
+        return Ok(tools_dir.join("bin"));
+    }
+
+    if verbose {
+        eprintln!("  downloading node to {}...", tools_dir.display());
+    }
+
+    std::fs::create_dir_all(&tools_dir).context("failed to create build tools directory")?;
+
+    // Detect arch
+    let arch = std::env::consts::ARCH;
+    let node_arch = match arch {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        _ => arch,
+    };
+    let node_os = match std::env::consts::OS {
+        "linux" => "linux",
+        "macos" => "darwin",
+        other => other,
+    };
+
+    // Get latest LTS version
+    let version_output = std::process::Command::new("sh")
+        .args([
+            "-c",
+            "curl -sL https://nodejs.org/dist/index.json | head -20 | grep -o '\"v[0-9.]*\"' | head -1 | tr -d '\"v'",
+        ])
+        .output()
+        .context("failed to query node.js versions")?;
+    let version = String::from_utf8_lossy(&version_output.stdout)
+        .trim()
+        .to_string();
+    if version.is_empty() {
+        anyhow::bail!("node.js not found and auto-download failed — install: https://nodejs.org");
+    }
+
+    let tarball = format!("node-v{version}-{node_os}-{node_arch}.tar.xz");
+    let url = format!("https://nodejs.org/dist/v{version}/{tarball}");
+
+    if verbose {
+        eprintln!("  downloading node v{version} ({node_os}-{node_arch})...");
+    }
+
+    let status = std::process::Command::new("sh")
+        .args([
+            "-c",
+            &format!(
+                "curl -sL {url} | tar xJ --strip-components=1 -C {}",
+                tools_dir.display()
+            ),
+        ])
+        .status()
+        .context("failed to download node.js")?;
+
+    if !status.success() || !node_bin.exists() {
+        anyhow::bail!("failed to download node.js — install manually: https://nodejs.org");
+    }
+
+    // Make executable
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&node_bin, std::fs::Permissions::from_mode(0o755)).ok();
+        std::fs::set_permissions(&npm_bin, std::fs::Permissions::from_mode(0o755)).ok();
+    }
+
+    if verbose {
+        eprintln!("  node v{version} ready at {}", tools_dir.display());
+    }
+
+    Ok(tools_dir.join("bin"))
 }
 
 /// Returns `(program, extra_args)` to prepend to the install command.
