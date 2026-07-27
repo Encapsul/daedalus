@@ -47,7 +47,7 @@ cli:
 		echo "cli:    NOT FOUND"; \
 	fi
 
-.PHONY: install install-system install-local
+.PHONY: all preflight stub cli install example run inspect docs docs-serve lint fmt clean
 
 # Build everything
 all: stub cli
@@ -69,9 +69,18 @@ install:
 		cp target/release/xbin ~/.local/bin/xbin; \
 		chmod +x ~/.local/bin/xbin; \
 		printf "\n✅ Installed to ~/.local/bin/xbin\n"; \
-		printf "   Add to PATH if needed:\n"; \
-		printf "   echo 'export PATH=\"$$HOME/.local/bin:\$$PATH\"' >> ~/.bashrc\n"; \
-		printf "   source ~/.bashrc\n"; \
+		if echo "$$PATH" | grep -q "$$HOME/.local/bin"; then \
+			printf "   ✅ ~/.local/bin is already in PATH\n"; \
+		else \
+			printf "   🔧 Adding ~/.local/bin to PATH automatically...\n"; \
+			printf '\n# x.bin installer\nexport PATH="$$HOME/.local/bin:$$PATH"\n' >> ~/.bashrc; \
+			if [ -f ~/.zshrc ]; then \
+				printf '\n# x.bin installer\nexport PATH="$$HOME/.local/bin:$$PATH"\n' >> ~/.zshrc; \
+			fi; \
+			export PATH="$$HOME/.local/bin:$$PATH"; \
+			printf "   ✅ PATH updated in ~/.bashrc (and ~/.zshrc if present)\n"; \
+		fi; \
+		printf "   Verify: xbin --version\n"; \
 		printf "   You can remove the x.bin repo when done.\n"; \
 	fi
 
