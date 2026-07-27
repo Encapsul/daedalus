@@ -566,6 +566,45 @@ fn env_to_cstrings(env: &std::collections::BTreeMap<String, String>) -> io::Resu
         .collect()
 }
 
+/// Check if an executable path exists and is executable.
+/// Searches PATH directories when given a bare name (no `/`).
+fn is_executable(prog: &[u8]) -> bool {
+    if prog.is_empty() {
+        return false;
+    }
+    let path = String::from_utf8_lossy(prog);
+    // If it's an absolute or relative path with a directory component, check it directly.
+    if path.contains('/') {
+        return check_executable(&path);
+    }
+    // Otherwise search PATH directories (mirrors execvp behavior).
+    let paths = std::env::var_os("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&paths) {
+        let candidate = dir.join(path.as_ref());
+        if check_executable(&candidate.to_string_lossy()) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Check if a specific path points to an executable file.
+fn check_executable(path: &str) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| {
+        m.is_file() && {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                m.permissions().mode() & 0o111 != 0
+            }
+            #[cfg(windows)]
+            {
+                true
+            }
+        }
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Single-service exec
 // ---------------------------------------------------------------------------
@@ -600,8 +639,29 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
     let prog = resolve(&meta.entrypoint[0]);
     let prog_c = cstr(prog.as_os_str().as_bytes())?;
 
+    let prog_path_bytes = prog.as_os_str().as_bytes();
+    let _prog_path_str = std::str::from_utf8(prog_path_bytes).unwrap_or_default();
+
+    let interpreter_name = match meta.runtime.as_str() {
+        "php" => "php",
+        "python" => "python3",
+        "node" => "node",
+        "ruby" => "ruby",
+        "perl" => "perl",
+        "java" => "java",
+        "deno" => "deno",
+        _ => "bash",
+    };
+
+    if !is_executable(interpreter_name.as_bytes()) {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("[xbin] error: interpreter '{}' not found", interpreter_name),
+        ));
+    }
+
     let mut argv: Vec<CString> = Vec::new();
-    argv.push(prog_c.clone());
+    argv.push(CString::new(interpreter_name).unwrap());
     for a in &meta.entrypoint[1..] {
         argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
     }
