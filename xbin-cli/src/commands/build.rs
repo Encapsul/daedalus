@@ -258,16 +258,18 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             }
         }
 
-        // Detect package manager
-        let pkg_mgr = pkgmgr::detect_pkgmgr(&app_dir, runtime_name);
-        if let Some(mgr) = &pkg_mgr {
-            eprintln!("  Pkg mgr:   {}", mgr.name());
-            if !no_install {
-                let cmd = mgr.install_cmd();
-                eprintln!("  Install:   {}", cmd.join(" "));
-            }
-        } else {
+        // Detect package managers
+        let all_mgrs = pkgmgr::detect_all_pkgmgrs(&app_dir, runtime_name);
+        if all_mgrs.is_empty() {
             eprintln!("  Pkg mgr:   (none)");
+        } else {
+            for mgr in &all_mgrs {
+                eprintln!("  Pkg mgr:   {}", mgr.name());
+                if !no_install {
+                    let cmd = mgr.install_cmd();
+                    eprintln!("  Install:   {}", cmd.join(" "));
+                }
+            }
         }
 
         // Estimate sizes
@@ -304,6 +306,37 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let new_app_hash = xbin_core::include::hash_app_files(&app_dir);
     let new_rt_hash = xbin_core::include::hash_lock_file(&app_dir);
 
+    // ── Intelligent build cache: skip rebuild if hash matches ──────────
+    if args.use_cache {
+        let cache = xbin_core::paths::BuildCache::new(&app_dir, 50);
+        if let Some(cached) = cache.find(&new_app_hash, &new_rt_hash) {
+            if verbose {
+                eprintln!("[xbin] cache hit — reusing cached build");
+            }
+            std::fs::copy(&cached, &output).context("failed to copy cached .xbin to output")?;
+            if args.json {
+                let result = serde_json::json!({
+                    "output": output.to_string_lossy(),
+                    "runtime": runtime_name,
+                    "cache_hit": true,
+                });
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
+            return Ok(());
+        }
+        if verbose {
+            eprintln!("[xbin] cache miss — building from scratch");
+        }
+    }
+
+    if args.clear_cache {
+        let cache = xbin_core::paths::BuildCache::new(&app_dir, 50);
+        cache.clear().ok();
+        if verbose {
+            eprintln!("  cache: cleared");
+        }
+    }
+
     // ── Incremental update: skip rebuild if nothing changed ────────────
     if args.update && output.exists() {
         if let Some((old_app_hash, old_rt_hash)) = read_existing_hashes(&output) {
@@ -322,15 +355,15 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
     }
 
-    // Detect package manager
-    let pkg_mgr = pkgmgr::detect_pkgmgr(&app_dir, runtime_name);
-    if let Some(mgr) = &pkg_mgr {
+    // Detect and install all package managers (primary + secondary)
+    let all_pkg_mgrs = pkgmgr::detect_all_pkgmgrs(&app_dir, runtime_name);
+    for mgr in &all_pkg_mgrs {
         if verbose {
             eprintln!("Package manager: {}", mgr.name());
         }
 
         if !no_install {
-            eprintln!("Installing dependencies...");
+            eprintln!("Installing dependencies ({})...", mgr.name());
             let cmd = mgr.install_cmd();
             let status = std::process::Command::new(&cmd[0])
                 .args(&cmd[1..])
@@ -338,7 +371,11 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
                 .status()
                 .context("failed to run dependency installation command")?;
             if !status.success() {
-                eprintln!("[xbin] warning: dependency installation failed");
+                eprintln!(
+                    "[xbin] warning: {} installation failed (exit code {})",
+                    mgr.name(),
+                    status.code().unwrap_or(-1)
+                );
             }
         }
     }
@@ -408,6 +445,17 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     for entry in &args.env {
         if let Some((k, v)) = entry.split_once('=') {
             env_map.insert(k.trim().into(), v.trim().into());
+        }
+    }
+
+    // ── Disable Xdebug for PHP apps (avoids "Could not connect to debugging client") ──
+    if runtime_name == "php" && !env_map.contains_key("XDEBUG_MODE") {
+        env_map.insert(
+            "XDEBUG_MODE".into(),
+            serde_json::Value::String("off".into()),
+        );
+        if verbose {
+            eprintln!("  xdebug: XDEBUG_MODE=off (auto-injected for PHP)");
         }
     }
 
@@ -550,15 +598,6 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     }
 
     bun_features.build_cache.enabled = args.use_cache;
-    if args.clear_cache {
-        let cache_dir = xbin_core::paths::build_cache_dir(&app_dir);
-        if cache_dir.exists() {
-            std::fs::remove_dir_all(&cache_dir).ok();
-            if verbose {
-                eprintln!("  cache: cleared {}", cache_dir.display());
-            }
-        }
-    }
 
     bun_features
         .validate()
@@ -578,8 +617,8 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             license,
             payload_format: Some("zstd-tar".to_string()),
             seccomp,
-            app_hash: Some(new_app_hash),
-            rt_deps_hash: Some(new_rt_hash),
+            app_hash: Some(new_app_hash.clone()),
+            rt_deps_hash: Some(new_rt_hash.clone()),
         },
         &bun_features,
     )?;
@@ -603,6 +642,14 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         output.display(),
         size as f64 / (1024.0 * 1024.0)
     );
+
+    // ── Store in build cache ──────────────────────────────────────────
+    if args.use_cache {
+        let cache = xbin_core::paths::BuildCache::new(&app_dir, 50);
+        if cache.store(&new_app_hash, &new_rt_hash, &output).is_ok() && verbose {
+            eprintln!("  cache: stored build");
+        }
+    }
 
     if args.json {
         let result = serde_json::json!({
@@ -683,15 +730,20 @@ fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
         _ => "x86_64-unknown-linux-musl",
     };
 
+    let stub_name = "xbin-stub";
     let candidates = [
         PathBuf::from(&target_dir)
             .join(arch_suffix)
             .join("release")
-            .join("xbin-stub"),
+            .join(stub_name),
+        PathBuf::from("/tmp/xbin-stub-target")
+            .join(arch_suffix)
+            .join("release")
+            .join(stub_name),
         PathBuf::from("stub/target")
             .join(arch_suffix)
             .join("release")
-            .join("xbin-stub"),
+            .join(stub_name),
         PathBuf::from("/usr/local/bin/xbin-stub"),
     ];
 

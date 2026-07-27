@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CC_x86_64_unknown_linux_musl: musl-gcc
+      CARGO_TARGET_DIR: target
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -48,6 +49,7 @@ jobs:
     needs: [rust]
     env:
       CC_x86_64_unknown_linux_musl: musl-gcc
+      CARGO_TARGET_DIR: target
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -56,7 +58,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y zstd musl-tools
       - run: make stub
-      - run: mkdir -p target/x86_64-unknown-linux-musl/release && cp /tmp/xbin-stub-target/x86_64-unknown-linux-musl/release/xbin-stub target/x86_64-unknown-linux-musl/release/
       - run: cargo build -p xbin-cli --release
       - name: xbin doctor
         run: ./target/release/xbin doctor --strict
