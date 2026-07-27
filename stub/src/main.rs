@@ -13,7 +13,7 @@ mod squashfs_extract;
 use serde::Deserialize;
 use std::ffi::CString;
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::exit;
@@ -66,6 +66,20 @@ struct Metadata {
     crypto: Option<CryptoMeta>,
     #[serde(default)]
     payload_format: String,
+    #[serde(default)]
+    health_check: Option<HealthCheckMeta>,
+}
+
+#[derive(Deserialize)]
+struct HealthCheckMeta {
+    port: u16,
+    #[serde(default = "default_health_endpoint")]
+    endpoint: String,
+    enabled: bool,
+}
+
+fn default_health_endpoint() -> String {
+    "/health".to_string()
 }
 
 #[derive(Deserialize)]
@@ -567,6 +581,8 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
     let orig_cwd = std::env::current_dir().ok();
     let use_pivot = meta.isolation >= 2;
 
+    maybe_start_health(meta);
+
     enter_namespace_if_needed(meta.isolation)?;
     if use_pivot {
         pivot_root_into(rootfs)?;
@@ -629,6 +645,8 @@ fn supervise_services(
 ) -> io::Result<()> {
     let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
     let use_pivot = meta.isolation >= 2;
+
+    maybe_start_health(meta);
 
     enter_namespace_if_needed(meta.isolation)?;
     if use_pivot {
@@ -1155,4 +1173,58 @@ extern "C" {
 
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
+}
+
+// ---------------------------------------------------------------------------
+// Health check HTTP server
+// ---------------------------------------------------------------------------
+
+/// Spawn a daemon TCP thread that responds to health check requests.
+/// Runs until the process exits (thread is detached).
+fn spawn_health_server(port: u16, endpoint: String) {
+    let listener = match std::net::TcpListener::bind(format!("127.0.0.1:{port}")) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[xbin] warning: health check server failed to bind on port {port}: {e}");
+            return;
+        }
+    };
+    let _ = listener.set_nonblocking(true);
+
+    std::thread::spawn(move || {
+        let response_200 = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\nConnection: close\r\n\r\n{\"status\":\"ok\"}";
+        let response_404 =
+            b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+        loop {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let mut buf = [0u8; 1024];
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buf[..n]);
+                    let first_line = request.lines().next().unwrap_or("");
+                    if first_line.starts_with("GET") && first_line.contains(endpoint.as_str()) {
+                        let _ = stream.write_all(response_200);
+                    } else {
+                        let _ = stream.write_all(response_404);
+                    }
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                Err(_) => {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        }
+    });
+}
+
+/// Start the health check server if configured in metadata.
+fn maybe_start_health(meta: &Metadata) {
+    if let Some(ref hc) = meta.health_check {
+        if hc.enabled && hc.port > 0 {
+            spawn_health_server(hc.port, hc.endpoint.clone());
+        }
+    }
 }

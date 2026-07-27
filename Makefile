@@ -21,7 +21,7 @@ preflight:
 
 # Build the Rust stub (statically linked musl ELF).
 stub:
-	cd stub && cargo build --release --target $(TARGET)
+	cargo build --release -p xbin-stub --target $(TARGET)
 	@echo "stub:   $$(ls -la $(STUB) | awk '{print $$5}') bytes"
 	@echo "crypto: $$(ls -la $(CRYPTO) | awk '{print $$5}') bytes"
 

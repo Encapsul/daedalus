@@ -17,6 +17,10 @@ pub enum PkgMgr {
     Yarn,
     Bun,
     Npm,
+    // PHP
+    Composer,
+    // Ruby
+    Bundler,
 }
 
 impl PkgMgr {
@@ -30,6 +34,8 @@ impl PkgMgr {
             Self::Yarn => "yarn",
             Self::Bun => "bun",
             Self::Npm => "npm",
+            Self::Composer => "composer",
+            Self::Bundler => "bundler",
         }
     }
 
@@ -43,6 +49,15 @@ impl PkgMgr {
             Self::Yarn => vec!["yarn", "install", "--frozen-lockfile"],
             Self::Bun => vec!["bun", "install", "--frozen-lockfile"],
             Self::Npm => vec!["npm", "ci"],
+            Self::Composer => vec![
+                "composer",
+                "install",
+                "--no-dev",
+                "--ignore-platform-reqs",
+                "--no-interaction",
+                "--prefer-dist",
+            ],
+            Self::Bundler => vec!["bundle", "install", "--deployment", "--without development"],
         }
     }
 }
@@ -86,13 +101,67 @@ pub fn detect_node_pkgmgr(dir: &Path) -> Option<PkgMgr> {
     Some(PkgMgr::Npm)
 }
 
+/// Detect the PHP package manager (Composer).
+pub fn detect_php_pkgmgr(dir: &Path) -> Option<PkgMgr> {
+    if dir.join("composer.json").is_file() {
+        return Some(PkgMgr::Composer);
+    }
+    None
+}
+
+/// Detect the Ruby package manager (Bundler).
+pub fn detect_ruby_pkgmgr(dir: &Path) -> Option<PkgMgr> {
+    if dir.join("Gemfile.lock").is_file() {
+        return Some(PkgMgr::Bundler);
+    }
+    if dir.join("Gemfile").is_file() {
+        return Some(PkgMgr::Bundler);
+    }
+    None
+}
+
 /// Detect the package manager for a given runtime.
 pub fn detect_pkgmgr(dir: &Path, runtime: &str) -> Option<PkgMgr> {
     match runtime {
         "python" => detect_python_pkgmgr(dir),
         "node" => detect_node_pkgmgr(dir),
+        "php" => detect_php_pkgmgr(dir),
+        "ruby" => detect_ruby_pkgmgr(dir),
         _ => None,
     }
+}
+
+/// Detect any secondary package managers (e.g., a PHP app with package.json).
+/// Returns all detected package managers, primary first.
+pub fn detect_all_pkgmgrs(dir: &Path, runtime: &str) -> Vec<PkgMgr> {
+    let mut managers = Vec::new();
+
+    if let Some(primary) = detect_pkgmgr(dir, runtime) {
+        managers.push(primary);
+    }
+
+    // Check for secondary package managers not tied to the primary runtime
+    let has_node = dir.join("package.json").is_file();
+    let has_php = dir.join("composer.json").is_file();
+    let has_ruby = dir.join("Gemfile").is_file();
+
+    if has_node && !matches!(runtime, "node") {
+        if let Some(node_mgr) = detect_node_pkgmgr(dir) {
+            managers.push(node_mgr);
+        }
+    }
+    if has_php && !matches!(runtime, "php") {
+        if let Some(php_mgr) = detect_php_pkgmgr(dir) {
+            managers.push(php_mgr);
+        }
+    }
+    if has_ruby && !matches!(runtime, "ruby") {
+        if let Some(ruby_mgr) = detect_ruby_pkgmgr(dir) {
+            managers.push(ruby_mgr);
+        }
+    }
+
+    managers
 }
 
 #[cfg(test)]
@@ -135,5 +204,73 @@ mod tests {
         std::fs::write(dir.path().join("uv.lock"), "# uv").unwrap();
         assert_eq!(detect_pkgmgr(dir.path(), "python"), Some(PkgMgr::Uv));
         assert_eq!(detect_pkgmgr(dir.path(), "java"), None);
+    }
+
+    #[test]
+    fn composer_detection() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
+        assert_eq!(detect_php_pkgmgr(dir.path()), Some(PkgMgr::Composer));
+    }
+
+    #[test]
+    fn composer_lock_file() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("composer.lock"), "{}").unwrap();
+        assert_eq!(detect_php_pkgmgr(dir.path()), Some(PkgMgr::Composer));
+    }
+
+    #[test]
+    fn bundler_detection() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("Gemfile"), "source 'https://rubygems.org'").unwrap();
+        assert_eq!(detect_ruby_pkgmgr(dir.path()), Some(PkgMgr::Bundler));
+    }
+
+    #[test]
+    fn bundler_lock_file() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("Gemfile"), "source 'https://rubygems.org'").unwrap();
+        std::fs::write(dir.path().join("Gemfile.lock"), "").unwrap();
+        assert_eq!(detect_ruby_pkgmgr(dir.path()), Some(PkgMgr::Bundler));
+    }
+
+    #[test]
+    fn php_runtime_detects_composer() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
+        assert_eq!(detect_pkgmgr(dir.path(), "php"), Some(PkgMgr::Composer));
+    }
+
+    #[test]
+    fn ruby_runtime_detects_bundler() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("Gemfile"), "").unwrap();
+        assert_eq!(detect_pkgmgr(dir.path(), "ruby"), Some(PkgMgr::Bundler));
+    }
+
+    #[test]
+    fn secondary_node_mgr() {
+        let dir = TempDir::new().unwrap();
+        // PHP app with Node.js frontend
+        std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        let mgrs = detect_all_pkgmgrs(dir.path(), "php");
+        assert_eq!(mgrs.len(), 2);
+        assert_eq!(mgrs[0], PkgMgr::Composer);
+        assert_eq!(mgrs[1], PkgMgr::Npm);
+    }
+
+    #[test]
+    fn secondary_php_mgr() {
+        let dir = TempDir::new().unwrap();
+        // Node app with PHP API
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
+        let mgrs = detect_all_pkgmgrs(dir.path(), "node");
+        assert_eq!(mgrs.len(), 2);
+        assert_eq!(mgrs[0], PkgMgr::Npm);
+        assert_eq!(mgrs[1], PkgMgr::Composer);
     }
 }
