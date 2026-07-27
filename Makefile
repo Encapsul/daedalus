@@ -12,7 +12,6 @@ CRYPTO_ALT := target/$(TARGET)/release/xbin-crypto
 all: stub cli
 
 # Verify all prerequisites are installed before building.
-preflight:
 	@echo "checking prerequisites..."
 	@command -v cargo >/dev/null 2>&1 || { echo "FAIL: cargo not found (install Rust: https://rustup.rs)"; exit 1; }
 	@command -v rustc >/dev/null 2>&1 || { echo "FAIL: rustc not found (install Rust: https://rustup.rs)"; exit 1; }
@@ -53,52 +52,28 @@ cli:
 # Build everything
 all: stub cli
 
-# System-wide installation (/usr/local/bin, admin required, persists after repo removal)
-install-system:
-	@printf "\nBuilding and installing x.bin to /usr/local/bin...\n"
-	sudo mkdir -p /usr/local/bin
-	sudo cargo build --release -p xbin-cli
-	sudo cp target/release/xbin /usr/local/bin/xbin
-	sudo chmod +x /usr/local/bin/xbin
-	@echo ""
-	@echo "✅ Successfully installed to /usr/local/bin/xbin"
-	@echo "   Verify: /usr/local/bin/xbin --version"
-	@echo ""
-	@echo "🚨 IMPORTANT: You must add /usr/local/bin to your PATH"
-	@echo "   Add to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
-	@echo "   echo 'export PATH=\"/usr/local/bin:\\$PATH\"' >> ~/.bashrc"
-	@echo "   source ~/.bashrc"
-	@echo "   or run now: export PATH=\"/usr/local/bin:\\$PATH\""
-	@echo ""
-	@echo "📋 You can now remove the x.bin repository entirely!"
-
-# User-level installation (~/.local/bin, no sudo, portable)
-install-local: cli
-	@printf "\nInstalling x.bin to ~/.local/bin (no admin required)...\n"
-	mkdir -p ~/.local/bin
-	cp target/release/xbin ~/.local/bin/xbin
-	chmod +x ~/.local/bin/xbin
-	@echo ""
-	@echo "✅ Successfully installed to ~/.local/bin/xbin"
-	@echo "   Verify: ~/.local/bin/xbin --version"
-	@echo ""
-	@echo "🔧 Add to your PATH (optional but recommended):"
-	@echo "   echo 'export PATH=\"$HOME/.local/bin:\\$PATH\"' >> ~/.bashrc"
-	@echo "   source ~/.bashrc"
-	@echo "   or run now: export PATH=\"$HOME/.local/bin:\\$PATH\""
-	@echo ""
-	@echo "🚀 You're ready to go! Remove x.bin repo if desired."
-
-# Hybrid install: tries system, falls back to user level
+# Hybrid install: tries system-wide, falls back to user-level
 install:
-	@if [ "$(id -u)" -eq 0 ]; then \
-		make install-system; \
+	@printf "\nBuilding x.bin (this may take a minute)...\n"
+	cargo build --release -p xbin-cli
+	@if sudo test -w /usr/local/bin 2>/dev/null; then \
+		printf "\nInstalling to /usr/local/bin...\n"; \
+		sudo cp target/release/xbin /usr/local/bin/xbin; \
+		sudo chmod +x /usr/local/bin/xbin; \
+		printf "\n✅ Installed to /usr/local/bin/xbin\n"; \
+		printf "   Verify: xbin --version\n"; \
+		printf "   You can now remove the x.bin repo!\n"; \
 	else \
-		make install-local; \
+		printf "\nInstalling to ~/.local/bin (no admin required)...\n"; \
+		mkdir -p ~/.local/bin; \
+		cp target/release/xbin ~/.local/bin/xbin; \
+		chmod +x ~/.local/bin/xbin; \
+		printf "\n✅ Installed to ~/.local/bin/xbin\n"; \
+		printf "   Add to PATH if needed:\n"; \
+		printf "   echo 'export PATH=\"$$HOME/.local/bin:\$$PATH\"' >> ~/.bashrc\n"; \
+		printf "   source ~/.bashrc\n"; \
+		printf "   You can remove the x.bin repo when done.\n"; \
 	fi
-
-# Legacy install target (user level)
-install-legacy: install-local
 
 # Build the Rust stub (statically linked musl ELF).
 
