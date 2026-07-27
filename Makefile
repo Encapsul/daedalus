@@ -12,7 +12,7 @@ CRYPTO_ALT := target/$(TARGET)/release/xbin-crypto
 all: stub cli
 
 # Verify all prerequisites are installed before building.
-	@echo "checking prerequisites..."
+preflight:
 	@command -v cargo >/dev/null 2>&1 || { echo "FAIL: cargo not found (install Rust: https://rustup.rs)"; exit 1; }
 	@command -v rustc >/dev/null 2>&1 || { echo "FAIL: rustc not found (install Rust: https://rustup.rs)"; exit 1; }
 	@rustup target list --installed 2>/dev/null | grep -q "$(HOST_ARCH)-unknown-linux-musl" || { echo "FAIL: musl target missing (run: rustup target add $(HOST_ARCH)-unknown-linux-musl)"; exit 1; }
@@ -69,24 +69,9 @@ install:
 		cp target/release/xbin ~/.local/bin/xbin; \
 		chmod +x ~/.local/bin/xbin; \
 		printf "\n✅ Installed to ~/.local/bin/xbin\n"; \
-		XBIN_PATH_LINE='export PATH="$$HOME/.local/bin:$$PATH"'; \
-		NEEDS_PATH=1; \
-		if grep -q "$$HOME/.local/bin" ~/.bashrc 2>/dev/null; then \
-			printf "   ✅ ~/.local/bin already in ~/.bashrc\n"; \
-			NEEDS_PATH=0; \
-		fi; \
-		if grep -q "$$HOME/.local/bin" ~/.profile 2>/dev/null; then \
-			printf "   ✅ ~/.local/bin already in ~/.profile\n"; \
-		else \
-			printf '\n# x.bin installer\nexport PATH="$$HOME/.local/bin:$$PATH"\n' >> ~/.profile; \
-			printf "   ✅ Added ~/.local/bin to ~/.profile\n"; \
-		fi; \
-		if [ "$$NEEDS_PATH" -eq 1 ]; then \
-			printf '\n# x.bin installer\nexport PATH="$$HOME/.local/bin:$$PATH"\n' >> ~/.bashrc; \
-			printf "   ✅ Added ~/.local/bin to ~/.bashrc\n"; \
-		fi; \
-		printf "\n   To use xbin now, start a new shell or run:\n"; \
-		printf "   source ~/.profile\n"; \
+		printf "   Add ~/.local/bin to your PATH:\n"; \
+		printf "   echo 'export PATH=\"\$$HOME/.local/bin:\$$PATH\"' >> \$$HOME/.bashrc\n"; \
+		printf "   source \$$HOME/.bashrc\n"; \
 		printf "   Then verify: xbin --version\n"; \
 		printf "   You can remove the x.bin repo when done.\n"; \
 	fi
