@@ -185,9 +185,32 @@ pub fn default_trusted_dir() -> PathBuf {
 mod tests {
     use super::*;
 
+    struct XdgGuard(Option<String>);
+
+    impl XdgGuard {
+        fn new() -> Self {
+            let prev = std::env::var("XDG_CACHE_HOME").ok();
+            Self(prev)
+        }
+        fn redirect(path: &Path) {
+            std::env::set_var("XDG_CACHE_HOME", path);
+        }
+    }
+
+    impl Drop for XdgGuard {
+        fn drop(&mut self) {
+            match &self.0 {
+                Some(v) => std::env::set_var("XDG_CACHE_HOME", v),
+                None => std::env::remove_var("XDG_CACHE_HOME"),
+            }
+        }
+    }
+
     #[test]
     fn build_cache_store_and_find() {
+        let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
+        XdgGuard::redirect(tmp.path());
         let app_dir = tmp.path().join("myapp");
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 10);
@@ -203,7 +226,9 @@ mod tests {
 
     #[test]
     fn build_cache_miss() {
+        let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
+        XdgGuard::redirect(tmp.path());
         let app_dir = tmp.path().join("myapp");
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 10);
@@ -212,7 +237,9 @@ mod tests {
 
     #[test]
     fn build_cache_clear() {
+        let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
+        XdgGuard::redirect(tmp.path());
         let app_dir = tmp.path().join("myapp");
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 10);
@@ -227,7 +254,9 @@ mod tests {
 
     #[test]
     fn build_cache_eviction() {
+        let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
+        XdgGuard::redirect(tmp.path());
         let app_dir = tmp.path().join("myapp");
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 2);
