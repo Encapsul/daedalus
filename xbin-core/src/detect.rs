@@ -47,7 +47,11 @@ pub fn detect_runtime(app_dir: &Path) -> Option<Runtime> {
 
     // Check for entry files and prefer runtimes that have them
     let php_has_entry = detect_php(app_dir)
-        && find_first_file(app_dir, &["index.php", "artisan", "public/index.php"]).is_some();
+        && find_first_file(
+            app_dir,
+            &["public/index.php", "artisan", "index.php", "entry.php"],
+        )
+        .is_some();
     let node_has_entry = detect_node(app_dir) && find_node_entry(app_dir).is_some();
     let python_has_entry = detect_python(app_dir)
         && find_first_file(app_dir, &["app.py", "main.py", "__main__.py", "server.py"]).is_some();
@@ -237,8 +241,28 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             ])
         }
         Runtime::Php => {
-            let entry = find_first_file(app_dir, &["index.php", "artisan", "public/index.php"])?;
-            Some(vec!["php".into(), format!("/app/{}", entry)])
+            // Prefer public/index.php (frameworks like Laravel, Symfony, OpenEMR)
+            // over root index.php (which is often just a bootstrap).
+            // For web apps, start PHP built-in server pointing at the web root.
+            let web_root_entry =
+                find_first_file(app_dir, &["public/index.php", "public/index.html"]);
+            if let Some(entry) = web_root_entry {
+                let doc_root = entry
+                    .strip_suffix("index.php")
+                    .or_else(|| entry.strip_suffix("index.html"))
+                    .unwrap_or("");
+                Some(vec![
+                    "php".into(),
+                    "-S".into(),
+                    "0.0.0.0:8080".into(),
+                    "-t".into(),
+                    format!("/app/{doc_root}"),
+                ])
+            } else {
+                // Fallback: artisan (Laravel CLI), root index.php, or entry.php
+                let entry = find_first_file(app_dir, &["artisan", "index.php", "entry.php"])?;
+                Some(vec!["php".into(), format!("/app/{entry}")])
+            }
         }
         Runtime::Perl => {
             let entry = find_first_file(app_dir, &["app.pl", "main.pl", "bin/app"])?;
