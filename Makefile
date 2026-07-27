@@ -30,14 +30,59 @@ cli:
 	cargo build --release -p xbin-cli
 	@echo "cli:    $$(ls -la $(CLI) | awk '{print $$5}') bytes"
 
-# Install the CLI to ~/.local/bin.
-install: cli
-	install -d ~/.local/bin
-	install -m 755 $(CLI) ~/.local/bin/xbin
+.PHONY: install install-system install-local
+
+# Build everything
+all: stub cli
+
+# System-wide installation (/usr/local/bin, admin required, persists after repo removal)
+install-system:
+	@printf "\nBuilding and installing x.bin to /usr/local/bin...\n"
+	sudo mkdir -p /usr/local/bin
+	sudo cargo build --release -p xbin-cli
+	sudo cp target/release/xbin /usr/local/bin/xbin
+	sudo chmod +x /usr/local/bin/xbin
 	@echo ""
-	@echo "installed: ~/.local/bin/xbin"
-	@echo "NOTE: if 'xbin' is not found, add ~/.local/bin to PATH:"
-	@echo "  export PATH=\"\$$HOME/.local/bin:\$$PATH\""
+	@echo "✅ Successfully installed to /usr/local/bin/xbin"
+	@echo "   Verify: /usr/local/bin/xbin --version"
+	@echo ""
+	@echo "🚨 IMPORTANT: You must add /usr/local/bin to your PATH"
+	@echo "   Add to your shell profile (~/.bashrc, ~/.zshrc, etc.):"
+	@echo "   echo 'export PATH=\"/usr/local/bin:\\$PATH\"' >> ~/.bashrc"
+	@echo "   source ~/.bashrc"
+	@echo "   or run now: export PATH=\"/usr/local/bin:\\$PATH\""
+	@echo ""
+	@echo "📋 You can now remove the x.bin repository entirely!"
+
+# User-level installation (~/.local/bin, no sudo, portable)
+install-local: cli
+	@printf "\nInstalling x.bin to ~/.local/bin (no admin required)...\n"
+	mkdir -p ~/.local/bin
+	cp target/release/xbin ~/.local/bin/xbin
+	chmod +x ~/.local/bin/xbin
+	@echo ""
+	@echo "✅ Successfully installed to ~/.local/bin/xbin"
+	@echo "   Verify: ~/.local/bin/xbin --version"
+	@echo ""
+	@echo "🔧 Add to your PATH (optional but recommended):"
+	@echo "   echo 'export PATH=\"$HOME/.local/bin:\\$PATH\"' >> ~/.bashrc"
+	@echo "   source ~/.bashrc"
+	@echo "   or run now: export PATH=\"$HOME/.local/bin:\\$PATH\""
+	@echo ""
+	@echo "🚀 You're ready to go! Remove x.bin repo if desired."
+
+# Hybrid install: tries system, falls back to user level
+install:
+	@if [ "$(id -u)" -eq 0 ]; then \
+		make install-system; \
+	else \
+		make install-local; \
+	fi
+
+# Legacy install target (user level)
+install-legacy: install-local
+
+# Build the Rust stub (statically linked musl ELF).
 
 # Build the hello-web example .xbin (requires stub + cli).
 example: stub cli
