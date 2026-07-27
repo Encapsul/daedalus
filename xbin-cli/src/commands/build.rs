@@ -416,6 +416,9 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
     }
 
+    // Clean up downloaded build tools (node/npm, composer.phar in /tmp)
+    let _ = std::fs::remove_dir_all("/tmp/xbin-build-tools");
+
     // Find stub binary
     let stub = find_stub(&target)?;
     let stub_bytes = std::fs::read(&stub)
