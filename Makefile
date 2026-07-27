@@ -69,18 +69,25 @@ install:
 		cp target/release/xbin ~/.local/bin/xbin; \
 		chmod +x ~/.local/bin/xbin; \
 		printf "\n✅ Installed to ~/.local/bin/xbin\n"; \
-		if echo "$$PATH" | grep -q "$$HOME/.local/bin"; then \
-			printf "   ✅ ~/.local/bin is already in PATH\n"; \
-		else \
-			printf "   🔧 Adding ~/.local/bin to PATH automatically...\n"; \
-			printf '\n# x.bin installer\nexport PATH="$$HOME/.local/bin:$$PATH"\n' >> ~/.bashrc; \
-			if [ -f ~/.zshrc ]; then \
-				printf '\n# x.bin installer\nexport PATH="$$HOME/.local/bin:$$PATH"\n' >> ~/.zshrc; \
-			fi; \
-			export PATH="$$HOME/.local/bin:$$PATH"; \
-			printf "   ✅ PATH updated in ~/.bashrc (and ~/.zshrc if present)\n"; \
+		XBIN_PATH_LINE='export PATH="$$HOME/.local/bin:$$PATH"'; \
+		NEEDS_PATH=1; \
+		if grep -q "$$HOME/.local/bin" ~/.bashrc 2>/dev/null; then \
+			printf "   ✅ ~/.local/bin already in ~/.bashrc\n"; \
+			NEEDS_PATH=0; \
 		fi; \
-		printf "   Verify: xbin --version\n"; \
+		if grep -q "$$HOME/.local/bin" ~/.profile 2>/dev/null; then \
+			printf "   ✅ ~/.local/bin already in ~/.profile\n"; \
+		else \
+			printf '\n# x.bin installer\nexport PATH="$$HOME/.local/bin:$$PATH"\n' >> ~/.profile; \
+			printf "   ✅ Added ~/.local/bin to ~/.profile\n"; \
+		fi; \
+		if [ "$$NEEDS_PATH" -eq 1 ]; then \
+			printf '\n# x.bin installer\nexport PATH="$$HOME/.local/bin:$$PATH"\n' >> ~/.bashrc; \
+			printf "   ✅ Added ~/.local/bin to ~/.bashrc\n"; \
+		fi; \
+		printf "\n   To use xbin now, start a new shell or run:\n"; \
+		printf "   source ~/.profile\n"; \
+		printf "   Then verify: xbin --version\n"; \
 		printf "   You can remove the x.bin repo when done.\n"; \
 	fi
 
