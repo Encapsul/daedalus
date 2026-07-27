@@ -89,6 +89,7 @@ pub struct EmbeddedRuntimeConfig {
     pub interpreter: Option<EmbeddedInterpreter>,
     pub interpreter_path: Option<String>,
     pub runtime_cache: Option<String>,
+    pub runtime_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

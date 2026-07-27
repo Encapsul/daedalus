@@ -487,6 +487,32 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
     }
 
+    // ── Embed interpreter ──────────────────────────────────
+    if let Some(ref interp) = args.embed_interpreter {
+        let interp_lower = interp.to_lowercase();
+        if interp_lower == "php" || interp_lower == "php8" || interp_lower == "php8.4" {
+            let php_src = if let Some(path) = args.interpreter_path.as_deref() {
+                path.to_string()
+            } else if let Ok(path) = std::env::var("PHP_BINARY") {
+                path
+            } else {
+                "/usr/local/php/8.4.15/bin/php".to_string()
+            };
+            let php_bin = std::path::Path::new(&php_src);
+            if !php_bin.exists() {
+                anyhow::bail!("PHP interpreter not found at {}", php_src);
+            }
+            let count = embed_php_interpreter(php_bin, &rootfs, verbose)?;
+            if verbose {
+                eprintln!("  embedded php: {} file(s) copied", count);
+            }
+            env_map.insert(
+                "PHPRC".into(),
+                serde_json::Value::String("/app/usr/etc/php".into()),
+            );
+        }
+    }
+
     // ── Disable Xdebug for PHP apps (avoids "Could not connect to debugging client") ──
     if runtime_name == "php" && !env_map.contains_key("XDEBUG_MODE") {
         env_map.insert(
@@ -1044,4 +1070,120 @@ fn copy_dir_recursive_with(src: &Path, dst: &Path, include_node_modules: bool) -
         }
     }
     Ok(())
+}
+
+/// Embed the PHP interpreter and its supporting files into the rootfs.
+///
+/// Copies the PHP binary, extensions, and configuration into the rootfs
+/// so the bundled binary can run without a system PHP installation.
+fn embed_php_interpreter(
+    php_bin: &std::path::Path,
+    rootfs: &std::path::Path,
+    verbose: bool,
+) -> std::io::Result<usize> {
+    let mut count = 0;
+
+    // Copy PHP binary to rootfs/usr/bin/php
+    let usr_bin = rootfs.join("usr/bin");
+    std::fs::create_dir_all(&usr_bin)?;
+    let dest_bin = usr_bin.join("php");
+    std::fs::copy(php_bin, &dest_bin)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dest_bin, std::fs::Permissions::from_mode(0o755))?;
+    }
+    count += 1;
+    if verbose {
+        eprintln!("    php binary: {}", dest_bin.display());
+    }
+
+    // Copy PHP extensions to rootfs/usr/lib/php/extensions/
+    let php_prefix = php_bin
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap_or_else(|| std::path::Path::new("/usr/local/php"));
+    let ext_dir = php_prefix.join("extensions");
+    let dest_ext = rootfs.join("usr/lib/php/extensions");
+    if ext_dir.is_dir() {
+        std::fs::create_dir_all(&dest_ext)?;
+        for entry in std::fs::read_dir(&ext_dir)? {
+            let entry = entry?;
+            let src = entry.path();
+            if src.is_file() {
+                let file_name = src.file_name().unwrap_or_default();
+                std::fs::copy(&src, dest_ext.join(file_name))?;
+                count += 1;
+                if verbose {
+                    eprintln!("    extension: {}", file_name.to_string_lossy());
+                }
+            }
+        }
+    }
+
+    // Also replace the extensions directory path in ini files
+    // so that zend_extension=... points to the correct location
+    let ext_prefix = php_prefix.join("extensions");
+    let ext_prefix_str = ext_prefix.to_string_lossy();
+    let ext_dest_str = "/app/usr/lib/php/extensions";
+
+    // Copy PHP ini and conf.d to rootfs/usr/etc/php/
+    let ini_src = php_prefix.join("ini");
+    let dest_etc = rootfs.join("usr/etc/php");
+    if ini_src.is_dir() {
+        std::fs::create_dir_all(&dest_etc)?;
+        for entry in std::fs::read_dir(&ini_src)? {
+            let entry = entry?;
+            let src = entry.path();
+            let name = src.file_name().unwrap_or_default();
+            let name_str = name.to_string_lossy();
+
+            if src.is_file() {
+                let dest_file = dest_etc.join(&*name_str);
+                let mut file_content = std::fs::read_to_string(&src)?;
+
+                // Replace absolute paths in ini files to point to the new location
+                let php_prefix_str = php_prefix.to_string_lossy();
+                if !php_prefix_str.is_empty() {
+                    file_content = file_content.replace(&*php_prefix_str, "/app/usr");
+                }
+                // Also replace the extensions directory path
+                if !ext_prefix_str.is_empty() {
+                    file_content = file_content.replace(&*ext_prefix_str, ext_dest_str);
+                }
+
+                std::fs::write(&dest_file, file_content)?;
+                count += 1;
+                if verbose {
+                    eprintln!("    ini file: {}", name_str);
+                }
+            } else if src.is_dir() && name_str == "conf.d" {
+                // Copy conf.d directory recursively
+                let dest_conf = dest_etc.join("conf.d");
+                std::fs::create_dir_all(&dest_conf)?;
+                for conf_entry in std::fs::read_dir(&src)? {
+                    let conf_entry = conf_entry?;
+                    let conf_src = conf_entry.path();
+                    if conf_src.is_file() {
+                        let conf_name = conf_src.file_name().unwrap_or_default();
+                        let mut conf_content = std::fs::read_to_string(&conf_src)?;
+                        let php_prefix_str = php_prefix.to_string_lossy();
+                        if !php_prefix_str.is_empty() {
+                            conf_content = conf_content.replace(&*php_prefix_str, "/app/usr");
+                        }
+                        if !ext_prefix_str.is_empty() {
+                            conf_content = conf_content.replace(&*ext_prefix_str, ext_dest_str);
+                        }
+                        std::fs::write(dest_conf.join(conf_name), conf_content)?;
+                        count += 1;
+                        if verbose {
+                            eprintln!("    conf.d: {}", conf_name.to_string_lossy());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(count)
 }
