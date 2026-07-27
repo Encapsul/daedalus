@@ -47,11 +47,10 @@ pub fn detect_runtime(app_dir: &Path) -> Option<Runtime> {
 
     // Check for entry files and prefer runtimes that have them
     let php_has_entry = detect_php(app_dir)
-        && find_first_file(
-            app_dir,
-            &["public/index.php", "artisan", "index.php", "entry.php"],
-        )
-        .is_some();
+        && (app_dir.join("index.php").is_file()
+            || app_dir.join("public/index.php").is_file()
+            || app_dir.join("artisan").is_file()
+            || app_dir.join("entry.php").is_file());
     let node_has_entry = detect_node(app_dir) && find_node_entry(app_dir).is_some();
     let python_has_entry = detect_python(app_dir)
         && find_first_file(app_dir, &["app.py", "main.py", "__main__.py", "server.py"]).is_some();
@@ -240,35 +239,75 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
                 format!("/app/{}", name),
             ])
         }
-        Runtime::Php => {
-            // Prefer public/index.php (frameworks like Laravel, Symfony, OpenEMR)
-            // over root index.php (which is often just a bootstrap).
-            // For web apps, start PHP built-in server pointing at the web root.
-            let web_root_entry =
-                find_first_file(app_dir, &["public/index.php", "public/index.html"]);
-            if let Some(entry) = web_root_entry {
-                let doc_root = entry
-                    .strip_suffix("index.php")
-                    .or_else(|| entry.strip_suffix("index.html"))
-                    .unwrap_or("");
-                Some(vec![
-                    "php".into(),
-                    "-S".into(),
-                    "0.0.0.0:8080".into(),
-                    "-t".into(),
-                    format!("/app/{doc_root}"),
-                ])
-            } else {
-                // Fallback: artisan (Laravel CLI), root index.php, or entry.php
-                let entry = find_first_file(app_dir, &["artisan", "index.php", "entry.php"])?;
-                Some(vec!["php".into(), format!("/app/{entry}")])
-            }
-        }
+        Runtime::Php => resolve_php_entrypoint(app_dir),
         Runtime::Perl => {
             let entry = find_first_file(app_dir, &["app.pl", "main.pl", "bin/app"])?;
             Some(vec!["perl".into(), format!("/app/{}", entry)])
         }
     }
+}
+
+/// Detect the PHP document root and build the built-in server command.
+/// Handles: Laravel (artisan), WordPress/OpenEMR (root index.php),
+/// `CakePHP` (webroot/), Yii (web/), Slim (public/), and generic fallbacks.
+fn resolve_php_entrypoint(app_dir: &Path) -> Option<Vec<String>> {
+    // 1. Laravel: has artisan → serve from public/
+    if app_dir.join("artisan").is_file() {
+        return Some(server_cmd("/app/public"));
+    }
+
+    // 2. Root index.php exists → serve from project root
+    //    (WordPress, OpenEMR, Drupal, CodeIgniter, etc.)
+    if app_dir.join("index.php").is_file() {
+        return Some(server_cmd("/app"));
+    }
+
+    // 3. Known web root directories
+    const WEB_ROOTS: &[(&str, &str)] = &[
+        ("public", "index.php"),
+        ("webroot", "index.php"),
+        ("web", "index.php"),
+        ("htdocs", "index.php"),
+        ("www", "index.php"),
+    ];
+    for (dir, entry) in WEB_ROOTS {
+        if app_dir.join(dir).join(entry).is_file() {
+            return Some(server_cmd(&format!("/app/{dir}")));
+        }
+    }
+
+    // 4. Fallback: first index.php in a one-level subdirectory
+    if let Ok(entries) = std::fs::read_dir(app_dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                let sub = entry.file_name();
+                let sub_name = sub.to_string_lossy();
+                if sub_name.starts_with('.')
+                    || sub_name == "vendor"
+                    || sub_name == "node_modules"
+                    || sub_name == "tests"
+                {
+                    continue;
+                }
+                if entry.path().join("index.php").is_file() {
+                    return Some(server_cmd(&format!("/app/{sub_name}")));
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Build `php -S 0.0.0.0:8080 -t <doc_root>` command args.
+fn server_cmd(doc_root: &str) -> Vec<String> {
+    vec![
+        "php".into(),
+        "-S".into(),
+        "0.0.0.0:8080".into(),
+        "-t".into(),
+        doc_root.into(),
+    ]
 }
 
 /// Find the first existing file from a list of candidates.
