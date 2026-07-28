@@ -149,7 +149,37 @@ fn detect_go(dir: &Path) -> bool {
 }
 
 fn detect_php(dir: &Path) -> bool {
-    dir.join("composer.json").is_file()
+    // 1. Composer projects (most common)
+    if dir.join("composer.json").is_file() {
+        return true;
+    }
+    // 2. PHP files exist in the directory or one level deep
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if path.extension().and_then(|e| e.to_str()) == Some("php") {
+                    return true;
+                }
+            } else if path.is_dir() {
+                if let Ok(sub_entries) = std::fs::read_dir(&path) {
+                    for sub_entry in sub_entries.flatten() {
+                        let sub_path = sub_entry.path();
+                        if sub_path.is_file()
+                            && sub_path.extension().and_then(|e| e.to_str()) == Some("php")
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // 3. PHP config files
+    if dir.join("php.ini").exists() {
+        return true;
+    }
+    false
 }
 
 fn detect_perl(dir: &Path) -> bool {

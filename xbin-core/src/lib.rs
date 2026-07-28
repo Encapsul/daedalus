@@ -9,6 +9,7 @@ pub mod compress;
 pub mod cron;
 pub mod detect;
 pub mod dotenv;
+pub mod embed;
 pub mod encrypt;
 pub mod format;
 pub mod include;

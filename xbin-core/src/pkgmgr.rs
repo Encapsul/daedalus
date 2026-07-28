@@ -2,6 +2,7 @@
 //!
 //! Priority is speed-based: uv > poetry > pipenv > pip; pnpm > yarn > bun > npm.
 
+use std::io;
 use std::path::Path;
 
 /// Detected package manager type.
@@ -129,6 +130,99 @@ pub fn detect_pkgmgr(dir: &Path, runtime: &str) -> Option<PkgMgr> {
         "ruby" => detect_ruby_pkgmgr(dir),
         _ => None,
     }
+}
+
+/// Run frontend/build steps declared in package.json `scripts` if the
+/// corresponding output files/directories do not already exist.
+///
+/// Supported scripts (run in order if present):
+///   - `build`       : general build step
+///   - `build:css`   : CSS build step
+///   - `build:js`    : JS build step
+///
+/// Returns the number of build commands executed.
+pub fn run_build_steps(app_dir: &Path, verbose: bool) -> io::Result<usize> {
+    use std::process::Command;
+
+    let pkg_json = app_dir.join("package.json");
+    if !pkg_json.is_file() {
+        return Ok(0);
+    }
+
+    let content = match std::fs::read_to_string(&pkg_json) {
+        Ok(c) => c,
+        Err(_) => return Ok(0),
+    };
+
+    let pkg: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(p) => p,
+        Err(_) => return Ok(0),
+    };
+
+    let scripts = match pkg.get("scripts").and_then(|s| s.as_object()) {
+        Some(s) => s,
+        None => return Ok(0),
+    };
+
+    // Determine which build scripts exist and need running
+    let mut to_run: Vec<(&str, &str)> = Vec::new();
+    if let Some(cmd) = scripts.get("build").and_then(|v| v.as_str()) {
+        to_run.push(("build", cmd));
+    }
+    if let Some(cmd) = scripts.get("build:css").and_then(|v| v.as_str()) {
+        to_run.push(("build:css", cmd));
+    }
+    if let Some(cmd) = scripts.get("build:js").and_then(|v| v.as_str()) {
+        to_run.push(("build:js", cmd));
+    }
+
+    if to_run.is_empty() {
+        return Ok(0);
+    }
+
+    let mut ran = 0;
+    for (name, cmd) in to_run {
+        if verbose {
+            eprintln!("  build step: running `npm run {name}`...");
+        }
+
+        // Try npm first, fallback to npx/yarn/pnpm
+        let runners = ["npm", "npx", "yarn", "pnpm", "bun"];
+        let mut ran_ok = false;
+        for runner in &runners {
+            if !is_command_available(runner) {
+                continue;
+            }
+            let mut args = vec![runner, "run", name];
+            // Tokenize the command
+            args.extend(cmd.split_whitespace().skip(1));
+            let status = Command::new(runner)
+                .args(&args[1..])
+                .current_dir(app_dir)
+                .status();
+            if let Ok(s) = status {
+                if s.success() {
+                    ran += 1;
+                    ran_ok = true;
+                    break;
+                }
+            }
+        }
+        if !ran_ok && verbose {
+            eprintln!("  build step: `npm run {name}` skipped (no runner available)");
+        }
+    }
+    Ok(ran)
+}
+
+fn is_command_available(name: &str) -> bool {
+    std::process::Command::new("sh")
+        .args(["-c", &format!("command -v {name}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 /// Detect any secondary package managers (e.g., a PHP app with package.json).

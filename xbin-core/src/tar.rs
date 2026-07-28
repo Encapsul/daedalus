@@ -4,6 +4,7 @@
 //! uid/gid=0, sorted entries) for consistent builds.
 
 use std::io::{self};
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use flate2::read::GzDecoder;
@@ -144,7 +145,12 @@ fn append_entries<W: io::Write>(
         } else if path.is_file() {
             let meta = std::fs::metadata(&path)?;
             header.set_entry_type(tar::EntryType::Regular);
-            header.set_mode(0o644);
+            let mode = if meta.permissions().mode() & 0o111 != 0 {
+                0o755
+            } else {
+                0o644
+            };
+            header.set_mode(mode);
             header.set_size(meta.len());
             let mut f = std::fs::File::open(&path)?;
             builder
