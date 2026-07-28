@@ -59,17 +59,14 @@ pub fn embed_interpreter(interpreter: &str, rootfs: &Path, verbose: bool) -> io:
         fs::create_dir_all(&dest_dir)?;
         let dest_lib = dest_dir.join(name);
 
-        // Copy the symlink target if it's a symlink, otherwise copy the file
-        if lib_path.is_symlink() {
-            let target = fs::read_link(lib_path)?;
-            // Create symlink in rootfs
-            if dest_lib.exists() || dest_lib.symlink_metadata().is_ok() {
-                let _ = fs::remove_file(&dest_lib);
-            }
-            std::os::unix::fs::symlink(&target, &dest_lib)?;
-        } else {
-            fs::copy(lib_path, &dest_lib)?;
-        }
+        let _ = fs::remove_file(&dest_lib);
+        // SAFETY: always copy the dereferenced file content, never preserve
+        // symlinks as-is. Host symlinks (e.g. libstdc++.so.6 ->
+        // libstdc++.so.6.0.33) would be broken in rootfs because the
+        // symlink target is never separately embedded. fs::copy follows
+        // symlinks and writes the real file content under the SONAME name,
+        // keeping the dynamic linker's NEEDED lookup working.
+        fs::copy(lib_path, &dest_lib)?;
         count += 1;
 
         if verbose {
@@ -160,8 +157,14 @@ fn resolve_lib_dirs(rootfs: &Path) -> Vec<PathBuf> {
 }
 
 /// Find the best destination directory for a shared library.
+///
+/// Passes through known multiarch subdirectories (e.g. `x86_64-linux-gnu`) so
+/// that libraries resolved from `/lib/x86_64-linux-gnu` or
+/// `/usr/lib/x86_64-linux-gnu` end up in the corresponding rootfs subdirectory
+/// that `LD_LIBRARY_PATH` searches.  Without this the previous `exists()`-based
+/// probe always fell back to `usr/lib` on a fresh build, placing multiarch libs
+/// outside the dynamic linker's search path.
 fn find_lib_dest(lib_path: &Path, lib_dirs: &[PathBuf]) -> PathBuf {
-    // If the source is in a known lib dir, mirror the structure
     if let Some(name) = lib_path.file_name() {
         for dir in lib_dirs {
             let candidate = dir.join(name);
@@ -170,7 +173,24 @@ fn find_lib_dest(lib_path: &Path, lib_dirs: &[PathBuf]) -> PathBuf {
             }
         }
     }
-    // Fallback: use usr/lib
+
+    const MULTIARCH_SUBDIRS: &[&str] = &["x86_64-linux-gnu", "aarch64-linux-gnu"];
+    if let Some(_name) = lib_path.file_name() {
+        let lib_path_str = lib_path.to_string_lossy();
+        for subdir in MULTIARCH_SUBDIRS {
+            let marker = format!("/{subdir}/");
+            if let Some(_pos) = lib_path_str.find(&marker) {
+                let dest = lib_dirs
+                    .iter()
+                    .find(|d| d.ends_with(subdir))
+                    .cloned()
+                    .unwrap_or_else(|| lib_dirs.get(2).cloned().unwrap_or_default());
+                let _ = std::fs::create_dir_all(&dest);
+                return dest;
+            }
+        }
+    }
+
     lib_dirs
         .get(2)
         .cloned()

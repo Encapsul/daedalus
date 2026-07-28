@@ -538,23 +538,6 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             eprintln!("  xdebug: XDEBUG_MODE=off (auto-injected for PHP)");
         }
     }
-    // ── Set PHPRC for embedded PHP ──────────────────────────
-    if args
-        .embed_interpreter
-        .as_ref()
-        .map(|s| s.to_lowercase())
-        .map(|s| s == "php" || s.starts_with("php"))
-        .unwrap_or(false)
-    {
-        env_map.insert(
-            "PHPRC".into(),
-            serde_json::Value::String("/app/usr/etc/php".into()),
-        );
-        env_map.insert(
-            "LD_LIBRARY_PATH".into(),
-            serde_json::Value::String("/app/lib/x86_64-linux-gnu".into()),
-        );
-    }
 
     // ── Persistent storage ────────────────────────────────────────────
     if args.persist {
