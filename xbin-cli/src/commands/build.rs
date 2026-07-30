@@ -1047,6 +1047,36 @@ fn check_php_platform_reqs(app_dir: &Path, verbose: bool) -> Result<()> {
         None => return Ok(()),
     };
 
+    // Check PHP version constraint from composer.json
+    if let Some(php_req) = require.get("php").and_then(|v| v.as_str()) {
+        let current_version = std::process::Command::new("php")
+            .args(["-v"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .next()
+                    .and_then(|l| l.split_whitespace().nth(1))
+                    .map(|s| s.to_string())
+            });
+
+        if let Some(ref cur) = current_version {
+            if !version_satisfies(cur, php_req) && verbose {
+                eprintln!(
+                    "[xbin] warning: composer.json requires PHP {}, but php {} is on PATH",
+                    php_req, cur
+                );
+                if let Some(alt) = find_php_binary(php_req) {
+                    eprintln!(
+                        "[xbin]   consider using --embed-interpreter {} or set PATH to use {}",
+                        alt, alt
+                    );
+                }
+            }
+        }
+    }
+
     let mut required_exts: Vec<&str> = Vec::new();
     for key in require.keys() {
         if let Some(ext) = key.strip_prefix("ext-") {
@@ -1094,7 +1124,110 @@ fn check_php_platform_reqs(app_dir: &Path, verbose: bool) -> Result<()> {
         );
     }
 
-    Ok(())
+        Ok(())
+}
+
+/// Simple PHP version constraint check — handles `^8.2`, `>=8.0`, `8.1`, `8.*`,
+/// `~8.1.0`, and `8.1 || 8.2` patterns. Returns true if the version satisfies.
+fn version_satisfies(version: &str, constraint: &str) -> bool {
+    let version_parts: Vec<u32> = version
+        .split('.')
+        .filter_map(|s| s.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().ok())
+        .collect();
+    if version_parts.is_empty() {
+        return false;
+    }
+
+    for part in constraint.split("||") {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        if satisfies_single(&version_parts, part) {
+            return true;
+        }
+    }
+    false
+}
+
+fn satisfies_single(version: &[u32], constraint: &str) -> bool {
+    let constraint = constraint.trim();
+    if constraint.starts_with('^') {
+        if let Some(rest) = constraint.strip_prefix('^') {
+            let target = parse_version(rest);
+            if target.is_empty() {
+                true
+            } else {
+                version >= &target && version.first() == target.first()
+            }
+        } else {
+            true
+        }
+    } else if constraint.starts_with('~') {
+        if let Some(rest) = constraint.strip_prefix('~') {
+            let target = parse_version(rest);
+            if target.len() < 2 {
+                true
+            } else {
+                version.len() >= 2 && version[0] == target[0] && version[1] == target[1] && version >= &target
+            }
+        } else {
+            true
+        }
+    } else if constraint.ends_with('*') {
+        let prefix = constraint.trim_end_matches('*');
+        let prefix_parts: Vec<u32> = prefix
+            .split('.')
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        version.starts_with(&prefix_parts)
+    } else if let Some(rest) = constraint.strip_prefix(">=") {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord != std::cmp::Ordering::Less)
+    } else if let Some(rest) = constraint.strip_prefix("<=") {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord != std::cmp::Ordering::Greater)
+    } else if let Some(rest) = constraint.strip_prefix('>') {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord == std::cmp::Ordering::Greater)
+    } else if let Some(rest) = constraint.strip_prefix('<') {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord == std::cmp::Ordering::Less)
+    } else if let Some(rest) = constraint.strip_prefix("==") {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord == std::cmp::Ordering::Equal)
+    } else {
+        let target = parse_version(constraint);
+        version == target
+    }
+}
+
+fn parse_version(s: &str) -> Vec<u32> {
+    s.split('.')
+        .filter_map(|p| p.trim().parse().ok())
+        .collect()
+}
+
+fn compare_versions(a: &[u32], b: &[u32]) -> Option<std::cmp::Ordering> {
+    for (x, y) in a.iter().zip(b.iter()) {
+        let ord = x.cmp(y);
+        if ord != std::cmp::Ordering::Equal {
+            return Some(ord);
+        }
+    }
+    a.len().cmp(&b.len()).into()
+}
+
+/// Look for alternative PHP binaries on PATH that might satisfy the version constraint.
+fn find_php_binary(constraint: &str) -> Option<String> {
+    let rest = constraint.strip_prefix('^')?;
+    let major = rest.split('.').next()?;
+    for candidate in ["php", &format!("php{major}")] {
+        if which::which(candidate).is_ok() {
+            return Some(candidate.to_string());
+        }
+    }
+    None
 }
 
 /// Check if package.json contains `workspace:*` protocol deps (pnpm-specific).
