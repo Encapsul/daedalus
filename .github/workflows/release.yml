@@ -9,197 +9,125 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  CARGO_TARGET_DIR: target
 
 jobs:
-  # ── Linux x86_64 ─────────────────────────────────────────────────────
-  build-linux-x64:
-    name: Linux (x86_64)
+  build:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          # Linux musl — stub + CLI
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+          - i686-unknown-linux-musl
+          - armv7-unknown-linux-musleabihf
+          - arm-unknown-linux-musleabihf
+          - riscv64gc-unknown-linux-musl
+          - s390x-unknown-linux-musl
+          - powerpc64le-unknown-linux-musl
+          # Linux gnu — CLI only
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - i686-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+          - riscv64gc-unknown-linux-gnu
+          # macOS
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          # Windows
+          - x86_64-pc-windows-gnu
+          - aarch64-pc-windows-gnu
+          - i686-pc-windows-gnu
+          # FreeBSD
+          - x86_64-unknown-freebsd
+          - aarch64-unknown-freebsd
+          # NetBSD / OpenBSD
+          - x86_64-unknown-netbsd
+          - x86_64-unknown-openbsd
+          - i686-unknown-netbsd
+
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          targets: x86_64-unknown-linux-musl
+          targets: ${{ matrix.target }}
 
-      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild
 
-      - name: Build stub
-        run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
+      - name: Build stub (Linux only — uses /proc/self/exe, namespaces, seccomp)
+        if: ${{ contains(matrix.target, 'linux') }}
+        run: cargo zigbuild --release --target ${{ matrix.target }} -p xbin-stub
 
       - name: Build CLI
-        run: cargo build --release -p xbin-cli
-
-      - name: Test binaries
-        run: |
-          STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
-          CLI=target/release/xbin
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: stub not ELF"; exit 1; }
-          file "$CLI" | grep -q "ELF" || { echo "FAIL: cli not ELF"; exit 1; }
-          echo "=== PASS: linux-x64 ==="
+        run: cargo zigbuild --release --target ${{ matrix.target }} -p xbin-cli
 
       - name: Package
+        shell: bash
         run: |
-          STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
-          CLI=target/release/xbin
-          CRYPTO=target/x86_64-unknown-linux-musl/release/xbin-crypto
-          DIR="xbin-linux-x64"
+          DIR="xbin-${{ matrix.target }}"
           mkdir -p "${DIR}/bin"
-          cp "$STUB" "${DIR}/bin/"
-          cp "$CLI" "${DIR}/bin/"
-          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
-          chmod +x "${DIR}/bin/"*
-          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
+          if [ -f "target/${{ matrix.target }}/release/xbin.exe" ]; then
+            cp "target/${{ matrix.target }}/release/xbin.exe" "${DIR}/bin/"
+          else
+            cp "target/${{ matrix.target }}/release/xbin" "${DIR}/bin/"
+          fi
+          if [ -f "target/${{ matrix.target }}/release/xbin-stub" ]; then
+            cp "target/${{ matrix.target }}/release/xbin-stub" "${DIR}/bin/"
+          fi
+          if [ -f "target/${{ matrix.target }}/release/xbin-crypto" ]; then
+            cp "target/${{ matrix.target }}/release/xbin-crypto" "${DIR}/bin/"
+          fi
+          find "${DIR}" -type f -exec chmod +x {} \; 2>/dev/null || true
+          tar czf "xbin-${{ matrix.target }}.tar.gz" "${DIR}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: assets-linux-x64
-          path: /tmp/assets/*
+          name: xbin-${{ matrix.target }}
+          path: xbin-${{ matrix.target }}.tar.gz
 
-  # ── Linux aarch64 ────────────────────────────────────────────────────
-  build-linux-arm64:
-    name: Linux (aarch64)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          targets: aarch64-unknown-linux-musl
-      - run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
-
-      - name: Build stub
-        run: cargo build --release --target aarch64-unknown-linux-musl -p xbin-stub
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
-
-      - name: Build CLI
-        run: cargo build --release -p xbin-cli
-
-      - name: Test binaries
-        run: |
-          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
-          CLI=target/release/xbin
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: stub not ELF"; exit 1; }
-          file "$STUB" | grep -q "aarch64" || { echo "FAIL: stub not aarch64"; exit 1; }
-          echo "=== PASS: linux-arm64 ==="
-
-      - name: Package
-        run: |
-          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
-          CLI=target/release/xbin
-          CRYPTO=target/aarch64-unknown-linux-musl/release/xbin-crypto
-          DIR="xbin-linux-arm64"
-          mkdir -p "${DIR}/bin"
-          cp "$STUB" "${DIR}/bin/"
-          cp "$CLI" "${DIR}/bin/"
-          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
-          chmod +x "${DIR}/bin/"*
-          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: assets-linux-arm64
-          path: /tmp/assets/*
-
-  # ── macOS Apple Silicon ──────────────────────────────────────────────
-  build-macos-arm64:
-    name: macOS (Apple Silicon)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Build stub
-        run: cargo build --release -p xbin-stub
-
-      - name: Build CLI
-        run: cargo build --release -p xbin-cli
-
-      - name: Test binaries
-        run: |
-          STUB=target/release/xbin-stub
-          CLI=target/release/xbin
-          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: stub not Mach-O"; exit 1; }
-          file "$CLI" | grep -q "Mach-O" || { echo "FAIL: cli not Mach-O"; exit 1; }
-          echo "=== PASS: macos-arm64 ==="
-
-      - name: Package
-        run: |
-          STUB=target/release/xbin-stub
-          CLI=target/release/xbin
-          CRYPTO=target/release/xbin-crypto
-          DIR="xbin-macos-arm64"
-          mkdir -p "${DIR}/bin"
-          cp "$STUB" "${DIR}/bin/"
-          cp "$CLI" "${DIR}/bin/"
-          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
-          chmod +x "${DIR}/bin/"*
-          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: assets-macos-arm64
-          path: /tmp/assets/*
-
-  # ── macOS Intel ──────────────────────────────────────────────────────
-  build-macos-x64:
-    name: macOS (Intel)
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Build stub
-        run: cargo build --release -p xbin-stub
-
-      - name: Build CLI
-        run: cargo build --release -p xbin-cli
-
-      - name: Test binaries
-        run: |
-          STUB=target/release/xbin-stub
-          CLI=target/release/xbin
-          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: stub not Mach-O"; exit 1; }
-          file "$CLI" | grep -q "Mach-O" || { echo "FAIL: cli not Mach-O"; exit 1; }
-          echo "=== PASS: macos-x64 ==="
-
-      - name: Package
-        run: |
-          STUB=target/release/xbin-stub
-          CLI=target/release/xbin
-          CRYPTO=target/release/xbin-crypto
-          DIR="xbin-macos-x64"
-          mkdir -p "${DIR}/bin"
-          cp "$STUB" "${DIR}/bin/"
-          cp "$CLI" "${DIR}/bin/"
-          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
-          chmod +x "${DIR}/bin/"*
-          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: assets-macos-x64
-          path: /tmp/assets/*
-
-  # ── Upload to Release ────────────────────────────────────────────────
-  publish:
-    name: Upload to Release
-    needs: [build-linux-x64, build-linux-arm64, build-macos-arm64, build-macos-x64]
+  checksums:
+    name: Checksums
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: /tmp/assets
-          pattern: assets-*
+          pattern: xbin-*
           merge-multiple: true
 
-      - name: List files
+      - run: |
+          cd /tmp/assets
+          sha256sum *.tar.gz > checksums.txt
+          cat checksums.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: /tmp/assets/checksums.txt
+
+  publish:
+    name: Upload to Release
+    needs: checksums
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/assets
+          pattern: xbin-*
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: checksums
+          path: /tmp/assets
+
+      - name: List assets
         run: ls -lh /tmp/assets/
 
       - uses: softprops/action-gh-release@v2

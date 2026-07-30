@@ -114,6 +114,9 @@ fn detect_python(dir: &Path) -> bool {
     ["app.py", "main.py", "__main__.py", "server.py"]
         .iter()
         .any(|f| dir.join(f).is_file())
+        || dir.join("pyproject.toml").is_file()
+        || dir.join("setup.py").is_file()
+        || dir.join("requirements.txt").is_file()
 }
 
 fn detect_deno(dir: &Path) -> bool {
@@ -432,6 +435,24 @@ mod tests {
     }
 
     #[test]
+    fn detect_python_pyproject_only() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("pyproject.toml"),
+            "[project]\nname = \"myapp\"",
+        )
+        .unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Python));
+    }
+
+    #[test]
+    fn detect_python_setup_py() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("setup.py"), "").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Python));
+    }
+
+    #[test]
     fn detect_node_app() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
@@ -458,6 +479,15 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("README.md"), "hi").unwrap();
         assert_eq!(detect_runtime(dir.path()), None);
+    }
+
+    #[test]
+    fn php_beats_node_for_laravel() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("artisan"), "").unwrap();
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Php));
     }
 
     #[test]

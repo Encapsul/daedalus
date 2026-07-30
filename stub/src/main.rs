@@ -8,6 +8,7 @@
 //! (chroot, user namespaces) in Phase 2 — see docs/src/roadmap.md.
 
 mod config;
+mod landlock;
 mod squashfs_extract;
 
 use serde::Deserialize;
@@ -60,6 +61,8 @@ struct Metadata {
     isolation: u8,
     #[serde(default)]
     seccomp: bool,
+    #[serde(default)]
+    landlock: bool,
     #[serde(default)]
     services: Vec<Service>,
     #[serde(default)]
@@ -498,7 +501,18 @@ fn setup_env(
             .collect();
         if let Some(existing) = env.get("LD_LIBRARY_PATH") {
             if !existing.is_empty() {
-                paths.push(existing.clone());
+                // Append existing entries, deduplicated to avoid exceeding
+                // the environment variable length limit.
+                let existing_entries: Vec<String> = existing
+                    .split(':')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                for entry in &existing_entries {
+                    if !paths.iter().any(|p| p == entry) {
+                        paths.push(entry.clone());
+                    }
+                }
             }
         }
         env.insert("LD_LIBRARY_PATH".into(), paths.join(":"));
@@ -632,15 +646,18 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
                 );
             }
         }
+        if meta.landlock {
+            if let Err(e) = landlock::sandbox(rootfs) {
+                eprintln!(
+                    "[xbin] warning: landlock not available, running without filesystem sandbox: {e}"
+                );
+            }
+        }
     }
 
     let resolve = make_resolve(rootfs, use_pivot);
 
-    let prog = resolve(&meta.entrypoint[0]);
-    let prog_c = cstr(prog.as_os_str().as_bytes())?;
-
-    let prog_path_bytes = prog.as_os_str().as_bytes();
-    let _prog_path_str = std::str::from_utf8(prog_path_bytes).unwrap_or_default();
+    let mut prog = resolve(&meta.entrypoint[0]);
 
     let interpreter_name = match meta.runtime.as_str() {
         "php" => "php",
@@ -653,10 +670,37 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
         _ => "bash",
     };
 
-    if !is_executable(interpreter_name.as_bytes()) {
+    // For bare interpreter names without pivot_root, search rootfs bin dirs
+    // so embedded interpreters are found before namespace/pivot setup.
+    if !use_pivot && !meta.entrypoint[0].contains('/') {
+        let prog_str = prog.to_string_lossy();
+        if !check_executable(&prog_str) {
+            if let Some(found) = BIN_PATHS.iter().find_map(|dir| {
+                let candidate = rootfs.join(dir).join(&meta.entrypoint[0]);
+                if check_executable(&candidate.to_string_lossy()) {
+                    Some(candidate)
+                } else {
+                    None
+                }
+            }) {
+                prog = found;
+            }
+        }
+    }
+
+    let prog_c = cstr(prog.as_os_str().as_bytes())?;
+
+    let prog_path_bytes = prog.as_os_str().as_bytes();
+    let _prog_path_str = std::str::from_utf8(prog_path_bytes).unwrap_or_default();
+
+    if !is_executable(prog.as_os_str().as_bytes()) {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("[xbin] error: interpreter '{}' not found", interpreter_name),
+            format!(
+                "[xbin] error: interpreter '{}' not found (tried: {})",
+                interpreter_name,
+                prog.display()
+            ),
         ));
     }
 
@@ -715,6 +759,13 @@ fn supervise_services(
             if let Err(e) = install_seccomp_denylist() {
                 eprintln!(
                     "[xbin] warning: seccomp not available, running without syscall filter: {e}"
+                );
+            }
+        }
+        if meta.landlock {
+            if let Err(e) = landlock::sandbox(rootfs) {
+                eprintln!(
+                    "[xbin] warning: landlock not available, running without filesystem sandbox: {e}"
                 );
             }
         }
