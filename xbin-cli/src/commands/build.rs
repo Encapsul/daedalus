@@ -1306,6 +1306,7 @@ fn copy_dir_recursive_with(src: &Path, dst: &Path, include_node_modules: bool) -
             || name == ".venv"
             || name == "venv"
             || name == ".xbin"
+            || name == ".pnpm"
             || (name == "node_modules" && !include_node_modules)
         {
             continue;
