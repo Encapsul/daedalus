@@ -231,6 +231,7 @@ fn embed_runtime_config(
         }
         "ruby" => {
             count += embed_ruby_config(interp_path, rootfs, verbose)?;
+            count += embed_ruby_native_gems(interp_path, rootfs, verbose)?;
         }
         "perl" => {
             count += embed_perl_config(interp_path, rootfs, verbose)?;
@@ -385,6 +386,73 @@ fn embed_ruby_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Re
             count += c;
             if verbose {
                 eprintln!("  embed: Ruby gems ({} files)", c);
+            }
+        }
+    }
+
+    Ok(count)
+}
+
+/// Scan Ruby gem directories for .so native extensions, run ldd on each,
+/// and embed their shared library dependencies into the rootfs.
+fn embed_ruby_native_gems(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Result<usize> {
+    let gemdir = run_cmd(interp_path, &["-e", "print Gem.dir"]);
+    if gemdir.is_empty() {
+        return Ok(0);
+    }
+    let gem_path = PathBuf::from(&gemdir);
+    if !gem_path.is_dir() {
+        return Ok(0);
+    }
+
+    let mut seen = HashSet::new();
+    let lib_dirs = resolve_lib_dirs(rootfs);
+    let mut count = 0;
+    let mut stack = vec![gem_path];
+
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|s| s.to_str()) != Some("so") {
+                continue;
+            }
+
+            if verbose {
+                eprintln!("  embed: Ruby native gem {}", path.display());
+            }
+
+            let deps = match ldd_deps(&path) {
+                Ok(d) => d,
+                Err(_) => Vec::new(),
+            };
+
+            for lib_path in &deps {
+                let name = match lib_path.file_name() {
+                    Some(n) => n,
+                    None => continue,
+                };
+                let name_str = name.to_string_lossy();
+                if !seen.insert(name_str.to_string()) {
+                    continue;
+                }
+                let dest_dir = find_lib_dest(lib_path, &lib_dirs);
+                fs::create_dir_all(&dest_dir)?;
+                let dest_lib = dest_dir.join(name);
+                let _ = fs::remove_file(&dest_lib);
+                fs::copy(lib_path, &dest_lib)?;
+                count += 1;
+
+                if verbose {
+                    eprintln!("  embed: ruby gem lib {} -> {}", name_str, dest_dir.display());
+                }
             }
         }
     }
