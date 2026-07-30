@@ -320,7 +320,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // ── Intelligent build cache: skip rebuild if hash matches ──────────
     if args.use_cache {
         let cache = xbin_core::paths::BuildCache::new(&app_dir, 50);
-        if let Some(cached) = cache.find(&new_app_hash, &new_rt_hash) {
+        if let Some(cached) = cache.find(&new_app_hash) {
             if verbose {
                 eprintln!("[xbin] cache hit — reusing cached build");
             }
@@ -816,7 +816,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // ── Store in build cache ──────────────────────────────────────────
     if args.use_cache {
         let cache = xbin_core::paths::BuildCache::new(&app_dir, 50);
-        if cache.store(&new_app_hash, &new_rt_hash, &output).is_ok() && verbose {
+        if cache.store(&new_app_hash, &output).is_ok() && verbose {
             eprintln!("  cache: stored build");
         }
     }
