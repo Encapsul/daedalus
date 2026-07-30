@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -154,7 +154,7 @@ impl AppConfig {
 /// Prompt for missing secrets with masked input
 #[allow(dead_code)]
 pub fn prompt_for_secrets(config: &mut AppConfig, required: &[String]) -> io::Result<()> {
-    if !atty::is(atty::Stream::Stdin) {
+    if !std::io::stdin().is_terminal() {
         return Ok(());
     }
 

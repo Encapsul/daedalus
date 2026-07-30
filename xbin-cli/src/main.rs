@@ -71,6 +71,9 @@ enum Commands {
     /// Upgrade x.bin to the latest release
     Upgrade(commands::upgrade::UpgradeArgs),
 
+    /// Publish a .xbin file to a registry
+    Publish(commands::publish::PublishArgs),
+
     /// Show xbin environment info
     Env(commands::env::EnvArgs),
 
@@ -153,6 +156,7 @@ fn main() -> ExitCode {
             }
             commands::upgrade::run(args)
         }
+        Commands::Publish(args) => commands::publish::run(args),
         Commands::Env(args) => commands::env::run(args),
         Commands::Completion { shell } => {
             let mut cmd = Cli::command();
