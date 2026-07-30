@@ -429,10 +429,7 @@ fn embed_ruby_native_gems(interp_path: &Path, rootfs: &Path, verbose: bool) -> i
                 eprintln!("  embed: Ruby native gem {}", path.display());
             }
 
-            let deps = match ldd_deps(&path) {
-                Ok(d) => d,
-                Err(_) => Vec::new(),
-            };
+            let deps = ldd_deps(&path).unwrap_or_default();
 
             for lib_path in &deps {
                 let name = match lib_path.file_name() {
