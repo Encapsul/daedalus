@@ -35,12 +35,23 @@ pub fn parse_interval(val: &str) -> u64 {
         return n.parse::<u64>().unwrap_or(0);
     }
     if let Some(n) = val.strip_suffix('m') {
-        return n.parse::<u64>().unwrap_or(0) * 60;
+        if let Ok(n_parsed) = n.parse::<u64>() {
+            return n_parsed * 60;
+        }
+        return 3600;
     }
     if let Some(n) = val.strip_suffix('h') {
-        return n.parse::<u64>().unwrap_or(0) * 3600;
+        if let Ok(n_parsed) = n.parse::<u64>() {
+            return n_parsed * 3600;
+        }
+        return 3600;
     }
-    val.parse::<u64>().unwrap_or(0)
+
+    let n = val.parse::<u64>().unwrap_or(3600);
+    if n < 60 {
+        return 3600;
+    }
+    n
 }
 
 #[cfg(test)]

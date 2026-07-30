@@ -246,7 +246,7 @@ fn py_compress<'py>(
     data: &[u8],
     level: Option<i32>,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    let lv = level.unwrap_or(19);
+    let lv = level.unwrap_or(3);
     let compressed = compress::compress_with_level(data, lv)
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
     Ok(PyBytes::new(py, &compressed))
