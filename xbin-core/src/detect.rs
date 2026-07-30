@@ -284,7 +284,10 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
 /// Handles: Laravel (artisan), WordPress/OpenEMR (root index.php),
 /// `CakePHP` (webroot/), Yii (web/), Slim (public/), and generic fallbacks.
 fn resolve_php_entrypoint(app_dir: &Path) -> Option<Vec<String>> {
-    // 1. Laravel: has artisan → serve from public/
+    // 0. Laravel Octane with RoadRunner — rr binary replaces php -S
+    if app_dir.join("rr.yaml").is_file() || app_dir.join(".rr.yaml").is_file() {
+        return Some(vec!["rr".into(), "/app".into()]);
+    }
     if app_dir.join("artisan").is_file() {
         return Some(server_cmd("/app/public"));
     }

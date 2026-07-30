@@ -542,6 +542,20 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
     }
 
+    // Embed RoadRunner binary for Laravel Octane apps (rr.yaml or .rr.yaml)
+    if app_dir.join("rr.yaml").is_file() || app_dir.join(".rr.yaml").is_file() {
+        if which::which("rr").is_ok() {
+            if verbose {
+                eprintln!("Embedding RoadRunner...");
+            }
+            if let Err(e) = embed::embed_interpreter("rr", &rootfs, verbose) {
+                eprintln!("[xbin] warning: failed to embed RoadRunner: {}", e);
+            }
+        } else if verbose {
+            eprintln!("[xbin] warning: rr binary not found on PATH; RoadRunner won't be available at runtime");
+        }
+    }
+
     if !interpreter_embedded && verbose && embedded_interpreter_str.is_some() {
         eprintln!("  (interpreter embedding skipped)");
     }
