@@ -1,4 +1,3 @@
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 #[allow(clippy::cast_precision_loss)]
@@ -22,20 +21,18 @@ pub fn cache_dir() -> PathBuf {
     }
 }
 
-pub fn build_cache_dir(app_dir: &Path) -> PathBuf {
-    let app_name = app_dir.file_name().unwrap_or_default().to_string_lossy();
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    app_name.hash(&mut hasher);
-    let hash = hasher.finish();
-    cache_dir()
-        .join("builds")
-        .join(format!("{app_name}_{hash:x}"))
-}
-
-/// Intelligent build cache for skipping rebuilds when inputs haven't changed.
+/// Simple hash-based build cache.
 ///
-/// Cache layout: `~/.cache/xbin/builds/<name>_<short_hash>/`
-/// Each entry contains: `<combined_hash>.xbin` + `.meta` JSON.
+/// Stores `.xbin` files in `~/.cache/xbin/builds/` keyed by the SHA-256
+/// hex digest of the app source contents.  Repeated builds of the same
+/// source skip dependency installation, interpreter embedding, and tar
+/// creation — the cached binary is copied to the output path instead.
+///
+/// Cache layout:
+/// ```text
+/// ~/.cache/xbin/builds/<app_sha256>/output.xbin
+/// ~/.cache/xbin/builds/<app_sha256>/.meta
+/// ```
 pub struct BuildCache {
     base_dir: PathBuf,
     max_entries: usize,
@@ -44,60 +41,44 @@ pub struct BuildCache {
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CacheMeta {
     app_hash: String,
-    rt_deps_hash: String,
     timestamp_secs: u64,
 }
 
 impl BuildCache {
+    /// Create a build cache rooted at `~/.cache/xbin/builds/`.
+    ///
+    /// `max_entries` caps the number of cached builds; oldest entries are
+    /// evicted first when the limit is exceeded.
     #[must_use]
-    pub fn new(app_dir: &Path, max_entries: usize) -> Self {
-        let app_name = app_dir.file_name().unwrap_or_default().to_string_lossy();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        app_name.hash(&mut hasher);
-        let hash = hasher.finish();
+    pub fn new(_app_dir: &Path, max_entries: usize) -> Self {
         Self {
-            base_dir: cache_dir()
-                .join("builds")
-                .join(format!("{app_name}_{hash:x}")),
+            base_dir: cache_dir().join("builds"),
             max_entries,
         }
     }
 
-    /// Look up a cached `.xbin` whose `app_hash` and `rt_deps_hash` both match.
-    pub fn find(&self, app_hash: &str, rt_deps_hash: &str) -> Option<PathBuf> {
-        let entries = self.list_entries()?;
-        for entry in entries {
-            let meta_path = entry.join(".meta");
-            if let Ok(meta) = std::fs::read_to_string(&meta_path) {
-                if let Ok(meta) = serde_json::from_str::<CacheMeta>(&meta) {
-                    if meta.app_hash == app_hash && meta.rt_deps_hash == rt_deps_hash {
-                        let xbin = entry.join("output.xbin");
-                        if xbin.is_file() {
-                            return Some(xbin);
-                        }
-                    }
-                }
-            }
+    /// Look up a cached `.xbin` whose app-hash matches.
+    ///
+    /// Returns `Some(path)` if a valid cached build exists, `None` otherwise.
+    pub fn find(&self, app_hash: &str) -> Option<PathBuf> {
+        let entry_dir = self.base_dir.join(app_hash);
+        let xbin = entry_dir.join("output.xbin");
+        if xbin.is_file() {
+            Some(xbin)
+        } else {
+            None
         }
-        None
     }
 
-    /// Store a built `.xbin` in the cache.
-    pub fn store(
-        &self,
-        app_hash: &str,
-        rt_deps_hash: &str,
-        xbin_path: &Path,
-    ) -> std::io::Result<()> {
-        let combined = format!("{app_hash}_{rt_deps_hash}");
-        let entry_dir = self.base_dir.join(&combined);
+    /// Store a built `.xbin` into the cache under the given app hash.
+    pub fn store(&self, app_hash: &str, xbin_path: &Path) -> std::io::Result<()> {
+        let entry_dir = self.base_dir.join(app_hash);
         std::fs::create_dir_all(&entry_dir)?;
 
         std::fs::copy(xbin_path, entry_dir.join("output.xbin"))?;
 
         let meta = CacheMeta {
             app_hash: app_hash.to_string(),
-            rt_deps_hash: rt_deps_hash.to_string(),
             timestamp_secs: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -111,7 +92,7 @@ impl BuildCache {
         Ok(())
     }
 
-    /// Wipe the entire build cache.
+    /// Wipe the entire build cache on disk.
     pub fn clear(&self) -> std::io::Result<()> {
         if self.base_dir.exists() {
             std::fs::remove_dir_all(&self.base_dir)?;
@@ -218,8 +199,8 @@ mod tests {
         let fake_xbin = tmp.path().join("fake.xbin");
         std::fs::write(&fake_xbin, b"fake xbin").unwrap();
 
-        cache.store("aaa", "bbb", &fake_xbin).unwrap();
-        let found = cache.find("aaa", "bbb");
+        cache.store("aaa", &fake_xbin).unwrap();
+        let found = cache.find("aaa");
         assert!(found.is_some());
         assert_eq!(found.unwrap().file_name().unwrap(), "output.xbin");
     }
@@ -232,7 +213,7 @@ mod tests {
         let app_dir = tmp.path().join("myapp");
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 10);
-        assert!(cache.find("xxx", "yyy").is_none());
+        assert!(cache.find("xxx").is_none());
     }
 
     #[test]
@@ -246,10 +227,10 @@ mod tests {
 
         let fake_xbin = tmp.path().join("fake.xbin");
         std::fs::write(&fake_xbin, b"fake xbin").unwrap();
-        cache.store("aaa", "bbb", &fake_xbin).unwrap();
+        cache.store("aaa", &fake_xbin).unwrap();
 
         cache.clear().unwrap();
-        assert!(cache.find("aaa", "bbb").is_none());
+        assert!(cache.find("aaa").is_none());
     }
 
     #[test]
@@ -264,11 +245,11 @@ mod tests {
         let fake_xbin = tmp.path().join("fake.xbin");
         std::fs::write(&fake_xbin, b"fake xbin").unwrap();
 
-        cache.store("a1", "b1", &fake_xbin).unwrap();
+        cache.store("a1", &fake_xbin).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        cache.store("a2", "b2", &fake_xbin).unwrap();
+        cache.store("a2", &fake_xbin).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        cache.store("a3", "b3", &fake_xbin).unwrap();
+        cache.store("a3", &fake_xbin).unwrap();
 
         let entries = cache.list_entries().unwrap();
         assert!(entries.len() <= 2);
