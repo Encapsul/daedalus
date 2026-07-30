@@ -1,0 +1,38 @@
+{
+  "name": "toml",
+  "version": "4.3.0",
+  "description": "TOML parser for Node.js (TOML v1.1.0 compliant)",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "lib/"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "peggy -o lib/parser.js src/toml.pegjs",
+    "test": "node --test test/test_toml.js",
+    "test:spec": "node test/spec-test.js",
+    "test:spec:fresh": "node scripts/test-spec-fresh.js",
+    "test:spec:failures": "node test/spec-test.js --failures",
+    "test:all": "node --test test/test_toml.js && node test/spec-test.js",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/BinaryMuse/toml-node.git"
+  },
+  "keywords": [
+    "toml",
+    "parser"
+  ],
+  "author": "Michelle Tilley <michelle@michelletilley.net>",
+  "license": "MIT",
+  "devDependencies": {
+    "@js-temporal/polyfill": "^0.5.1",
+    "peggy": "^5.1.0"
+  }
+}
