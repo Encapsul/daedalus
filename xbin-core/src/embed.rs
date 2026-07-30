@@ -448,7 +448,11 @@ fn embed_ruby_native_gems(interp_path: &Path, rootfs: &Path, verbose: bool) -> i
                 count += 1;
 
                 if verbose {
-                    eprintln!("  embed: ruby gem lib {} -> {}", name_str, dest_dir.display());
+                    eprintln!(
+                        "  embed: ruby gem lib {} -> {}",
+                        name_str,
+                        dest_dir.display()
+                    );
                 }
             }
         }

@@ -1124,7 +1124,7 @@ fn check_php_platform_reqs(app_dir: &Path, verbose: bool) -> Result<()> {
         );
     }
 
-        Ok(())
+    Ok(())
 }
 
 /// Simple PHP version constraint check — handles `^8.2`, `>=8.0`, `8.1`, `8.*`,
@@ -1132,7 +1132,13 @@ fn check_php_platform_reqs(app_dir: &Path, verbose: bool) -> Result<()> {
 fn version_satisfies(version: &str, constraint: &str) -> bool {
     let version_parts: Vec<u32> = version
         .split('.')
-        .filter_map(|s| s.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().ok())
+        .filter_map(|s| {
+            s.chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse()
+                .ok()
+        })
         .collect();
     if version_parts.is_empty() {
         return false;
@@ -1169,17 +1175,17 @@ fn satisfies_single(version: &[u32], constraint: &str) -> bool {
             if target.len() < 2 {
                 true
             } else {
-                version.len() >= 2 && version[0] == target[0] && version[1] == target[1] && version >= &target
+                version.len() >= 2
+                    && version[0] == target[0]
+                    && version[1] == target[1]
+                    && version >= &target
             }
         } else {
             true
         }
     } else if constraint.ends_with('*') {
         let prefix = constraint.trim_end_matches('*');
-        let prefix_parts: Vec<u32> = prefix
-            .split('.')
-            .filter_map(|s| s.parse().ok())
-            .collect();
+        let prefix_parts: Vec<u32> = prefix.split('.').filter_map(|s| s.parse().ok()).collect();
         version.starts_with(&prefix_parts)
     } else if let Some(rest) = constraint.strip_prefix(">=") {
         let target = parse_version(rest.trim());
@@ -1203,9 +1209,7 @@ fn satisfies_single(version: &[u32], constraint: &str) -> bool {
 }
 
 fn parse_version(s: &str) -> Vec<u32> {
-    s.split('.')
-        .filter_map(|p| p.trim().parse().ok())
-        .collect()
+    s.split('.').filter_map(|p| p.trim().parse().ok()).collect()
 }
 
 fn compare_versions(a: &[u32], b: &[u32]) -> Option<std::cmp::Ordering> {
