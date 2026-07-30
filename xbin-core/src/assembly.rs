@@ -80,6 +80,9 @@ pub fn build_meta_json(
     if options.seccomp {
         meta["seccomp"] = serde_json::Value::Bool(true);
     }
+    if options.landlock {
+        meta["landlock"] = serde_json::Value::Bool(true);
+    }
     if let Some(c) = &options.app_hash {
         meta["app_hash"] = serde_json::Value::String(c.clone());
     }
@@ -128,6 +131,7 @@ pub struct MetaOptions {
     pub license: Option<String>,
     pub payload_format: Option<String>,
     pub seccomp: bool,
+    pub landlock: bool,
     pub app_hash: Option<String>,
     pub rt_deps_hash: Option<String>,
 }
@@ -328,6 +332,7 @@ mod tests {
             license: None,
             payload_format: None,
             seccomp: false,
+            landlock: false,
             app_hash: None,
             rt_deps_hash: None,
         };

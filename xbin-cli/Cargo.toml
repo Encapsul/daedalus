@@ -26,6 +26,8 @@ anyhow = "1"
 human-panic = "2"
 clap_complete = "4"
 clap_mangen = "0.2"
+tar = "0.4"
+xz = "0.4.6-rc.0"
 libc = "0.2"
 
 [dev-dependencies]

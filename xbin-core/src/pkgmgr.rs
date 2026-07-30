@@ -22,6 +22,8 @@ pub enum PkgMgr {
     Composer,
     // Ruby
     Bundler,
+    // Perl
+    Cpan,
 }
 
 impl PkgMgr {
@@ -37,6 +39,7 @@ impl PkgMgr {
             Self::Npm => "npm",
             Self::Composer => "composer",
             Self::Bundler => "bundler",
+            Self::Cpan => "cpan",
         }
     }
 
@@ -46,10 +49,10 @@ impl PkgMgr {
             Self::Poetry => vec!["poetry", "install", "--no-interaction"],
             Self::Pipenv => vec!["pipenv", "install", "--deploy"],
             Self::Pip => vec!["pip", "install", "-r", "requirements.txt"],
-            Self::Pnpm => vec!["pnpm", "install", "--frozen-lockfile"],
-            Self::Yarn => vec!["yarn", "install", "--frozen-lockfile"],
+            Self::Pnpm => vec!["pnpm", "install", "--ignore-scripts"],
+            Self::Yarn => vec!["yarn", "install", "--frozen-lockfile", "--ignore-scripts"],
             Self::Bun => vec!["bun", "install", "--frozen-lockfile"],
-            Self::Npm => vec!["npm", "ci"],
+            Self::Npm => vec!["npm", "ci", "--ignore-scripts"],
             Self::Composer => vec![
                 "composer",
                 "install",
@@ -59,6 +62,7 @@ impl PkgMgr {
                 "--prefer-dist",
             ],
             Self::Bundler => vec!["bundle", "install", "--deployment", "--without development"],
+            Self::Cpan => vec!["cpan", "-T", "."],
         }
     }
 }
@@ -87,6 +91,9 @@ pub fn detect_node_pkgmgr(dir: &Path) -> Option<PkgMgr> {
         return None;
     }
     if dir.join("pnpm-lock.yaml").is_file() {
+        return Some(PkgMgr::Pnpm);
+    }
+    if dir.join("pnpm-workspace.yaml").is_file() {
         return Some(PkgMgr::Pnpm);
     }
     if dir.join("yarn.lock").is_file() {
@@ -121,6 +128,17 @@ pub fn detect_ruby_pkgmgr(dir: &Path) -> Option<PkgMgr> {
     None
 }
 
+/// Detect the Perl package manager (CPAN).
+pub fn detect_perl_pkgmgr(dir: &Path) -> Option<PkgMgr> {
+    if dir.join("cpanfile.snapshot").is_file() {
+        return Some(PkgMgr::Cpan);
+    }
+    if dir.join("cpanfile").is_file() {
+        return Some(PkgMgr::Cpan);
+    }
+    None
+}
+
 /// Detect the package manager for a given runtime.
 pub fn detect_pkgmgr(dir: &Path, runtime: &str) -> Option<PkgMgr> {
     match runtime {
@@ -128,6 +146,7 @@ pub fn detect_pkgmgr(dir: &Path, runtime: &str) -> Option<PkgMgr> {
         "node" => detect_node_pkgmgr(dir),
         "php" => detect_php_pkgmgr(dir),
         "ruby" => detect_ruby_pkgmgr(dir),
+        "perl" => detect_perl_pkgmgr(dir),
         _ => None,
     }
 }
@@ -238,6 +257,7 @@ pub fn detect_all_pkgmgrs(dir: &Path, runtime: &str) -> Vec<PkgMgr> {
     let has_node = dir.join("package.json").is_file();
     let has_php = dir.join("composer.json").is_file();
     let has_ruby = dir.join("Gemfile").is_file();
+    let has_perl = dir.join("cpanfile").is_file();
 
     if has_node && !matches!(runtime, "node") {
         if let Some(node_mgr) = detect_node_pkgmgr(dir) {
@@ -252,6 +272,11 @@ pub fn detect_all_pkgmgrs(dir: &Path, runtime: &str) -> Vec<PkgMgr> {
     if has_ruby && !matches!(runtime, "ruby") {
         if let Some(ruby_mgr) = detect_ruby_pkgmgr(dir) {
             managers.push(ruby_mgr);
+        }
+    }
+    if has_perl && !matches!(runtime, "perl") {
+        if let Some(perl_mgr) = detect_perl_pkgmgr(dir) {
+            managers.push(perl_mgr);
         }
     }
 
@@ -366,5 +391,30 @@ mod tests {
         assert_eq!(mgrs.len(), 2);
         assert_eq!(mgrs[0], PkgMgr::Npm);
         assert_eq!(mgrs[1], PkgMgr::Composer);
+    }
+
+    #[test]
+    fn perl_runtime_detects_cpan() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("cpanfile"), "").unwrap();
+        assert_eq!(detect_pkgmgr(dir.path(), "perl"), Some(PkgMgr::Cpan));
+    }
+
+    #[test]
+    fn cpanfile_snapshot() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("cpanfile.snapshot"), "").unwrap();
+        assert_eq!(detect_perl_pkgmgr(dir.path()), Some(PkgMgr::Cpan));
+    }
+
+    #[test]
+    fn secondary_perl_mgr() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("cpanfile"), "").unwrap();
+        let mgrs = detect_all_pkgmgrs(dir.path(), "node");
+        assert_eq!(mgrs.len(), 2);
+        assert_eq!(mgrs[0], PkgMgr::Npm);
+        assert_eq!(mgrs[1], PkgMgr::Cpan);
     }
 }
