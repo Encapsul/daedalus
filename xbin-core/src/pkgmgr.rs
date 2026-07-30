@@ -48,7 +48,7 @@ impl PkgMgr {
             Self::Uv => vec!["uv", "sync"],
             Self::Poetry => vec!["poetry", "install", "--no-interaction"],
             Self::Pipenv => vec!["pipenv", "install", "--deploy"],
-            Self::Pip => vec!["pip", "install", "-r", "requirements.txt"],
+            Self::Pip => vec!["pip", "install", "--default-timeout", "120", "--retries", "5", "-r", "requirements.txt"],
             Self::Pnpm => vec!["pnpm", "install", "--ignore-scripts"],
             Self::Yarn => vec!["yarn", "install", "--frozen-lockfile", "--ignore-scripts"],
             Self::Bun => vec!["bun", "install", "--frozen-lockfile"],
