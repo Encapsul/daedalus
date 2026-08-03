@@ -4,10 +4,124 @@ Fichier unique consignant toutes les modifications apportées au projet x.bin
 dans le cadre de l'initiative SISR (Self-Incremental Sovereign
 Reconstruction). Tenue à jour à chaque mission.
 
-> **Session** : missions 1–8 terminées (03/08/2026).
+> **Session** : missions 1–10 terminées (03/08/2026).
 > Conventions : docs mdbook en anglais (`docs/src/`), code zéro `unsafe` dans
 > `xbin-core`, pas de dossier `crates/` (tout va dans `xbin-core/src/`),
 > vérification imposée (fmt → clippy par crate → tests workspace → mdbook).
+
+---
+
+## Mission 10 — Migration v1 → v2 + rétrocompatibilité (Prompt 10/10) — TERMINÉE
+
+Périmètre : migration, rétrocompatibilité, gouvernance de dépréciation.
+Aucune nouvelle fonctionnalité majeure.
+
+### Invariant garanti (§5)
+
+Un binaire v1 (sans SISR) est lu, extrait et exécuté par le runtime v2 sans
+modification ni avertissement superflu — c'était déjà vrai côté runtime
+(`read_sisr` → `Ok(None)`, extraction standard) ; un test E2E le verrouille.
+
+### Code — `xbin-core/src/legacy.rs` (nouveau)
+
+- `upgrade_binary(input, output, config)` : promeut un `.xbin` classique au
+  format v2 en insérant `[manifest][SisrFooterExt]` entre metadata et footer.
+- Segments stub/payload/metadata copiés **byte-for-byte** ; le payload est
+  chunké tel que stocké (jamais décompressé/recompressé) ⇒ somme
+  `SHA-256(payload ‖ meta)` et checksums internes (SquashFS) préservées (§10).
+- `payload_offset`/`meta_offset`/`footer_size` inchangés ⇒ un runtime v1
+  lit toujours le fichier promu.
+- Refuse : fichier déjà SISR, fichier signé (format ≥ 3), non-`.xbin`.
+- Écrit `<output>.xbin.manifest` (comme `assemble_xbin_with_sisr`).
+- 4 tests unitaires : segments préservés + `FLAG_SISR` + round-trip `read_sisr`
+  + hash inchangé ; refus SISR/signé/non-xbin.
+
+### CLI — `xbin upgrade-binary`
+
+- `xbin-cli/src/commands/upgrade_binary.rs` + sous-commande dans `main.rs`.
+- Args : `<input> <output>`, `--chunk-size` (défaut 64 KiB), `--key` (signe le
+  manifeste SISR), `--force`, `--quiet`, `--json`.
+- Test d'intégration `cli_tests.rs` : conversion réelle, `FLAG_SISR` posé,
+  hash d'intégrité identique, payload identique, manifest écrit.
+
+### Tests cross-version — `stub/tests/upgrade_migration.rs`
+
+- `legacy_binary_runs_on_v2_runtime` : binaire v1 (assemblé sans SISR) exécuté
+  par le vrai stub ⇒ sortie OK, zéro warning `[xbin]` (§5, §11).
+- `upgraded_binary_gains_auto_update` : après upgrade, le binaire applique un
+  vrai delta v2 via le canal mocké (serveur HTTP) et exécute la nouvelle
+  payload (§8).
+- `upgraded_binary_preserves_payload_bytes` : segments copiés byte-for-byte +
+  hash d'intégrité identique (§10).
+- `mock_server` rendu `pub` pour réutilisation des helpers E2E.
+
+### Docs
+
+- `docs/src/migration/v1-to-v2.md` : arbre de décision du loader, ce que change
+  l'upgrade, options A (rebuild) / B (`upgrade-binary`), gouvernance de
+  dépréciation, vérification. Entrée SUMMARY `# Migration`.
+- `docs/src/CHANGELOG.md` (créé) : publication majeure 1.0.0 SISR. Entrée
+  SUMMARY `# Project`.
+
+### Vérif
+
+fmt OK · clippy 3 crates OK · **288 tests** (214 core + 24 cli + 14 cli_tests
++ 10 stub unit + 10 e2e_sisr + 13 upgrade_migration + 3 health_rollback) ·
+mdbook OK. Commit non signé (pas de clé GPG sur cette machine).
+
+---
+
+## Mission 9 — Tests : E2E + fuzzing + contraintes réseau (Prompt 9/10) — TERMINÉE
+
+Périmètre : uniquement des tests et de la documentation. Zéro modification du
+code de production.
+
+### E2E — serveur HTTP mocké (std-only)
+
+- `stub/tests/e2e_sisr_main.rs` : entrée `#[path = "e2e_sisr/mod.rs"]`.
+- `stub/tests/e2e_sisr/mod.rs` : helpers partagés — `TestEnv`, `env(v1, v2)`
+  (vrai binaire `CARGO_BIN_EXE_xbin-stub`, trusted keys, update stagé signé),
+  `stage_update`, `run_update`, `run_app`, `parse_stats`.
+- `stub/tests/e2e_sisr/mock_server.rs` : `MockHttpServer` 100 % std (TcpListener
+  non-blocking, thread par connexion, routes HashMap, 404 par défaut). CI sans
+  root ni réseau : cache isolé (`XDG_CACHE_HOME`/`XDG_DATA_HOME`),
+  `XBIN_TRUSTED_DIR`, `XBIN_HEALTH_TIMEOUT_MS`.
+- `update_basic.rs` : 4 tests — swap v1→v2 + stats, téléchargement borné aux
+  blocs modifiés (≤ changé + 2 %), le binaire mis à jour s'exécute, chemin de
+  staging local de la mission 6 toujours opérationnel.
+- `update_failures.rs` : 6 tests de refus — signature non fiée, manifeste
+  corrompu, chunk manquant (404), chunk tronqué, bytes corrompus (SHA-256),
+  racine Merkle divergente. Chaque refus laisse le binaire intact sans `.bak`.
+- Résultat : 10 tests, ~12 s (< 30 s CI).
+
+### Fuzzing contraintes réseau (engine)
+
+- `xbin-core/src/sisr/network_test.rs` : `FaultInjectingFetcher` (wrapper du
+  trait `ChunkFetcher`) + 6 tests — latence (résultat inchangé), coupure de
+  connexion (`ConnectionReset`, binaire intact), corruption (SHA-256), paquets
+  tronqués, débit lent (reconstruction correcte), comptabilisation des octets.
+
+### Fuzzing property-based (proptest, stable)
+
+- `proptest = "1"` en dev-deps de `xbin-core`.
+- `manifest.rs`, `sisr_header.rs`, `format.rs` : modules `proptests` — jamais de
+  panic sur bytes arbitraires, round-trips `pack`/`parse` et
+  `serialize`/`parse` sans perte, buffers tronqués toujours rejetés.
+- `fuzz/fuzz_targets/sisr_manifest.rs` + `fuzz/Cargo.toml` : cible libFuzzer
+  (nightly uniquement, hors workspace membres et hors CI) couvrant
+  `DeltaManifest::parse`, `RemoteManifest::from_bytes`, `Footer::read_from`,
+  `read_sisr`.
+
+### Docs
+
+- `docs/src/contributing/testing.md` (+ entrée SUMMARY) : les 4 couches de
+  tests, commandes, notes CI (< 30 s, sans root, proptest = surface fuzz stable).
+
+### Vérif
+
+fmt OK · clippy 3 crates OK · **270 tests** (210 core + 24 cli + 13 cli_tests +
+10 stub unit + 10 e2e_sisr + 3 health_rollback) · mdbook OK. Commit non signé
+(pas de clé GPG sur cette machine).
 
 ---
 
