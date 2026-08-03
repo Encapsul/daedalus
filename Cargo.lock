@@ -2957,9 +2957,11 @@ dependencies = [
  "serde_json",
  "sha2",
  "tar",
+ "tempfile",
  "toml 0.8.23",
  "ureq",
  "xbin-core",
+ "zstd",
 ]
 
 [[package]]

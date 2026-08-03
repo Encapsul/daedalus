@@ -19,6 +19,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use xbin_core::format::{self as format, read_at, Footer};
+use xbin_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
+use xbin_core::sisr::resilience::{backup_path_for, create_backup, discard_backup, restore_backup};
 
 /// Standard library search paths for `LD_LIBRARY_PATH`.
 /// Kept in sync with cli/xbin/build.py `LD_LIBRARY_PATH` construction.
@@ -143,6 +145,11 @@ fn run() -> io::Result<()> {
     // forwarded.
     handle_runtime_flags(&meta)?;
 
+    // Canonical on-disk path — the file the update engine swaps in place.
+    // Kept separate from /proc/self/exe because the kernel can pin the
+    // pre-swap inode of the running image after a rename.
+    let mut bin_path = fs::canonicalize(Path::new("/proc/self/exe"))?;
+
     // SISR self-update: rebuild the binary in place from a signed delta before
     // reading the payload, so this run executes the new version.
     if let Some(updated) = maybe_apply_sisr_update()? {
@@ -152,7 +159,8 @@ fn run() -> io::Result<()> {
         // Re-open the *canonical real path*, not /proc/self/exe: the kernel can
         // pin the running image's inode, so /proc/self/exe may still resolve to
         // the pre-update file after the rename.
-        (exe, footer, meta_bytes, meta) = read_from(&updated)?;
+        bin_path = updated;
+        (exe, footer, meta_bytes, meta) = read_from(&bin_path)?;
     }
 
     // 2. Compute cache key and check hit BEFORE reading the payload.
@@ -232,7 +240,29 @@ fn run() -> io::Result<()> {
         }
     }
 
-    // 4. Exec into the extracted rootfs.
+    // 4. Post-update health gate. A `Pending` record means an update was
+    // applied but not yet validated: run the new version supervised and roll
+    // back atomically if it fails to start. A `Quarantined` record must never
+    // run at all (defense-in-depth on top of the update-time refusal).
+    let store = HealthStore::new(&health_store_dir()?);
+    let version = footer.sha256_hex();
+    let health_status = store.load(&version)?;
+    if health_status
+        .as_ref()
+        .is_some_and(|s| s.state == HealthState::Pending)
+    {
+        return supervised_launch(&meta, &rootfs, &app_config, &store, &version, &bin_path);
+    }
+    if health_status
+        .as_ref()
+        .is_some_and(|s| s.state == HealthState::Quarantined)
+    {
+        eprintln!(
+            "[xbin] version {version} is quarantined after a failed health check; rolling back"
+        );
+        return rollback_to_previous(&bin_path, verbose);
+    }
+
     if !meta.services.is_empty() {
         supervise_services(&meta, &rootfs, &app_config)
     } else {
@@ -286,12 +316,267 @@ fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
         .unwrap_or_else(|| Path::new(""))
         .join("chunks");
     let fetcher = xbin_core::sisr::engine::DirectoryChunkFetcher::new(&chunks_root);
-    let updated = xbin_core::sisr::engine::SisrEngine.apply_update(
-        Path::new("/proc/self/exe"),
-        &remote.manifest,
-        &fetcher,
-    )?;
+
+    let current = fs::canonicalize(Path::new("/proc/self/exe"))?;
+    let store = HealthStore::new(&health_store_dir()?);
+    refuse_quarantined_target(&store, &current, &remote.manifest, &fetcher)?;
+
+    let updated = apply_with_rollback_snapshot(&current, &store, |path| {
+        xbin_core::sisr::engine::SisrEngine.apply_update(path, &remote.manifest, &fetcher)
+    })?;
     Ok(Some(updated))
+}
+
+// ---------------------------------------------------------------------------
+// Post-update health gate and automatic rollback
+// ---------------------------------------------------------------------------
+
+/// Directory holding the per-version health records.
+fn health_store_dir() -> io::Result<PathBuf> {
+    Ok(cache_dir()?.join("health"))
+}
+
+/// The gate's policy: defaults with `XBIN_HEALTH_TIMEOUT_MS` /
+/// `XBIN_HEALTH_MAX_ATTEMPTS` overrides (the test harness uses these to make
+/// quarantine immediate).
+fn health_policy() -> HealthCheckPolicy {
+    let mut policy = HealthCheckPolicy::default();
+    if let Some(v) = std::env::var("XBIN_HEALTH_TIMEOUT_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
+        policy.timeout_ms = v;
+    }
+    if let Some(v) = std::env::var("XBIN_HEALTH_MAX_ATTEMPTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
+        policy.max_attempts = v;
+    }
+    policy
+}
+
+/// Refuses to apply an update whose *target* version was already quarantined
+/// by the health gate — the anti-rollback-loop check. The target hash is
+/// expensive (a full dry-run pass), so it is only computed when the store
+/// already contains a quarantined version; otherwise this is a no-op.
+fn refuse_quarantined_target(
+    store: &HealthStore,
+    current: &Path,
+    manifest: &xbin_core::manifest::DeltaManifest,
+    fetcher: &dyn xbin_core::sisr::engine::ChunkFetcher,
+) -> io::Result<()> {
+    if !store.has_quarantined()? {
+        return Ok(());
+    }
+    let target =
+        xbin_core::sisr::engine::SisrEngine.target_payload_sha256(current, manifest, fetcher)?;
+    if store.is_quarantined(&hex::encode(target))? {
+        return Err(err(
+            "update refused: target version failed its health check and is quarantined",
+        ));
+    }
+    Ok(())
+}
+
+/// Snapshot → apply → mark-pending, in the right order for a safe rollback.
+///
+/// The snapshot of the *current* binary is taken before the swap so the gate
+/// can restore it later; a failed apply discards the snapshot (the running
+/// binary was never touched). A successful apply records the new version as
+/// `Pending` so the next launch runs it through the health gate.
+fn apply_with_rollback_snapshot(
+    current: &Path,
+    store: &HealthStore,
+    apply: impl FnOnce(&Path) -> io::Result<PathBuf>,
+) -> io::Result<PathBuf> {
+    let bak = backup_path_for(current);
+    create_backup(current, &bak)?;
+    let updated = apply(current).inspect_err(|_| {
+        let _ = discard_backup(&bak);
+    })?;
+    mark_pending_after_update(&updated, store)?;
+    Ok(updated)
+}
+
+/// Records the freshly-swapped binary's version as needing a health check.
+fn mark_pending_after_update(updated: &Path, store: &HealthStore) -> io::Result<()> {
+    let mut f = File::open(updated)?;
+    let footer = Footer::read_from(&mut f)?;
+    store.begin(&footer.sha256_hex())?;
+    Ok(())
+}
+
+/// Outcome of the supervised launch window.
+enum ChildStatus {
+    StillRunning,
+    Exited(i32),
+    Signaled(i32),
+}
+
+/// First launch of a newly-updated version: run the app as a child and watch
+/// it for `policy.timeout_ms`.
+///
+/// - survives the window or exits 0 → healthy: confirm, drop the snapshot,
+///   keep supervising until the app exits;
+/// - exits non-zero or dies by signal → failure: record it (quarantining
+///   after `max_attempts`), restore the pre-update binary from the snapshot,
+///   and re-exec it so the user is running a known-good version.
+fn supervised_launch(
+    meta: &Metadata,
+    rootfs: &Path,
+    app_config: &config::AppConfig,
+    store: &HealthStore,
+    version_id: &str,
+    bin_path: &Path,
+) -> io::Result<()> {
+    let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
+    let policy = health_policy();
+
+    // SAFETY: fork(2) creates a copy of the calling process. The child runs
+    // the app (single exec or the service supervisor) and exits with its
+    // status; the parent monitors the window and decides confirm vs rollback.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if pid == 0 {
+        let result = if meta.services.is_empty() {
+            exec_app(meta, rootfs, app_config)
+        } else {
+            supervise_services(meta, rootfs, app_config)
+        };
+        if let Err(e) = result {
+            eprintln!("[xbin] health gate: app failed to start: {e}");
+        }
+        std::process::exit(127);
+    }
+
+    match wait_for_child_status(pid, policy.timeout_ms)? {
+        ChildStatus::StillRunning => {
+            store.confirm(version_id)?;
+            let _ = discard_backup(&backup_path_for(bin_path));
+            if verbose {
+                eprintln!("[xbin] health gate: version {version_id} healthy");
+            }
+            install_signal_handler(&[("app".to_string(), pid)]);
+            exit(wait_child_exit_code(pid)?);
+        }
+        ChildStatus::Exited(0) => {
+            store.confirm(version_id)?;
+            let _ = discard_backup(&backup_path_for(bin_path));
+            if verbose {
+                eprintln!("[xbin] health gate: version {version_id} healthy (clean exit)");
+            }
+            exit(0);
+        }
+        ChildStatus::Exited(code) | ChildStatus::Signaled(code) => {
+            eprintln!("[xbin] health gate: version {version_id} failed (exit {code})");
+            let quarantined = store.record_failure(version_id, policy.max_attempts)?;
+            if quarantined {
+                eprintln!(
+                    "[xbin] version {version_id} quarantined after {} failed launches",
+                    policy.max_attempts
+                );
+            }
+            rollback_to_previous(bin_path, verbose)
+        }
+    }
+}
+
+/// Polls `pid` with `WNOHANG` until it exits or `timeout_ms` elapses.
+fn wait_for_child_status(pid: i32, timeout_ms: u64) -> io::Result<ChildStatus> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    loop {
+        let mut status: i32 = 0;
+        // SAFETY: waitpid(2) with WNOHANG polls without blocking; status is
+        // written only when the return value equals pid. EINTR is retried.
+        let rc = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
+        if rc == pid {
+            return Ok(if libc::WIFSIGNALED(status) {
+                ChildStatus::Signaled(128 + libc::WTERMSIG(status))
+            } else {
+                ChildStatus::Exited(libc::WEXITSTATUS(status))
+            });
+        }
+        if rc < 0 {
+            let e = io::Error::last_os_error();
+            if e.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(e);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Ok(ChildStatus::StillRunning);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+/// Blocks until `pid` exits and returns its process exit code.
+fn wait_child_exit_code(pid: i32) -> io::Result<i32> {
+    let mut status: i32 = 0;
+    // SAFETY: waitpid(2) blocks until `pid` exits; status is filled by the
+    // kernel before the call returns.
+    let rc = unsafe { libc::waitpid(pid, &mut status, 0) };
+    if rc < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(decode_exit_status(status))
+}
+
+fn decode_exit_status(status: i32) -> i32 {
+    if libc::WIFSIGNALED(status) {
+        128 + libc::WTERMSIG(status)
+    } else if libc::WIFEXITED(status) {
+        libc::WEXITSTATUS(status)
+    } else {
+        1
+    }
+}
+
+/// Restores the pre-update binary from its snapshot and execs it.
+///
+/// The restored file is a self-extracting stub, so exec'ing it re-runs the
+/// whole launcher against the old version. Update env vars are cleared first
+/// so the manifest is not re-applied into a rollback loop.
+fn rollback_to_previous(bin_path: &Path, verbose: bool) -> io::Result<()> {
+    let bak = backup_path_for(bin_path);
+    if !bak.is_file() {
+        return Err(err(&format!(
+            "cannot roll back: no snapshot at {}",
+            bak.display()
+        )));
+    }
+    restore_backup(bin_path, &bak)?;
+    let _ = discard_backup(&bak);
+    if verbose {
+        eprintln!(
+            "[xbin] rolled back to previous version: {}",
+            bin_path.display()
+        );
+    }
+    std::env::remove_var("XBIN_SISR_MANIFEST");
+    std::env::remove_var("XBIN_UPDATE_URL");
+    exec_again(bin_path)
+}
+
+/// Re-execs the current stub binary (a `.xbin` file) with the original argv.
+fn exec_again(bin_path: &Path) -> io::Result<()> {
+    let prog = cstr(bin_path.as_os_str().as_bytes())?;
+    let mut argv: Vec<CString> = Vec::new();
+    argv.push(prog.clone());
+    for a in std::env::args_os().skip(1) {
+        argv.push(cstr(a.as_bytes())?);
+    }
+    let argv_ptrs = to_ptr_vec(&argv);
+    // SAFETY: execvp(3) replaces the current process; prog is a valid
+    // CString, argv_ptrs is null-terminated, env is inherited. Never returns
+    // on success.
+    unsafe {
+        libc_execvp(prog.as_ptr(), argv_ptrs.as_ptr());
+    }
+    Err(io::Error::last_os_error())
 }
 
 // ---------------------------------------------------------------------------
@@ -383,20 +668,26 @@ fn remote_update(base: &str) -> io::Result<()> {
     let total = remote.manifest.chunks.len();
     eprintln!("[xbin] update: manifest verified ({total} chunks)");
 
+    let current = fs::canonicalize(Path::new("/proc/self/exe"))?;
+    let store = HealthStore::new(&health_store_dir()?);
     let fetcher = HttpChunkFetcher::new(&format!("{base}/chunks"), total);
-    let (updated, stats) = xbin_core::sisr::engine::SisrEngine.apply_update_with_stats(
-        Path::new("/proc/self/exe"),
-        &remote.manifest,
-        &fetcher,
-    )?;
+    refuse_quarantined_target(&store, &current, &remote.manifest, &fetcher)?;
 
-    eprintln!(
-        "[xbin] update applied: {} chunks reused ({}), {} chunks fetched ({}), total {total}",
-        stats.reused_chunks,
-        human_bytes(stats.reused_bytes),
-        stats.fetched_chunks,
-        human_bytes(stats.fetched_bytes),
-    );
+    let updated = apply_with_rollback_snapshot(&current, &store, |path| {
+        let (updated, stats) = xbin_core::sisr::engine::SisrEngine.apply_update_with_stats(
+            path,
+            &remote.manifest,
+            &fetcher,
+        )?;
+        eprintln!(
+            "[xbin] update applied: {} chunks reused ({}), {} chunks fetched ({}), total {total}",
+            stats.reused_chunks,
+            human_bytes(stats.reused_bytes),
+            stats.fetched_chunks,
+            human_bytes(stats.fetched_bytes),
+        );
+        Ok(updated)
+    })?;
     eprintln!("[xbin] updated binary: {}", updated.display());
     Ok(())
 }

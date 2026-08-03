@@ -2,7 +2,10 @@
 
 > Status: **implemented** (`xbin-core` `sisr::engine` + `sisr::swap`, wired into
 > `stub/src/main.rs`). Describes how the launcher rebuilds the running binary
-> from a signed delta manifest before extracting and executing it.
+> from a signed delta manifest before extracting and executing it. Since
+> mission 8 the launcher also supervises the first run of a freshly updated
+> version and rolls back automatically if it crashes — see
+> [Rollback & Resilience](../concepts/rollback-and-resilience.md).
 
 The launcher flow in `stub/src/main.rs` is deliberately linear: locate self
 via `/proc/self/exe`, read the footer and metadata, apply a SISR update if one
@@ -41,11 +44,16 @@ Two trigger paths exist:
                           remote: GET {base}/chunks/<hex-hash> (HTTPS)
         - SHA-256-verify every chunk before writing
         - write to .tmp, fsync, rename → atomic swap
-      failure at any point ⇒ binary untouched, launcher exits with error
-   6. re-open the *canonical real path* returned by the engine (not
-      /proc/self/exe, which can still resolve to the pinned pre-update inode)
-      and re-read footer + metadata — now the new version
-   7. cache check → extract → exec as usual
+       failure at any point ⇒ binary untouched, launcher exits with error
+    6. re-open the *canonical real path* returned by the engine (not
+       /proc/self/exe, which can still resolve to the pinned pre-update inode)
+       and re-read footer + metadata — now the new version
+    7. health gate (mission 8): snapshot `./app.xbin.bak` taken before the
+       swap; the new version is supervised for its startup window
+         - healthy  ⇒ confirmed, `.bak` discarded
+         - crashing ⇒ recorded, `.bak` restored atomically, previous version runs
+         - quarantined target ⇒ refused before the swap
+    8. cache check → extract → exec as usual
 ```
 
 The `--xbin-update` / `--xbin-version` paths are **terminal**: after the
@@ -100,6 +108,28 @@ Only then does the engine assemble and atomically swap.
   the engine — `/proc/self/exe` can keep resolving to the pinned pre-update
   inode — and continues with the new footer and payload.
 
+## Post-update health gate
+
+Atomicity alone does not protect against a *valid but broken* update. Before
+the swap the launcher snapshots the running binary to `./app.xbin.bak`
+(same filesystem → atomic restore); after the swap it supervises the new
+version for its startup window (`XBIN_HEALTH_TIMEOUT_MS`, default 10 s):
+
+- the new version exits 0, or is still running when the window closes →
+  `health_store` marks it healthy and the snapshot is discarded;
+- the new version crashes or exits non-zero → a failure is recorded; once
+  `attempts >= XBIN_HEALTH_MAX_ATTEMPTS` (default 3) the version is
+  **quarantined** and the snapshot is restored, after which the previous
+  version runs;
+- a quarantined target is refused at the top of the update path — **before**
+  any snapshot or engine I/O — so a broken release cannot be re-installed in
+  a loop.
+
+Health records are JSON files in `~/.cache/xbin/health/`, keyed by the target
+version's content hash. See
+[Rollback & Resilience](../concepts/rollback-and-resilience.md) for the full
+state machine.
+
 ## What is copied, what is rebuilt
 
 | Piece             | Handling                                                     |
@@ -126,6 +156,9 @@ the engine falls back to fetching every chunk — correct, just not incremental.
 | Chunk missing from `chunks/` (local) or 404s (remote) | engine errors, binary untouched |
 | `rename` fails (read-only dir) | engine errors, binary untouched |
 | Power loss / `SIGKILL` mid-write | `.tmp` may remain, binary untouched |
+| Update applies, new version crashes at startup | `.bak` restored atomically, previous version runs, failure recorded |
+| Version fails `XBIN_HEALTH_MAX_ATTEMPTS` times | quarantined; previous version runs |
+| Re-install of a quarantined version | refused before any snapshot or write |
 
 ## Related
 

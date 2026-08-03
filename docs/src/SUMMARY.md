@@ -8,6 +8,7 @@
 - [Positioning](./concepts/positioning.md)
 - [Architecture](./concepts/architecture.md)
 - [SISR Overview](./concepts/sisr-overview.md)
+- [Rollback & Resilience](./concepts/rollback-and-resilience.md)
 
 # Architecture
 

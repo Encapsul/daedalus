@@ -17,8 +17,10 @@ xbin_core
  ├── sisr_header  --> SisrFooterExt (fixed 110-byte access block)
  ├── sisr_stage   --> build stage: chunk payload, Merkle root, Ed25519 sign,
  │                    remote manifest
- └── sisr         --> runtime stage: sisr::engine (reconstruction) +
-                      sisr::swap (atomic replacement)
+  └── sisr         --> runtime stage: sisr::engine (reconstruction) +
+                       sisr::swap (atomic replacement) +
+                       sisr::health (health gate state machine) +
+                       sisr::resilience (rollback snapshot)
 ```
 
 Each trait is deliberately small and single-purpose so the runtime

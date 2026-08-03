@@ -4,10 +4,116 @@ Fichier unique consignant toutes les modifications apportées au projet x.bin
 dans le cadre de l'initiative SISR (Self-Incremental Sovereign
 Reconstruction). Tenue à jour à chaque mission.
 
-> **Session** : missions 1–7 terminées (03/08/2026).
+> **Session** : missions 1–8 terminées (03/08/2026).
 > Conventions : docs mdbook en anglais (`docs/src/`), code zéro `unsafe` dans
 > `xbin-core`, pas de dossier `crates/` (tout va dans `xbin-core/src/`),
 > vérification imposée (fmt → clippy par crate → tests workspace → mdbook).
+
+---
+
+## Mission 8 — Rollback automatique + Vérification de santé post-reconstruction (Prompt 8/10) — TERMINÉE
+
+### Objectif
+Sécuriser l'auto-update contre les **mauvaises versions** : un update SISR
+atomique peut être parfaitement appliqué puis **crasher au démarrage**. Mission
+8 ajoute (1) un snapshot `.xbin.bak` du binaire courant avant le swap, (2) un
+**Health Check Gate** au premier run de la nouvelle version (supervision
+fork+waitpid pendant une fenêtre de démarrage), (3) un **rollback automatique
+atomique** si la nouvelle version échoue, (4) une **quarantaine de version**
+(anti-boucle) qui refuse de ré-installer une version qui a déjà échoué.
+Le « Cache Distant » du titre n'était pas détaillé dans le prompt — non traité.
+
+### Décisions de conception (ENREGISTRÉES — modifiables ensuite)
+1. **Snapshot co-localisé** : `.xbin.bak` à côté du binaire (même filesystem) ⇒
+   restauration = un seul `rename(2)` atomique. Il n'existe que pendant la
+   validation (créé avant le swap, supprimé à la confirmation ou au rollback).
+   Permissions préservées (bit exec).
+2. **Health Gate = superviseur fork+waitpid**, pas un exec direct : l'exec seul
+   ne peut pas détecter un crash. Parent fork → enfant exec l'app ; parent
+   `waitpid(WNOHANG)` 50 ms jusqu'à `XBIN_HEALTH_TIMEOUT_MS`. Exited 0 ou
+   encore vivant ⇒ confirmé sain ; crash ou exit non-zéro ⇒ échec enregistré.
+3. **Compteur d'échecs non remis à zéro** : `begin()` (ré-install) préserve
+   `attempts` — ré-installer la même version cassée s'additionne, pas de
+   resynchronisation de l'horloge d'échecs.
+4. **Quarantaine** quand `attempts >= XBIN_HEALTH_MAX_ATTEMPTS` (défaut 3,
+   env override, `0` = jamais). Un `begin()` ne ré-arme jamais une version
+   Quarantined. Nettoyage manuel = supprimer le fichier JSON.
+5. **Anti-boucle avant I/O** : `refuse_quarantined_target` ne calcule le hash
+   cible (dry-run coûteux) **que si** le store contient une quarantaine —
+   sinon no-op. Refus ⇒ le binaire courant n'est jamais touché.
+6. **Store = JSON par version** dans `~/.cache/xbin/health/<sha256>.json`
+   (`XDG_CACHE_HOME`-relatif), écritures atomiques (tmp+rename) ; version id =
+   `footer.sha256_hex()` = SHA-256(payload ‖ meta).
+7. **Rollback re-exec** : après restauration, retrait de `XBIN_SISR_MANIFEST`
+   et `XBIN_UPDATE_URL` puis `execvp` du binaire restauré (argv d'origine) —
+   le process frais relit la footer de l'ancienne version et exécute l'app.
+   Exit status enfant décodé : signal ⇒ `128+sig` (conforme wait(2)).
+
+### Code
+- `xbin-core/src/sisr/health.rs` (nouveau) : `HealthState { Pending, Healthy,
+  Quarantined }` (serde snake_case), `HealthCheckPolicy { timeout_ms,
+  max_attempts }` (defaults 10 000 ms / 3), `HealthStatus`, `HealthStore`
+  (load/begin/confirm/record_failure/has_quarantined ; `record_failure ->
+  bool` quarantaine ; `max_attempts==0` jamais).
+- `xbin-core/src/sisr/resilience.rs` (nouveau) : `BACKUP_SUFFIX=".bak"`,
+  `backup_path_for`, `create_backup` (bytes + perms via `AtomicWriter`),
+  `restore_backup` (NotFound si snapshot absent), `discard_backup`
+  (idempotent).
+- `xbin-core/src/sisr/engine.rs` : `SisrEngine::target_payload_sha256` =
+  SHA-256(payload ‖ meta) sans écriture (utilisée pour comparer la version
+  cible sans risquer d'effet de bord) ; `write_chunk` refactorisé en
+  `resolve_chunk_bytes`/`fetch_verified` partagés entre le chemin d'écriture
+  et le dry-run (reuse-hash-vérifiée sinon fetch-vérifiée).
+- `xbin-core/src/sisr/mod.rs` : `pub mod health; pub mod resilience;`
+- `stub/src/main.rs` (⚠️ crate sensible — validé) :
+  - `bin_path = fs::canonicalize("/proc/self/exe")` recapturé après l'update
+    et réutilisé pour le gate santé / rollback.
+  - Gate santé inséré après extraction de la nouvelle version : `Pending` →
+    `supervised_launch` ; `Quarantined` → `rollback_to_previous`.
+  - `maybe_apply_sisr_update` / `remote_update` refactorisés :
+    `refuse_quarantined_target` → `apply_with_rollback_snapshot` (backup →
+    apply → sur erreur discard backup → sur succès `mark_pending_after_update`
+    via `store.begin(footer.sha256_hex())`).
+  - Nouvelles fonctions : `health_store_dir` (= `cache_dir()/health`),
+    `health_policy` (env `XBIN_HEALTH_TIMEOUT_MS`/`XBIN_HEALTH_MAX_ATTEMPTS`),
+    `refuse_quarantined_target`, `apply_with_rollback_snapshot`,
+    `mark_pending_after_update`, `ChildStatus { StillRunning, Exited(i32),
+    Signaled(i32) }`, `supervised_launch`, `wait_for_child_status`,
+    `wait_child_exit_code`, `decode_exit_status`, `rollback_to_previous`,
+    `exec_again`.
+- `stub/Cargo.toml` : `[dev-dependencies]` xbin-core, tempfile, tar, zstd,
+  hex, sha2, ed25519-dalek (pour l'E2E du health gate).
+- `stub/tests/health_rollback.rs` (nouveau) — E2E sur le **vrai binaire stub**
+  (`CARGO_BIN_EXE_xbin-stub` embarqué dans un `.xbin` construit par
+  `assemble_xbin_with_sisr`, clé déterministe, cache isolé via `XDG_CACHE_HOME`,
+  trusted-keys via `XBIN_TRUSTED_DIR`) :
+  1. `crashing_update_is_rolled_back_and_old_version_runs` : v2 `exit 1` ⇒
+     rollback atomique, disque = v1, `.bak` supprimé, v2 `Quarantined`.
+  2. `healthy_update_is_confirmed_and_kept` : v2 `exit 0` ⇒ confirmé
+     `Healthy`, `.bak` supprimé, disque = v2.
+  3. `quarantined_version_is_refused_on_reinstall` : 1er run crashe ⇒
+     quarantaine (avec `XBIN_HEALTH_MAX_ATTEMPTS=1`) ; 2e run avec le même
+     manifest ⇒ « quarantined » sur stderr, exit non-zéro, binaire = v1.
+
+### Tests
++3 E2E stub (rollback, confirmation, quarantaine anti-loop) + unités health
+(load/begin/confirm/record_failure/has_quarantined, préservation compteur,
+non-réarmement, seuil, 0=max jamais) + unités resilience (chemin `.bak`,
+snapshot bytes+mode, restore atomique, discard idempotent, backup intouché)
++ engine `target_payload_sha256` (hash sec == footer.payload_sha256 du
+rebuild ; dry-run ne modifie pas le binaire) ⇒ **xbin-core 196 tests**.
+
+### Docs
+- `docs/src/concepts/rollback-and-resilience.md` (créé) + entrée SUMMARY.
+- `docs/src/architecture/runtime-launcher.md` : étape 7 « health gate » dans le
+  flux, section « Post-update health gate », ligne failure table.
+- `docs/src/architecture/internal-crates.md` : arbre `sisr` + health/resilience.
+- `docs/src/guides/user-updates.md` : point 5 du modèle de sécurité + table
+  de failure (crash ⇒ rollback, quarantaine).
+
+### Vérif
+fmt OK · clippy 3 crates `-D warnings` OK · tests workspace OK (196 core + E2E
+stub) · mdbook OK.
 
 ---
 
