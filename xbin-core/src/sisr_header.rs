@@ -356,3 +356,62 @@ mod tests {
         assert!(read_sisr(&mut cursor).is_err());
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+    use std::io::Cursor;
+
+    fn signature() -> impl Strategy<Value = [u8; 64]> {
+        prop::collection::vec(any::<u8>(), 64).prop_map(|v| {
+            let mut arr = [0u8; 64];
+            arr.copy_from_slice(&v);
+            arr
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn arbitrary_bytes_never_panic(
+            buf in prop::collection::vec(any::<u8>(), 0..SIZE),
+        ) {
+            let _ = SisrFooterExt::parse(&buf);
+        }
+
+        #[test]
+        fn truncated_buf_is_rejected(
+            buf in prop::collection::vec(any::<u8>(), 0..SIZE),
+        ) {
+            if buf.len() < SIZE {
+                prop_assert!(SisrFooterExt::parse(&buf).is_err());
+            }
+        }
+
+        #[test]
+        fn pack_roundtrips(
+            sisr_version in any::<u16>(),
+            chunk_table_offset in any::<u64>(),
+            chunk_table_len in any::<u32>(),
+            merkle_root in prop::array::uniform32(any::<u8>()),
+            signature in signature(),
+        ) {
+            let ext = SisrFooterExt {
+                sisr_version,
+                chunk_table_offset,
+                chunk_table_len,
+                merkle_root,
+                signature,
+            };
+            let parsed = SisrFooterExt::parse(&ext.pack()).unwrap();
+            prop_assert_eq!(parsed, ext);
+        }
+
+        #[test]
+        fn read_sisr_arbitrary_bytes_never_panic(
+            buf in prop::collection::vec(any::<u8>(), 0..8192),
+        ) {
+            let _ = read_sisr(&mut Cursor::new(&buf));
+        }
+    }
+}

@@ -8,3 +8,6 @@ pub mod engine;
 pub mod health;
 pub mod resilience;
 pub mod swap;
+
+#[cfg(test)]
+mod network_test;

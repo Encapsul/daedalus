@@ -217,3 +217,37 @@ mod tests {
         assert!(DeltaManifest::parse(&bytes).is_err());
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn chunk() -> impl Strategy<Value = ChunkEntry> {
+        (prop::array::uniform32(any::<u8>()), 1u32..=32 << 20)
+            .prop_map(|(hash, length)| ChunkEntry { hash, length })
+    }
+
+    proptest! {
+        #[test]
+        fn arbitrary_bytes_never_panic(
+            buf in prop::collection::vec(any::<u8>(), 0..4096),
+        ) {
+            let _ = DeltaManifest::parse(&buf);
+        }
+
+        #[test]
+        fn serialize_roundtrips(
+            payload_len in any::<u64>(),
+            chunks in prop::collection::vec(chunk(), 0..64),
+        ) {
+            let m = DeltaManifest {
+                version: VERSION,
+                payload_len,
+                chunks,
+            };
+            let parsed = DeltaManifest::parse(&m.serialize()).unwrap();
+            prop_assert_eq!(&parsed, &m);
+        }
+    }
+}
