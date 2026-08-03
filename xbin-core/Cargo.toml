@@ -14,7 +14,7 @@ python = ["pyo3"]
 
 [dependencies]
 # Format + integrity
-sha2 = "0.10"
+sha2 = { version = "0.10", features = ["compress"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -38,6 +38,9 @@ which = "7"
 
 # Hex encoding
 hex = "0.4"
+
+# SISR manifest signing (Ed25519, zeroize on drop)
+ed25519-dalek = "2"
 
 # Secret detection in .env files
 regex = "1"

@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
 use clap::Args;
+use ed25519_dalek::SigningKey;
 use std::path::{Path, PathBuf};
 use xbin_core::detect;
 use xbin_core::embed;
 use xbin_core::metadata::{BunFeatures, EmbeddedInterpreter};
 use xbin_core::pkgmgr;
+use xbin_core::sisr_stage::SisrBuildConfig;
 
 #[derive(Args)]
 pub struct BuildArgs {
@@ -39,6 +41,14 @@ pub struct BuildArgs {
     /// Use `SquashFS` instead of zstd+tar
     #[arg(long)]
     pub squashfs: bool,
+
+    /// Enable SISR delta-indexing and self-update support (writes `<output>.manifest`)
+    #[arg(long)]
+    pub enable_sisr: bool,
+
+    /// Base URL of the SISR update channel (manifest + chunks); embedded in the binary
+    #[arg(long)]
+    pub update_url: Option<String>,
 
     /// Target architecture
     #[arg(long)]
@@ -221,6 +231,15 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         eprintln!("  Landlock:  {landlock}");
         eprintln!("  Encrypt:   {encrypt}");
         eprintln!("  SquashFS:  {squashfs}");
+        if args.enable_sisr {
+            eprintln!("  SISR:      enabled (delta-indexed, <output>.manifest)");
+            match &args.update_url {
+                Some(url) => eprintln!("  Update URL: {url}"),
+                None => eprintln!(
+                    "  Update URL: (none — updates must pass a URL or set XBIN_UPDATE_URL)"
+                ),
+            }
+        }
         if let Some(ref v) = version_info {
             eprintln!("  Version:   {v}");
         }
@@ -803,6 +822,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             landlock,
             app_hash: Some(new_app_hash.clone()),
             rt_deps_hash: Some(new_rt_hash.clone()),
+            update_url: args.update_url.clone(),
         },
         &bun_features,
     )?;
@@ -810,22 +830,43 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // Assemble
     eprintln!("Assembling {}...", output.display());
 
-    let size = xbin_core::assembly::assemble_xbin(
-        &output,
-        &stub_bytes,
-        &payload,
-        &meta,
-        encrypt,
-        squashfs,
-        target.as_deref(),
-    )
-    .context("failed to assemble xbin")?;
+    let size = if args.enable_sisr {
+        let sisr_config = build_sisr_config(&args.key)?;
+        xbin_core::assembly::assemble_xbin_with_sisr(
+            &output,
+            &stub_bytes,
+            &payload,
+            &meta,
+            encrypt,
+            squashfs,
+            target.as_deref(),
+            &sisr_config,
+        )
+        .context("failed to assemble xbin (SISR)")?
+    } else {
+        xbin_core::assembly::assemble_xbin(
+            &output,
+            &stub_bytes,
+            &payload,
+            &meta,
+            encrypt,
+            squashfs,
+            target.as_deref(),
+        )
+        .context("failed to assemble xbin")?
+    };
 
     eprintln!(
         "Built {} ({:.1}MB)",
         output.display(),
         size as f64 / (1024.0 * 1024.0)
     );
+
+    if args.enable_sisr {
+        let mut manifest = output.clone();
+        manifest.set_extension("xbin.manifest");
+        eprintln!("SISR manifest written: {}", manifest.display());
+    }
 
     // ── Store in build cache ──────────────────────────────────────────
     if args.use_cache {
@@ -841,21 +882,72 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             "size_bytes": size,
             "runtime": runtime_name,
             "format": "zstd-tar",
-            "signed": args.key.is_some(),
+            "signed": args.key.is_some() && !args.enable_sisr,
             "encrypted": encrypt,
+            "sisr": args.enable_sisr,
+            "manifest_signed": args.enable_sisr && args.key.is_some(),
         });
         println!("{}", serde_json::to_string_pretty(&result)?);
     }
 
-    // Sign if key provided
-    if let Some(key_path) = &args.key {
-        if verbose {
-            eprintln!("Signing...");
+    // Binary signature is mutually exclusive with SISR in a single build:
+    // `sign_file` rebuilds the file as `[..meta_end][sig][footer]`, which would
+    // truncate the SISR section. With `--enable-sisr`, `--key` instead signs
+    // the manifest (see `build_sisr_config`).
+    if !args.enable_sisr {
+        if let Some(key_path) = &args.key {
+            if verbose {
+                eprintln!("Signing...");
+            }
+            super::sign::sign_file(&output, key_path, !verbose)?;
         }
-        super::sign::sign_file(&output, key_path, !verbose)?;
     }
 
     Ok(())
+}
+
+/// Builds the SISR stage config from the CLI args. When `--key` is given the
+/// same 32-byte Ed25519 key that would sign the binary instead signs the SISR
+/// manifest; its bytes are never printed (only the path appears in warnings).
+fn build_sisr_config(key_path: &Option<PathBuf>) -> Result<SisrBuildConfig> {
+    let signing_key = match key_path {
+        Some(path) => {
+            warn_if_insecure_key_permissions(path);
+            let key_bytes = std::fs::read(path)
+                .with_context(|| format!("failed to read signing key at {}", path.display()))?;
+            if key_bytes.len() != 32 {
+                anyhow::bail!("key must be 32 bytes, got {}", key_bytes.len());
+            }
+            let mut key_arr = [0u8; 32];
+            key_arr.copy_from_slice(&key_bytes);
+            Some(SigningKey::from_bytes(&key_arr))
+        }
+        None => None,
+    };
+    Ok(SisrBuildConfig {
+        enabled: true,
+        chunk_target_size: 64 << 10,
+        signing_key,
+    })
+}
+
+/// Warns when a private key file is group/other-readable (not 0600) on Unix.
+fn warn_if_insecure_key_permissions(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(path) {
+            let mode = meta.permissions().mode() & 0o777;
+            if mode != 0o600 {
+                eprintln!(
+                    "[xbin] warning: private key {} has mode {mode:o}, expected 0600",
+                    path.display()
+                );
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
 }
 
 #[derive(Default, serde::Deserialize)]
@@ -1560,5 +1652,42 @@ mod tests {
         let pkg = r#"{"devDependencies": {"tool": "workspace:^1.0.0"}}"#;
         std::fs::write(dir.path().join("package.json"), pkg).unwrap();
         assert!(has_workspace_protocol(dir.path()));
+    }
+
+    #[test]
+    fn build_sisr_config_defaults_to_64k_chunks_without_key() {
+        let config = build_sisr_config(&None).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.chunk_target_size, 64 << 10);
+        assert!(config.signing_key.is_none());
+    }
+
+    #[test]
+    fn build_sisr_config_loads_32_byte_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("signing.key");
+        let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        std::fs::write(&key_path, key.to_bytes()).unwrap();
+        let config = build_sisr_config(&Some(key_path)).unwrap();
+        let loaded = config.signing_key.expect("key should be loaded");
+        assert_eq!(loaded.to_bytes(), key.to_bytes());
+    }
+
+    #[test]
+    fn build_sisr_config_rejects_wrong_key_length() {
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("bad.key");
+        std::fs::write(&key_path, [1u8; 16]).unwrap();
+        let err = build_sisr_config(&Some(key_path)).unwrap_err().to_string();
+        assert!(err.contains("32 bytes"), "error: {err}");
+    }
+
+    #[test]
+    fn build_sisr_config_errors_on_missing_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = build_sisr_config(&Some(dir.path().join("nope.key")))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("failed to read signing key"));
     }
 }

@@ -91,3 +91,53 @@ fn test_env_output() {
 fn test_clean_help() {
     xbin().args(["clean", "--help"]).assert().success();
 }
+
+#[test]
+fn test_build_help_lists_sisr_flags() {
+    xbin()
+        .args(["build", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--enable-sisr"))
+        .stdout(predicate::str::contains("--update-url"));
+}
+
+#[test]
+fn test_build_dry_run_shows_sisr_when_enabled() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app")).unwrap();
+    std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    xbin()
+        .args([
+            "build",
+            dir.path().join("app").to_str().unwrap(),
+            "--enable-sisr",
+            "--update-url",
+            "https://updates.example.com/app",
+            "--dry-run",
+            "--no-install",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("SISR:      enabled"))
+        .stderr(predicate::str::contains(
+            "Update URL: https://updates.example.com/app",
+        ));
+}
+
+#[test]
+fn test_build_dry_run_does_not_enable_sisr_by_default() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app")).unwrap();
+    std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    xbin()
+        .args([
+            "build",
+            dir.path().join("app").to_str().unwrap(),
+            "--dry-run",
+            "--no-install",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("SISR:      enabled").not());
+}
