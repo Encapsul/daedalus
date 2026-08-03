@@ -47,12 +47,21 @@
 - [Incremental Updates (SISR)](./guides/incremental-updates.md)
 - [Updating a deployed `.xbin` (SISR)](./guides/user-updates.md)
 
+# Migration
+
+- [v1 → v2 (SISR)](./migration/v1-to-v2.md)
+
 # CLI Reference
 
 - [`xbin build`](./cli/xbin-build.md)
 
 # Project
 
+- [Changelog](./CHANGELOG.md)
 - [Roadmap](./roadmap.md)
 - [Security](./security.md)
 - [Comparison](./comparison.md)
+
+# Contributing
+
+- [Testing](./contributing/testing.md)

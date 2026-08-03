@@ -141,3 +141,57 @@ fn test_build_dry_run_does_not_enable_sisr_by_default() {
         .success()
         .stderr(predicate::str::contains("SISR:      enabled").not());
 }
+
+/// `upgrade-binary` turns a legacy (SISR-less) file into a valid v2 file and
+/// preserves the original payload bytes.
+#[test]
+fn test_upgrade_binary_converts_legacy_file() {
+    use std::io::Cursor;
+    use xbin_core::assembly::assemble_xbin;
+    use xbin_core::format::Footer;
+    use xbin_core::sisr_header::read_sisr;
+
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("legacy.xbin");
+    assemble_xbin(
+        &input,
+        b"STUB_DATA",
+        b"PAYLOAD_PAYLOAD_PAYLOAD_PAYLOAD",
+        br#"{"name":"legacy"}"#,
+        false,
+        false,
+        None,
+    )
+    .unwrap();
+
+    let before = std::fs::read(&input).unwrap();
+    let in_footer = Footer::read_from(&mut Cursor::new(&before)).unwrap();
+
+    let output = dir.path().join("migrated.xbin");
+    xbin()
+        .args([
+            "upgrade-binary",
+            input.to_str().unwrap(),
+            output.to_str().unwrap(),
+            "--force",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Upgraded"))
+        .stderr(predicate::str::contains("manifest written"));
+
+    let after = std::fs::read(&output).unwrap();
+    let out_footer = Footer::read_from(&mut Cursor::new(&after)).unwrap();
+    assert_ne!(out_footer.flags & xbin_core::format::FLAG_SISR, 0);
+    assert_eq!(out_footer.payload_sha256, in_footer.payload_sha256);
+
+    let payload_end = (in_footer.payload_offset + in_footer.payload_csize) as usize;
+    assert_eq!(&after[..payload_end], &before[..payload_end]);
+
+    let (_, manifest) = read_sisr(&mut Cursor::new(&after))
+        .unwrap()
+        .expect("migrated file must embed a SISR manifest");
+    assert_eq!(manifest.payload_len, in_footer.payload_csize);
+
+    assert!(dir.path().join("migrated.xbin.manifest").exists());
+}
