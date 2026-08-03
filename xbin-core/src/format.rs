@@ -12,6 +12,9 @@ pub const FORMAT_VERSION: u8 = 5;
 pub const V2_FOOTER_SIZE: u64 = 84;
 pub const V3_FOOTER_SIZE: u64 = 92;
 
+/// Fixed `SISR` access block placed immediately before the standard footer.
+pub const SISR_FOOTER_EXT_SIZE: usize = 110;
+
 pub const CRYPTO_NONE: u64 = 0x00;
 pub const CRYPTO_AES_256_GCM: u64 = 0x01;
 
@@ -19,6 +22,8 @@ pub const PAYLOAD_FORMAT_SQUASHFS: &str = "squashfs";
 
 pub const FLAG_SIGNED: u8 = 0x01;
 pub const FLAG_ENCRYPTED: u8 = 0x02;
+/// Set when the file carries a `SISR` footer extension + delta manifest.
+pub const FLAG_SISR: u8 = 0x04;
 
 pub const ARCH_X86_64: u8 = 0x01;
 pub const ARCH_AARCH64: u8 = 0x02;
@@ -52,6 +57,20 @@ impl Footer {
 
     pub fn is_signed(&self) -> bool {
         self.flags & FLAG_SIGNED != 0
+    }
+
+    /// Size of the standard footer block for this format version.
+    pub fn footer_size(&self) -> u64 {
+        if self.format_version >= 3 {
+            V3_FOOTER_SIZE
+        } else {
+            V2_FOOTER_SIZE
+        }
+    }
+
+    /// Whether the file embeds a `SISR` extension and delta manifest.
+    pub fn has_sisr(&self) -> bool {
+        self.flags & FLAG_SISR != 0
     }
 
     pub fn read_from<R: Read + Seek>(r: &mut R) -> io::Result<Footer> {

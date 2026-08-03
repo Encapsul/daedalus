@@ -47,6 +47,8 @@ const BIN_PATHS: &[&str] = &["usr/bin", "bin", "usr/local/bin"];
 struct Metadata {
     name: String,
     #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
     #[allow(dead_code)]
     runtime: String,
     #[serde(default)]
@@ -71,6 +73,8 @@ struct Metadata {
     payload_format: String,
     #[serde(default)]
     health_check: Option<HealthCheckMeta>,
+    #[serde(default)]
+    update_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -131,12 +135,25 @@ fn run() -> io::Result<()> {
     // Load configuration (multi-layered: CLI args → local config → env vars → global config)
     let app_config = config::AppConfig::load();
 
-    // 1. Read footer + metadata (small, fast).
-    let mut exe = File::open("/proc/self/exe")?;
-    let footer = Footer::read_from(&mut exe)?;
-    let meta_bytes = read_at(&mut exe, footer.meta_offset, footer.meta_size as usize)?;
-    let meta: Metadata = serde_json::from_slice(&meta_bytes)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("bad metadata: {e}")))?;
+    let (mut exe, mut footer, mut meta_bytes, mut meta) = read_from(Path::new("/proc/self/exe"))?;
+
+    // Intercept xbin-reserved runtime flags (`--xbin-update`, `--xbin-version`)
+    // before they could reach the host app. Handled modes are terminal: the
+    // process exits here without ever exec'ing the app, so the flags are never
+    // forwarded.
+    handle_runtime_flags(&meta)?;
+
+    // SISR self-update: rebuild the binary in place from a signed delta before
+    // reading the payload, so this run executes the new version.
+    if let Some(updated) = maybe_apply_sisr_update()? {
+        if verbose {
+            eprintln!("[xbin] SISR update applied: {}", updated.display());
+        }
+        // Re-open the *canonical real path*, not /proc/self/exe: the kernel can
+        // pin the running image's inode, so /proc/self/exe may still resolve to
+        // the pre-update file after the rename.
+        (exe, footer, meta_bytes, meta) = read_from(&updated)?;
+    }
 
     // 2. Compute cache key and check hit BEFORE reading the payload.
     let layered = footer.format_version >= 2 && !meta.layers.is_empty();
@@ -223,6 +240,243 @@ fn run() -> io::Result<()> {
     }
 }
 
+/// Opens `path` and reads the footer plus raw and parsed metadata.
+fn read_from(path: &Path) -> io::Result<(File, Footer, Vec<u8>, Metadata)> {
+    let mut exe = File::open(path)?;
+    let footer = Footer::read_from(&mut exe)?;
+    let meta_bytes = read_at(&mut exe, footer.meta_offset, footer.meta_size as usize)?;
+    let meta: Metadata = serde_json::from_slice(&meta_bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("bad metadata: {e}")))?;
+    Ok((exe, footer, meta_bytes, meta))
+}
+
+// ---------------------------------------------------------------------------
+// SISR self-update
+// ---------------------------------------------------------------------------
+
+/// Applies a SISR delta update when `$XBIN_SISR_MANIFEST` points at a signed
+/// remote manifest; returns the canonical path of the replaced binary, or
+/// `None` when no update was requested.
+///
+/// Order matters for security: the manifest is authenticated (Ed25519 against
+/// the trusted keys, then the Merkle root against its own chunk table) before
+/// the engine writes a single byte. Every chunk the engine fetches is
+/// additionally hash-verified, and the swap is atomic — any failure leaves the
+/// running binary intact.
+fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
+    let Some(manifest_path) = std::env::var_os("XBIN_SISR_MANIFEST") else {
+        return Ok(None);
+    };
+    let manifest_path = PathBuf::from(manifest_path);
+    let remote_bytes = fs::read(&manifest_path)?;
+    let remote = xbin_core::sisr_stage::RemoteManifest::from_bytes(&remote_bytes)?;
+
+    let keys = load_trusted_keys()?;
+    if !remote.verify_any(&keys) {
+        return Err(err("update manifest signature verification failed"));
+    }
+    if !remote.verify_merkle() {
+        return Err(err(
+            "update manifest Merkle root does not match chunk table",
+        ));
+    }
+
+    let chunks_root = manifest_path
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join("chunks");
+    let fetcher = xbin_core::sisr::engine::DirectoryChunkFetcher::new(&chunks_root);
+    let updated = xbin_core::sisr::engine::SisrEngine.apply_update(
+        Path::new("/proc/self/exe"),
+        &remote.manifest,
+        &fetcher,
+    )?;
+    Ok(Some(updated))
+}
+
+// ---------------------------------------------------------------------------
+// `--xbin-update` / `--xbin-version` runtime flags
+// ---------------------------------------------------------------------------
+
+/// Intercepts the xbin-reserved runtime flags and handles them terminally.
+///
+/// - `--xbin-version` prints version info on stdout and exits 0.
+/// - `--xbin-update [URL]` fetches the signed remote manifest and the changed
+///   chunks from the update channel, applies the delta atomically, prints
+///   reuse/fetch statistics on stderr, and exits 0.
+///
+/// Because both paths call `process::exit`, these flags never reach the host
+/// app's `argv`. When neither flag is present this is a no-op.
+fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+
+    if args.iter().any(|a| a == "--xbin-version") {
+        println!("xbin {} (stub)", env!("CARGO_PKG_VERSION"));
+        if let Some(v) = &meta.version {
+            println!("app version: {v}");
+        }
+        exit(0);
+    }
+
+    if let Some(idx) = args.iter().position(|a| a == "--xbin-update") {
+        let base = resolve_update_url(&args, idx, meta)?;
+        remote_update(&base)?;
+        exit(0);
+    }
+
+    Ok(())
+}
+
+/// Resolves the update channel base URL:
+/// `--xbin-update <URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
+fn resolve_update_url(
+    args: &[std::ffi::OsString],
+    idx: usize,
+    meta: &Metadata,
+) -> io::Result<String> {
+    if let Some(next) = args.get(idx + 1) {
+        let candidate = next.to_string_lossy();
+        if !candidate.starts_with('-') && !candidate.is_empty() {
+            return normalize_base_url(&candidate);
+        }
+    }
+    if let Some(url) = std::env::var_os("XBIN_UPDATE_URL") {
+        return normalize_base_url(&url.to_string_lossy());
+    }
+    if let Some(ref url) = meta.update_url {
+        return normalize_base_url(url);
+    }
+    Err(err(
+        "no update URL — pass one after --xbin-update, set $XBIN_UPDATE_URL, \
+         or rebuild with xbin build --update-url",
+    ))
+}
+
+/// Strips trailing slashes and rejects non-http(s) schemes.
+fn normalize_base_url(url: &str) -> io::Result<String> {
+    let base = url.trim().trim_end_matches('/').to_string();
+    if base.is_empty() || !(base.starts_with("http://") || base.starts_with("https://")) {
+        return Err(err("update URL must be http(s)://<host>/<path>"));
+    }
+    Ok(base)
+}
+
+/// Fetches `<base>/manifest` (XBMR), authenticates it against the trusted
+/// keys + Merkle root, then streams the changed chunks from `<base>/chunks/<hex>`
+/// through the engine. Progress and reuse/fetch stats go to stderr; the
+/// process exits after the atomic swap.
+fn remote_update(base: &str) -> io::Result<()> {
+    eprintln!("[xbin] update: fetching manifest from {base}/manifest");
+    let manifest_bytes = http_get_bytes(&format!("{base}/manifest"))?;
+    let remote = xbin_core::sisr_stage::RemoteManifest::from_bytes(&manifest_bytes)?;
+
+    let keys = load_trusted_keys()?;
+    if !remote.verify_any(&keys) {
+        return Err(err("update manifest signature verification failed"));
+    }
+    if !remote.verify_merkle() {
+        return Err(err(
+            "update manifest Merkle root does not match chunk table",
+        ));
+    }
+
+    let total = remote.manifest.chunks.len();
+    eprintln!("[xbin] update: manifest verified ({total} chunks)");
+
+    let fetcher = HttpChunkFetcher::new(&format!("{base}/chunks"), total);
+    let (updated, stats) = xbin_core::sisr::engine::SisrEngine.apply_update_with_stats(
+        Path::new("/proc/self/exe"),
+        &remote.manifest,
+        &fetcher,
+    )?;
+
+    eprintln!(
+        "[xbin] update applied: {} chunks reused ({}), {} chunks fetched ({}), total {total}",
+        stats.reused_chunks,
+        human_bytes(stats.reused_bytes),
+        stats.fetched_chunks,
+        human_bytes(stats.fetched_bytes),
+    );
+    eprintln!("[xbin] updated binary: {}", updated.display());
+    Ok(())
+}
+
+/// [`ChunkFetcher`] pulling chunks from `<base>/<64-hex-sha256>` over HTTPS.
+///
+/// Content-addressability is the security anchor: every chunk the engine
+/// writes must SHA-256 to its manifest entry, so the transport cannot smuggle
+/// a wrong chunk in. The fetcher only counts + reports progress.
+struct HttpChunkFetcher {
+    base: String,
+    total: usize,
+    done: std::cell::Cell<usize>,
+    bytes: std::cell::Cell<u64>,
+}
+
+impl HttpChunkFetcher {
+    fn new(base: &str, total: usize) -> Self {
+        Self {
+            base: base.to_string(),
+            total,
+            done: std::cell::Cell::new(0),
+            bytes: std::cell::Cell::new(0),
+        }
+    }
+}
+
+impl xbin_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
+    fn fetch(&self, hash: &[u8; 32], length: usize) -> io::Result<Vec<u8>> {
+        let url = format!("{}/{}", self.base, hex::encode(hash));
+        let bytes = http_get_bytes(&url)?;
+        if bytes.len() != length {
+            return Err(err("fetched chunk length mismatch"));
+        }
+        let done = self.done.get() + 1;
+        self.done.set(done);
+        self.bytes
+            .set(self.bytes.get().saturating_add(bytes.len() as u64));
+        eprintln!(
+            "[xbin]   fetched chunk {done}/{} ({} bytes)",
+            self.total,
+            bytes.len()
+        );
+        Ok(bytes)
+    }
+
+    fn bytes_fetched(&self) -> u64 {
+        self.bytes.get()
+    }
+}
+
+/// Minimal HTTPS GET returning the raw response body.
+///
+/// Only caller-verified content is consumed (signed manifest, hash-checked
+/// chunks), so the transport is a convenience — never a trust anchor.
+fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
+    let resp = ureq::get(url)
+        .call()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))?;
+    resp.into_body()
+        .read_to_vec()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * 1024;
+    if bytes >= MIB {
+        let whole = bytes / MIB;
+        let frac = (bytes % MIB) * 10 / MIB;
+        format!("{whole}.{frac} MiB")
+    } else if bytes >= KIB {
+        let whole = bytes / KIB;
+        let frac = (bytes % KIB) * 10 / KIB;
+        format!("{whole}.{frac} KiB")
+    } else {
+        format!("{bytes} B")
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Ed25519 signature verification
 // ---------------------------------------------------------------------------
@@ -252,49 +506,49 @@ fn verify_ed25519(
     hasher.update(meta_bytes);
     let hash = hasher.finalize();
 
-    // Load trusted public keys from directory.
+    // Parse signature once.
+    use ed25519_dalek::Signature;
+    let sig = Signature::from_bytes(sig_bytes);
+
+    use ed25519_dalek::Verifier;
+
+    let keys = load_trusted_keys()?;
+    if !keys.iter().any(|k| k.verify(&hash, &sig).is_ok()) {
+        return Err(err("Ed25519 signature verification failed"));
+    }
+    Ok(())
+}
+
+/// Loads every 32-byte Ed25519 public key from the trusted keys directory.
+/// Malformed entries are skipped so a stray file can never disable verification.
+fn load_trusted_keys() -> io::Result<Vec<ed25519_dalek::VerifyingKey>> {
     let trusted_dir = trusted_keys_dir();
     if !trusted_dir.exists() {
         return Err(err(
             "trusted keys directory not found; cannot verify signature",
         ));
     }
-
-    // Parse signature once.
-    use ed25519_dalek::Signature;
-    let sig = Signature::from_bytes(sig_bytes);
-
-    use ed25519_dalek::VerifyingKey;
-
-    let mut verified = false;
     let rd = fs::read_dir(&trusted_dir)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("reading trusted keys: {e}")))?;
+    let mut keys = Vec::new();
     for entry in rd.flatten() {
-        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-            let key_raw = match fs::read(entry.path()) {
-                Ok(b) if b.len() == 32 => b,
-                _ => continue,
-            };
-            let key_arr: [u8; 32] = match key_raw.try_into() {
-                Ok(a) => a,
-                Err(_) => continue,
-            };
-            let pub_key = match VerifyingKey::from_bytes(&key_arr) {
-                Ok(k) => k,
-                Err(_) => continue,
-            };
-            use ed25519_dalek::Verifier;
-            if pub_key.verify(&hash, &sig).is_ok() {
-                verified = true;
-                break;
-            }
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let Ok(raw) = fs::read(entry.path()) else {
+            continue;
+        };
+        if raw.len() != 32 {
+            continue;
+        }
+        let Ok(key_arr) = <[u8; 32]>::try_from(raw) else {
+            continue;
+        };
+        if let Ok(key) = ed25519_dalek::VerifyingKey::from_bytes(&key_arr) {
+            keys.push(key);
         }
     }
-
-    if !verified {
-        return Err(err("Ed25519 signature verification failed"));
-    }
-    Ok(())
+    Ok(keys)
 }
 
 /// Return the directory where trusted Ed25519 public keys are stored.
@@ -1337,5 +1591,126 @@ fn maybe_start_health(meta: &Metadata) {
         if hc.enabled && hc.port > 0 {
             spawn_health_server(hc.port, hc.endpoint.clone());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_base_url_accepts_http_and_https() {
+        assert_eq!(
+            normalize_base_url("https://updates.example.com/app").unwrap(),
+            "https://updates.example.com/app"
+        );
+        assert_eq!(
+            normalize_base_url("http://localhost:8080/updates/").unwrap(),
+            "http://localhost:8080/updates"
+        );
+        assert_eq!(
+            normalize_base_url("  https://x.example  ").unwrap(),
+            "https://x.example"
+        );
+    }
+
+    #[test]
+    fn normalize_base_url_rejects_unsupported_schemes() {
+        assert!(normalize_base_url("ftp://updates.example.com").is_err());
+        assert!(normalize_base_url("file:///tmp/updates").is_err());
+        assert!(normalize_base_url("").is_err());
+        assert!(normalize_base_url("updates.example.com/app").is_err());
+    }
+
+    #[test]
+    fn resolve_update_url_prefers_the_positional_argument() {
+        let args = vec![
+            std::ffi::OsString::from("--xbin-update"),
+            std::ffi::OsString::from("https://arg.example/app"),
+            std::ffi::OsString::from("--flag-for-app"),
+        ];
+        let meta = Metadata {
+            name: "test".into(),
+            version: None,
+            runtime: String::new(),
+            entrypoint: Vec::new(),
+            env: std::collections::BTreeMap::new(),
+            cwd: None,
+            layers: Vec::new(),
+            isolation: 0,
+            seccomp: false,
+            landlock: false,
+            services: Vec::new(),
+            crypto: None,
+            payload_format: String::new(),
+            health_check: None,
+            update_url: Some("https://embedded.example".into()),
+        };
+        let base = resolve_update_url(&args, 0, &meta).unwrap();
+        assert_eq!(base, "https://arg.example/app");
+    }
+
+    #[test]
+    fn resolve_update_url_falls_back_to_embedded_metadata() {
+        let args = vec![std::ffi::OsString::from("--xbin-update")];
+        let meta = Metadata {
+            update_url: Some("https://meta.example/app/".into()),
+            ..Metadata {
+                name: "test".into(),
+                version: None,
+                runtime: String::new(),
+                entrypoint: Vec::new(),
+                env: std::collections::BTreeMap::new(),
+                cwd: None,
+                layers: Vec::new(),
+                isolation: 0,
+                seccomp: false,
+                landlock: false,
+                services: Vec::new(),
+                crypto: None,
+                payload_format: String::new(),
+                health_check: None,
+                update_url: None,
+            }
+        };
+        let base = resolve_update_url(&args, 0, &meta).unwrap();
+        assert_eq!(base, "https://meta.example/app");
+    }
+
+    #[test]
+    fn resolve_update_url_errors_without_any_source() {
+        let args = vec![std::ffi::OsString::from("--xbin-update")];
+        let meta = Metadata {
+            update_url: None,
+            ..Metadata {
+                name: "test".into(),
+                version: None,
+                runtime: String::new(),
+                entrypoint: Vec::new(),
+                env: std::collections::BTreeMap::new(),
+                cwd: None,
+                layers: Vec::new(),
+                isolation: 0,
+                seccomp: false,
+                landlock: false,
+                services: Vec::new(),
+                crypto: None,
+                payload_format: String::new(),
+                health_check: None,
+                update_url: None,
+            }
+        };
+        let err = resolve_update_url(&args, 0, &meta).unwrap_err();
+        assert!(err.to_string().contains("no update URL"));
+    }
+
+    #[test]
+    fn human_bytes_formats_all_scales() {
+        assert_eq!(human_bytes(0), "0 B");
+        assert_eq!(human_bytes(512), "512 B");
+        assert_eq!(human_bytes(1024), "1.0 KiB");
+        assert_eq!(human_bytes(1536), "1.5 KiB");
+        assert_eq!(human_bytes(1024 * 1024), "1.0 MiB");
+        assert_eq!(human_bytes((1024 * 1024) + (512 * 1024)), "1.5 MiB");
     }
 }
