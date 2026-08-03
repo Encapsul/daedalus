@@ -107,6 +107,9 @@ Nothing is trusted from the network:
    wrong length or hash is rejected on the spot.
 4. The swap is atomic: any failure (bad signature, missing chunk, power loss)
    leaves the previous binary intact and runnable.
+5. The first run of the new version is supervised (mission 8): if it crashes
+   during the startup window, the previous version is restored automatically
+   and a failing release is quarantined so it is not re-installed.
 
 ## Failure behavior
 
@@ -118,9 +121,12 @@ Nothing is trusted from the network:
 | Chunk wrong length or SHA-256 | engine errors, binary untouched |
 | Chunk 404s on the server | engine errors, binary untouched |
 | Interruption mid-update | previous binary intact |
+| New version crashes at startup | `.bak` restored, previous version runs |
+| Release fails `XBIN_HEALTH_MAX_ATTEMPTS` times | quarantined, installs refused |
+| Re-install of a quarantined release | refused before any write |
 
-The running binary is always the last valid version — there is no
-"half-updated" state.
+The running binary is always the last **valid** version — there is no
+"half-updated" state, and a broken release cannot wedge a target machine.
 
 ## More
 

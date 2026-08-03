@@ -97,6 +97,41 @@ impl SisrEngine {
             .0)
     }
 
+    /// SHA-256(`payload` ‖ `meta_bytes`) of the binary that [`apply_update`]
+    /// would produce — without writing anything.
+    ///
+    /// The launcher uses this *before* a swap to refuse re-installing a
+    /// version the health gate already quarantined. Chunks are resolved with
+    /// the same reuse-then-fetch policy as the real update, so the returned
+    /// hash is exactly the `payload_sha256` the rebuilt footer would carry.
+    ///
+    /// [`apply_update`]: Self::apply_update
+    pub fn target_payload_sha256(
+        &self,
+        current_bin: &Path,
+        manifest: &DeltaManifest,
+        fetcher: &dyn ChunkFetcher,
+    ) -> io::Result<[u8; 32]> {
+        let current = fs::canonicalize(current_bin)?;
+        let mut exe = File::open(&current)?;
+        let footer = Footer::read_from(&mut exe)?;
+        let meta_bytes = read_at(
+            &mut exe,
+            footer.meta_offset,
+            usize::try_from(footer.meta_size).map_err(|_| err("meta size overflow"))?,
+        )?;
+        let index = build_reuse_index(&mut exe, &footer)?;
+        checked_payload_len(manifest)?;
+
+        let mut hasher = Sha256::new();
+        for chunk in &manifest.chunks {
+            let (bytes, _) = resolve_chunk_bytes(&mut exe, &index, chunk, fetcher)?;
+            hasher.update(&bytes);
+        }
+        hasher.update(&meta_bytes);
+        Ok(hasher.finalize().into())
+    }
+
     /// Like [`Self::apply_update`], but also returns reuse/fetch statistics
     /// (used to verify the bandwidth-reduction property in tests).
     pub fn apply_update_with_stats(
@@ -231,28 +266,45 @@ fn write_chunk(
     hasher: &mut Sha256,
     stats: &mut SisrUpdateStats,
 ) -> io::Result<()> {
-    let expected_len = usize::try_from(chunk.length).map_err(|_| err("chunk length overflow"))?;
-    let bytes = if let Some(&(off, len)) = index.get(&chunk.hash) {
-        let candidate = read_at(exe, off, len)?;
-        if sha256_of(&candidate) == chunk.hash {
-            stats.reused_chunks += 1;
-            stats.reused_bytes = stats.reused_bytes.saturating_add(len as u64);
-            candidate
-        } else {
-            fetch_verified(fetcher, chunk, expected_len, stats)?
-        }
+    let (bytes, reused) = resolve_chunk_bytes(exe, index, chunk, fetcher)?;
+    if reused {
+        stats.reused_chunks += 1;
+        stats.reused_bytes = stats.reused_bytes.saturating_add(bytes.len() as u64);
     } else {
-        fetch_verified(fetcher, chunk, expected_len, stats)?
-    };
+        stats.fetched_chunks += 1;
+        stats.fetched_bytes = stats.fetched_bytes.saturating_add(bytes.len() as u64);
+    }
     hasher.update(&bytes);
     w.write_all(&bytes)
+}
+
+/// The bytes for one chunk, verified against its manifest hash: reused from
+/// the current binary when its bytes match, otherwise fetched and checked.
+/// Returns whether the chunk was reused. Shared by the write path and the
+/// [`target_payload_sha256`] pre-check so both resolve bytes identically.
+///
+/// [`target_payload_sha256`]: SisrEngine::target_payload_sha256
+fn resolve_chunk_bytes(
+    exe: &mut File,
+    index: &HashMap<[u8; 32], (u64, usize)>,
+    chunk: &crate::manifest::ChunkEntry,
+    fetcher: &dyn ChunkFetcher,
+) -> io::Result<(Vec<u8>, bool)> {
+    let expected_len = usize::try_from(chunk.length).map_err(|_| err("chunk length overflow"))?;
+    if let Some(&(off, len)) = index.get(&chunk.hash) {
+        let candidate = read_at(exe, off, len)?;
+        if sha256_of(&candidate) == chunk.hash {
+            return Ok((candidate, true));
+        }
+    }
+    let bytes = fetch_verified(fetcher, chunk, expected_len)?;
+    Ok((bytes, false))
 }
 
 fn fetch_verified(
     fetcher: &dyn ChunkFetcher,
     chunk: &crate::manifest::ChunkEntry,
     expected_len: usize,
-    stats: &mut SisrUpdateStats,
 ) -> io::Result<Vec<u8>> {
     let bytes = fetcher.fetch(&chunk.hash, expected_len)?;
     if bytes.len() != expected_len {
@@ -267,8 +319,6 @@ fn fetch_verified(
             "fetched chunk failed SHA-256 verification",
         ));
     }
-    stats.fetched_chunks += 1;
-    stats.fetched_bytes = stats.fetched_bytes.saturating_add(bytes.len() as u64);
     Ok(bytes)
 }
 
@@ -572,6 +622,78 @@ mod tests {
             0,
             "replaced binary must stay executable"
         );
+    }
+
+    #[test]
+    fn target_payload_sha256_matches_rebuilt_footer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let payload = random_buf(20_000, 9);
+        let meta = br#"{"name":"test"}"#;
+        let cur = build_current_bin(tmp.path(), &payload, meta, 4096);
+
+        // Reuse every chunk (no fetch needed) so the dry-run completes.
+        let cur_manifest = read_current_manifest(&cur);
+        let target = DeltaManifest {
+            version: crate::manifest::VERSION,
+            payload_len: cur_manifest.payload_len,
+            chunks: cur_manifest.chunks.clone(),
+        };
+        let fetcher = MapFetcher::new();
+
+        let before = fs::read(&cur).unwrap();
+        let dry_hash = SisrEngine
+            .target_payload_sha256(&cur, &target, &fetcher)
+            .unwrap();
+
+        let (updated, _) = SisrEngine
+            .apply_update_with_stats(&cur, &target, &fetcher)
+            .unwrap();
+        let data = fs::read(&updated).unwrap();
+        let footer = Footer::read_from(&mut Cursor::new(&data)).unwrap();
+        assert_eq!(
+            dry_hash, footer.payload_sha256,
+            "pre-swap hash must equal the rebuilt footer's hash"
+        );
+        assert_eq!(
+            fs::read(&cur).unwrap(),
+            before,
+            "dry-run must not modify the binary"
+        );
+    }
+
+    #[test]
+    fn target_payload_sha256_needs_no_writes_and_matches_after_apply() {
+        let tmp = tempfile::tempdir().unwrap();
+        let payload = random_buf(12_000, 11);
+        let meta = br#"{"name":"test"}"#;
+        let cur = build_current_bin(tmp.path(), &payload, meta, 4096);
+        let cur_manifest = read_current_manifest(&cur);
+
+        // Replace the last chunk with a fetch-only chunk.
+        let mut chunks = cur_manifest.chunks[..cur_manifest.chunks.len() - 1].to_vec();
+        let mut fetcher = MapFetcher::new();
+        let tail = random_buf(2_048, 77);
+        let tail_hash = sha256_of(&tail);
+        fetcher.put(tail_hash, tail.clone());
+        chunks.push(crate::manifest::ChunkEntry {
+            hash: tail_hash,
+            length: tail.len() as u32,
+        });
+        let target = DeltaManifest {
+            version: crate::manifest::VERSION,
+            payload_len: chunks.iter().map(|c| u64::from(c.length)).sum(),
+            chunks,
+        };
+
+        let dry_hash = SisrEngine
+            .target_payload_sha256(&cur, &target, &fetcher)
+            .unwrap();
+        let (updated, _) = SisrEngine
+            .apply_update_with_stats(&cur, &target, &fetcher)
+            .unwrap();
+        let data = fs::read(&updated).unwrap();
+        let footer = Footer::read_from(&mut Cursor::new(&data)).unwrap();
+        assert_eq!(dry_hash, footer.payload_sha256);
     }
 
     #[test]

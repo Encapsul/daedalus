@@ -5,4 +5,6 @@
 //! `docs/src/architecture/runtime-launcher.md` for the launcher integration.
 
 pub mod engine;
+pub mod health;
+pub mod resilience;
 pub mod swap;
