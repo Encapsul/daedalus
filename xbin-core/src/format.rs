@@ -442,3 +442,56 @@ mod tests {
         assert_eq!(result, vec![42, 43, 44]);
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+    use std::io::Cursor;
+
+    proptest! {
+        #[test]
+        fn read_from_arbitrary_bytes_never_panics(
+            buf in prop::collection::vec(any::<u8>(), 0..4096),
+        ) {
+            let _ = Footer::read_from(&mut Cursor::new(&buf));
+        }
+
+        #[test]
+        fn pack_roundtrips(
+            format_version in 1u8..=FORMAT_VERSION,
+            arch in any::<u8>(),
+            flags in any::<u8>(),
+            payload_offset in any::<u64>(),
+            payload_csize in any::<u64>(),
+            payload_usize in any::<u64>(),
+            payload_sha256 in prop::array::uniform32(any::<u8>()),
+            meta_offset in any::<u64>(),
+            meta_size in any::<u64>(),
+        ) {
+            let footer = Footer {
+                format_version,
+                arch,
+                flags,
+                payload_offset,
+                payload_csize,
+                payload_usize,
+                payload_sha256,
+                meta_offset,
+                meta_size,
+                sig_offset: 0,
+            };
+            let parsed = Footer::read_from(&mut Cursor::new(&footer.pack())).unwrap();
+            prop_assert_eq!(parsed.format_version, footer.format_version);
+            prop_assert_eq!(parsed.arch, footer.arch);
+            prop_assert_eq!(parsed.flags, footer.flags);
+            prop_assert_eq!(parsed.payload_offset, footer.payload_offset);
+            prop_assert_eq!(parsed.payload_csize, footer.payload_csize);
+            prop_assert_eq!(parsed.payload_usize, footer.payload_usize);
+            prop_assert_eq!(parsed.payload_sha256, footer.payload_sha256);
+            prop_assert_eq!(parsed.meta_offset, footer.meta_offset);
+            prop_assert_eq!(parsed.meta_size, footer.meta_size);
+            prop_assert_eq!(parsed.sig_offset, 0);
+        }
+    }
+}

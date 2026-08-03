@@ -1,0 +1,21 @@
+[package]
+name = "xbin-fuzz"
+version = "0.1.0"
+edition = "2021"
+publish = false
+# Not part of the workspace `members` list: libFuzzer requires a nightly
+# toolchain, so this crate is deliberately excluded from stable CI builds.
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+xbin-core = { path = "../xbin-core" }
+
+[[bin]]
+name = "sisr_manifest"
+path = "fuzz_targets/sisr_manifest.rs"
+test = false
+doc = false
+bench = false
