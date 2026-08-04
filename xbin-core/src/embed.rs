@@ -4,10 +4,53 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// PHP extensions that are built into PHP and don't need external .so files.
+const PHP_BUILTIN_EXTENSIONS: &[&str] = &[
+    "Core",
+    "ctype",
+    "date",
+    "dom",
+    "exif",
+    "FFI",
+    "fileinfo",
+    "filter",
+    "ftp",
+    "gettext",
+    "hash",
+    "iconv",
+    "json",
+    "libxml",
+    "mbstring",
+    "mysqli",
+    "openssl",
+    "pcre",
+    "PDO",
+    "pdo_mysql",
+    "pdo_sqlite",
+    "phar",
+    "posix",
+    "readline",
+    "session",
+    "simplexml",
+    "sodium",
+    "sqlite3",
+    "standard",
+    "tokenizer",
+    "xml",
+    "xmlreader",
+    "xmlwriter",
+    "zlib",
+];
+
 /// Embed an interpreter and its shared library dependencies into a rootfs.
 ///
 /// Returns the number of files copied (interpreter + shared libs + config).
-pub fn embed_interpreter(interpreter: &str, rootfs: &Path, verbose: bool) -> io::Result<usize> {
+pub fn embed_interpreter(
+    interpreter: &str,
+    rootfs: &Path,
+    app_dir: Option<&Path>,
+    verbose: bool,
+) -> io::Result<usize> {
     let interp_path = find_interpreter(interpreter).ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
@@ -75,7 +118,7 @@ pub fn embed_interpreter(interpreter: &str, rootfs: &Path, verbose: bool) -> io:
     }
 
     // Copy runtime-specific config (php.ini, extensions, etc.)
-    count += embed_runtime_config(interpreter, &interp_path, rootfs, verbose)?;
+    count += embed_runtime_config(interpreter, &interp_path, rootfs, app_dir, verbose)?;
 
     Ok(count)
 }
@@ -202,6 +245,7 @@ fn embed_runtime_config(
     interpreter: &str,
     interp_path: &Path,
     rootfs: &Path,
+    app_dir: Option<&Path>,
     verbose: bool,
 ) -> io::Result<usize> {
     let mut count = 0;
@@ -209,6 +253,10 @@ fn embed_runtime_config(
     match interpreter {
         "php" => {
             count += embed_php_config(interp_path, rootfs, verbose)?;
+            // Install missing PHP extensions from composer.json requirements
+            if let Some(dir) = app_dir {
+                count += install_missing_php_extensions(dir, interp_path, rootfs, verbose)?;
+            }
         }
         "python3" | "python" => {
             count += embed_python_config(interp_path, rootfs, verbose)?;
@@ -295,6 +343,467 @@ fn embed_php_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Res
             ini_content.push_str("\nxdebug.mode=off\n");
         }
         fs::write(&target_ini, &ini_content)?;
+    }
+
+    Ok(count)
+}
+
+/// Parse composer.json to extract required PHP extensions (ext-*).
+fn parse_composer_extensions(app_dir: &Path) -> Vec<String> {
+    let composer_json = app_dir.join("composer.json");
+    if !composer_json.is_file() {
+        return Vec::new();
+    }
+
+    let content = match fs::read_to_string(&composer_json) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut extensions = Vec::new();
+
+    // Check "require" section
+    if let Some(require) = json.get("require").and_then(|v| v.as_object()) {
+        for (key, _) in require {
+            if key.starts_with("ext-") {
+                let ext_name = key.strip_prefix("ext-").unwrap_or(key);
+                if !PHP_BUILTIN_EXTENSIONS.contains(&ext_name) {
+                    extensions.push(ext_name.to_string());
+                }
+            }
+        }
+    }
+
+    // Check "require-dev" section
+    if let Some(require_dev) = json.get("require-dev").and_then(|v| v.as_object()) {
+        for (key, _) in require_dev {
+            if key.starts_with("ext-") {
+                let ext_name = key.strip_prefix("ext-").unwrap_or(key);
+                if !PHP_BUILTIN_EXTENSIONS.contains(&ext_name) {
+                    extensions.push(ext_name.to_string());
+                }
+            }
+        }
+    }
+
+    extensions.sort();
+    extensions.dedup();
+    extensions
+}
+
+/// Check if a PHP extension is already loaded.
+fn is_extension_loaded(interp_path: &Path, ext_name: &str) -> bool {
+    let output = Command::new(interp_path)
+        .args(["-m"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase())
+        .unwrap_or_default();
+    // Check both module name and common aliases
+    let names = match ext_name {
+        "pdo" => vec!["pdo", "pdo_sqlite", "pdo_mysql"],
+        "simplexml" => vec!["simplexml", "xmlreader"],
+        _ => vec![ext_name],
+    };
+    for name in names {
+        if output.contains(&format!("\n{name}\n")) || output.contains(&format!("[{name}]")) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Download a PHP binary that includes all common extensions.
+///
+/// Uses the shivammathur/php-builder GitHub releases which provide
+/// pre-compiled PHP binaries with extensions for various platforms.
+fn download_php_with_extensions(
+    interp_path: &Path,
+    rootfs: &Path,
+    verbose: bool,
+) -> io::Result<usize> {
+    let php_major = run_cmd(interp_path, &["-r", "echo PHP_MAJOR_VERSION;"]);
+    let php_minor = run_cmd(interp_path, &["-r", "echo PHP_MINOR_VERSION;"]);
+
+    if php_major.is_empty() {
+        if verbose {
+            eprintln!("  embed: could not determine PHP version");
+        }
+        return Ok(0);
+    }
+
+    let missing = check_missing_extensions(interp_path, verbose);
+    if missing.is_empty() {
+        return Ok(0);
+    }
+
+    let tmp_dir = tempfile::tempdir()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("tempdir failed: {e}")))?;
+
+    // Download and extract
+    let extract_dir = match download_and_extract_php(&php_major, &php_minor, &tmp_dir, verbose) {
+        Some(d) => d,
+        None => {
+            if verbose {
+                eprintln!("  embed: could not download PHP binary, using system PHP");
+            }
+            return Ok(0);
+        }
+    };
+
+    let mut count = 0;
+    count += copy_php_binary(&extract_dir, &php_major, &php_minor, rootfs, verbose);
+    count += copy_php_libs(&extract_dir, rootfs, verbose);
+    count += copy_php_extensions(&extract_dir, rootfs, verbose)?;
+    count += copy_php_ini(&extract_dir, rootfs, verbose)?;
+
+    Ok(count)
+}
+
+/// Check which common PHP extensions are missing and log them.
+fn check_missing_extensions(interp_path: &Path, verbose: bool) -> Vec<&'static str> {
+    let common_exts = [
+        "bcmath", "calendar", "ctype", "exif", "ftp", "gd", "gettext", "imagick", "intl", "ldap",
+        "mysqli", "pcntl", "redis", "shmop", "soap", "sockets", "xsl", "zip",
+    ];
+
+    let missing: Vec<&str> = common_exts
+        .iter()
+        .filter(|ext| !is_extension_loaded(interp_path, ext))
+        .copied()
+        .collect();
+
+    if missing.is_empty() {
+        if verbose {
+            eprintln!("  embed: all common PHP extensions already available");
+        }
+    } else if verbose {
+        eprintln!("  embed: missing PHP extensions: {}", missing.join(", "));
+        eprintln!("  embed: downloading PHP binary with extensions...");
+    }
+
+    missing
+}
+
+/// Download and extract the PHP archive. Returns the extract directory on success.
+fn download_and_extract_php(
+    php_major: &str,
+    php_minor: &str,
+    tmp_dir: &tempfile::TempDir,
+    verbose: bool,
+) -> Option<PathBuf> {
+    let php_tar = tmp_dir
+        .path()
+        .join(format!("php-{php_major}.{php_minor}.tar.xz"));
+    let distro = detect_linux_distro();
+
+    let download_url = format!(
+        "https://github.com/shivammathur/php-builder/releases/download/{php_major}.{php_minor}/php_{php_major}.{php_minor}%2B{distro}.tar.xz"
+    );
+
+    if verbose {
+        eprintln!("  embed: downloading from {download_url}");
+    }
+
+    let ok = Command::new("curl")
+        .args(["-fsSL", "-o", &php_tar.to_string_lossy(), &download_url])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if !ok {
+        return None;
+    }
+    if verbose {
+        eprintln!("  embed: downloaded PHP binary");
+    }
+
+    let extract_dir = tmp_dir.path().join("php");
+    fs::create_dir_all(&extract_dir).ok()?;
+
+    let extracted = Command::new("tar")
+        .args([
+            "xJf",
+            &php_tar.to_string_lossy(),
+            "-C",
+            &extract_dir.to_string_lossy(),
+            "--strip-components=1",
+        ])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if !extracted {
+        return None;
+    }
+
+    Some(extract_dir)
+}
+
+/// Copy the PHP binary from the extracted archive into rootfs.
+fn copy_php_binary(
+    extract_dir: &Path,
+    php_major: &str,
+    php_minor: &str,
+    rootfs: &Path,
+    verbose: bool,
+) -> usize {
+    let candidates = [
+        extract_dir.join("usr").join("bin").join("php"),
+        extract_dir
+            .join("usr")
+            .join("bin")
+            .join(format!("php{php_major}.{php_minor}")),
+        extract_dir.join("bin").join("php"),
+    ];
+
+    let php_bin = match candidates.iter().find(|p| p.is_file()) {
+        Some(p) => p,
+        None => return 0,
+    };
+
+    let target = rootfs.join("usr").join("bin").join("php");
+    if fs::copy(php_bin, &target).is_err() {
+        return 0;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&target, fs::Permissions::from_mode(0o755));
+    }
+
+    if verbose {
+        eprintln!("  embed: replaced PHP binary with version that includes extensions");
+    }
+    1
+}
+
+/// Copy shared libraries bundled in the PHP archive into rootfs.
+fn copy_php_libs(extract_dir: &Path, rootfs: &Path, verbose: bool) -> usize {
+    let mut count = 0;
+    let lib_dirs = [
+        extract_dir.join("usr/lib/x86_64-linux-gnu"),
+        extract_dir.join("usr/lib"),
+        extract_dir.join("lib/x86_64-linux-gnu"),
+        extract_dir.join("lib"),
+    ];
+
+    let target_lib = rootfs.join("usr/lib/x86_64-linux-gnu");
+    if fs::create_dir_all(&target_lib).is_err() {
+        return 0;
+    }
+
+    for lib_dir in &lib_dirs {
+        let dir = match fs::read_dir(lib_dir) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        for entry in dir.flatten() {
+            let src = entry.path();
+            if !src.is_file() {
+                continue;
+            }
+            let dst = target_lib.join(entry.file_name());
+            if !dst.exists() && fs::copy(&src, &dst).is_ok() {
+                count += 1;
+            }
+        }
+        if verbose && count > 0 {
+            eprintln!("  embed: copied shared libs from {}", lib_dir.display());
+        }
+    }
+    count
+}
+
+/// Copy PHP extensions from the extracted archive into rootfs.
+fn copy_php_extensions(extract_dir: &Path, rootfs: &Path, verbose: bool) -> io::Result<usize> {
+    let ext_candidates = [
+        extract_dir.join("lib/php/extensions"),
+        extract_dir.join("usr/lib/php/20240924"),
+        extract_dir.join("usr/lib/php/20240814"),
+    ];
+
+    for ext_dir in &ext_candidates {
+        if !ext_dir.is_dir() {
+            if verbose {
+                eprintln!(
+                    "  embed: checking ext dir: {} (exists=false)",
+                    ext_dir.display()
+                );
+            }
+            continue;
+        }
+        if verbose {
+            eprintln!(
+                "  embed: checking ext dir: {} (exists=true)",
+                ext_dir.display()
+            );
+        }
+
+        let target_ext = rootfs.join("usr/local/php/extensions");
+        copy_dir_recursive(ext_dir, &target_ext)?;
+        let n = count_dir_files(&target_ext);
+        if verbose {
+            eprintln!("  embed: copied {n} extension files");
+        }
+        return Ok(n);
+    }
+    Ok(0)
+}
+
+/// Copy php.ini from the extracted archive into rootfs, if present.
+fn copy_php_ini(extract_dir: &Path, rootfs: &Path, verbose: bool) -> io::Result<usize> {
+    let ini_candidates = [
+        extract_dir.join("etc/php.ini"),
+        extract_dir.join("usr/local/etc/php.ini"),
+    ];
+
+    for ini_file in &ini_candidates {
+        if ini_file.is_file() {
+            let target_ini = rootfs.join("usr/local/php/ini");
+            fs::create_dir_all(&target_ini)?;
+            fs::copy(ini_file, target_ini.join("php.ini"))?;
+            if verbose {
+                eprintln!("  embed: copied php.ini with extensions configured");
+            }
+            return Ok(1);
+        }
+    }
+    Ok(0)
+}
+
+/// Detect Linux distribution for PHP download URL.
+fn detect_linux_distro() -> &'static str {
+    // Try to detect from /etc/os-release
+    if let Ok(content) = fs::read_to_string("/etc/os-release") {
+        let content_lower = content.to_lowercase();
+        // Check for Ubuntu first — Ubuntu's /etc/os-release contains
+        // `ID_LIKE=debian`, so a naive `contains("debian")` check would
+        // misidentify Ubuntu as Debian.
+        if content_lower.contains("ubuntu") {
+            if content_lower.contains("24.04") || content_lower.contains("noble") {
+                return "ubuntu24.04";
+            }
+            if content_lower.contains("22.04") || content_lower.contains("jammy") {
+                return "ubuntu22.04";
+            }
+            return "ubuntu24.04";
+        }
+        if content_lower.contains("debian") {
+            if content_lower.contains("13") {
+                return "debian13";
+            }
+            if content_lower.contains("12") {
+                return "debian12";
+            }
+            return "debian11";
+        }
+    }
+
+    // Fallback to Debian 12
+    "debian12"
+}
+
+/// Install missing PHP extensions by downloading them from PECL.
+fn install_missing_php_extensions(
+    app_dir: &Path,
+    interp_path: &Path,
+    rootfs: &Path,
+    verbose: bool,
+) -> io::Result<usize> {
+    let mut count = 0;
+
+    // Parse required extensions from composer.json
+    let required_exts = parse_composer_extensions(app_dir);
+    if required_exts.is_empty() {
+        if verbose {
+            eprintln!("  embed: no additional PHP extensions required");
+        }
+        return Ok(0);
+    }
+
+    if verbose {
+        eprintln!(
+            "  embed: required PHP extensions: {}",
+            required_exts.join(", ")
+        );
+    }
+
+    // Get the target extension directory in rootfs
+    let target_ext_dir = rootfs
+        .join("usr")
+        .join("local")
+        .join("php")
+        .join("extensions");
+    fs::create_dir_all(&target_ext_dir)?;
+
+    // Get the target conf.d directory
+    let target_conf_d = rootfs
+        .join("usr")
+        .join("local")
+        .join("php")
+        .join("ini")
+        .join("conf.d");
+    fs::create_dir_all(&target_conf_d)?;
+
+    // First, try to download a PHP binary with all extensions
+    // This is more reliable than downloading individual extensions
+    let php_with_exts = download_php_with_extensions(interp_path, rootfs, verbose)?;
+    count += php_with_exts;
+
+    // If we got a new PHP binary, use it for further extension checks
+    let effective_interp =
+        if php_with_exts > 0 && rootfs.join("usr").join("bin").join("php").is_file() {
+            rootfs.join("usr").join("bin").join("php")
+        } else {
+            interp_path.to_path_buf()
+        };
+
+    for ext_name in &required_exts {
+        // Skip if already loaded (check against the effective PHP binary)
+        if is_extension_loaded(&effective_interp, ext_name) {
+            if verbose {
+                eprintln!("  embed: extension {ext_name} already loaded, skipping");
+            }
+            continue;
+        }
+
+        // Check if the extension .so file exists in the rootfs extensions directory
+        let target_ext = rootfs
+            .join("usr")
+            .join("local")
+            .join("php")
+            .join("extensions")
+            .join(format!("{ext_name}.so"));
+        if target_ext.exists() {
+            if verbose {
+                eprintln!("  embed: extension {ext_name}.so found in rootfs, enabling");
+            }
+
+            // Create a conf.d entry to enable the extension
+            let target_conf_d = rootfs
+                .join("usr")
+                .join("local")
+                .join("php")
+                .join("ini")
+                .join("conf.d");
+            fs::create_dir_all(&target_conf_d)?;
+            let ini_content = format!("extension={ext_name}\n");
+            let ini_path = target_conf_d.join(format!("{ext_name}.ini"));
+            fs::write(&ini_path, &ini_content)?;
+            count += 1;
+            continue;
+        }
+
+        // Extension not found anywhere - warn but continue
+        if verbose {
+            eprintln!("  embed: warning: extension {ext_name} not found, app may fail");
+        }
     }
 
     Ok(count)

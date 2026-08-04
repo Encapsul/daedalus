@@ -1,13 +1,20 @@
 HOST_ARCH ?= $(shell uname -m)
-TARGET ?= $(HOST_ARCH)-unknown-linux-musl
-TOOLS := /tmp/xbin-stub-target
-STUB := $(TOOLS)/$(TARGET)/release/xbin-stub
-CRYPTO := $(TOOLS)/$(TARGET)/release/xbin-crypto
-CLI := target/release/xbin
+HOST_OS  ?= linux
+TARGET   ?= $(HOST_ARCH)-unknown-linux-musl
+TOOLS    := /tmp/xbin-stub-target
+VERSION  ?= $(shell cargo pkgid -p xbin-core 2>/dev/null | awk -F'#' '{print $$2}' || echo "0.4.0")
+DIST_DIR := dist
+
+STUB    := $(TOOLS)/$(TARGET)/release/xbin-stub
+CRYPTO  := $(TOOLS)/$(TARGET)/release/xbin-crypto
+CLI     := target/release/xbin
 STUB_ALT := target/$(TARGET)/release/xbin-stub
 CRYPTO_ALT := target/$(TARGET)/release/xbin-crypto
 
-.PHONY: all preflight stub cli install example run inspect docs docs-serve lint fmt clean
+# Architectures to build for in `dist` target
+ARCHS := x86_64 aarch64
+
+.PHONY: all preflight stub cli install example run inspect docs docs-serve lint fmt clean dist release help
 
 all: stub cli
 
@@ -47,11 +54,6 @@ cli:
 		echo "cli:    NOT FOUND"; \
 	fi
 
-.PHONY: all preflight stub cli install example run inspect docs docs-serve lint fmt clean
-
-# Build everything
-all: stub cli
-
 # Hybrid install: tries system-wide, falls back to user-level
 install:
 	@printf "\nBuilding x.bin (this may take a minute)...\n"
@@ -75,8 +77,6 @@ install:
 		printf "   Then verify: xbin --version\n"; \
 		printf "   You can remove the x.bin repo when done.\n"; \
 	fi
-
-# Build the Rust stub (statically linked musl ELF).
 
 # Build the hello-web example .xbin (requires stub + cli).
 example: stub cli
@@ -110,4 +110,93 @@ clean:
 	cd stub && cargo clean
 	rm -rf docs/book
 	rm -f *.xbin
-	rm -rf ~/.cache/xbin
+	rm -rf ~/.cache/xbin $(DIST_DIR)
+
+# ═══════════════════════════════════════════════════════════════════
+# Release / Distribution Targets
+# ═══════════════════════════════════════════════════════════════════
+#
+# Naming convention for release assets:
+#   xbin-<component>-<version>-<arch>-<os>.<ext>
+#
+# Components:
+#   cli     — xbin CLI tool (Linux x86_64/aarch64, tar.gz)
+#   stub    — xbin launcher stub (Linux musl, standalone ELF)
+#   crypto  — xbin crypto utility (Linux musl, standalone ELF)
+#
+# Examples:
+#   xbin-cli-v0.4.0-x86_64-linux.tar.gz
+#   xbin-stub-v0.4.0-x86_64-linux-musl
+#   xbin-crypto-v0.4.0-aarch64-linux-musl
+
+# Build ALL release artifacts for ALL architectures.
+# Output: $(DIST_DIR)/ with all tarballs + stubs + SHASUMS256.txt
+dist: preflight
+	@mkdir -p $(DIST_DIR)
+	@echo "Building all release artifacts (v$(VERSION))..."
+	@for arch in $(ARCHS); do \
+		printf "\n── $$arch ──\n"; \
+		target="$$arch-unknown-linux-musl"; \
+		stub_name="xbin-stub-v$(VERSION)-$$arch-linux-musl"; \
+		crypto_name="xbin-crypto-v$(VERSION)-$$arch-linux-musl"; \
+		cli_name="xbin-cli-v$(VERSION)-$$arch-linux.tar.gz"; \
+		\
+		cargo build --release -p xbin-stub --target "$$target"; \
+		if [ -f "$(TOOLS)/$$target/release/xbin-stub" ]; then \
+			cp "$(TOOLS)/$$target/release/xbin-stub" "$(DIST_DIR)/$$stub_name"; \
+			echo "  $$stub_name"; \
+		elif [ -f "target/$$target/release/xbin-stub" ]; then \
+			cp "target/$$target/release/xbin-stub" "$(DIST_DIR)/$$stub_name"; \
+			echo "  $$stub_name"; \
+		fi; \
+		if [ -f "$(TOOLS)/$$target/release/xbin-crypto" ]; then \
+			cp "$(TOOLS)/$$target/release/xbin-crypto" "$(DIST_DIR)/$$crypto_name"; \
+			echo "  $$crypto_name"; \
+		fi; \
+	done; \
+	\
+	printf "\n── CLI (host only: $(HOST_ARCH)) ──\n"; \
+	cargo build --release -p xbin-cli; \
+	cli_name="xbin-cli-v$(VERSION)-$(HOST_ARCH)-linux.tar.gz"; \
+	tar czf "$(DIST_DIR)/$$cli_name" -C "target/release" xbin; \
+	echo "  $$cli_name"; \
+	\
+	printf "\n── Checksums ──\n"; \
+	cd $(DIST_DIR) && sha256sum * > SHASUMS256.txt && cat SHASUMS256.txt
+
+# Create a GitHub release and upload all dist artifacts.
+# Usage: make release VERSION=v0.4.0
+release: dist
+	@if [ -z "$(VERSION)" ]; then echo "VERSION required (e.g. make release VERSION=v0.4.0)"; exit 1; fi
+	@command -v gh >/dev/null 2>&1 || { echo "FAIL: gh (GitHub CLI) not found"; exit 1; }
+	@gh release create "$(VERSION)" \
+		--repo Tednoob17/x.bin \
+		--title "x.bin $(VERSION)" \
+		--notes "See CHANGELOG.md for details" \
+		$(DIST_DIR)/* || true
+	@echo "Release $(VERSION) created: https://github.com/Tednoob17/x.bin/releases/tag/$(VERSION)"
+
+help:
+	@echo "x.bin — package any app into a single self-extracting ELF binary"
+	@echo ""
+	@echo "Targets:"
+	@echo "  make             Build stub + CLI for host"
+	@echo "  make install     Build + install CLI to /usr/local/bin or ~/.local/bin"
+	@echo "  make stub        Build musl stub for host"
+	@echo "  make cli         Build CLI"
+	@echo "  make example     Build hello-web.xbin"
+	@echo "  make dist        Build all release artifacts (multi-arch)"
+	@echo "  make release     Build dist + create GitHub release (VERSION required)"
+	@echo "  make lint        Run clippy on all crates"
+	@echo "  make fmt         Format all Rust code"
+	@echo "  make docs        Build mdbook documentation"
+	@echo "  make clean       Clean build artifacts"
+	@echo ""
+	@echo "Naming convention for release assets:"
+	@echo "  xbin-<component>-<version>-<arch>-<os>.<ext>"
+	@echo ""
+	@echo "  cli:    xbin-cli-v0.4.0-x86_64-linux.tar.gz"
+	@echo "  stub:   xbin-stub-v0.4.0-x86_64-linux-musl"
+	@echo "  crypto: xbin-crypto-v0.4.0-x86_64-linux-musl"
+	@echo ""
+	@echo "Example: make release VERSION=v0.4.0"

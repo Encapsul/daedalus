@@ -2,7 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Tednoob17/x.bin/ci.yml?branch=main&label=build)](https://github.com/Tednoob17/x.bin/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.3.2-green.svg)](https://github.com/Tednoob17/x.bin/releases)
+[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](https://github.com/Tednoob17/x.bin/releases)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey.svg)]()
 [![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)

@@ -32,7 +32,7 @@ f1e9f1e fix(cli): ANSSI hardening + clig.dev compliance
 fee6f8c fix(stub): ANSSI hardening — cstr error propagation, bounds checks, seccomp docs
 ```
 
-Version bumped to **0.3.2** across all crates.
+Version bumped to **0.4.0** across all crates.
 
 ---
 
