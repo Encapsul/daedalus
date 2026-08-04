@@ -4,8 +4,10 @@
 //! Flow: open /proc/self/exe → read footer → verify integrity (sig → SHA-256) →
 //! extract rootfs to ~/.cache/xbin/{sha256}/ (atomic) → exec the app.
 //!
-//! Level 0 isolation (MVP): `LD_LIBRARY_PATH`, no chroot. Levels 1/2
-//! (chroot, user namespaces) in Phase 2 — see docs/src/roadmap.md.
+//! Isolation: level 0 = `LD_LIBRARY_PATH` (no sandbox), level 2 = user +
+//! mount namespaces with `pivot_root` into the extracted rootfs and
+//! optional seccomp BPF denylist. See `enter_namespace_if_needed()`,
+//! `pivot_root_into()`, and `install_seccomp_denylist()`.
 
 mod config;
 mod squashfs_extract;

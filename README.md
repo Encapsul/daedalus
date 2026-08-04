@@ -28,7 +28,7 @@ x.bin transforms any application directory into a portable, self-extracting bina
 - **Python applications** — Django, FastAPI, Flask
 - **Node.js applications** — Next.js, Express, Fastify
 - **Go binaries** — Standalone executables
-- **Docker-like isolation** — Sandboxed, portable execution
+- **Namespace isolation** — user/mount namespaces + optional seccomp (not full Docker sandboxing)
 
 The tool handles runtime detection, dependency installation, compression, and signing through a unified, language-agnostic pipeline.
 
@@ -76,20 +76,26 @@ Each runtime has specific detection logic and framework support that triggers wh
 
 ### Advanced build options
 
+> **Status note:** `--wasm`, `--cross-compile` and `--health-port` currently
+> only record metadata into the binary footer — the launcher does **not**
+> yet embed a WASM runtime, cross-compile, or serve a health endpoint.
+> They are reserved for future versions. Use `--embed-interpreter` and
+> the standard flags below for functional behavior today.
+
 ```bash
 # Embed interpreter for self-contained binaries (Bun-inspired)
 xbin build ./myapp --embed-interpreter python3 -o myapp.xbin
 
-# Enable WASM support (Wasmer-inspired)
+# Enable WASM support (Wasmer-inspired) — metadata only, not functional yet
 xbin build ./myapp --wasm --wasmtime-path /usr/bin/wasmtime -o myapp.xbin
 
-# Cross-compilation (Bun-inspired)
+# Cross-compilation (Bun-inspired) — metadata only, not functional yet
 xbin build ./myapp --cross-compile aarch64,arm64 -o myapp.xbin
 
-# HTTP health check endpoint (Wasmer-inspired)
+# HTTP health check endpoint (Wasmer-inspired) — metadata only, not functional yet
 xbin build ./myapp --health-port 8080 --health-endpoint /health -o myapp.xbin
 
-# Intelligent build caching (Wasmer-inspired)
+# Intelligent build caching (Wasmer-inspired) — metadata only, not functional yet
 xbin build ./myapp --use-cache --clear-cache -o myapp.xbin
 ```
 
@@ -107,7 +113,7 @@ The `--embed-interpreter` flag bundles an interpreter into the binary:
 | `perl` | Embed Perl interpreter |
 | `java` | Embed Java runtime |
 | `go` | Embed Go runtime |
-| `wasm` | Embed WASM runtime |
+| `wasm` | Embed WASM runtime (metadata only, not functional yet) |
 | `custom` | Use custom interpreter path (requires `--interpreter-path`) |
 
 #### Build Cache

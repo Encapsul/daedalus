@@ -5,17 +5,17 @@
 - **Format**: v5 (SquashFS support)
 - **Status**: Phase 1/2/3 COMPLETE — full Rust CLI, no Python dependency for builds
 - **Build**: `cargo build --release` (or `make stub` for development)
-- **CLI**: Rust CLI (`xbin` binary) — recommended. Python CLI (`cli/`) legacy only.
+- **CLI**: Rust CLI (`xbin` binary). The legacy Python CLI (`cli/`) was removed.
 - **Health check**: `xbin doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
 - **Release**: create release on GitHub UI → `on: release: types: [published]` triggers workflow → builds 4 platforms → uploads binaries + SHASUMS256.txt
 - **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo (11 total)
 - **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
 - **Rust core**: `xbin-core` crate — format, compress, detect, pkgmgr, tar, assembly, sign, verify, scan, PyO3 bindings
-- **Rust CLI**: `xbin-cli` crate — 12 commands (build, inspect, scan, sign, verify, keygen, trust, doctor, env, clean, completion, man)
-- **Tests**: 92 Rust (xbin-core + xbin-cli) + 234 Python = 326 total (0 failures)
-- **Last updated**: 2026-07-24
-- **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), all commits/tags signed, GitHub signing key id=1064819
+- **Rust CLI**: `xbin-cli` crate — 15 commands (build, run, inspect, scan, sign, verify, keygen, trust, doctor, env, clean, selftest, upgrade, completion, man)
+- **Tests**: 127 Rust (106 xbin-core + 17 xbin-cli + 4 xbin-stub) (0 failures)
+- **Last updated**: 2026-08-04
+- **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), GitHub signing key id=1064819. Note: Codespaces `gh-gpgsign` proxy currently returns 403 (GPG signing not enabled) — recent commits are unsigned until the environment permits it.
 - **Release workflow**: `on: release: types: [published]` — create release on GitHub UI → workflow builds 4 platforms → uploads tar.gz + SHASUMS256.txt
 
 ---
@@ -179,11 +179,11 @@ Machine specs (Xeon run):
 
 | Crate | Tests | Clippy |
 |-------|-------|--------|
-| xbin-core | 84 passed | Clean |
-| xbin-stub | 0 (binary) | Clean |
-| xbin-cli | Cannot test (requires openssl-dev) | N/A |
+| xbin-core | 106 passed | Clean |
+| xbin-stub | 4 passed | Clean |
+| xbin-cli | 17 passed (7 unit + 10 integration) | Clean |
 
-**Note:** xbin-cli depends on `openssl` via `reqwest`/`native-tls`. CI (ubuntu) has it. Local live USB doesn't.
+**Note:** xbin-cli uses `reqwest` with `rustls-tls` (no OpenSSL) — it builds and tests without `libssl-dev`.
 
 ---
 
@@ -341,8 +341,7 @@ git push --force --tags origin
 - Current deps: pyo3 "0.29", sha2 "0.10", serde/serde_json "1", ruzstd "0.7", zstd "0.13", tar "0.4"
 
 **Python packages** (`cli/pyproject.toml`):
-- `cryptography >= 41.0` (latest: 49.0.0, spec is open enough)
-- Update pinned versions in `requirements.txt` if they exist
+- Removed — the Python CLI (`cli/`) no longer exists.
 
 **Security advisories**:
 - pyo3 < 0.29.0: 3 CVEs (HIGH/MEDIUM/LOW) — FIXED (upgraded to 0.29)
