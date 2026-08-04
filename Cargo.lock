@@ -2851,7 +2851,7 @@ dependencies = [
 
 [[package]]
 name = "xbin-cli"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2877,7 +2877,7 @@ dependencies = [
 
 [[package]]
 name = "xbin-core"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2900,7 +2900,7 @@ dependencies = [
 
 [[package]]
 name = "xbin-stub"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "aes-gcm",
  "atty",

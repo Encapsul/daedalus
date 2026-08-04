@@ -4,6 +4,22 @@ All notable changes to x.bin will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0] - 2026-07-29
+
+### Added
+- Auto-download PHP extensions from `shivammathur/php-builder` GitHub releases
+- PHP extension detection from `composer.json` (`ext-*` requirements)
+- Shared library bundling for downloaded PHP binaries (libssl, libgd, etc.)
+- Standardized release asset naming: `xbin-<component>-<version>-<arch>-<os>.<ext>`
+- `make dist` target for multi-arch release builds (x86_64, aarch64)
+- `make release` target for GitHub release creation
+
+### Fixed
+- Ubuntu detection in `detect_linux_distro()` — Ubuntu's `/etc/os-release` contains
+  `ID_LIKE=debian`, which caused downloading the wrong PHP build
+- Missing shared libraries for downloaded PHP binaries at runtime
+- Dead code: removed unused `download_php_extension()` (replaced by binary download)
+
 ## [0.3.2] - 2026-07-24
 
 ### Fixed

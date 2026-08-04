@@ -467,7 +467,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
         // Embed the interpreter into the rootfs
         let interpreter_path = interpreter_name.clone();
-        match embed::embed_interpreter(&interpreter_path, &rootfs, verbose) {
+        match embed::embed_interpreter(&interpreter_path, &rootfs, Some(&app_dir), verbose) {
             Ok(count) => {
                 if verbose {
                     eprintln!("Embedded interpreter ({} files copied)", count);
