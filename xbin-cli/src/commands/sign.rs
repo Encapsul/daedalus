@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use xbin_core::format::{Footer, FLAG_SIGNED, SIG_BLOCK_SIZE};
 use xbin_core::paths::default_key_dir;
+use zeroize::Zeroizing;
 
 #[derive(Args)]
 pub struct SignArgs {
@@ -77,13 +78,15 @@ pub fn run(args: SignArgs) -> Result<()> {
 /// Write is atomic: a temp file is created in the same directory and
 /// renamed over the source only after the new content is fully flushed.
 pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> {
-    let key_bytes = std::fs::read(key_path)
-        .with_context(|| format!("failed to read signing key at {}", key_path.display()))?;
+    let key_bytes = Zeroizing::new(
+        std::fs::read(key_path)
+            .with_context(|| format!("failed to read signing key at {}", key_path.display()))?,
+    );
     if key_bytes.len() != 32 {
         anyhow::bail!("key must be 32 bytes, got {}", key_bytes.len());
     }
 
-    let mut key_arr = [0u8; 32];
+    let mut key_arr = Zeroizing::new([0u8; 32]);
     key_arr.copy_from_slice(&key_bytes);
     let signing_key = SigningKey::from_bytes(&key_arr);
 
