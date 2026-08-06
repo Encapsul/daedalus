@@ -2873,6 +2873,7 @@ dependencies = [
  "walkdir",
  "which",
  "xbin-core",
+ "zeroize",
 ]
 
 [[package]]

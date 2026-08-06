@@ -4,6 +4,7 @@ use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use std::path::PathBuf;
 use xbin_core::paths::default_key_dir;
+use zeroize::Zeroize;
 
 #[derive(Args)]
 pub struct KeygenArgs {
@@ -54,8 +55,10 @@ pub fn run(args: KeygenArgs) -> Result<()> {
         }
     }
 
-    std::fs::write(&key_path, signing_key.to_bytes())
+    let mut key_bytes = signing_key.to_bytes();
+    std::fs::write(&key_path, &key_bytes)
         .with_context(|| format!("failed to write private key to {}", key_path.display()))?;
+    key_bytes.zeroize();
     std::fs::write(&pub_path, verifying_key.as_bytes())
         .with_context(|| format!("failed to write public key to {}", pub_path.display()))?;
 
