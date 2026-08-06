@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use xbin_core::detect;
 use xbin_core::embed;
 use xbin_core::metadata::{BunFeatures, EmbeddedInterpreter};
+use xbin_core::paths::cache_dir;
 use xbin_core::pkgmgr;
 
 /// Map an isolation spec to the numeric level stored in metadata.
@@ -432,8 +433,8 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
     }
 
-    // Clean up downloaded build tools (node/npm, composer.phar in /tmp)
-    let _ = std::fs::remove_dir_all("/tmp/xbin-build-tools");
+    // Clean up downloaded build tools (node/npm, composer.phar) from cache
+    let _ = std::fs::remove_dir_all(cache_dir().join("build-tools"));
 
     // Find stub binary
     let stub = find_stub(&target)?;
@@ -838,10 +839,12 @@ fn is_command_available(name: &str) -> bool {
 }
 
 /// Ensure node + npm are available for the build.
-/// Downloads a static node to `/tmp/xbin-build-tools/node/` if not on PATH.
-/// Does NOT pollute the user's system PATH.
+/// Downloads a static node to `~/.cache/xbin/build-tools/node/` if not on
+/// PATH. The user-writable cache dir (0700) avoids the symlink attacks a
+/// predictable world-writable `/tmp` path would allow. Does NOT pollute the
+/// user's system PATH.
 fn ensure_node(verbose: bool) -> Result<PathBuf> {
-    let tools_dir = PathBuf::from("/tmp/xbin-build-tools/node");
+    let tools_dir = cache_dir().join("build-tools").join("node");
     let node_bin = tools_dir.join("bin/node");
     let npm_bin = tools_dir.join("bin/npm");
 
@@ -858,6 +861,15 @@ fn ensure_node(verbose: bool) -> Result<PathBuf> {
     }
 
     std::fs::create_dir_all(&tools_dir).context("failed to create build tools directory")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            tools_dir.parent().unwrap_or(tools_dir.as_path()),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .ok();
+    }
 
     // Detect arch
     let arch = std::env::consts::ARCH;
