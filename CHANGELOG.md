@@ -4,21 +4,39 @@ All notable changes to x.bin will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.0] - 2026-07-29
+## [0.4.0] - 2026-08-06
 
 ### Added
 - Auto-download PHP extensions from `shivammathur/php-builder` GitHub releases
 - PHP extension detection from `composer.json` (`ext-*` requirements)
 - Shared library bundling for downloaded PHP binaries (libssl, libgd, etc.)
-- Standardized release asset naming: `xbin-<component>-<version>-<arch>-<os>.<ext>`
 - `make dist` target for multi-arch release builds (x86_64, aarch64)
 - `make release` target for GitHub release creation
+- Node.js auto-download now caches in `~/.cache/xbin/build-tools` (mode 0700)
+  instead of a world-writable `/tmp` directory
+
+### Changed
+- Standardized release asset naming (glow-style):
+  `xbin_<version>_<os>_<arch>.<ext>` with `checksums.txt`
+- Launcher hardened: all remaining `unwrap()`/`expect()` calls in the stub
+  converted to `Result` handling — the launcher never panics on malicious input
 
 ### Fixed
 - Ubuntu detection in `detect_linux_distro()` — Ubuntu's `/etc/os-release` contains
   `ID_LIKE=debian`, which caused downloading the wrong PHP build
 - Missing shared libraries for downloaded PHP binaries at runtime
 - Dead code: removed unused `download_php_extension()` (replaced by binary download)
+- Isolation level 2 always failed with `ENOENT`:
+  - Embedded runtimes shipped without their dynamic loader (`ld-linux.so`),
+    so the kernel could not `exec` them after `pivot_root`. The ELF
+    interpreter is now bundled into the rootfs.
+  - `execvp` resolved relative `PATH`/`LD_LIBRARY_PATH` entries against the
+    post-`pivot_root` cwd (`/app`). Absolute paths are used in the pivot branch.
+  - `go`/`binary` runtimes were wrapped in `bash`, which was not bundled; they
+    are now executed directly.
+- `--isolation` now fails closed: unknown values are rejected instead of
+  silently downgrading to level 1
+- Signing keys are zeroized (`zeroize`) after use during `keygen` and `sign`
 
 ## [0.3.2] - 2026-07-24
 

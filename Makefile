@@ -4,6 +4,9 @@ TARGET   ?= $(HOST_ARCH)-unknown-linux-musl
 TOOLS    := /tmp/xbin-stub-target
 VERSION  ?= $(shell cargo pkgid -p xbin-core 2>/dev/null | awk -F'#' '{print $$2}' || echo "0.4.0")
 DIST_DIR := dist
+# Cargo target dir — override to keep builds off a full root fs, e.g.
+#   make dist CARGO_TARGET_DIR=/tmp/xbin-release-target
+export CARGO_TARGET_DIR := $(or $(CARGO_TARGET_DIR),$(CURDIR)/target)
 
 STUB    := $(TOOLS)/$(TARGET)/release/xbin-stub
 CRYPTO  := $(TOOLS)/$(TARGET)/release/xbin-crypto
@@ -116,65 +119,69 @@ clean:
 # Release / Distribution Targets
 # ═══════════════════════════════════════════════════════════════════
 #
-# Naming convention for release assets:
-#   xbin-<component>-<version>-<arch>-<os>.<ext>
+# Naming convention for release assets (glow-style):
+#   xbin_<version>_<os>_<arch>.<ext>
 #
-# Components:
-#   cli     — xbin CLI tool (Linux x86_64/aarch64, tar.gz)
-#   stub    — xbin launcher stub (Linux musl, standalone ELF)
-#   crypto  — xbin crypto utility (Linux musl, standalone ELF)
+# Each Linux archive bundles the three binaries produced by this
+# workspace for that platform:
+#   xbin          — the CLI tool
+#   xbin-stub     — the statically linked launcher (musl ELF)
+#   xbin-crypto   — the signing/inspection utility (musl ELF)
+#
+# Components are Linux-only today (the stub launcher is Linux-only and
+# xbin-core uses std::os::unix APIs), so this release ships Linux
+# amd64 and arm64. macOS and Windows can be added once the workspace
+# builds without those Unix dependencies and a macOS SDK is available.
 #
 # Examples:
-#   xbin-cli-v0.4.0-x86_64-linux.tar.gz
-#   xbin-stub-v0.4.0-x86_64-linux-musl
-#   xbin-crypto-v0.4.0-aarch64-linux-musl
+#   xbin_0.4.0_linux_amd64.tar.gz   (xbin + xbin-stub + xbin-crypto)
+#   xbin_0.4.0_linux_arm64.tar.gz
+#   checksums.txt
+#
+# `dist` uses cargo-zigbuild so the musl artifacts are produced via the
+# Zig C compiler (zig must be on PATH; no mingw/musl-gcc required):
 
-# Build ALL release artifacts for ALL architectures.
-# Output: $(DIST_DIR)/ with all tarballs + stubs + SHASUMS256.txt
+ZIGBUILD := cargo zigbuild
+
+# Build all release artifacts for all architectures.
+# Output: $(DIST_DIR)/ with one tarball per arch + checksums.txt
 dist: preflight
 	@mkdir -p $(DIST_DIR)
-	@echo "Building all release artifacts (v$(VERSION))..."
+	@command -v zig >/dev/null 2>&1 || { echo "FAIL: zig not found (install https://ziglang.org/download)"; exit 1; }
+	@command -v sha256sum >/dev/null 2>&1 || { echo "FAIL: sha256sum not found"; exit 1; }
+	@echo "Building release v$(VERSION) for $(ARCHS)..."
 	@for arch in $(ARCHS); do \
-		printf "\n── $$arch ──\n"; \
 		target="$$arch-unknown-linux-musl"; \
-		stub_name="xbin-stub-v$(VERSION)-$$arch-linux-musl"; \
-		crypto_name="xbin-crypto-v$(VERSION)-$$arch-linux-musl"; \
-		cli_name="xbin-cli-v$(VERSION)-$$arch-linux.tar.gz"; \
-		\
-		cargo build --release -p xbin-stub --target "$$target"; \
-		if [ -f "$(TOOLS)/$$target/release/xbin-stub" ]; then \
-			cp "$(TOOLS)/$$target/release/xbin-stub" "$(DIST_DIR)/$$stub_name"; \
-			echo "  $$stub_name"; \
-		elif [ -f "target/$$target/release/xbin-stub" ]; then \
-			cp "target/$$target/release/xbin-stub" "$(DIST_DIR)/$$stub_name"; \
-			echo "  $$stub_name"; \
-		fi; \
-		if [ -f "$(TOOLS)/$$target/release/xbin-crypto" ]; then \
-			cp "$(TOOLS)/$$target/release/xbin-crypto" "$(DIST_DIR)/$$crypto_name"; \
-			echo "  $$crypto_name"; \
-		fi; \
-	done; \
-	\
-	printf "\n── CLI (host only: $(HOST_ARCH)) ──\n"; \
-	cargo build --release -p xbin-cli; \
-	cli_name="xbin-cli-v$(VERSION)-$(HOST_ARCH)-linux.tar.gz"; \
-	tar czf "$(DIST_DIR)/$$cli_name" -C "target/release" xbin; \
-	echo "  $$cli_name"; \
-	\
-	printf "\n── Checksums ──\n"; \
-	cd $(DIST_DIR) && sha256sum * > SHASUMS256.txt && cat SHASUMS256.txt
+		printf "\n── $$arch (musl, static) ──\n"; \
+		$(ZIGBUILD) --release -p xbin-stub -p xbin-crypto --target "$$target"; \
+		$(ZIGBUILD) --release -p xbin-cli --target "$$target"; \
+		dir="xbin_$(VERSION)_linux_$$arch"; \
+		rm -rf "$(DIST_DIR)/$$dir"; \
+		mkdir -p "$(DIST_DIR)/$$dir"; \
+		cp -f "$(CARGO_TARGET_DIR)/$$target/release/xbin" "$(DIST_DIR)/$$dir/xbin"; \
+		cp -f "$(CARGO_TARGET_DIR)/$$target/release/xbin-stub" "$(DIST_DIR)/$$dir/xbin-stub"; \
+		cp -f "$(CARGO_TARGET_DIR)/$$target/release/xbin-crypto" "$(DIST_DIR)/$$dir/xbin-crypto"; \
+		chmod +x "$(DIST_DIR)/$$dir"/*; \
+		tar -czf "$(DIST_DIR)/xbin_$(VERSION)_linux_$$arch.tar.gz" -C "$(DIST_DIR)" "$$dir"; \
+		rm -rf "$(DIST_DIR)/$$dir"; \
+		echo "  xbin_$(VERSION)_linux_$$arch.tar.gz"; \
+	done
+	@printf "\n── Checksums ──\n"
+	@cd $(DIST_DIR) && sha256sum * > checksums.txt && cat checksums.txt
 
 # Create a GitHub release and upload all dist artifacts.
-# Usage: make release VERSION=v0.4.0
+# Usage: make release VERSION=0.4.0   (tag becomes v0.4.0)
 release: dist
-	@if [ -z "$(VERSION)" ]; then echo "VERSION required (e.g. make release VERSION=v0.4.0)"; exit 1; fi
+	@if [ -z "$(VERSION)" ]; then echo "VERSION required (e.g. make release VERSION=0.4.0)"; exit 1; fi
 	@command -v gh >/dev/null 2>&1 || { echo "FAIL: gh (GitHub CLI) not found"; exit 1; }
-	@gh release create "$(VERSION)" \
+	@git tag "v$(VERSION)" 2>/dev/null || true
+	@git push origin "v$(VERSION)" 2>/dev/null || true
+	@gh release create "v$(VERSION)" \
 		--repo Tednoob17/x.bin \
-		--title "x.bin $(VERSION)" \
-		--notes "See CHANGELOG.md for details" \
-		$(DIST_DIR)/* || true
-	@echo "Release $(VERSION) created: https://github.com/Tednoob17/x.bin/releases/tag/$(VERSION)"
+		--title "x.bin v$(VERSION)" \
+		--notes-file CHANGELOG.md \
+		$(DIST_DIR)/*
+	@echo "Release v$(VERSION) created: https://github.com/Tednoob17/x.bin/releases/tag/v$(VERSION)"
 
 help:
 	@echo "x.bin — package any app into a single self-extracting ELF binary"
@@ -193,10 +200,10 @@ help:
 	@echo "  make clean       Clean build artifacts"
 	@echo ""
 	@echo "Naming convention for release assets:"
-	@echo "  xbin-<component>-<version>-<arch>-<os>.<ext>"
+	@echo "  xbin_<version>_<os>_<arch>.<ext>"
 	@echo ""
-	@echo "  cli:    xbin-cli-v0.4.0-x86_64-linux.tar.gz"
-	@echo "  stub:   xbin-stub-v0.4.0-x86_64-linux-musl"
-	@echo "  crypto: xbin-crypto-v0.4.0-x86_64-linux-musl"
+	@echo "  linux amd64: xbin_0.4.0_linux_amd64.tar.gz"
+	@echo "  linux arm64: xbin_0.4.0_linux_arm64.tar.gz"
+	@echo "  checksums:   checksums.txt"
 	@echo ""
-	@echo "Example: make release VERSION=v0.4.0"
+	@echo "Example: make release VERSION=0.4.0"
