@@ -40,9 +40,25 @@ const LD_PATHS: &[&str] = &[
     "usr/lib/aarch64-linux-gnu",
 ];
 
+/// Absolute forms of `LD_PATHS`, used after `pivot_root` where the process
+/// root is the rootfs. `execvp` and the dynamic loader resolve relative PATH
+/// / `LD_LIBRARY_PATH` entries against the current directory — with `cwd`
+/// set to `/app` that misses `/usr/bin`, so pivot mode must use `/`-prefixed
+/// entries (they resolve inside the new root).
+const LD_PATHS_ABS: &[&str] = &[
+    "/lib",
+    "/lib64",
+    "/usr/lib",
+    "/usr/lib64",
+    "/usr/lib/aarch64-linux-gnu",
+];
+
 /// Binary search paths for PATH, mirroring `LD_PATHS` for executables.
 /// Bundled binaries (e.g. ffmpeg, gitleaks) land here via the rootfs.
 const BIN_PATHS: &[&str] = &["usr/bin", "bin", "usr/local/bin"];
+
+/// Absolute forms of `BIN_PATHS`; see `LD_PATHS_ABS`.
+const BIN_PATHS_ABS: &[&str] = &["/usr/bin", "/bin", "/usr/local/bin"];
 
 #[derive(Deserialize)]
 struct Metadata {
@@ -238,11 +254,16 @@ fn verify_ed25519(
 ) -> io::Result<()> {
     // Read signature block: [sig_size: u32le][signature: 64 bytes]
     let sig_data = read_at(exe, footer.sig_offset, 68)?;
-    let sig_size = u32::from_le_bytes(sig_data[0..4].try_into().unwrap()) as usize;
+    let size_bytes: [u8; 4] = sig_data[0..4]
+        .try_into()
+        .map_err(|_| err("signature block too small"))?;
+    let sig_size = u32::from_le_bytes(size_bytes) as usize;
     if sig_size != 64 {
         return Err(err("invalid Ed25519 signature size"));
     }
-    let sig_bytes: &[u8; 64] = sig_data[4..68].try_into().unwrap();
+    let sig_bytes: &[u8; 64] = sig_data[4..68]
+        .try_into()
+        .map_err(|_| err("invalid signature block size"))?;
 
     // Compute SHA-256(payload ‖ meta)
     use sha2::{Digest, Sha256};
@@ -362,11 +383,12 @@ fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> {
 
 /// Derive a 32-byte AES key from an Ed25519 signing seed via HKDF-SHA256.
 /// Uses the shared implementation in xbin-core.
-fn hkdf_derive_key(signing_seed: &[u8]) -> [u8; 32] {
+fn hkdf_derive_key(signing_seed: &[u8]) -> io::Result<[u8; 32]> {
     let seed: &[u8; 32] = signing_seed
         .try_into()
-        .expect("signing_seed must be exactly 32 bytes");
-    xbin_core::encrypt::hkdf_derive_key(seed).expect("HKDF key derivation failed")
+        .map_err(|_| err("signing seed must be exactly 32 bytes"))?;
+    xbin_core::encrypt::hkdf_derive_key(seed)
+        .map_err(|e| err(&format!("HKDF key derivation failed: {e}")))
 }
 
 /// Decrypt an AES-256-GCM payload.
@@ -384,7 +406,7 @@ fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec<u8>
         return Err(err("signing seed must be 32 bytes"));
     }
 
-    let aes_key = hkdf_derive_key(&signing_seed);
+    let aes_key = hkdf_derive_key(&signing_seed)?;
     let cipher = Aes256Gcm::new_from_slice(&aes_key)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("AES init: {e}")))?;
 
@@ -490,7 +512,7 @@ fn setup_env(
     let mut env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
 
     if use_pivot {
-        env.insert("LD_LIBRARY_PATH".into(), LD_PATHS.join(":"));
+        env.insert("LD_LIBRARY_PATH".into(), LD_PATHS_ABS.join(":"));
     } else {
         let mut paths: Vec<String> = LD_PATHS
             .iter()
@@ -508,7 +530,7 @@ fn setup_env(
 
     // PATH: bundled binaries (usr/bin, bin, usr/local/bin) before system PATH.
     if use_pivot {
-        env.insert("PATH".into(), BIN_PATHS.join(":"));
+        env.insert("PATH".into(), BIN_PATHS_ABS.join(":"));
     } else {
         let mut paths: Vec<String> = BIN_PATHS
             .iter()
@@ -644,6 +666,9 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
     let prog_path_bytes = prog.as_os_str().as_bytes();
     let _prog_path_str = std::str::from_utf8(prog_path_bytes).unwrap_or_default();
 
+    // Compiled binaries (go/binary) exec `entrypoint[0]` directly; interpreted
+    // runtimes get their interpreter prepended to argv.
+    let direct_exec = matches!(meta.runtime.as_str(), "go" | "binary");
     let interpreter_name = match meta.runtime.as_str() {
         "php" => "php",
         "python" => "python3",
@@ -655,17 +680,29 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
         _ => "bash",
     };
 
-    if !is_executable(interpreter_name.as_bytes()) {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("[xbin] error: interpreter '{}' not found", interpreter_name),
-        ));
-    }
-
     let mut argv: Vec<CString> = Vec::new();
-    argv.push(CString::new(interpreter_name).unwrap());
-    for a in &meta.entrypoint[1..] {
-        argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
+    if direct_exec {
+        if !is_executable(prog_path_bytes) {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("[xbin] error: executable '{}' not found", prog.display()),
+            ));
+        }
+        argv.push(prog_c.clone());
+        for a in &meta.entrypoint[1..] {
+            argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
+        }
+    } else {
+        if !is_executable(interpreter_name.as_bytes()) {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("[xbin] error: interpreter '{}' not found", interpreter_name),
+            ));
+        }
+        argv.push(cstr(interpreter_name.as_bytes())?);
+        for a in &meta.entrypoint[1..] {
+            argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
+        }
     }
     for a in std::env::args_os().skip(1) {
         argv.push(cstr(a.as_bytes())?);
