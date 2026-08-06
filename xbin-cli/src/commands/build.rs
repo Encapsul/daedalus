@@ -1,10 +1,24 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Args;
 use std::path::{Path, PathBuf};
 use xbin_core::detect;
 use xbin_core::embed;
 use xbin_core::metadata::{BunFeatures, EmbeddedInterpreter};
 use xbin_core::pkgmgr;
+
+/// Map an isolation spec to the numeric level stored in metadata.
+///
+/// Levels: 0 = `LD_LIBRARY_PATH` (no sandbox), 1 = skipped, 2 = user +
+/// mount namespaces with `pivot_root`. `sandbox` is the default and must
+/// resolve to the implemented sandbox (2), not silently degrade.
+fn parse_isolation(value: &str) -> Result<u32> {
+    match value.trim() {
+        "sandbox" | "2" => Ok(2),
+        "1" => Ok(1),
+        "0" | "none" => Ok(0),
+        other => bail!("expected 'sandbox', 'none', or a level 0-2, got '{other}'"),
+    }
+}
 
 #[derive(Args)]
 pub struct BuildArgs {
@@ -191,7 +205,8 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let env_file = args.env_file.or(config.build.env_file.map(PathBuf::from));
     let no_install = args.no_install || config.build.no_install.unwrap_or(false);
     let target = args.target.or(config.build.target);
-    let isolation_num: u32 = isolation.parse().unwrap_or(1);
+    let isolation_num = parse_isolation(&isolation)
+        .with_context(|| format!("invalid --isolation value: '{isolation}'"))?;
 
     // Detect runtime
     let runtime = detect::detect_runtime(&app_dir).context(
@@ -1101,4 +1116,33 @@ fn copy_dir_recursive_with(src: &Path, dst: &Path, include_node_modules: bool) -
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_isolation;
+
+    #[test]
+    fn sandbox_default_maps_to_level_2() {
+        assert_eq!(parse_isolation("sandbox").unwrap(), 2);
+        assert_eq!(parse_isolation("2").unwrap(), 2);
+    }
+
+    #[test]
+    fn none_maps_to_level_0() {
+        assert_eq!(parse_isolation("none").unwrap(), 0);
+        assert_eq!(parse_isolation("0").unwrap(), 0);
+    }
+
+    #[test]
+    fn numeric_level_1_is_accepted() {
+        assert_eq!(parse_isolation("1").unwrap(), 1);
+    }
+
+    #[test]
+    fn invalid_values_fail_closed() {
+        assert!(parse_isolation("3").is_err());
+        assert!(parse_isolation("root").is_err());
+        assert!(parse_isolation("").is_err());
+    }
 }
