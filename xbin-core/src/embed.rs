@@ -117,6 +117,24 @@ pub fn embed_interpreter(
         }
     }
 
+    // Copy the ELF interpreter (dynamic loader) so the embedded binary can
+    // be exec'd under `pivot_root` isolation, where the host /lib64 is gone.
+    if let Some(loader) = elf_interpreter_path(&interp_path)? {
+        let dest = rootfs.join(loader.strip_prefix("/").unwrap_or(&loader));
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(&loader, &dest)?;
+        count += 1;
+        if verbose {
+            eprintln!(
+                "  embed: ELF interpreter {} -> {}",
+                loader.display(),
+                dest.display()
+            );
+        }
+    }
+
     // Copy runtime-specific config (php.ini, extensions, etc.)
     count += embed_runtime_config(interpreter, &interp_path, rootfs, app_dir, verbose)?;
 
@@ -175,7 +193,37 @@ fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(deps)
 }
 
-/// Resolve standard library directories in the rootfs.
+/// Extract the ELF interpreter (dynamic loader) path from a single `ldd`
+/// output line. The loader line has no `=>`, e.g.
+/// `/lib64/ld-linux-x86-64.so.2 (0x00007f...)`.
+fn parse_loader_line(line: &str) -> Option<PathBuf> {
+    let line = line.trim();
+    if !line.starts_with('/') || line.contains("=>") {
+        return None;
+    }
+    let path_str = line.split('(').next()?.trim();
+    if path_str.contains("ld-linux") || path_str.contains("ld-musl") {
+        Some(PathBuf::from(path_str))
+    } else {
+        None
+    }
+}
+
+/// Locate the ELF interpreter required by `interp_path` (e.g. glibc's
+/// `/lib64/ld-linux-x86-64.so.2`). Without it in the rootfs, the kernel
+/// cannot exec the embedded binary under `pivot_root` isolation.
+fn elf_interpreter_path(interp_path: &Path) -> io::Result<Option<PathBuf>> {
+    let output = Command::new("ldd")
+        .arg(interp_path)
+        .output()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ldd failed: {e}")))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(parse_loader_line))
+}
 fn resolve_lib_dirs(rootfs: &Path) -> Vec<PathBuf> {
     let arch = std::env::consts::ARCH;
     let arch_dir = match arch {
@@ -911,6 +959,34 @@ fn count_dir_files(dir: &Path) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_loader_line_glibc() {
+        let line = "/lib64/ld-linux-x86-64.so.2 (0x00007f1234567890)";
+        assert_eq!(
+            parse_loader_line(line),
+            Some(PathBuf::from("/lib64/ld-linux-x86-64.so.2"))
+        );
+    }
+
+    #[test]
+    fn parse_loader_line_musl() {
+        let line = "/lib/ld-musl-x86_64.so.1 (0x7f...)";
+        assert_eq!(
+            parse_loader_line(line),
+            Some(PathBuf::from("/lib/ld-musl-x86_64.so.1"))
+        );
+    }
+
+    #[test]
+    fn parse_loader_line_rejects_regular_deps() {
+        assert_eq!(
+            parse_loader_line("libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x...)"),
+            None
+        );
+        assert_eq!(parse_loader_line("linux-vdso.so.1 (0x...)"), None);
+        assert_eq!(parse_loader_line("not found"), None);
+    }
 
     #[test]
     fn update_ini_value_existing() {
