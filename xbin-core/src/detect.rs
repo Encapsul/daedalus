@@ -114,6 +114,9 @@ fn detect_python(dir: &Path) -> bool {
     ["app.py", "main.py", "__main__.py", "server.py"]
         .iter()
         .any(|f| dir.join(f).is_file())
+        || dir.join("pyproject.toml").is_file()
+        || dir.join("setup.py").is_file()
+        || dir.join("requirements.txt").is_file()
 }
 
 fn detect_deno(dir: &Path) -> bool {
@@ -281,7 +284,10 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
 /// Handles: Laravel (artisan), WordPress/OpenEMR (root index.php),
 /// `CakePHP` (webroot/), Yii (web/), Slim (public/), and generic fallbacks.
 fn resolve_php_entrypoint(app_dir: &Path) -> Option<Vec<String>> {
-    // 1. Laravel: has artisan → serve from public/
+    // 0. Laravel Octane with RoadRunner — rr binary replaces php -S
+    if app_dir.join("rr.yaml").is_file() || app_dir.join(".rr.yaml").is_file() {
+        return Some(vec!["rr".into(), "/app".into()]);
+    }
     if app_dir.join("artisan").is_file() {
         return Some(server_cmd("/app/public"));
     }
@@ -432,6 +438,24 @@ mod tests {
     }
 
     #[test]
+    fn detect_python_pyproject_only() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("pyproject.toml"),
+            "[project]\nname = \"myapp\"",
+        )
+        .unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Python));
+    }
+
+    #[test]
+    fn detect_python_setup_py() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("setup.py"), "").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Python));
+    }
+
+    #[test]
     fn detect_node_app() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
@@ -458,6 +482,15 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("README.md"), "hi").unwrap();
         assert_eq!(detect_runtime(dir.path()), None);
+    }
+
+    #[test]
+    fn php_beats_node_for_laravel() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("artisan"), "").unwrap();
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Php));
     }
 
     #[test]

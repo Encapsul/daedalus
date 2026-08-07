@@ -36,6 +36,8 @@ demo-yc/
 useful_commands.md
 session-*.md
 MATOMO.md
+# OpenCode plugin dependencies (installed via npm)
+.opencode/node_modules/
 
 # Generated misc
 file.md

@@ -10,6 +10,7 @@
 //! `pivot_root_into()`, and `install_seccomp_denylist()`.
 
 mod config;
+mod landlock;
 mod squashfs_extract;
 
 use serde::Deserialize;
@@ -20,6 +21,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use xbin_core::format::{self as format, read_at, Footer};
+use xbin_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
+use xbin_core::sisr::resilience::{backup_path_for, create_backup, discard_backup, restore_backup};
 
 /// Standard library search paths for `LD_LIBRARY_PATH`.
 /// Kept in sync with cli/xbin/build.py `LD_LIBRARY_PATH` construction.
@@ -64,6 +67,8 @@ const BIN_PATHS_ABS: &[&str] = &["/usr/bin", "/bin", "/usr/local/bin"];
 struct Metadata {
     name: String,
     #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
     #[allow(dead_code)]
     runtime: String,
     #[serde(default)]
@@ -79,6 +84,8 @@ struct Metadata {
     #[serde(default)]
     seccomp: bool,
     #[serde(default)]
+    landlock: bool,
+    #[serde(default)]
     services: Vec<Service>,
     #[serde(default)]
     crypto: Option<CryptoMeta>,
@@ -86,6 +93,8 @@ struct Metadata {
     payload_format: String,
     #[serde(default)]
     health_check: Option<HealthCheckMeta>,
+    #[serde(default)]
+    update_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -146,12 +155,31 @@ fn run() -> io::Result<()> {
     // Load configuration (multi-layered: CLI args → local config → env vars → global config)
     let app_config = config::AppConfig::load();
 
-    // 1. Read footer + metadata (small, fast).
-    let mut exe = File::open("/proc/self/exe")?;
-    let footer = Footer::read_from(&mut exe)?;
-    let meta_bytes = read_at(&mut exe, footer.meta_offset, footer.meta_size as usize)?;
-    let meta: Metadata = serde_json::from_slice(&meta_bytes)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("bad metadata: {e}")))?;
+    let (mut exe, mut footer, mut meta_bytes, mut meta) = read_from(Path::new("/proc/self/exe"))?;
+
+    // Intercept xbin-reserved runtime flags (`--xbin-update`, `--xbin-version`)
+    // before they could reach the host app. Handled modes are terminal: the
+    // process exits here without ever exec'ing the app, so the flags are never
+    // forwarded.
+    handle_runtime_flags(&meta)?;
+
+    // Canonical on-disk path — the file the update engine swaps in place.
+    // Kept separate from /proc/self/exe because the kernel can pin the
+    // pre-swap inode of the running image after a rename.
+    let mut bin_path = fs::canonicalize(Path::new("/proc/self/exe"))?;
+
+    // SISR self-update: rebuild the binary in place from a signed delta before
+    // reading the payload, so this run executes the new version.
+    if let Some(updated) = maybe_apply_sisr_update()? {
+        if verbose {
+            eprintln!("[xbin] SISR update applied: {}", updated.display());
+        }
+        // Re-open the *canonical real path*, not /proc/self/exe: the kernel can
+        // pin the running image's inode, so /proc/self/exe may still resolve to
+        // the pre-update file after the rename.
+        bin_path = updated;
+        (exe, footer, meta_bytes, meta) = read_from(&bin_path)?;
+    }
 
     // 2. Compute cache key and check hit BEFORE reading the payload.
     let layered = footer.format_version >= 2 && !meta.layers.is_empty();
@@ -230,11 +258,531 @@ fn run() -> io::Result<()> {
         }
     }
 
-    // 4. Exec into the extracted rootfs.
+    // 4. Post-update health gate. A `Pending` record means an update was
+    // applied but not yet validated: run the new version supervised and roll
+    // back atomically if it fails to start. A `Quarantined` record must never
+    // run at all (defense-in-depth on top of the update-time refusal).
+    let store = HealthStore::new(&health_store_dir()?);
+    let version = footer.sha256_hex();
+    let health_status = store.load(&version)?;
+    if health_status
+        .as_ref()
+        .is_some_and(|s| s.state == HealthState::Pending)
+    {
+        return supervised_launch(&meta, &rootfs, &app_config, &store, &version, &bin_path);
+    }
+    if health_status
+        .as_ref()
+        .is_some_and(|s| s.state == HealthState::Quarantined)
+    {
+        eprintln!(
+            "[xbin] version {version} is quarantined after a failed health check; rolling back"
+        );
+        return rollback_to_previous(&bin_path, verbose);
+    }
+
     if !meta.services.is_empty() {
         supervise_services(&meta, &rootfs, &app_config)
     } else {
         exec_app(&meta, &rootfs, &app_config)
+    }
+}
+
+/// Opens `path` and reads the footer plus raw and parsed metadata.
+fn read_from(path: &Path) -> io::Result<(File, Footer, Vec<u8>, Metadata)> {
+    let mut exe = File::open(path)?;
+    let footer = Footer::read_from(&mut exe)?;
+    let meta_bytes = read_at(&mut exe, footer.meta_offset, footer.meta_size as usize)?;
+    let meta: Metadata = serde_json::from_slice(&meta_bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("bad metadata: {e}")))?;
+    Ok((exe, footer, meta_bytes, meta))
+}
+
+// ---------------------------------------------------------------------------
+// SISR self-update
+// ---------------------------------------------------------------------------
+
+/// Applies a SISR delta update when `$XBIN_SISR_MANIFEST` points at a signed
+/// remote manifest; returns the canonical path of the replaced binary, or
+/// `None` when no update was requested.
+///
+/// Order matters for security: the manifest is authenticated (Ed25519 against
+/// the trusted keys, then the Merkle root against its own chunk table) before
+/// the engine writes a single byte. Every chunk the engine fetches is
+/// additionally hash-verified, and the swap is atomic — any failure leaves the
+/// running binary intact.
+fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
+    let Some(manifest_path) = std::env::var_os("XBIN_SISR_MANIFEST") else {
+        return Ok(None);
+    };
+    let manifest_path = PathBuf::from(manifest_path);
+    let remote_bytes = fs::read(&manifest_path)?;
+    let remote = xbin_core::sisr_stage::RemoteManifest::from_bytes(&remote_bytes)?;
+
+    let keys = load_trusted_keys()?;
+    if !remote.verify_any(&keys) {
+        return Err(err("update manifest signature verification failed"));
+    }
+    if !remote.verify_merkle() {
+        return Err(err(
+            "update manifest Merkle root does not match chunk table",
+        ));
+    }
+
+    let chunks_root = manifest_path
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join("chunks");
+    let fetcher = xbin_core::sisr::engine::DirectoryChunkFetcher::new(&chunks_root);
+
+    let current = fs::canonicalize(Path::new("/proc/self/exe"))?;
+    let store = HealthStore::new(&health_store_dir()?);
+    refuse_quarantined_target(&store, &current, &remote.manifest, &fetcher)?;
+
+    let updated = apply_with_rollback_snapshot(&current, &store, |path| {
+        xbin_core::sisr::engine::SisrEngine.apply_update(path, &remote.manifest, &fetcher)
+    })?;
+    Ok(Some(updated))
+}
+
+// ---------------------------------------------------------------------------
+// Post-update health gate and automatic rollback
+// ---------------------------------------------------------------------------
+
+/// Directory holding the per-version health records.
+fn health_store_dir() -> io::Result<PathBuf> {
+    Ok(cache_dir()?.join("health"))
+}
+
+/// The gate's policy: defaults with `XBIN_HEALTH_TIMEOUT_MS` /
+/// `XBIN_HEALTH_MAX_ATTEMPTS` overrides (the test harness uses these to make
+/// quarantine immediate).
+fn health_policy() -> HealthCheckPolicy {
+    let mut policy = HealthCheckPolicy::default();
+    if let Some(v) = std::env::var("XBIN_HEALTH_TIMEOUT_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
+        policy.timeout_ms = v;
+    }
+    if let Some(v) = std::env::var("XBIN_HEALTH_MAX_ATTEMPTS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
+        policy.max_attempts = v;
+    }
+    policy
+}
+
+/// Refuses to apply an update whose *target* version was already quarantined
+/// by the health gate — the anti-rollback-loop check. The target hash is
+/// expensive (a full dry-run pass), so it is only computed when the store
+/// already contains a quarantined version; otherwise this is a no-op.
+fn refuse_quarantined_target(
+    store: &HealthStore,
+    current: &Path,
+    manifest: &xbin_core::manifest::DeltaManifest,
+    fetcher: &dyn xbin_core::sisr::engine::ChunkFetcher,
+) -> io::Result<()> {
+    if !store.has_quarantined()? {
+        return Ok(());
+    }
+    let target =
+        xbin_core::sisr::engine::SisrEngine.target_payload_sha256(current, manifest, fetcher)?;
+    if store.is_quarantined(&hex::encode(target))? {
+        return Err(err(
+            "update refused: target version failed its health check and is quarantined",
+        ));
+    }
+    Ok(())
+}
+
+/// Snapshot → apply → mark-pending, in the right order for a safe rollback.
+///
+/// The snapshot of the *current* binary is taken before the swap so the gate
+/// can restore it later; a failed apply discards the snapshot (the running
+/// binary was never touched). A successful apply records the new version as
+/// `Pending` so the next launch runs it through the health gate.
+fn apply_with_rollback_snapshot(
+    current: &Path,
+    store: &HealthStore,
+    apply: impl FnOnce(&Path) -> io::Result<PathBuf>,
+) -> io::Result<PathBuf> {
+    let bak = backup_path_for(current);
+    create_backup(current, &bak)?;
+    let updated = apply(current).inspect_err(|_| {
+        let _ = discard_backup(&bak);
+    })?;
+    mark_pending_after_update(&updated, store)?;
+    Ok(updated)
+}
+
+/// Records the freshly-swapped binary's version as needing a health check.
+fn mark_pending_after_update(updated: &Path, store: &HealthStore) -> io::Result<()> {
+    let mut f = File::open(updated)?;
+    let footer = Footer::read_from(&mut f)?;
+    store.begin(&footer.sha256_hex())?;
+    Ok(())
+}
+
+/// Outcome of the supervised launch window.
+enum ChildStatus {
+    StillRunning,
+    Exited(i32),
+    Signaled(i32),
+}
+
+/// First launch of a newly-updated version: run the app as a child and watch
+/// it for `policy.timeout_ms`.
+///
+/// - survives the window or exits 0 → healthy: confirm, drop the snapshot,
+///   keep supervising until the app exits;
+/// - exits non-zero or dies by signal → failure: record it (quarantining
+///   after `max_attempts`), restore the pre-update binary from the snapshot,
+///   and re-exec it so the user is running a known-good version.
+fn supervised_launch(
+    meta: &Metadata,
+    rootfs: &Path,
+    app_config: &config::AppConfig,
+    store: &HealthStore,
+    version_id: &str,
+    bin_path: &Path,
+) -> io::Result<()> {
+    let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
+    let policy = health_policy();
+
+    // SAFETY: fork(2) creates a copy of the calling process. The child runs
+    // the app (single exec or the service supervisor) and exits with its
+    // status; the parent monitors the window and decides confirm vs rollback.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if pid == 0 {
+        let result = if meta.services.is_empty() {
+            exec_app(meta, rootfs, app_config)
+        } else {
+            supervise_services(meta, rootfs, app_config)
+        };
+        if let Err(e) = result {
+            eprintln!("[xbin] health gate: app failed to start: {e}");
+        }
+        std::process::exit(127);
+    }
+
+    match wait_for_child_status(pid, policy.timeout_ms)? {
+        ChildStatus::StillRunning => {
+            store.confirm(version_id)?;
+            let _ = discard_backup(&backup_path_for(bin_path));
+            if verbose {
+                eprintln!("[xbin] health gate: version {version_id} healthy");
+            }
+            install_signal_handler(&[("app".to_string(), pid)]);
+            exit(wait_child_exit_code(pid)?);
+        }
+        ChildStatus::Exited(0) => {
+            store.confirm(version_id)?;
+            let _ = discard_backup(&backup_path_for(bin_path));
+            if verbose {
+                eprintln!("[xbin] health gate: version {version_id} healthy (clean exit)");
+            }
+            exit(0);
+        }
+        ChildStatus::Exited(code) | ChildStatus::Signaled(code) => {
+            eprintln!("[xbin] health gate: version {version_id} failed (exit {code})");
+            let quarantined = store.record_failure(version_id, policy.max_attempts)?;
+            if quarantined {
+                eprintln!(
+                    "[xbin] version {version_id} quarantined after {} failed launches",
+                    policy.max_attempts
+                );
+            }
+            rollback_to_previous(bin_path, verbose)
+        }
+    }
+}
+
+/// Polls `pid` with `WNOHANG` until it exits or `timeout_ms` elapses.
+fn wait_for_child_status(pid: i32, timeout_ms: u64) -> io::Result<ChildStatus> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    loop {
+        let mut status: i32 = 0;
+        // SAFETY: waitpid(2) with WNOHANG polls without blocking; status is
+        // written only when the return value equals pid. EINTR is retried.
+        let rc = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
+        if rc == pid {
+            return Ok(if libc::WIFSIGNALED(status) {
+                ChildStatus::Signaled(128 + libc::WTERMSIG(status))
+            } else {
+                ChildStatus::Exited(libc::WEXITSTATUS(status))
+            });
+        }
+        if rc < 0 {
+            let e = io::Error::last_os_error();
+            if e.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(e);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Ok(ChildStatus::StillRunning);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+/// Blocks until `pid` exits and returns its process exit code.
+fn wait_child_exit_code(pid: i32) -> io::Result<i32> {
+    let mut status: i32 = 0;
+    // SAFETY: waitpid(2) blocks until `pid` exits; status is filled by the
+    // kernel before the call returns.
+    let rc = unsafe { libc::waitpid(pid, &mut status, 0) };
+    if rc < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(decode_exit_status(status))
+}
+
+fn decode_exit_status(status: i32) -> i32 {
+    if libc::WIFSIGNALED(status) {
+        128 + libc::WTERMSIG(status)
+    } else if libc::WIFEXITED(status) {
+        libc::WEXITSTATUS(status)
+    } else {
+        1
+    }
+}
+
+/// Restores the pre-update binary from its snapshot and execs it.
+///
+/// The restored file is a self-extracting stub, so exec'ing it re-runs the
+/// whole launcher against the old version. Update env vars are cleared first
+/// so the manifest is not re-applied into a rollback loop.
+fn rollback_to_previous(bin_path: &Path, verbose: bool) -> io::Result<()> {
+    let bak = backup_path_for(bin_path);
+    if !bak.is_file() {
+        return Err(err(&format!(
+            "cannot roll back: no snapshot at {}",
+            bak.display()
+        )));
+    }
+    restore_backup(bin_path, &bak)?;
+    let _ = discard_backup(&bak);
+    if verbose {
+        eprintln!(
+            "[xbin] rolled back to previous version: {}",
+            bin_path.display()
+        );
+    }
+    std::env::remove_var("XBIN_SISR_MANIFEST");
+    std::env::remove_var("XBIN_UPDATE_URL");
+    exec_again(bin_path)
+}
+
+/// Re-execs the current stub binary (a `.xbin` file) with the original argv.
+fn exec_again(bin_path: &Path) -> io::Result<()> {
+    let prog = cstr(bin_path.as_os_str().as_bytes())?;
+    let mut argv: Vec<CString> = Vec::new();
+    argv.push(prog.clone());
+    for a in std::env::args_os().skip(1) {
+        argv.push(cstr(a.as_bytes())?);
+    }
+    let argv_ptrs = to_ptr_vec(&argv);
+    // SAFETY: execvp(3) replaces the current process; prog is a valid
+    // CString, argv_ptrs is null-terminated, env is inherited. Never returns
+    // on success.
+    unsafe {
+        libc_execvp(prog.as_ptr(), argv_ptrs.as_ptr());
+    }
+    Err(io::Error::last_os_error())
+}
+
+// ---------------------------------------------------------------------------
+// `--xbin-update` / `--xbin-version` runtime flags
+// ---------------------------------------------------------------------------
+
+/// Intercepts the xbin-reserved runtime flags and handles them terminally.
+///
+/// - `--xbin-version` prints version info on stdout and exits 0.
+/// - `--xbin-update [URL]` fetches the signed remote manifest and the changed
+///   chunks from the update channel, applies the delta atomically, prints
+///   reuse/fetch statistics on stderr, and exits 0.
+///
+/// Because both paths call `process::exit`, these flags never reach the host
+/// app's `argv`. When neither flag is present this is a no-op.
+fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+
+    if args.iter().any(|a| a == "--xbin-version") {
+        println!("xbin {} (stub)", env!("CARGO_PKG_VERSION"));
+        if let Some(v) = &meta.version {
+            println!("app version: {v}");
+        }
+        exit(0);
+    }
+
+    if let Some(idx) = args.iter().position(|a| a == "--xbin-update") {
+        let base = resolve_update_url(&args, idx, meta)?;
+        remote_update(&base)?;
+        exit(0);
+    }
+
+    Ok(())
+}
+
+/// Resolves the update channel base URL:
+/// `--xbin-update <URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
+fn resolve_update_url(
+    args: &[std::ffi::OsString],
+    idx: usize,
+    meta: &Metadata,
+) -> io::Result<String> {
+    if let Some(next) = args.get(idx + 1) {
+        let candidate = next.to_string_lossy();
+        if !candidate.starts_with('-') && !candidate.is_empty() {
+            return normalize_base_url(&candidate);
+        }
+    }
+    if let Some(url) = std::env::var_os("XBIN_UPDATE_URL") {
+        return normalize_base_url(&url.to_string_lossy());
+    }
+    if let Some(ref url) = meta.update_url {
+        return normalize_base_url(url);
+    }
+    Err(err(
+        "no update URL — pass one after --xbin-update, set $XBIN_UPDATE_URL, \
+         or rebuild with xbin build --update-url",
+    ))
+}
+
+/// Strips trailing slashes and rejects non-http(s) schemes.
+fn normalize_base_url(url: &str) -> io::Result<String> {
+    let base = url.trim().trim_end_matches('/').to_string();
+    if base.is_empty() || !(base.starts_with("http://") || base.starts_with("https://")) {
+        return Err(err("update URL must be http(s)://<host>/<path>"));
+    }
+    Ok(base)
+}
+
+/// Fetches `<base>/manifest` (XBMR), authenticates it against the trusted
+/// keys + Merkle root, then streams the changed chunks from `<base>/chunks/<hex>`
+/// through the engine. Progress and reuse/fetch stats go to stderr; the
+/// process exits after the atomic swap.
+fn remote_update(base: &str) -> io::Result<()> {
+    eprintln!("[xbin] update: fetching manifest from {base}/manifest");
+    let manifest_bytes = http_get_bytes(&format!("{base}/manifest"))?;
+    let remote = xbin_core::sisr_stage::RemoteManifest::from_bytes(&manifest_bytes)?;
+
+    let keys = load_trusted_keys()?;
+    if !remote.verify_any(&keys) {
+        return Err(err("update manifest signature verification failed"));
+    }
+    if !remote.verify_merkle() {
+        return Err(err(
+            "update manifest Merkle root does not match chunk table",
+        ));
+    }
+
+    let total = remote.manifest.chunks.len();
+    eprintln!("[xbin] update: manifest verified ({total} chunks)");
+
+    let current = fs::canonicalize(Path::new("/proc/self/exe"))?;
+    let store = HealthStore::new(&health_store_dir()?);
+    let fetcher = HttpChunkFetcher::new(&format!("{base}/chunks"), total);
+    refuse_quarantined_target(&store, &current, &remote.manifest, &fetcher)?;
+
+    let updated = apply_with_rollback_snapshot(&current, &store, |path| {
+        let (updated, stats) = xbin_core::sisr::engine::SisrEngine.apply_update_with_stats(
+            path,
+            &remote.manifest,
+            &fetcher,
+        )?;
+        eprintln!(
+            "[xbin] update applied: {} chunks reused ({}), {} chunks fetched ({}), total {total}",
+            stats.reused_chunks,
+            human_bytes(stats.reused_bytes),
+            stats.fetched_chunks,
+            human_bytes(stats.fetched_bytes),
+        );
+        Ok(updated)
+    })?;
+    eprintln!("[xbin] updated binary: {}", updated.display());
+    Ok(())
+}
+
+/// [`ChunkFetcher`] pulling chunks from `<base>/<64-hex-sha256>` over HTTPS.
+///
+/// Content-addressability is the security anchor: every chunk the engine
+/// writes must SHA-256 to its manifest entry, so the transport cannot smuggle
+/// a wrong chunk in. The fetcher only counts + reports progress.
+struct HttpChunkFetcher {
+    base: String,
+    total: usize,
+    done: std::cell::Cell<usize>,
+    bytes: std::cell::Cell<u64>,
+}
+
+impl HttpChunkFetcher {
+    fn new(base: &str, total: usize) -> Self {
+        Self {
+            base: base.to_string(),
+            total,
+            done: std::cell::Cell::new(0),
+            bytes: std::cell::Cell::new(0),
+        }
+    }
+}
+
+impl xbin_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
+    fn fetch(&self, hash: &[u8; 32], length: usize) -> io::Result<Vec<u8>> {
+        let url = format!("{}/{}", self.base, hex::encode(hash));
+        let bytes = http_get_bytes(&url)?;
+        if bytes.len() != length {
+            return Err(err("fetched chunk length mismatch"));
+        }
+        let done = self.done.get() + 1;
+        self.done.set(done);
+        self.bytes
+            .set(self.bytes.get().saturating_add(bytes.len() as u64));
+        eprintln!(
+            "[xbin]   fetched chunk {done}/{} ({} bytes)",
+            self.total,
+            bytes.len()
+        );
+        Ok(bytes)
+    }
+
+    fn bytes_fetched(&self) -> u64 {
+        self.bytes.get()
+    }
+}
+
+/// Minimal HTTPS GET returning the raw response body.
+///
+/// Only caller-verified content is consumed (signed manifest, hash-checked
+/// chunks), so the transport is a convenience — never a trust anchor.
+fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
+    let resp = ureq::get(url)
+        .call()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))?;
+    resp.into_body()
+        .read_to_vec()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * 1024;
+    if bytes >= MIB {
+        let whole = bytes / MIB;
+        let frac = (bytes % MIB) * 10 / MIB;
+        format!("{whole}.{frac} MiB")
+    } else if bytes >= KIB {
+        let whole = bytes / KIB;
+        let frac = (bytes % KIB) * 10 / KIB;
+        format!("{whole}.{frac} KiB")
+    } else {
+        format!("{bytes} B")
     }
 }
 
@@ -272,49 +820,49 @@ fn verify_ed25519(
     hasher.update(meta_bytes);
     let hash = hasher.finalize();
 
-    // Load trusted public keys from directory.
+    // Parse signature once.
+    use ed25519_dalek::Signature;
+    let sig = Signature::from_bytes(sig_bytes);
+
+    use ed25519_dalek::Verifier;
+
+    let keys = load_trusted_keys()?;
+    if !keys.iter().any(|k| k.verify(&hash, &sig).is_ok()) {
+        return Err(err("Ed25519 signature verification failed"));
+    }
+    Ok(())
+}
+
+/// Loads every 32-byte Ed25519 public key from the trusted keys directory.
+/// Malformed entries are skipped so a stray file can never disable verification.
+fn load_trusted_keys() -> io::Result<Vec<ed25519_dalek::VerifyingKey>> {
     let trusted_dir = trusted_keys_dir();
     if !trusted_dir.exists() {
         return Err(err(
             "trusted keys directory not found; cannot verify signature",
         ));
     }
-
-    // Parse signature once.
-    use ed25519_dalek::Signature;
-    let sig = Signature::from_bytes(sig_bytes);
-
-    use ed25519_dalek::VerifyingKey;
-
-    let mut verified = false;
     let rd = fs::read_dir(&trusted_dir)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("reading trusted keys: {e}")))?;
+    let mut keys = Vec::new();
     for entry in rd.flatten() {
-        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-            let key_raw = match fs::read(entry.path()) {
-                Ok(b) if b.len() == 32 => b,
-                _ => continue,
-            };
-            let key_arr: [u8; 32] = match key_raw.try_into() {
-                Ok(a) => a,
-                Err(_) => continue,
-            };
-            let pub_key = match VerifyingKey::from_bytes(&key_arr) {
-                Ok(k) => k,
-                Err(_) => continue,
-            };
-            use ed25519_dalek::Verifier;
-            if pub_key.verify(&hash, &sig).is_ok() {
-                verified = true;
-                break;
-            }
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let Ok(raw) = fs::read(entry.path()) else {
+            continue;
+        };
+        if raw.len() != 32 {
+            continue;
+        }
+        let Ok(key_arr) = <[u8; 32]>::try_from(raw) else {
+            continue;
+        };
+        if let Ok(key) = ed25519_dalek::VerifyingKey::from_bytes(&key_arr) {
+            keys.push(key);
         }
     }
-
-    if !verified {
-        return Err(err("Ed25519 signature verification failed"));
-    }
-    Ok(())
+    Ok(keys)
 }
 
 /// Return the directory where trusted Ed25519 public keys are stored.
@@ -522,7 +1070,18 @@ fn setup_env(
             .collect();
         if let Some(existing) = env.get("LD_LIBRARY_PATH") {
             if !existing.is_empty() {
-                paths.push(existing.clone());
+                // Append existing entries, deduplicated to avoid exceeding
+                // the environment variable length limit.
+                let existing_entries: Vec<String> = existing
+                    .split(':')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                for entry in &existing_entries {
+                    if !paths.iter().any(|p| p == entry) {
+                        paths.push(entry.clone());
+                    }
+                }
             }
         }
         env.insert("LD_LIBRARY_PATH".into(), paths.join(":"));
@@ -656,15 +1215,18 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
                 );
             }
         }
+        if meta.landlock {
+            if let Err(e) = landlock::sandbox(rootfs) {
+                eprintln!(
+                    "[xbin] warning: landlock not available, running without filesystem sandbox: {e}"
+                );
+            }
+        }
     }
 
     let resolve = make_resolve(rootfs, use_pivot);
 
-    let prog = resolve(&meta.entrypoint[0]);
-    let prog_c = cstr(prog.as_os_str().as_bytes())?;
-
-    let prog_path_bytes = prog.as_os_str().as_bytes();
-    let _prog_path_str = std::str::from_utf8(prog_path_bytes).unwrap_or_default();
+    let mut prog = resolve(&meta.entrypoint[0]);
 
     // Compiled binaries (go/binary) exec `entrypoint[0]` directly; interpreted
     // runtimes get their interpreter prepended to argv.
@@ -679,6 +1241,40 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
         "deno" => "deno",
         _ => "bash",
     };
+
+    // For bare interpreter names without pivot_root, search rootfs bin dirs
+    // so embedded interpreters are found before namespace/pivot setup.
+    if !use_pivot && !meta.entrypoint[0].contains('/') {
+        let prog_str = prog.to_string_lossy();
+        if !check_executable(&prog_str) {
+            if let Some(found) = BIN_PATHS.iter().find_map(|dir| {
+                let candidate = rootfs.join(dir).join(&meta.entrypoint[0]);
+                if check_executable(&candidate.to_string_lossy()) {
+                    Some(candidate)
+                } else {
+                    None
+                }
+            }) {
+                prog = found;
+            }
+        }
+    }
+
+    let prog_c = cstr(prog.as_os_str().as_bytes())?;
+
+    let prog_path_bytes = prog.as_os_str().as_bytes();
+    let _prog_path_str = std::str::from_utf8(prog_path_bytes).unwrap_or_default();
+
+    if !is_executable(prog.as_os_str().as_bytes()) {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "[xbin] error: interpreter '{}' not found (tried: {})",
+                interpreter_name,
+                prog.display()
+            ),
+        ));
+    }
 
     let mut argv: Vec<CString> = Vec::new();
     if direct_exec {
@@ -754,6 +1350,13 @@ fn supervise_services(
             if let Err(e) = install_seccomp_denylist() {
                 eprintln!(
                     "[xbin] warning: seccomp not available, running without syscall filter: {e}"
+                );
+            }
+        }
+        if meta.landlock {
+            if let Err(e) = landlock::sandbox(rootfs) {
+                eprintln!(
+                    "[xbin] warning: landlock not available, running without filesystem sandbox: {e}"
                 );
             }
         }
@@ -1325,5 +1928,126 @@ fn maybe_start_health(meta: &Metadata) {
         if hc.enabled && hc.port > 0 {
             spawn_health_server(hc.port, hc.endpoint.clone());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_base_url_accepts_http_and_https() {
+        assert_eq!(
+            normalize_base_url("https://updates.example.com/app").unwrap(),
+            "https://updates.example.com/app"
+        );
+        assert_eq!(
+            normalize_base_url("http://localhost:8080/updates/").unwrap(),
+            "http://localhost:8080/updates"
+        );
+        assert_eq!(
+            normalize_base_url("  https://x.example  ").unwrap(),
+            "https://x.example"
+        );
+    }
+
+    #[test]
+    fn normalize_base_url_rejects_unsupported_schemes() {
+        assert!(normalize_base_url("ftp://updates.example.com").is_err());
+        assert!(normalize_base_url("file:///tmp/updates").is_err());
+        assert!(normalize_base_url("").is_err());
+        assert!(normalize_base_url("updates.example.com/app").is_err());
+    }
+
+    #[test]
+    fn resolve_update_url_prefers_the_positional_argument() {
+        let args = vec![
+            std::ffi::OsString::from("--xbin-update"),
+            std::ffi::OsString::from("https://arg.example/app"),
+            std::ffi::OsString::from("--flag-for-app"),
+        ];
+        let meta = Metadata {
+            name: "test".into(),
+            version: None,
+            runtime: String::new(),
+            entrypoint: Vec::new(),
+            env: std::collections::BTreeMap::new(),
+            cwd: None,
+            layers: Vec::new(),
+            isolation: 0,
+            seccomp: false,
+            landlock: false,
+            services: Vec::new(),
+            crypto: None,
+            payload_format: String::new(),
+            health_check: None,
+            update_url: Some("https://embedded.example".into()),
+        };
+        let base = resolve_update_url(&args, 0, &meta).unwrap();
+        assert_eq!(base, "https://arg.example/app");
+    }
+
+    #[test]
+    fn resolve_update_url_falls_back_to_embedded_metadata() {
+        let args = vec![std::ffi::OsString::from("--xbin-update")];
+        let meta = Metadata {
+            update_url: Some("https://meta.example/app/".into()),
+            ..Metadata {
+                name: "test".into(),
+                version: None,
+                runtime: String::new(),
+                entrypoint: Vec::new(),
+                env: std::collections::BTreeMap::new(),
+                cwd: None,
+                layers: Vec::new(),
+                isolation: 0,
+                seccomp: false,
+                landlock: false,
+                services: Vec::new(),
+                crypto: None,
+                payload_format: String::new(),
+                health_check: None,
+                update_url: None,
+            }
+        };
+        let base = resolve_update_url(&args, 0, &meta).unwrap();
+        assert_eq!(base, "https://meta.example/app");
+    }
+
+    #[test]
+    fn resolve_update_url_errors_without_any_source() {
+        let args = vec![std::ffi::OsString::from("--xbin-update")];
+        let meta = Metadata {
+            update_url: None,
+            ..Metadata {
+                name: "test".into(),
+                version: None,
+                runtime: String::new(),
+                entrypoint: Vec::new(),
+                env: std::collections::BTreeMap::new(),
+                cwd: None,
+                layers: Vec::new(),
+                isolation: 0,
+                seccomp: false,
+                landlock: false,
+                services: Vec::new(),
+                crypto: None,
+                payload_format: String::new(),
+                health_check: None,
+                update_url: None,
+            }
+        };
+        let err = resolve_update_url(&args, 0, &meta).unwrap_err();
+        assert!(err.to_string().contains("no update URL"));
+    }
+
+    #[test]
+    fn human_bytes_formats_all_scales() {
+        assert_eq!(human_bytes(0), "0 B");
+        assert_eq!(human_bytes(512), "512 B");
+        assert_eq!(human_bytes(1024), "1.0 KiB");
+        assert_eq!(human_bytes(1536), "1.5 KiB");
+        assert_eq!(human_bytes(1024 * 1024), "1.0 MiB");
+        assert_eq!(human_bytes((1024 * 1024) + (512 * 1024)), "1.5 MiB");
     }
 }
