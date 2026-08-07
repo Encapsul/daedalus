@@ -18,7 +18,7 @@ name: Release
 #     architectures are marked `experimental` so a failure never blocks the
 #     release (fail-open expansion, not a gate). The stub (seccomp/landlock)
 #     builds only on x86_64/aarch64/i686/armv7/arm — other targets are
-#     CLI-only (see READMAP.md).
+#     CLI-only (see ROADMAP.md).
 #   - macOS: built on NATIVE runners. amd64 uses `macos-15-intel` (macos-13
 #     was retired Dec 2025), arm64 uses `macos-latest`.
 #   - Windows: CLI only (the stub is Linux-only). Builds on native runners,

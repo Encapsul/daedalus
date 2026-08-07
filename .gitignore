@@ -38,11 +38,13 @@ session-*.md
 MATOMO.md
 # OpenCode plugin dependencies (installed via npm)
 .opencode/node_modules/
+# supply-chain-risk-auditor skill output (results.md written on each audit)
+.supply-chain-risk-auditor/
 
 # Generated misc
 file.md
 ideaaa
-useful_commands.md
+analysis
 # mdbook
 docs/book/
 
