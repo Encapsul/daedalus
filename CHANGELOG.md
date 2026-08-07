@@ -4,6 +4,36 @@ All notable changes to x.bin will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0] - 2026-08-07
+
+### Added
+- **SISR self-update engine**: a `.xbin` can update itself from signed deltas
+  - `xbin build --self-update` enables the engine; `xbin upgrade-binary`
+    migrates existing binaries
+  - Incremental updates: manifests list changed chunks with Ed25519 signatures
+    and a Merkle root; the launcher fetches, verifies, rebuilds and atomically
+    swaps the binary in place
+  - Health gate with automatic rollback: a crashing new version is quarantined
+    and the previous one is re-executed
+  - Update URL resolution: `--xbin-update <URL>` > `$XBIN_UPDATE_URL` >
+    embedded `meta.update_url`
+- Transparent v1 → v2 runtime migration for legacy binaries
+- Cross-compilation support (`--target aarch64`, ...) with per-arch Node.js
+  download and N-API addon embedding
+- Landlock filesystem sandboxing (Linux, kernel ≥ 5.13)
+- Laravel Octane (RoadRunner) detection and `rr` embedding
+- Ruby native gem `.so` dependencies embedded via `ldd` scan
+- PHP version constraint checking in `composer.json`
+- pnpm `.pnpm` store excluded during copy (avoids massive duplication)
+- `xbin publish` command; pip retry/timeout for proxy resilience
+- Clean remote cache design + single app-hash cache key
+- E2E SISR tests, network fault injection, and property-based fuzzing
+
+### Changed
+- Release pipeline: multi-platform builds on native runners (linux amd64/arm64
+  + extended musl/gnu targets, darwin amd64/arm64), `checksums.txt`, publish
+  via `gh release`
+
 ## [0.4.0] - 2026-08-06
 
 ### Added

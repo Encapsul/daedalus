@@ -2,7 +2,7 @@ HOST_ARCH ?= $(shell uname -m)
 HOST_OS  ?= linux
 TARGET   ?= $(HOST_ARCH)-unknown-linux-musl
 TOOLS    := /tmp/xbin-stub-target
-VERSION  ?= $(shell cargo pkgid -p xbin-core 2>/dev/null | awk -F'#' '{print $$2}' || echo "0.4.0")
+VERSION  ?= $(shell cargo pkgid -p xbin-core 2>/dev/null | awk -F'#' '{print $$2}' || echo "0.5.0")
 DIST_DIR := dist
 # Cargo target dir — override to keep builds off a full root fs, e.g.
 #   make dist CARGO_TARGET_DIR=/tmp/xbin-release-target
@@ -134,8 +134,8 @@ clean:
 # builds without those Unix dependencies and a macOS SDK is available.
 #
 # Examples:
-#   xbin_0.4.0_linux_amd64.tar.gz   (xbin + xbin-stub + xbin-crypto)
-#   xbin_0.4.0_linux_arm64.tar.gz
+#   xbin_0.5.0_linux_amd64.tar.gz   (xbin + xbin-stub + xbin-crypto)
+#   xbin_0.5.0_linux_arm64.tar.gz
 #   checksums.txt
 #
 # `dist` uses cargo-zigbuild so the musl artifacts are produced via the
@@ -171,9 +171,9 @@ dist: preflight
 	@cd $(DIST_DIR) && sha256sum xbin_*.tar.gz > checksums.txt && cat checksums.txt
 
 # Create a GitHub release and upload all dist artifacts.
-# Usage: make release VERSION=0.4.0   (tag becomes v0.4.0)
+# Usage: make release VERSION=0.5.0   (tag becomes v0.5.0)
 release: dist
-	@if [ -z "$(VERSION)" ]; then echo "VERSION required (e.g. make release VERSION=0.4.0)"; exit 1; fi
+	@if [ -z "$(VERSION)" ]; then echo "VERSION required (e.g. make release VERSION=0.5.0)"; exit 1; fi
 	@command -v gh >/dev/null 2>&1 || { echo "FAIL: gh (GitHub CLI) not found"; exit 1; }
 	@git tag "v$(VERSION)" 2>/dev/null || true
 	@git push origin "v$(VERSION)" 2>/dev/null || true
@@ -203,8 +203,8 @@ help:
 	@echo "Naming convention for release assets:"
 	@echo "  xbin_<version>_<os>_<arch>.<ext>"
 	@echo ""
-	@echo "  linux amd64: xbin_0.4.0_linux_amd64.tar.gz"
-	@echo "  linux arm64: xbin_0.4.0_linux_arm64.tar.gz"
+	@echo "  linux amd64: xbin_0.5.0_linux_amd64.tar.gz"
+	@echo "  linux arm64: xbin_0.5.0_linux_arm64.tar.gz"
 	@echo "  checksums:   checksums.txt"
 	@echo ""
-	@echo "Example: make release VERSION=0.4.0"
+	@echo "Example: make release VERSION=0.5.0"
