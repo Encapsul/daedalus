@@ -38,20 +38,34 @@ portability items lives in "Portabilité du stub" and "Blocants Critiques".
 
 ## Phase 1 — Port linux-arm64 (cheapest win, mostly done)
 
-- [ ] **Cross toolchain** — `rustup target add aarch64-unknown-linux-musl`.
-      The stub needs a C compiler (backhand→zstd-sys, `stub/Cargo.toml:34`);
-      install `aarch64-linux-musl` gcc or use zigbuild.
-- [ ] **Build stub for arm64** — `make stub TARGET=aarch64-unknown-linux-musl`
-      (`Makefile:14`, `TARGET` var already parameterized).
-- [ ] **Verify node download** — linux-arm64 tarball path exists
-      (`build.rs:1068-1073`); confirm tar.xz extraction works for it.
-- [ ] **Verify stub lookup** — `find_stub` maps aarch64
-      (`build.rs:1454`); ensure it picks the fresh build, not an installed one.
-- [ ] **Metadata arch** — `resolve_arch` already emits ARCH_AARCH64
-      (`assembly.rs:33`); confirm end-to-end.
-- [ ] **Smoke test arm64** — `xbin build --target aarch64` on hello-node, run
-      under QEMU (`qemu-aarch64 -L ...`) or native ARM, assert HTTP 200.
-- [ ] **CI aarch64** — add aarch64 stub build + boot test to `release.yml`.
+Status: **DONE** (2026-08-07). Verified end-to-end: aarch64 stub built via
+`cargo zigbuild` (zig as cross cc+linker), hello-node packed with
+`--target aarch64`, runs under `qemu-aarch64-static` → HTTP 200.
+
+Key finding: **zstd-sys 2.0.x compiles `huf_decompress_amd64.S` (x86_64 asm)
+unconditionally** (`build.rs:144`), which breaks every cross-arch link. Fixed
+with a cfg-gated direct dep disabling asm on non-x86_64
+(`stub/Cargo.toml`). Caveats: sandbox level 2 (`unshare` userns) fails under
+QEMU user-mode — verify on real ARM hardware; node download for linux-arm64
+worked.
+
+- [x] **Cross toolchain** — `rustup target add aarch64-unknown-linux-musl`
+      + `cargo-zigbuild` (zig as cc/linker wrapper; rustc passes GNU-ld flags
+      that bare `zig cc` rejects).
+- [x] **Build stub for arm64** — `cargo zigbuild -p xbin-stub --target aarch64-unknown-linux-musl --release`
+      (`Makefile:14` `TARGET` var can't express the linker; zigbuild does).
+- [x] **Verify node download** — linux-arm64 tarball path exists
+      (`build.rs:1068-1073`); extraction works (arm64 node embedded).
+- [x] **Verify stub lookup** — `find_stub` maps aarch64
+      (`build.rs:1454`); auto-found `/tmp/xbin-stub-target/aarch64-…`.
+- [x] **Metadata arch** — `resolve_arch` emits ARCH_AARCH64
+      (`assembly.rs:33`); confirmed end-to-end.
+- [x] **Smoke test arm64** — `xbin build --target aarch64` on hello-node, run
+      under QEMU (`qemu-aarch64-static`), HTTP 200. (~45s cold under TCG;
+      native ~2s.)
+- [ ] **CI aarch64** — add aarch64 stub build + boot test to `release.yml`
+      (use `cargo-zigbuild`; boot test on native ARM runner or QEMU, isolation
+      level 1 for the QEMU leg).
 
 ## Phase 2 — Port macOS (Mach-O stub)
 
