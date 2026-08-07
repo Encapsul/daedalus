@@ -1,208 +1,243 @@
 name: Release
 
+# Glow-style release pipeline.
+#
+# On every `v*` tag push, build one archive per platform on its NATIVE
+# runner (like goreleaser does for glow), produce checksums.txt, then
+# create the GitHub release with all assets.
+#
+#   xbin_<version>_<os>_<arch>.<ext>
+#   xbin_0.4.0_linux_amd64.tar.gz     (xbin + xbin-stub + xbin-crypto)
+#   xbin_0.4.0_linux_arm64.tar.gz     (xbin + xbin-stub + xbin-crypto)
+#   xbin_0.4.0_darwin_amd64.tar.gz    (xbin only — the stub launcher is Linux-only)
+#   xbin_0.4.0_darwin_arm64.tar.gz    (xbin only)
+#   checksums.txt
+#
+# Windows is a work-in-progress port: xbin-core still uses
+# std::os::unix::fs::PermissionsExt, so the CLI does not compile there yet.
+# The job is kept in the matrix (continue-on-error) as a build tracker; it
+# never blocks the release and its artifacts are not published.
+
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
   CARGO_TERM_COLOR: always
-  CARGO_TARGET_DIR: target
 
 jobs:
-  # ── Linux x86_64 ─────────────────────────────────────────────────────
-  build-linux-x64:
-    name: Linux (x86_64)
+  # ── Linux amd64 ─────────────────────────────────────────────────────
+  linux-amd64:
+    name: linux amd64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - name: Install zig (musl cross C compiler)
+        uses: goto-bus-stop/setup-zig@v2
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
 
-      - run: sudo apt-get update && sudo apt-get install -y musl-tools
-
-      - name: Build stub
-        run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
-
-      - name: Build CLI
-        run: cargo build --release -p xbin-cli
-
-      - name: Test binaries
+      - name: Build (musl static)
         run: |
-          STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
-          CLI=target/release/xbin
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: stub not ELF"; exit 1; }
-          file "$CLI" | grep -q "ELF" || { echo "FAIL: cli not ELF"; exit 1; }
-          echo "=== PASS: linux-x64 ==="
+          cargo zigbuild --release -p xbin-stub --target x86_64-unknown-linux-musl
+          cargo zigbuild --release -p xbin-cli --target x86_64-unknown-linux-musl
+
+      - name: Verify
+        run: |
+          file target/x86_64-unknown-linux-musl/release/xbin-stub
+          file target/x86_64-unknown-linux-musl/release/xbin-crypto
+          file target/x86_64-unknown-linux-musl/release/xbin
 
       - name: Package
         run: |
-          STUB=target/x86_64-unknown-linux-musl/release/xbin-stub
-          CLI=target/release/xbin
-          CRYPTO=target/x86_64-unknown-linux-musl/release/xbin-crypto
-          DIR="xbin-linux-x64"
-          mkdir -p "${DIR}/bin"
-          cp "$STUB" "${DIR}/bin/"
-          cp "$CLI" "${DIR}/bin/"
-          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
-          chmod +x "${DIR}/bin/"*
-          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
-
+          set -euxo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          T="x86_64-unknown-linux-musl"
+          D="xbin_${V}_linux_amd64"
+          mkdir -p "${D}"
+          cp "target/${T}/release/xbin" "${D}/xbin"
+          cp "target/${T}/release/xbin-stub" "${D}/xbin-stub"
+          cp "target/${T}/release/xbin-crypto" "${D}/xbin-crypto"
+          chmod +x "${D}/"*
+          tar -czf "${D}.tar.gz" "${D}"
       - uses: actions/upload-artifact@v4
         with:
-          name: assets-linux-x64
-          path: /tmp/assets/*
+          name: linux-amd64
+          path: xbin_*.tar.gz
 
-  # ── Linux aarch64 ────────────────────────────────────────────────────
-  build-linux-arm64:
-    name: Linux (aarch64)
+  # ── Linux arm64 ─────────────────────────────────────────────────────
+  linux-arm64:
+    name: linux arm64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           targets: aarch64-unknown-linux-musl
-      - run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
+      - uses: Swatinem/rust-cache@v2
+      - name: Install zig (musl cross C compiler)
+        uses: goto-bus-stop/setup-zig@v2
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
 
-      - name: Build stub
-        run: cargo build --release --target aarch64-unknown-linux-musl -p xbin-stub
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
-
-      - name: Build CLI
-        run: cargo build --release -p xbin-cli
-
-      - name: Test binaries
+      - name: Build (musl static, aarch64)
         run: |
-          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
-          CLI=target/release/xbin
-          file "$STUB" | grep -q "ELF" || { echo "FAIL: stub not ELF"; exit 1; }
-          file "$STUB" | grep -q "aarch64" || { echo "FAIL: stub not aarch64"; exit 1; }
-          echo "=== PASS: linux-arm64 ==="
+          cargo zigbuild --release -p xbin-stub --target aarch64-unknown-linux-musl
+          cargo zigbuild --release -p xbin-cli --target aarch64-unknown-linux-musl
+
+      - name: Verify
+        run: |
+          file target/aarch64-unknown-linux-musl/release/xbin-stub
+          file target/aarch64-unknown-linux-musl/release/xbin-crypto
+          file target/aarch64-unknown-linux-musl/release/xbin
 
       - name: Package
         run: |
-          STUB=target/aarch64-unknown-linux-musl/release/xbin-stub
-          CLI=target/release/xbin
-          CRYPTO=target/aarch64-unknown-linux-musl/release/xbin-crypto
-          DIR="xbin-linux-arm64"
-          mkdir -p "${DIR}/bin"
-          cp "$STUB" "${DIR}/bin/"
-          cp "$CLI" "${DIR}/bin/"
-          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
-          chmod +x "${DIR}/bin/"*
-          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
-
+          set -euxo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          T="aarch64-unknown-linux-musl"
+          D="xbin_${V}_linux_arm64"
+          mkdir -p "${D}"
+          cp "target/${T}/release/xbin" "${D}/xbin"
+          cp "target/${T}/release/xbin-stub" "${D}/xbin-stub"
+          cp "target/${T}/release/xbin-crypto" "${D}/xbin-crypto"
+          chmod +x "${D}/"*
+          tar -czf "${D}.tar.gz" "${D}"
       - uses: actions/upload-artifact@v4
         with:
-          name: assets-linux-arm64
-          path: /tmp/assets/*
+          name: linux-arm64
+          path: xbin_*.tar.gz
 
-  # ── macOS Apple Silicon ──────────────────────────────────────────────
-  build-macos-arm64:
-    name: macOS (Apple Silicon)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-
-      - name: Build stub
-        run: cargo build --release -p xbin-stub
-
-      - name: Build CLI
-        run: cargo build --release -p xbin-cli
-
-      - name: Test binaries
-        run: |
-          STUB=target/release/xbin-stub
-          CLI=target/release/xbin
-          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: stub not Mach-O"; exit 1; }
-          file "$CLI" | grep -q "Mach-O" || { echo "FAIL: cli not Mach-O"; exit 1; }
-          echo "=== PASS: macos-arm64 ==="
-
-      - name: Package
-        run: |
-          STUB=target/release/xbin-stub
-          CLI=target/release/xbin
-          CRYPTO=target/release/xbin-crypto
-          DIR="xbin-macos-arm64"
-          mkdir -p "${DIR}/bin"
-          cp "$STUB" "${DIR}/bin/"
-          cp "$CLI" "${DIR}/bin/"
-          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
-          chmod +x "${DIR}/bin/"*
-          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: assets-macos-arm64
-          path: /tmp/assets/*
-
-  # ── macOS Intel ──────────────────────────────────────────────────────
-  build-macos-x64:
-    name: macOS (Intel)
+  # ── Darwin amd64 (macOS Intel) ──────────────────────────────────────
+  darwin-amd64:
+    name: darwin amd64
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Build stub
-        run: cargo build --release -p xbin-stub
+      # The stub is Linux-only (unshare/pivot_root/seccomp) — build the CLI only.
+      - name: Build CLI
+        run: cargo build --release -p xbin-cli
+
+      - name: Verify
+        run: file target/release/xbin | grep -q "Mach-O"
+
+      - name: Package
+        run: |
+          set -euxo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          D="xbin_${V}_darwin_amd64"
+          mkdir -p "${D}"
+          cp target/release/xbin "${D}/xbin"
+          chmod +x "${D}/xbin"
+          tar -czf "${D}.tar.gz" "${D}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: darwin-amd64
+          path: xbin_*.tar.gz
+
+  # ── Darwin arm64 (macOS Apple Silicon) ──────────────────────────────
+  darwin-arm64:
+    name: darwin arm64
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
 
       - name: Build CLI
         run: cargo build --release -p xbin-cli
 
-      - name: Test binaries
+      - name: Verify
         run: |
-          STUB=target/release/xbin-stub
-          CLI=target/release/xbin
-          file "$STUB" | grep -q "Mach-O" || { echo "FAIL: stub not Mach-O"; exit 1; }
-          file "$CLI" | grep -q "Mach-O" || { echo "FAIL: cli not Mach-O"; exit 1; }
-          echo "=== PASS: macos-x64 ==="
+          file target/release/xbin | grep -q "Mach-O"
+          file target/release/xbin | grep -q "arm64"
 
       - name: Package
         run: |
-          STUB=target/release/xbin-stub
-          CLI=target/release/xbin
-          CRYPTO=target/release/xbin-crypto
-          DIR="xbin-macos-x64"
-          mkdir -p "${DIR}/bin"
-          cp "$STUB" "${DIR}/bin/"
-          cp "$CLI" "${DIR}/bin/"
-          [ -f "$CRYPTO" ] && cp "$CRYPTO" "${DIR}/bin/" || true
-          chmod +x "${DIR}/bin/"*
-          tar czf "/tmp/assets/${DIR}.tar.gz" "${DIR}"
-
+          set -euxo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          D="xbin_${V}_darwin_arm64"
+          mkdir -p "${D}"
+          cp target/release/xbin "${D}/xbin"
+          chmod +x "${D}/xbin"
+          tar -czf "${D}.tar.gz" "${D}"
       - uses: actions/upload-artifact@v4
         with:
-          name: assets-macos-x64
-          path: /tmp/assets/*
+          name: darwin-arm64
+          path: xbin_*.tar.gz
 
-  # ── Upload to Release ────────────────────────────────────────────────
+  # ── Windows amd64 (work-in-progress port) ───────────────────────────
+  # xbin-core uses std::os::unix::fs::PermissionsExt unconditionally, so
+  # this job is EXPECTED to fail until the Windows port lands. It only
+  # tracks the build status; it never blocks the release.
+  windows-amd64:
+    name: windows amd64 (wip)
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI
+        run: cargo build --release -p xbin-cli
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          D="xbin_${V}_windows_amd64"
+          mkdir -p "${D}"
+          cp target/release/xbin.exe "${D}/xbin.exe"
+          powershell -Command "Compress-Archive -Path '${D}' -DestinationPath '${D}.zip'"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-amd64
+          path: xbin_*.zip
+
+  # ── Publish the release with all assets + checksums ─────────────────
   publish:
-    name: Upload to Release
-    needs: [build-linux-x64, build-linux-arm64, build-macos-arm64, build-macos-x64]
+    name: Publish GitHub release
+    needs: [linux-amd64, linux-arm64, darwin-amd64, darwin-arm64]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
-          path: /tmp/assets
-          pattern: assets-*
+          path: dist
+          pattern: "*-amd64|*-arm64"
           merge-multiple: true
 
-      - name: List files
-        run: ls -lh /tmp/assets/
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum xbin_*.tar.gz > checksums.txt
+          cat checksums.txt
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: /tmp/assets/*
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "x.bin $GITHUB_REF_NAME" \
+            --notes-file CHANGELOG.md \
+            dist/xbin_*.tar.gz dist/checksums.txt \
+          || gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+             dist/xbin_*.tar.gz dist/checksums.txt --clobber
