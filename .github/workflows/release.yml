@@ -6,22 +6,23 @@ name: Release
 # checksums.txt, then create the GitHub release with all assets.
 #
 #   xbin_<version>_<os>_<arch>.<ext>
-#   xbin_0.4.0_linux_amd64.tar.gz     (xbin + xbin-stub + xbin-crypto)
-#   xbin_0.4.0_linux_arm64.tar.gz     (xbin + xbin-stub + xbin-crypto)
-#   xbin_0.4.0_darwin_amd64.tar.gz    (xbin only — the stub launcher is Linux-only)
-#   xbin_0.4.0_darwin_arm64.tar.gz    (xbin only)
+#   xbin_0.5.0_linux_amd64.tar.gz     (xbin + xbin-stub)
+#   xbin_0.5.0_linux_arm64.tar.gz     (xbin + xbin-stub)
+#   xbin_0.5.0_darwin_amd64.tar.gz    (xbin only — the stub launcher is Linux-only)
+#   xbin_0.5.0_darwin_arm64.tar.gz    (xbin only)
 #   checksums.txt
 #
 # Strategy:
 #   - Linux: cross-built via cargo-zigbuild on ubuntu for every musl/gnu
 #     target. amd64 + arm64 musl are the release-critical pair; the other
 #     architectures are marked `experimental` so a failure never blocks the
-#     release (fail-open expansion, not a gate).
-#   - macOS: built on NATIVE runners (zigbuild needs an Apple SDK to link,
-#     which ubuntu runners do not have).
-#   - Windows: work-in-progress port (xbin-core still uses
-#     std::os::unix::fs::PermissionsExt). Kept as a non-blocking build
-#     tracker; its artifacts are not published.
+#     release (fail-open expansion, not a gate). The stub (seccomp/landlock)
+#     builds only on x86_64/aarch64/i686/armv7/arm — other targets are
+#     CLI-only (see READMAP.md).
+#   - macOS: built on NATIVE runners. amd64 uses `macos-15-intel` (macos-13
+#     was retired Dec 2025), arm64 uses `macos-latest`.
+#   - Windows: CLI only (the stub is Linux-only). Builds on native runners,
+#     artifacts not published yet.
 
 on:
   push:
@@ -44,31 +45,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-unknown-linux-musl, arch: amd64 }
-          - { target: aarch64-unknown-linux-musl, arch: arm64 }
-          - { target: i686-unknown-linux-musl, arch: i386, experimental: true }
-          - { target: armv7-unknown-linux-musleabihf, arch: armv7, experimental: true }
-          - { target: arm-unknown-linux-musleabihf, arch: arm, experimental: true }
-          - { target: riscv64gc-unknown-linux-musl, arch: riscv64, experimental: true }
-          - { target: s390x-unknown-linux-musl, arch: s390x, experimental: true }
-          - { target: powerpc64le-unknown-linux-musl, arch: ppc64le, experimental: true }
-          - { target: x86_64-unknown-linux-gnu, arch: amd64-gnu, experimental: true }
-          - { target: aarch64-unknown-linux-gnu, arch: arm64-gnu, experimental: true }
-          - { target: i686-unknown-linux-gnu, arch: i386-gnu, experimental: true }
-          - { target: armv7-unknown-linux-gnueabihf, arch: armv7-gnu, experimental: true }
-          - { target: riscv64gc-unknown-linux-gnu, arch: riscv64-gnu, experimental: true }
+          # stub builds only where the seccomp/landlock constants exist:
+          # x86_64, aarch64, i686, armv7, arm. Everything else is CLI-only.
+          - { target: x86_64-unknown-linux-musl, arch: amd64, stub: true }
+          - { target: aarch64-unknown-linux-musl, arch: arm64, stub: true }
+          - { target: i686-unknown-linux-musl, arch: i386, stub: true, experimental: true }
+          - { target: armv7-unknown-linux-musleabihf, arch: armv7, stub: true, experimental: true }
+          - { target: arm-unknown-linux-musleabihf, arch: arm, stub: true, experimental: true }
+          - { target: riscv64gc-unknown-linux-musl, arch: riscv64, stub: false, experimental: true }
+          - { target: powerpc64le-unknown-linux-musl, arch: ppc64le, stub: false, experimental: true }
+          - { target: x86_64-unknown-linux-gnu, arch: amd64-gnu, stub: false, experimental: true }
+          - { target: aarch64-unknown-linux-gnu, arch: arm64-gnu, stub: false, experimental: true }
+          - { target: i686-unknown-linux-gnu, arch: i386-gnu, stub: false, experimental: true }
+          - { target: armv7-unknown-linux-gnueabihf, arch: armv7-gnu, stub: false, experimental: true }
+          - { target: riscv64gc-unknown-linux-gnu, arch: riscv64-gnu, stub: false, experimental: true }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - name: Install zig (musl cross C compiler)
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v2
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
 
       - name: Build stub (Linux only — uses /proc/self/exe, namespaces, seccomp)
+        if: matrix.stub
         run: cargo zigbuild --release --target ${{ matrix.target }} -p xbin-stub
 
       - name: Build CLI
@@ -90,18 +93,20 @@ jobs:
           fi
           find "${D}" -type f -exec chmod +x {} +
           tar -czf "${D}.tar.gz" "${D}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: linux-${{ matrix.arch }}
           path: xbin_*.tar.gz
           if-no-files-found: error
 
   # ── Darwin amd64 (macOS Intel) ──────────────────────────────────────
+  # macos-13 (the old Intel image) was retired Dec 2025. The official
+  # replacement for x86_64 builds is `macos-15-intel`.
   darwin-amd64:
     name: darwin amd64
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -121,7 +126,7 @@ jobs:
           cp target/release/xbin "${D}/xbin"
           chmod +x "${D}/xbin"
           tar -czf "${D}.tar.gz" "${D}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: darwin-amd64
           path: xbin_*.tar.gz
@@ -129,9 +134,9 @@ jobs:
   # ── Darwin arm64 (macOS Apple Silicon) ──────────────────────────────
   darwin-arm64:
     name: darwin arm64
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -152,7 +157,7 @@ jobs:
           cp target/release/xbin "${D}/xbin"
           chmod +x "${D}/xbin"
           tar -czf "${D}.tar.gz" "${D}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: darwin-arm64
           path: xbin_*.tar.gz
@@ -166,7 +171,7 @@ jobs:
     runs-on: windows-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -182,7 +187,7 @@ jobs:
           mkdir -p "${D}"
           cp target/release/xbin.exe "${D}/xbin.exe"
           powershell -Command "Compress-Archive -Path '${D}' -DestinationPath '${D}.zip'"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: windows-amd64
           path: xbin_*.zip
@@ -193,9 +198,9 @@ jobs:
     needs: [linux, darwin-amd64, darwin-arm64]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           pattern: xbin_*.tar.gz
