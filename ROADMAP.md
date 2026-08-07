@@ -6,6 +6,154 @@ x.bin transforme n'importe quelle application en un binaire ELF auto-extractible
 
 ---
 
+# Master Action Plan — Todo List
+
+Canonical, actionable task list. Every item below is a concrete change with
+the files/crates it touches. Cross off as done; the detailed rationale for the
+portability items lives in "Portabilité du stub" and "Blocants Critiques".
+
+## Phase 0 — Security & correctness (do first, everywhere)
+
+- [ ] **Isolation fail-open** — `isolation.parse().unwrap_or(1)` accepts any
+      invalid `--isolation` value (audit CRITICAL). Reject with an error
+      instead of defaulting to sandbox. (`xbin-cli/src/commands/build.rs`)
+- [ ] **Predictable temp dir** — `/tmp/xbin-build-tools/node` is a fixed
+      location (audit HIGH). Use `tempfile::tempdir()`.
+      (`xbin-cli/src/commands/build.rs:1060`)
+- [ ] **PATH injection** — `std::env::set_var("PATH", ...)` mutates the global
+      environment (audit HIGH). Use `Command::env()`.
+- [ ] **Panic leaks** — `human_panic` prints file/line on panic (audit MEDIUM).
+      Hide source locations.
+- [ ] **HKDF salt** — deterministic salt for key derivation (audit MEDIUM).
+      Generate a random per-encryption salt. (`xbin-core/src/encrypt.rs`)
+- [ ] **`DEFAULT_REGISTRY` placeholder** — `xbin.example.com` must not be a
+      working default (audit MEDIUM). Make the registry URL mandatory.
+- [ ] **Zeroization of keys** — add `zeroize` + `Zeroizing<T>` in
+      `encrypt.rs`, `keygen.rs`, `sign.rs`. (audit HIGH-2)
+- [ ] **`find_stub` stale-stub bug** — `find_stub` prefers `/usr/local/bin/xbin-stub`
+      which can silently embed an obsolete stub (a 2026-07-27 stub with a
+      relative-PATH bug was embedded this way). Prefer fresh builds
+      (native `target/` then musl `target/`), warn if the embedded stub is
+      older than N days. (`xbin-cli/src/commands/build.rs:1444`)
+
+## Phase 1 — Port linux-arm64 (cheapest win, mostly done)
+
+- [ ] **Cross toolchain** — `rustup target add aarch64-unknown-linux-musl`.
+      The stub needs a C compiler (backhand→zstd-sys, `stub/Cargo.toml:34`);
+      install `aarch64-linux-musl` gcc or use zigbuild.
+- [ ] **Build stub for arm64** — `make stub TARGET=aarch64-unknown-linux-musl`
+      (`Makefile:14`, `TARGET` var already parameterized).
+- [ ] **Verify node download** — linux-arm64 tarball path exists
+      (`build.rs:1068-1073`); confirm tar.xz extraction works for it.
+- [ ] **Verify stub lookup** — `find_stub` maps aarch64
+      (`build.rs:1454`); ensure it picks the fresh build, not an installed one.
+- [ ] **Metadata arch** — `resolve_arch` already emits ARCH_AARCH64
+      (`assembly.rs:33`); confirm end-to-end.
+- [ ] **Smoke test arm64** — `xbin build --target aarch64` on hello-node, run
+      under QEMU (`qemu-aarch64 -L ...`) or native ARM, assert HTTP 200.
+- [ ] **CI aarch64** — add aarch64 stub build + boot test to `release.yml`.
+
+## Phase 2 — Port macOS (Mach-O stub)
+
+- [ ] **Self-path** — replace `/proc/self/exe` reads with
+      `std::env::current_exe()` behind `#[cfg(target_os)]` (works on macOS and
+      Linux). (`stub/src/main.rs`)
+- [ ] **Cache dir** — use `dirs::cache_dir()` (already a dep,
+      `stub/Cargo.toml:28`) → `~/Library/Caches/xbin/<hash>/rootfs/`.
+- [ ] **cfg-gate Linux-only code** — `unshare`/`pivot_root`/`mount`,
+      seccomp (`seccomp.rs`), landlock (`landlock.rs`), `/proc` reads are
+      Linux-only; compile them out on macOS. macOS gets plain
+      extract-to-cache + exec (no chroot/pivot).
+- [ ] **exec model** — keep `execv` via libc (exists on macOS) or use
+      `std::process::Command`.
+- [ ] **Code-signing gotcha** — appending payload+footer invalidates a signed
+      Mach-O. Either re-sign after assembly (`codesign`) or embed the payload
+      in a Mach-O section. Implement the re-sign path and document it.
+      (x.bin is meant for unsigned distribution, but notarization must not
+      break.)
+- [ ] **darwin runtimes** — extend `download_node` with `darwin-x64` /
+      `darwin-arm64` tarballs (`node-v<ver>-darwin-arm64.tar.gz`).
+      (`build.rs:1060`)
+- [ ] **Stub build for darwin** — `rustup target add aarch64-apple-darwin
+      x86_64-apple-darwin`; cross toolchain (zigbuild/osxcross) or build the
+      stub natively on a macOS CI runner, then assemble on the build host.
+- [ ] **Sandbox** — seccomp/landlock have no macOS equivalent; evaluate
+      Seatbelt (`sandbox_exec`) as optional hardening. Note as a documented
+      gap in the security posture.
+- [ ] **Smoke test macOS** — Actions `macos-14` runner: pack hello-node, run,
+      HTTP 200.
+
+## Phase 3 — Port Windows (PE / EXE stub)
+
+- [ ] **Self-path** — `GetModuleFileNameW` (windows crate / winapi).
+- [ ] **Cache dir** — `%LOCALAPPDATA%\xbin\cache\<hash>\rootfs\`.
+- [ ] **No exec on Windows** — spawn the entrypoint child with `CreateProcess`
+      and either wait for it (exit code passthrough) or detach. The stub
+      cannot exec over itself.
+- [ ] **cfg-gate** — Linux-only modules (unshare/seccomp/landlock/pivot_root)
+      compile out; new `#[cfg(target_os = "windows")]` module.
+- [ ] **win-x64 runtime** — `download_node` → `node-v<ver>-win-x64.zip`;
+      extraction needs a zip reader (`zip` crate; the repo has `tar.rs` only).
+- [ ] **Stub build** — `x86_64-pc-windows-gnu` / `-msvc` (CLI already builds
+      for windows-gnu, ROADMAP §3).
+- [ ] **Output extension** — assemble to `app.exe` for PE targets.
+- [ ] **Smoke test Windows** — Actions `windows-latest` runner: pack, run,
+      HTTP 200.
+
+## Phase 4 — Multi-target CLI (the enabler for "run everywhere")
+
+- [ ] **One `--target` syntax** — replace `--target arch` (x86_64|aarch64)
+      and `--cross-compile` with a full `os-arch` or Rust-triple syntax:
+      `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win-x64`.
+      (`build.rs:68`, `build.rs:813`)
+- [ ] **Multi-arch output** — `xbin build --target linux-x64,linux-arm64`
+      emits one artifact per target.
+- [ ] **Per-target stub selection** — `find_stub` keyed by triple, pulls the
+      per-(os,arch) stub (ELF/Mach-O/PE).
+- [ ] **Per-target runtimes** — `download_node` matrix keyed by (os, arch);
+      embed the runtime matching the target, not the builder's host.
+- [ ] **Per-platform file naming** — `.xbin` for ELF/Mach-O, `.exe` for PE.
+- [ ] **Docs** — `xbin build --help` examples + README support matrix.
+
+## Phase 5 — Benchmark-driven performance (see "Comparative benchmark")
+
+- [ ] **Cold start < 500 ms** — current 2091 ms is single-threaded zstd
+      extraction of the node runtime (warm start is 95 ms → launcher is fast).
+      Use `zstdmt` multithreaded decompression (`zstd` crate with `zstdmt` is
+      already a dev-dep; backhand supports zstd) or lower build compression.
+- [ ] **On-disk footprint 122.6 MiB ≫ artifact 44 MiB** — cache GC
+      (limitation #14), squashfs mount by default (v5 supported), cross-version
+      dedup (limitation #11).
+- [ ] **Pin builder Node version** — release pipeline embeds the builder's
+      node; pin it for reproducible artifacts.
+- [ ] **Re-run benchmark** after each perf change (`bash benchmarks/comparison/run.sh`).
+
+## Phase 6 — CI / verification matrix
+
+- [ ] **`release.yml` matrix** — linux x86_64 + aarch64 (QEMU boot test),
+      macOS native, Windows native; each builds CLI + stub, packs hello-node,
+      runs it.
+- [ ] **Cross-platform verification loop** — per-platform
+      `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --workspace`
+      (per-crate clippy, per AGENTS.md).
+
+## Phase 7 — Feature backlog (existing open items)
+
+- [ ] **Electron desktop apps** — `Runtime::Electron` in `detect.rs`,
+      `EmbeddedInterpreter` mapping, entrypoint `electron`,
+      `--ignore-scripts`. (high priority, security)
+- [ ] **RUN 2.6 remote build cache** (style Depot) — implementation in
+      `paths.rs` incomplete.
+- [ ] **RUN 4.1–4.6** — sandboxing + container-escape hardening.
+- [ ] **RUN 5.1–5.6** — WASM runtime support + edge cases.
+- [ ] **Remove `docs/planning/`** — still present (HANDOFF.md,
+      xbin-project.md, .excalidraw, .pdf).
+- [ ] **Symlinks for doc files** — ROADMAP/CODE_STYLE/RULES/CLAUDE/AGENTS as
+      copies outside the repo + symlinks inside.
+
+---
+
+
 ## État Actuel — Todo List (session ses_04c7)
 
 ### ✅ Terminé
@@ -46,7 +194,40 @@ x.bin transforme n'importe quelle application en un binaire ELF auto-extractible
 
 ---
 
-## Limitations Actuelles
+## Comparative benchmark (2026-08-07) — improvements revealed
+
+Harness: `benchmarks/comparison/` (x.bin vs Docker / pkg / AppImage / Flatpak,
+same zero-dep Node 24 app, machine profile recorded per run). Aggregated
+results: `benchmarks/comparison/comparison.md`.
+
+| Packager | Artifact | On-disk | Cold start | Warm start | Idle RSS | Host deps |
+|----------|----------|---------|------------|------------|----------|-----------|
+| **x.bin** | **44.0 MiB** | 122.6 MiB | 2091 ms | **95 ms** | 48.6 MiB | **none** |
+| docker | 76.7 MiB | 76.7 MiB | 6823 ms | — | 49.9 MiB | docker-daemon |
+| pkg | 70.2 MiB | 70.2 MiB | 99 ms | — | 55.0 MiB | none |
+| appimage | 24.4 MiB | 24.4 MiB | 439 ms | — | 55.0 MiB | fuse-or-extract |
+| flatpak | — | — | — | — | — | flatpak |
+
+(Machine: Codespace 4 vCPU EPYC, 15 Gi RAM, overlayfs in a container.)
+
+### Items to implement (by gain priority)
+
+- [ ] **Cold start 2.1 s = single-threaded zstd extraction of the node runtime**
+      (warm 95 ms proves the launcher is fast; the gap is extraction).
+      → multithreaded decompression in the stub (crate `zstd`/zstdmt instead
+      of single-thread `ruzstd`), or a lower build compression level.
+      Goal: cold < 500 ms.
+- [ ] **On-disk 122.6 MiB ≫ artifact 44 MiB** (decompressed rootfs).
+      → cache GC (limitation #14), squashfs mount (v5, already supported),
+      dedup between versions (limitation #11).
+- [ ] **`find_stub` can silently embed an obsolete installed stub** (bug seen:
+      /usr/local/bin stub dated 2026-07-27 with a relative-PATH bug was
+      embedded). → prefer fresh builds (native + musl `target/`), warn if the
+      embedded stub is older than N days.
+- [ ] **Pin the builder's Node version** in the release pipeline (x.bin embeds
+      the builder's node → artifact reproducibility).
+
+---
 
 ### Blocants Critiques
 

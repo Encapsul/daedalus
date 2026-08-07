@@ -1,0 +1,5 @@
+xbin	build_ms=1738;artifact_bytes=46123889;artifact_mib=44.0;footprint_bytes=128586050;footprint_mib=122.6;cold_ms=2142;warm_ms=96;rss_kb=49776;rss_mib=48.6;host_deps=none;
+docker	build_ms=16719;artifact_bytes=80462256;artifact_mib=76.7;footprint_bytes=80462256;footprint_mib=76.7;cold_ms=6147;warm_ms=n/a;rss_kb=51152;rss_mib=50.0;host_deps=docker-daemon;
+pkg	build_ms=1901;artifact_bytes=73645349;artifact_mib=70.2;footprint_bytes=73645349;footprint_mib=70.2;cold_ms=109;warm_ms=n/a;rss_kb=56272;rss_mib=55.0;host_deps=none;
+appimage	build_ms=4918;artifact_bytes=25557496;artifact_mib=24.4;footprint_bytes=25557496;footprint_mib=24.4;cold_ms=29;warm_ms=n/a;rss_kb=56944;rss_mib=55.6;host_deps=fuse-or-extract;
+flatpak	artifact_bytes=n/a;cold_ms=n/a;rss_kb=n/a;host_deps=flatpak;note=not-installed;

@@ -22,6 +22,10 @@ benchmarks/report.md
 benchmarks/results.json
 benchmarks/apps/
 
+# Cross-packager comparison (build artifacts, per-run cache)
+benchmarks/comparison/work/
+benchmarks/comparison/results/*/xbin-cache/
+
 
 # Repo (extracted source trees)
 repo/
