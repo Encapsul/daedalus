@@ -152,22 +152,23 @@ dist: preflight
 	@echo "Building release v$(VERSION) for $(ARCHS)..."
 	@for arch in $(ARCHS); do \
 		target="$$arch-unknown-linux-musl"; \
+		case "$$arch" in x86_64) glowarch=amd64;; aarch64) glowarch=arm64;; *) glowarch=$$arch;; esac; \
 		printf "\n── $$arch (musl, static) ──\n"; \
-		$(ZIGBUILD) --release -p xbin-stub -p xbin-crypto --target "$$target"; \
+		$(ZIGBUILD) --release -p xbin-stub --target "$$target"; \
 		$(ZIGBUILD) --release -p xbin-cli --target "$$target"; \
-		dir="xbin_$(VERSION)_linux_$$arch"; \
+		dir="xbin_$(VERSION)_linux_$$glowarch"; \
 		rm -rf "$(DIST_DIR)/$$dir"; \
 		mkdir -p "$(DIST_DIR)/$$dir"; \
 		cp -f "$(CARGO_TARGET_DIR)/$$target/release/xbin" "$(DIST_DIR)/$$dir/xbin"; \
 		cp -f "$(CARGO_TARGET_DIR)/$$target/release/xbin-stub" "$(DIST_DIR)/$$dir/xbin-stub"; \
 		cp -f "$(CARGO_TARGET_DIR)/$$target/release/xbin-crypto" "$(DIST_DIR)/$$dir/xbin-crypto"; \
 		chmod +x "$(DIST_DIR)/$$dir"/*; \
-		tar -czf "$(DIST_DIR)/xbin_$(VERSION)_linux_$$arch.tar.gz" -C "$(DIST_DIR)" "$$dir"; \
+		tar -czf "$(DIST_DIR)/xbin_$(VERSION)_linux_$$glowarch.tar.gz" -C "$(DIST_DIR)" "$$dir"; \
 		rm -rf "$(DIST_DIR)/$$dir"; \
-		echo "  xbin_$(VERSION)_linux_$$arch.tar.gz"; \
+		echo "  xbin_$(VERSION)_linux_$$glowarch.tar.gz"; \
 	done
 	@printf "\n── Checksums ──\n"
-	@cd $(DIST_DIR) && sha256sum * > checksums.txt && cat checksums.txt
+	@cd $(DIST_DIR) && sha256sum xbin_*.tar.gz > checksums.txt && cat checksums.txt
 
 # Create a GitHub release and upload all dist artifacts.
 # Usage: make release VERSION=0.4.0   (tag becomes v0.4.0)
