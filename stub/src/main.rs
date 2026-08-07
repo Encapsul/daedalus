@@ -42,6 +42,10 @@ const LD_PATHS: &[&str] = &[
     "usr/lib64",
     "usr/lib/aarch64-linux-gnu",
 ];
+#[cfg(target_arch = "x86")]
+const LD_PATHS: &[&str] = &["lib", "usr/lib", "usr/lib/i386-linux-gnu"];
+#[cfg(target_arch = "arm")]
+const LD_PATHS: &[&str] = &["lib", "usr/lib", "usr/lib/arm-linux-gnueabihf"];
 
 /// Absolute forms of `LD_PATHS`, used after `pivot_root` where the process
 /// root is the rootfs. `execvp` and the dynamic loader resolve relative PATH
@@ -1676,6 +1680,79 @@ fn install_seccomp_denylist() -> io::Result<()> {
     const SYS_NFSSERVCTL: u32 = 26;
     #[cfg(target_arch = "aarch64")]
     const SYS_KEXEC_FILE_LOAD: u32 = 320;
+
+    // i386 (32-bit x86) — audit arch + syscall numbers from
+    // include/uapi/linux/audit.h and arch/x86/entry/syscalls/syscall_32.tbl.
+    #[cfg(target_arch = "x86")]
+    const AUDIT_ARCH: u32 = 0x4000_0003;
+    #[cfg(target_arch = "x86")]
+    const SYS_PTRACE: u32 = 26;
+    #[cfg(target_arch = "x86")]
+    const SYS_MOUNT: u32 = 21;
+    #[cfg(target_arch = "x86")]
+    const SYS_UMOUNT2: u32 = 52;
+    #[cfg(target_arch = "x86")]
+    const SYS_PIVOT_ROOT: u32 = 217;
+    #[cfg(target_arch = "x86")]
+    const SYS_REBOOT: u32 = 88;
+    #[cfg(target_arch = "x86")]
+    const SYS_SETHOSTNAME: u32 = 74;
+    #[cfg(target_arch = "x86")]
+    const SYS_SETDOMAINNAME: u32 = 75;
+    #[cfg(target_arch = "x86")]
+    const SYS_SWAPON: u32 = 87;
+    #[cfg(target_arch = "x86")]
+    const SYS_SWAPOFF: u32 = 115;
+    #[cfg(target_arch = "x86")]
+    const SYS_ACCT: u32 = 51;
+    #[cfg(target_arch = "x86")]
+    const SYS_NFSSERVCTL: u32 = 180;
+    #[cfg(target_arch = "x86")]
+    const SYS_KEXEC_LOAD: u32 = 283;
+    #[cfg(target_arch = "x86")]
+    const SYS_INIT_MODULE: u32 = 128;
+    #[cfg(target_arch = "x86")]
+    const SYS_FINIT_MODULE: u32 = 350;
+    #[cfg(target_arch = "x86")]
+    const SYS_DELETE_MODULE: u32 = 129;
+    #[cfg(target_arch = "x86")]
+    const SYS_KEXEC_FILE_LOAD: u32 = 353;
+
+    // ARM (32-bit, EABI) — covers armv7 and armv6 hard-float builds.
+    #[cfg(target_arch = "arm")]
+    const AUDIT_ARCH: u32 = 0x4000_0028;
+    #[cfg(target_arch = "arm")]
+    const SYS_PTRACE: u32 = 26;
+    #[cfg(target_arch = "arm")]
+    const SYS_MOUNT: u32 = 21;
+    #[cfg(target_arch = "arm")]
+    const SYS_UMOUNT2: u32 = 52;
+    #[cfg(target_arch = "arm")]
+    const SYS_PIVOT_ROOT: u32 = 217;
+    #[cfg(target_arch = "arm")]
+    const SYS_REBOOT: u32 = 88;
+    #[cfg(target_arch = "arm")]
+    const SYS_SETHOSTNAME: u32 = 74;
+    #[cfg(target_arch = "arm")]
+    const SYS_SETDOMAINNAME: u32 = 75;
+    #[cfg(target_arch = "arm")]
+    const SYS_SWAPON: u32 = 87;
+    #[cfg(target_arch = "arm")]
+    const SYS_SWAPOFF: u32 = 115;
+    #[cfg(target_arch = "arm")]
+    const SYS_ACCT: u32 = 51;
+    #[cfg(target_arch = "arm")]
+    const SYS_NFSSERVCTL: u32 = 169;
+    #[cfg(target_arch = "arm")]
+    const SYS_KEXEC_LOAD: u32 = 347;
+    #[cfg(target_arch = "arm")]
+    const SYS_INIT_MODULE: u32 = 128;
+    #[cfg(target_arch = "arm")]
+    const SYS_FINIT_MODULE: u32 = 379;
+    #[cfg(target_arch = "arm")]
+    const SYS_DELETE_MODULE: u32 = 129;
+    #[cfg(target_arch = "arm")]
+    const SYS_KEXEC_FILE_LOAD: u32 = 401;
 
     // Helper: load seccomp_data.arch (offset 4, 4 bytes).
     let arch_load = |code: u16, jt: u8, jf: u8, k: u32| libc::sock_filter {

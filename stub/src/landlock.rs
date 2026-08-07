@@ -55,19 +55,36 @@ const FULL_RW: u64 = HANDLED_FS;
 const READ_ONLY: u64 =
     LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR;
 
-// Syscall numbers (x86_64). aarch64 differs.
+// Landlock uses the generic syscall numbers (444/445/446) on every
+// architecture — x86_64, aarch64, 32-bit x86 and 32-bit ARM.
 #[cfg(target_arch = "x86_64")]
 mod sys {
-    pub const LANDLOCK_CREATE_RULESET: i64 = 444;
-    pub const LANDLOCK_ADD_RULE: i64 = 445;
-    pub const LANDLOCK_RESTRICT_SELF: i64 = 446;
+    pub const LANDLOCK_CREATE_RULESET: libc::c_long = 444;
+    pub const LANDLOCK_ADD_RULE: libc::c_long = 445;
+    pub const LANDLOCK_RESTRICT_SELF: libc::c_long = 446;
 }
 
 #[cfg(target_arch = "aarch64")]
 mod sys {
-    pub const LANDLOCK_CREATE_RULESET: i64 = 444;
-    pub const LANDLOCK_ADD_RULE: i64 = 445;
-    pub const LANDLOCK_RESTRICT_SELF: i64 = 446;
+    pub const LANDLOCK_CREATE_RULESET: libc::c_long = 444;
+    pub const LANDLOCK_ADD_RULE: libc::c_long = 445;
+    pub const LANDLOCK_RESTRICT_SELF: libc::c_long = 446;
+}
+
+// Landlock uses the generic syscall numbers (444/445/446) on every
+// architecture, including 32-bit x86 and ARM.
+#[cfg(target_arch = "x86")]
+mod sys {
+    pub const LANDLOCK_CREATE_RULESET: libc::c_long = 444;
+    pub const LANDLOCK_ADD_RULE: libc::c_long = 445;
+    pub const LANDLOCK_RESTRICT_SELF: libc::c_long = 446;
+}
+
+#[cfg(target_arch = "arm")]
+mod sys {
+    pub const LANDLOCK_CREATE_RULESET: libc::c_long = 444;
+    pub const LANDLOCK_ADD_RULE: libc::c_long = 445;
+    pub const LANDLOCK_RESTRICT_SELF: libc::c_long = 446;
 }
 
 const LANDLOCK_RULE_PATH_BENEATH: u32 = 1;

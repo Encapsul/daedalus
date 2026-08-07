@@ -4,6 +4,7 @@
 //! uid/gid=0, sorted entries) for consistent builds.
 
 use std::io::{self};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -145,7 +146,7 @@ fn append_entries<W: io::Write>(
         } else if path.is_file() {
             let meta = std::fs::metadata(&path)?;
             header.set_entry_type(tar::EntryType::Regular);
-            let mode = if meta.permissions().mode() & 0o111 != 0 || is_executable_extension(&path) {
+            let mode = if is_executable_file(&path) {
                 0o755
             } else {
                 0o644
@@ -168,6 +169,22 @@ fn is_executable_extension(path: &Path) -> bool {
         .and_then(|ext| ext.to_str())
         .map(|ext| matches!(ext, "py" | "rb" | "sh" | "pl" | "php" | "ex" | "bat"))
         .unwrap_or(false)
+}
+
+/// Whether a file should be marked executable in the tar entry. On unix the
+/// source permission bits decide; on other platforms (e.g. vfat or windows)
+/// only the extension-based heuristic applies.
+fn is_executable_file(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        let mode = std::fs::metadata(path)
+            .map(|m| m.permissions().mode())
+            .unwrap_or(0);
+        if mode & 0o111 != 0 {
+            return true;
+        }
+    }
+    is_executable_extension(path)
 }
 
 /// Number of CPU cores available (returns 1 if detection fails).

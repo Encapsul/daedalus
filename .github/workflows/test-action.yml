@@ -12,7 +12,7 @@ jobs:
     name: Test xbin-build action
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Build and install xbin so the action can find it
       - name: Build xbin from source
@@ -55,7 +55,7 @@ jobs:
           echo "PASS: binary exists"
 
       # Upload artifact
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: test-binary
           path: /tmp/test-app.xbin
