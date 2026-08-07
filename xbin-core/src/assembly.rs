@@ -1,7 +1,9 @@
 //! .xbin binary assembly — writes the final executable.
 //!
-//! Creates the .xbin file layout: [stub][payload][metadata][footer].
-//! Signing is handled separately (requires Ed25519 key + xbin-crypto).
+//! Classic layout: [stub][payload][metadata][footer]. With the `SISR` stage
+//! enabled the layout becomes
+//! [stub][payload][manifest][SisrFooterExt][metadata][footer] and a signed
+//! remote manifest is written next to the binary.
 
 use std::fs;
 use std::io::Write;
@@ -9,6 +11,8 @@ use std::path::Path;
 
 use crate::format::{self, Footer, CRYPTO_AES_256_GCM};
 use crate::metadata::BunFeatures;
+use crate::sisr_header::{SisrFooterExt, SISR_VERSION};
+use crate::sisr_stage::{self, RemoteManifest, SisrBuildConfig};
 
 /// Determine the format version based on build options.
 pub fn fmt_version(squashfs: bool, encrypt: bool, signed: bool) -> u8 {
@@ -80,11 +84,17 @@ pub fn build_meta_json(
     if options.seccomp {
         meta["seccomp"] = serde_json::Value::Bool(true);
     }
+    if options.landlock {
+        meta["landlock"] = serde_json::Value::Bool(true);
+    }
     if let Some(c) = &options.app_hash {
         meta["app_hash"] = serde_json::Value::String(c.clone());
     }
     if let Some(h) = &options.rt_deps_hash {
         meta["rt_deps_hash"] = serde_json::Value::String(h.clone());
+    }
+    if let Some(u) = &options.update_url {
+        meta["update_url"] = serde_json::Value::String(u.clone());
     }
 
     if bun_features.health_check.enabled {
@@ -128,8 +138,11 @@ pub struct MetaOptions {
     pub license: Option<String>,
     pub payload_format: Option<String>,
     pub seccomp: bool,
+    pub landlock: bool,
     pub app_hash: Option<String>,
     pub rt_deps_hash: Option<String>,
+    /// Base URL of the SISR update channel (`{url}/manifest`, `{url}/chunks/<hex>`).
+    pub update_url: Option<String>,
 }
 
 /// Assemble a .xbin file from its components (without signing).
@@ -145,9 +158,61 @@ pub fn assemble_xbin(
     squashfs: bool,
     target_arch: Option<&str>,
 ) -> std::io::Result<u64> {
+    assemble_xbin_with_sisr(
+        out_path,
+        stub_bytes,
+        payload,
+        meta_bytes,
+        encrypt,
+        squashfs,
+        target_arch,
+        &SisrBuildConfig::disabled(),
+    )
+}
+
+/// Assemble a .xbin file, optionally with a `SISR` section and remote manifest.
+///
+/// With `config.enabled` false the layout is strictly identical to
+/// [`assemble_xbin`]. With `SISR` enabled the payload is content-chunked, a
+/// Merkle root is computed, and the layout becomes:
+///
+/// `[stub][payload][manifest][metadata][SisrFooterExt][footer]`
+///
+/// The footer gains `FLAG_SISR`, and the signed remote manifest is written to
+/// `<out_path>.manifest` next to the binary. Returns the total file size.
+// Params mirror `assemble_xbin` plus the `SISR` config; a shared struct would
+// churn both public entry points for a single new optional stage.
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_xbin_with_sisr(
+    out_path: &Path,
+    stub_bytes: &[u8],
+    payload: &[u8],
+    meta_bytes: &[u8],
+    encrypt: bool,
+    squashfs: bool,
+    target_arch: Option<&str>,
+    config: &SisrBuildConfig,
+) -> std::io::Result<u64> {
     let fmt_ver = fmt_version(squashfs, encrypt, false);
     let arch = resolve_arch(target_arch);
     let payload_offset = stub_bytes.len() as u64;
+
+    let sisr = if config.enabled {
+        let artifacts = sisr_stage::build_artifacts(payload, config)?;
+        let manifest_offset = payload_offset + payload.len() as u64 + meta_bytes.len() as u64;
+        let ext = SisrFooterExt {
+            sisr_version: SISR_VERSION,
+            chunk_table_offset: manifest_offset,
+            chunk_table_len: u32::try_from(artifacts.manifest_bytes.len())
+                .map_err(|_| io_err("SISR manifest exceeds capacity"))?,
+            merkle_root: artifacts.merkle_root,
+            signature: artifacts.signature,
+        };
+        Some((artifacts, ext))
+    } else {
+        None
+    };
+
     let meta_offset = payload_offset + payload.len() as u64;
 
     let body_hash = sha2_hash(payload, meta_bytes);
@@ -155,7 +220,7 @@ pub fn assemble_xbin(
     let footer = Footer {
         format_version: fmt_ver,
         arch,
-        flags: 0,
+        flags: if sisr.is_some() { format::FLAG_SISR } else { 0 },
         payload_offset,
         payload_csize: payload.len() as u64,
         payload_usize: if encrypt { CRYPTO_AES_256_GCM } else { 0 },
@@ -169,6 +234,10 @@ pub fn assemble_xbin(
     f.write_all(stub_bytes)?;
     f.write_all(payload)?;
     f.write_all(meta_bytes)?;
+    if let Some((artifacts, ext)) = &sisr {
+        f.write_all(&artifacts.manifest_bytes)?;
+        f.write_all(&ext.pack())?;
+    }
     f.write_all(&footer.pack())?;
     f.flush()?;
 
@@ -179,7 +248,22 @@ pub fn assemble_xbin(
         fs::set_permissions(out_path, fs::Permissions::from_mode(0o755))?;
     }
 
+    if let Some((artifacts, _)) = &sisr {
+        let remote = RemoteManifest {
+            merkle_root: artifacts.merkle_root,
+            signature: artifacts.signature,
+            manifest: artifacts.manifest.clone(),
+        };
+        let mut manifest_path = out_path.to_path_buf();
+        manifest_path.set_extension("xbin.manifest");
+        fs::write(manifest_path, remote.to_bytes())?;
+    }
+
     Ok(std::fs::metadata(out_path)?.len())
+}
+
+fn io_err(msg: &str) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
 }
 
 /// SHA-256(payload || `meta_bytes`) — the integrity hash.
@@ -328,8 +412,10 @@ mod tests {
             license: None,
             payload_format: None,
             seccomp: false,
+            landlock: false,
             app_hash: None,
             rt_deps_hash: None,
+            update_url: None,
         };
         let bun_features = BunFeatures::default();
         let json = build_meta_json(
@@ -367,5 +453,79 @@ mod tests {
         assert_eq!((y, m, d), (1972, 1, 1));
         let (y2, m2, d2) = unix_days_to_date(365 + 365 + 366);
         assert_eq!((y2, m2, d2), (1973, 1, 1));
+    }
+
+    #[test]
+    fn disabled_sisr_is_byte_identical_to_classic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let stub = b"STUB_DATA_HERE";
+        let payload = b"PAYLOAD_DATA_PAYLOAD_DATA";
+        let meta = br#"{"name":"test"}"#;
+
+        let classic = tmp.path().join("classic.xbin");
+        let size = assemble_xbin(&classic, stub, payload, meta, false, false, None).unwrap();
+        let with_sisr = tmp.path().join("with_sisr.xbin");
+        let size2 = assemble_xbin_with_sisr(
+            &with_sisr,
+            stub,
+            payload,
+            meta,
+            false,
+            false,
+            None,
+            &SisrBuildConfig::disabled(),
+        )
+        .unwrap();
+        assert_eq!(size, size2);
+        assert_eq!(fs::read(&classic).unwrap(), fs::read(&with_sisr).unwrap());
+    }
+
+    #[test]
+    fn enabled_sisr_writes_section_and_remote_manifest() {
+        use crate::format::Footer;
+        use crate::sisr_header::read_sisr;
+        use ed25519_dalek::Signer;
+        use std::io::Cursor;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let stub = b"STUB_DATA_HERE";
+        let payload = b"PAYLOAD_DATA_PAYLOAD_DATA_PAYLOAD_DATA";
+        let meta = br#"{"name":"test"}"#;
+        let out = tmp.path().join("app.xbin");
+
+        let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        let config = SisrBuildConfig {
+            enabled: true,
+            chunk_target_size: 8192,
+            signing_key: Some(key.clone()),
+        };
+        assemble_xbin_with_sisr(&out, stub, payload, meta, false, false, None, &config).unwrap();
+
+        let data = fs::read(&out).unwrap();
+        let footer = Footer::read_from(&mut Cursor::new(&data)).unwrap();
+        assert_eq!(footer.flags & format::FLAG_SISR, format::FLAG_SISR);
+
+        let (parsed_ext, manifest) = read_sisr(&mut Cursor::new(&data)).unwrap().unwrap();
+        assert_eq!(manifest.payload_len, payload.len() as u64);
+        assert_eq!(
+            crate::sisr_stage::merkle_root_of(&manifest),
+            parsed_ext.merkle_root
+        );
+
+        let mut msg = Vec::with_capacity(32 + manifest.encoded_len());
+        msg.extend_from_slice(&parsed_ext.merkle_root);
+        msg.extend_from_slice(&manifest.serialize());
+        assert_eq!(
+            key.sign(&msg).to_bytes(),
+            parsed_ext.signature,
+            "embedded signature must match key over merkle||manifest"
+        );
+
+        let remote_path = tmp.path().join("app.xbin.manifest");
+        assert!(remote_path.exists());
+        let remote = RemoteManifest::from_bytes(&fs::read(&remote_path).unwrap()).unwrap();
+        assert!(remote.verify_signature(&key.verifying_key()));
+        assert!(remote.verify_merkle());
+        assert_eq!(remote.manifest, manifest);
     }
 }

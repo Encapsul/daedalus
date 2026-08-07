@@ -71,6 +71,12 @@ enum Commands {
     /// Upgrade x.bin to the latest release
     Upgrade(commands::upgrade::UpgradeArgs),
 
+    /// Migrate a legacy .xbin (v1) to the SISR-enabled v2 format
+    UpgradeBinary(commands::upgrade_binary::UpgradeBinaryArgs),
+
+    /// Publish a .xbin file to a registry
+    Publish(commands::publish::PublishArgs),
+
     /// Show xbin environment info
     Env(commands::env::EnvArgs),
 
@@ -153,6 +159,13 @@ fn main() -> ExitCode {
             }
             commands::upgrade::run(args)
         }
+        Commands::UpgradeBinary(mut args) => {
+            if cli.quiet {
+                args.quiet = true;
+            }
+            commands::upgrade_binary::run(args)
+        }
+        Commands::Publish(args) => commands::publish::run(args),
         Commands::Env(args) => commands::env::run(args),
         Commands::Completion { shell } => {
             let mut cmd = Cli::command();
@@ -259,6 +272,7 @@ BUGS
         ("doctor", ""),
         ("selftest", ""),
         ("upgrade", ""),
+        ("upgrade-binary", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for key lookup.\n"),
         ("inspect", ""),
         ("scan", ""),
         ("clean", "FILES\n       ~/.cache/xbin/\n              The cache directory cleaned by this command.\n"),

@@ -87,3 +87,18 @@ Phase 2 is complete; Phase 3 is in progress. The full pipeline runs
 end-to-end: `build` → `.xbin` → execution with self-extraction, caching,
 Ed25519 signatures, SquashFS support, and multi-arch builds
 (`x86_64` / `aarch64`). See the [Roadmap](./roadmap.md) for what's next.
+
+## Optional extension: SISR (self-updates)
+
+By default a `.xbin` is a simple, static container — no update machinery, nothing to configure. As an **opt-in, advanced extension**, xbin supports the **SISR** engine: a binary that can update *itself* from signed deltas, with no toolchain on the target machine.
+
+```
+[ v1.0 ] ── ./app.xbin update ──▶ fetch manifest ──▶ verify Ed25519
+                ──▶ download changed chunks ──▶ verify hashes
+                ──▶ rebuild & atomic swap ──▶ [ v1.1 ]
+```
+
+- Static containers: `xbin build ./app -o app.xbin`
+- Self-updating binaries: `xbin build ./app -o app.xbin --self-update`
+
+Both run identically by default; SISR is only engaged on an explicit update. See the [SISR overview](./concepts/sisr-overview.md), the [delta manifest spec](./spec/delta-manifest-format.md), and the [incremental updates guide](./guides/incremental-updates.md).

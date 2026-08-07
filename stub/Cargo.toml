@@ -26,7 +26,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"            # config file parsing
 dirs = "5"              # standard directories (config, cache, home)
-atty = "0.2"            # detect if running in TTY
 ed25519-dalek = { version = "2", default-features = false, features = ["alloc"] }
 rand = "0.8"
 libc = "0.2"
@@ -34,6 +33,16 @@ aes-gcm = "0.10"        # AES-256-GCM payload decryption
 hkdf = "0.12"           # HKDF-SHA256 for AES key derivation from signing seed
 backhand = { version = "0.25", default-features = false, features = ["gzip", "lz4", "zstd"] }  # squashfs extraction
 hex = "0.4"               # hex encoding for cache keys
+ureq = "3"                # HTTPS client for --xbin-update (rustls + ring, builds with plain cc)
+
+[dev-dependencies]
+xbin-core = { path = "../xbin-core" }
+tempfile = "3"
+tar = "0.4"
+zstd = { version = "0.13", features = ["zstdmt"] }
+hex = "0.4"
+sha2 = "0.10"
+ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "std", "rand_core"] }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

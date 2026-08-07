@@ -145,7 +145,7 @@ fn append_entries<W: io::Write>(
         } else if path.is_file() {
             let meta = std::fs::metadata(&path)?;
             header.set_entry_type(tar::EntryType::Regular);
-            let mode = if meta.permissions().mode() & 0o111 != 0 {
+            let mode = if meta.permissions().mode() & 0o111 != 0 || is_executable_extension(&path) {
                 0o755
             } else {
                 0o644
@@ -159,6 +159,15 @@ fn append_entries<W: io::Write>(
         }
     }
     Ok(())
+}
+
+/// Check if a file path has an extension that typically requires executable
+/// permissions even when the source filesystem (e.g. vfat) doesn't preserve them.
+fn is_executable_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| matches!(ext, "py" | "rb" | "sh" | "pl" | "php" | "ex" | "bat"))
+        .unwrap_or(false)
 }
 
 /// Number of CPU cores available (returns 1 if detection fails).

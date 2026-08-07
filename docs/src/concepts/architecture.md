@@ -104,3 +104,54 @@ my_app/
 
 `xbin build` does the hard work **once**. The end user only sees a single
 file.
+
+## Self-reconstruction (SISR, opt-in)
+
+The architecture above is the **static** model. An **optional** extension adds
+a third responsibility inside the binary — the embedded SISR engine — which
+lets the binary update itself from signed deltas, with no toolchain on the
+target machine. Both models ship in the same file shape and behave identically
+on a default launch; SISR only engages on an explicit update.
+
+```
++-----------------------------------------------------------------+
+|                         APP.XBIN (ELF)                          |
++-----------------------------------------------------------------+
+|  1. Entrypoint Launcher  --> Bootstrap + runtime isolation       |
++-----------------------------------------------------------------+
+|  2. Embedded SISR Engine --> Verify, fetch & assemble (dormant)  |
++-----------------------------------------------------------------+
+|  3. Payload (SquashFS)   --> Application code & assets           |
++-----------------------------------------------------------------+
+```
+
+The reconstruction flow replaces the "redistribute a new binary" step with a
+**self-rebuild on the target**:
+
+```
+[ Binary v1.0 ] ──( ./app.xbin update )──▶ [ Interrogate remote manifest ]
+                                                │
+                                                ▼
+                                       [ Download deltas / chunks ]
+                                                │
+                                                ▼
+                                   [ Validate Ed25519 signatures + hashes ]
+                                                │
+                                                ▼
+[ Binary v1.1 ] ◀──( Rebuild & atomic swap )───┘
+```
+
+Every step is verified: signature before anything runs, anti-rollback index
+before applying, per-block SHA-256 and a Merkle commitment before commit. An
+interruption leaves `v1.0` intact.
+
+| Layer | Static `.xbin` | SISR `.xbin` |
+|---|---|---|
+| Launcher | same | same (unchanged) |
+| SISR engine | absent | embedded, dormant by default |
+| Payload (SquashFS) | same | same |
+| Update path | rebuild + redistribute | self-rebuild from signed deltas |
+
+SISR is described in detail in the [SISR overview](./sisr-overview.md), the
+[delta manifest spec](../spec/delta-manifest-format.md), and the
+[incremental updates guide](../guides/incremental-updates.md).

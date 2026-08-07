@@ -153,8 +153,8 @@ fn find_interpreter(name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Parse `ldd` output to find shared library paths.
-fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
+/// Parse `ldd` output to find shared library paths for a binary or .node file.
+pub(crate) fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
     let output = Command::new("ldd")
         .arg(interp_path)
         .output()
@@ -169,25 +169,38 @@ fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
 
     for line in stdout.lines() {
         let line = line.trim();
-        // Skip empty lines and linux-vdso/ld-linux
-        if line.is_empty() || line.starts_with("linux-vdso") || line.starts_with("ld-linux") {
+        // Skip empty lines, vdso, and ld-linux dynamic linker (handled separately)
+        if line.is_empty() || line.starts_with("linux-vdso") {
             continue;
         }
-        // Parse: "libfoo.so.1 => /lib/x86_64-linux-gnu/libfoo.so.1 (0x...)"
-        if let Some(path_str) = line.split("=>").nth(1) {
-            let path_str = path_str.trim();
-            // Remove the address part: "(0x...)"
-            let path_str = if let Some(idx) = path_str.find(" (") {
-                &path_str[..idx]
-            } else {
-                path_str
-            };
-            let path_str = path_str.trim();
-            if !path_str.starts_with('/') || path_str == "not found" {
-                continue;
-            }
-            deps.push(PathBuf::from(path_str));
+
+        let path_str = if let Some(after) = line.split("=>").nth(1) {
+            // glibc format: "libfoo.so.1 => /path/libfoo.so.1 (0x...)"
+            after.trim()
+        } else if line.starts_with('/') {
+            // musl format: "/path/libfoo.so.1" (no => prefix)
+            line
+        } else {
+            continue;
+        };
+
+        // Skip the dynamic linker (ld-linux, ld-musl) — it's not a library dep
+        let fname = path_str.rsplit('/').next().unwrap_or(path_str);
+        if fname.starts_with("ld-linux") || fname.starts_with("ld-musl") {
+            continue;
         }
+
+        // Remove the address part: "(0x...)"
+        let path_str = if let Some(idx) = path_str.find(" (") {
+            &path_str[..idx]
+        } else {
+            path_str
+        };
+        let path_str = path_str.trim();
+        if !path_str.starts_with('/') || path_str == "not found" {
+            continue;
+        }
+        deps.push(PathBuf::from(path_str));
     }
 
     Ok(deps)
@@ -311,6 +324,16 @@ fn embed_runtime_config(
         }
         "node" => {
             count += embed_node_config(interp_path, rootfs, verbose)?;
+        }
+        "ruby" => {
+            count += embed_ruby_config(interp_path, rootfs, verbose)?;
+            count += embed_ruby_native_gems(interp_path, rootfs, verbose)?;
+        }
+        "perl" => {
+            count += embed_perl_config(interp_path, rootfs, verbose)?;
+        }
+        "java" => {
+            count += embed_java_config(interp_path, rootfs, verbose)?;
         }
         _ => {}
     }
@@ -890,6 +913,223 @@ fn embed_node_config(_interp_path: &Path, _rootfs: &Path, _verbose: bool) -> io:
     Ok(0)
 }
 
+/// Embed Ruby configuration: stdlib + gems.
+fn embed_ruby_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Result<usize> {
+    let mut count = 0;
+
+    let rubylibdir = run_cmd(interp_path, &["-e", "print RbConfig::CONFIG['rubylibdir']"]);
+    let gemdir = run_cmd(interp_path, &["-e", "print Gem.dir"]);
+
+    if !rubylibdir.is_empty() {
+        let src = PathBuf::from(&rubylibdir);
+        if src.is_dir() {
+            let rel = src.strip_prefix("/").unwrap_or(&src);
+            let dst = rootfs.join(rel);
+            copy_dir_recursive(&src, &dst)?;
+            count += count_dir_files(&dst);
+            if verbose {
+                eprintln!("  embed: Ruby stdlib ({} files)", count_dir_files(&dst));
+            }
+        }
+    }
+
+    if !gemdir.is_empty() {
+        let src = PathBuf::from(&gemdir);
+        if src.is_dir() {
+            let rel = src.strip_prefix("/").unwrap_or(&src);
+            let dst = rootfs.join(rel);
+            copy_dir_recursive(&src, &dst)?;
+            let c = count_dir_files(&dst);
+            count += c;
+            if verbose {
+                eprintln!("  embed: Ruby gems ({} files)", c);
+            }
+        }
+    }
+
+    Ok(count)
+}
+
+/// Scan Ruby gem directories for .so native extensions, run ldd on each,
+/// and embed their shared library dependencies into the rootfs.
+fn embed_ruby_native_gems(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Result<usize> {
+    let gemdir = run_cmd(interp_path, &["-e", "print Gem.dir"]);
+    if gemdir.is_empty() {
+        return Ok(0);
+    }
+    let gem_path = PathBuf::from(&gemdir);
+    if !gem_path.is_dir() {
+        return Ok(0);
+    }
+
+    let mut seen = HashSet::new();
+    let lib_dirs = resolve_lib_dirs(rootfs);
+    let mut count = 0;
+    let mut stack = vec![gem_path];
+
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|s| s.to_str()) != Some("so") {
+                continue;
+            }
+
+            if verbose {
+                eprintln!("  embed: Ruby native gem {}", path.display());
+            }
+
+            let deps = ldd_deps(&path).unwrap_or_default();
+
+            for lib_path in &deps {
+                let name = match lib_path.file_name() {
+                    Some(n) => n,
+                    None => continue,
+                };
+                let name_str = name.to_string_lossy();
+                if !seen.insert(name_str.to_string()) {
+                    continue;
+                }
+                let dest_dir = find_lib_dest(lib_path, &lib_dirs);
+                fs::create_dir_all(&dest_dir)?;
+                let dest_lib = dest_dir.join(name);
+                let _ = fs::remove_file(&dest_lib);
+                fs::copy(lib_path, &dest_lib)?;
+                count += 1;
+
+                if verbose {
+                    eprintln!(
+                        "  embed: ruby gem lib {} -> {}",
+                        name_str,
+                        dest_dir.display()
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(count)
+}
+
+/// Embed Perl configuration: @INC directories.
+fn embed_perl_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Result<usize> {
+    let mut count = 0;
+
+    let privlib = run_cmd(
+        interp_path,
+        &["-MConfig", "-e", "print $Config{privlibexp}"],
+    );
+    let archlib = run_cmd(
+        interp_path,
+        &["-MConfig", "-e", "print $Config{archlibexp}"],
+    );
+
+    for path_str in [&privlib, &archlib] {
+        if path_str.is_empty() {
+            continue;
+        }
+        let src = PathBuf::from(path_str.as_str());
+        if src.is_dir() {
+            let rel = src.strip_prefix("/").unwrap_or(&src);
+            let dst = rootfs.join(rel);
+            copy_dir_recursive(&src, &dst)?;
+            let c = count_dir_files(&dst);
+            count += c;
+            if verbose {
+                eprintln!("  embed: Perl lib ({} files)", c);
+            }
+        }
+    }
+
+    Ok(count)
+}
+
+/// Embed Java JRE: find java.home and copy lib/ (contains rt.jar / modules).
+fn embed_java_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Result<usize> {
+    let mut count = 0;
+
+    let java_home_output = std::process::Command::new(interp_path)
+        .args(["-XshowSettings:properties", "-version"])
+        .output()
+        .ok();
+    let stderr = java_home_output
+        .as_ref()
+        .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
+        .unwrap_or_default();
+    let home = stderr
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("java.home = "))
+        .map(|s| s.trim().to_string());
+
+    let Some(java_home) = home else {
+        if verbose {
+            eprintln!("  embed: could not determine JAVA_HOME, skipping JRE");
+        }
+        return Ok(0);
+    };
+
+    let java_home_path = PathBuf::from(&java_home);
+
+    // JDK 9+ uses lib/modules (jlink); older uses jre/lib/rt.jar
+    let lib_src = java_home_path.join("lib");
+    if lib_src.is_dir() {
+        let dst_stable = rootfs.join("usr/lib/jvm/java");
+        copy_dir_recursive(&lib_src, &dst_stable.join("lib"))?;
+        count += count_dir_files(&dst_stable.join("lib"));
+        if verbose {
+            eprintln!(
+                "  embed: Java JRE lib ({} files) from {}",
+                count_dir_files(&dst_stable.join("lib")),
+                lib_src.display()
+            );
+        }
+    }
+
+    // Copy bin/ (java, javac, etc.) into a stable JVM path
+    let bin_src = java_home_path.join("bin");
+    if bin_src.is_dir() {
+        let dst_stable = rootfs.join("usr/lib/jvm/java/bin");
+        copy_dir_recursive(&bin_src, &dst_stable)?;
+        count += count_dir_files(&dst_stable);
+        #[cfg(unix)]
+        {
+            let _ = std::fs::remove_file(rootfs.join("usr/bin/java"));
+            let _ = std::fs::create_dir_all(rootfs.join("usr/bin"));
+            let _ = std::os::unix::fs::symlink(
+                "/usr/lib/jvm/java/bin/java",
+                rootfs.join("usr/bin/java"),
+            );
+        }
+    }
+
+    // ldd on `java` typically misses libjvm.so (loaded via dlopen).
+    // Find and copy it explicitly.
+    let jvm_lib = java_home_path.join("lib/server/libjvm.so");
+    if jvm_lib.is_file() {
+        let dst = rootfs.join("usr/lib/jvm/java/lib/server/libjvm.so");
+        let _ = std::fs::create_dir_all(dst.parent().unwrap());
+        let _ = std::fs::copy(&jvm_lib, &dst);
+        count += 1;
+    }
+    // Also try the jre/ variant (JDK ≤ 8)
+    let jvm_lib_jre = java_home_path.join("jre/lib/amd64/server/libjvm.so");
+    if jvm_lib_jre.is_file() {
+        let dst = rootfs.join("usr/lib/jvm/java/jre/lib/amd64/server/libjvm.so");
+        let _ = std::fs::create_dir_all(dst.parent().unwrap());
+        let _ = std::fs::copy(&jvm_lib_jre, &dst);
+        count += 1;
+    }
+
+    Ok(count)
+}
+
 /// Run a command and capture stdout.
 fn run_cmd(program: &Path, args: &[&str]) -> String {
     Command::new(program)
@@ -939,6 +1179,75 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Scan `rootfs/app/node_modules/` for `.node` files (N-API native addons),
+/// run `ldd` on each, and embed their shared library dependencies into the rootfs.
+pub fn embed_napi_addons(rootfs: &Path, verbose: bool) -> io::Result<usize> {
+    let node_modules = rootfs.join("app/node_modules");
+    if !node_modules.is_dir() {
+        return Ok(0);
+    }
+
+    let mut seen = HashSet::new();
+    let lib_dirs = resolve_lib_dirs(rootfs);
+    let mut count = 0;
+
+    let mut stack = vec![node_modules.clone()];
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|s| s.to_str()) != Some("node") {
+                continue;
+            }
+
+            if verbose {
+                eprintln!("  embed: N-API addon {}", path.display());
+            }
+
+            let deps = match ldd_deps(&path) {
+                Ok(d) => d,
+                Err(e) => {
+                    if verbose {
+                        eprintln!("  embed: ldd failed for {}: {e}", path.display());
+                    }
+                    Vec::new()
+                }
+            };
+
+            for lib_path in &deps {
+                let name = match lib_path.file_name() {
+                    Some(n) => n,
+                    None => continue,
+                };
+                let name_str = name.to_string_lossy();
+                if !seen.insert(name_str.to_string()) {
+                    continue;
+                }
+
+                let dest_dir = find_lib_dest(lib_path, &lib_dirs);
+                fs::create_dir_all(&dest_dir)?;
+                let dest_lib = dest_dir.join(name);
+                let _ = fs::remove_file(&dest_lib);
+                fs::copy(lib_path, &dest_lib)?;
+                count += 1;
+
+                if verbose {
+                    eprintln!("  embed: napi lib {} -> {}", name_str, dest_dir.display());
+                }
+            }
+        }
+    }
+
+    Ok(count)
 }
 
 /// Count files in a directory recursively.

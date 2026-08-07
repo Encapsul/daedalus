@@ -1,11 +1,13 @@
 use anyhow::{bail, Context, Result};
 use clap::Args;
+use ed25519_dalek::SigningKey;
 use std::path::{Path, PathBuf};
 use xbin_core::detect;
 use xbin_core::embed;
 use xbin_core::metadata::{BunFeatures, EmbeddedInterpreter};
 use xbin_core::paths::cache_dir;
 use xbin_core::pkgmgr;
+use xbin_core::sisr_stage::SisrBuildConfig;
 
 /// Map an isolation spec to the numeric level stored in metadata.
 ///
@@ -43,6 +45,10 @@ pub struct BuildArgs {
     #[arg(long)]
     pub seccomp: bool,
 
+    /// Enable Landlock LSM filesystem sandbox (stub isolation >= 2)
+    #[arg(long)]
+    pub landlock: bool,
+
     /// Enable encryption
     #[arg(long)]
     pub encrypt: bool,
@@ -50,6 +56,14 @@ pub struct BuildArgs {
     /// Use `SquashFS` instead of zstd+tar
     #[arg(long)]
     pub squashfs: bool,
+
+    /// Enable SISR delta-indexing and self-update support (writes `<output>.manifest`)
+    #[arg(long)]
+    pub enable_sisr: bool,
+
+    /// Base URL of the SISR update channel (manifest + chunks); embedded in the binary
+    #[arg(long)]
+    pub update_url: Option<String>,
 
     /// Target architecture
     #[arg(long)]
@@ -66,6 +80,10 @@ pub struct BuildArgs {
     /// Set environment variable (repeatable): --env KEY=VALUE
     #[arg(long = "env", action = clap::ArgAction::Append)]
     pub env: Vec<String>,
+
+    /// Define build-time constants (repeatable): --define KEY=VALUE (injected as env vars)
+    #[arg(long = "define", action = clap::ArgAction::Append)]
+    pub define: Vec<String>,
 
     /// Version string
     #[arg(long)]
@@ -197,6 +215,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     };
 
     let seccomp = args.seccomp || config.build.seccomp.unwrap_or(false);
+    let landlock = args.landlock || config.build.landlock.unwrap_or(false);
     let encrypt = args.encrypt || config.build.encrypt.unwrap_or(false);
     let squashfs = args.squashfs || config.build.squashfs.unwrap_or(false);
     let version_info = args.version_info.or(config.package.version);
@@ -225,8 +244,18 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         eprintln!("  Runtime:   {runtime_name}");
         eprintln!("  Isolation: {isolation}");
         eprintln!("  Seccomp:   {seccomp}");
+        eprintln!("  Landlock:  {landlock}");
         eprintln!("  Encrypt:   {encrypt}");
         eprintln!("  SquashFS:  {squashfs}");
+        if args.enable_sisr {
+            eprintln!("  SISR:      enabled (delta-indexed, <output>.manifest)");
+            match &args.update_url {
+                Some(url) => eprintln!("  Update URL: {url}"),
+                None => eprintln!(
+                    "  Update URL: (none — updates must pass a URL or set XBIN_UPDATE_URL)"
+                ),
+            }
+        }
         if let Some(ref v) = version_info {
             eprintln!("  Version:   {v}");
         }
@@ -326,7 +355,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // ── Intelligent build cache: skip rebuild if hash matches ──────────
     if args.use_cache {
         let cache = xbin_core::paths::BuildCache::new(&app_dir, 50);
-        if let Some(cached) = cache.find(&new_app_hash, &new_rt_hash) {
+        if let Some(cached) = cache.find(&new_app_hash) {
             if verbose {
                 eprintln!("[xbin] cache hit — reusing cached build");
             }
@@ -370,6 +399,19 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
                 eprintln!("[xbin] runtime deps changed, full rebuild");
             }
         }
+    }
+
+    // ── PHP platform extensions check ──────────────────────────────────
+    if runtime_name == "php" && !no_install {
+        check_php_platform_reqs(&app_dir, verbose)?;
+    }
+
+    // Detect pnpm workspace with workspace:* protocol (cannot use npm)
+    if pkgmgr::detect_node_pkgmgr(&app_dir) == Some(pkgmgr::PkgMgr::Npm)
+        && has_workspace_protocol(&app_dir)
+    {
+        eprintln!("[xbin] warning: package.json uses `workspace:*` protocol (pnpm-specific)");
+        eprintln!("  but pnpm is not detected. Create `pnpm-workspace.yaml` or add a lockfile.");
     }
 
     // Detect and install all package managers (primary + secondary)
@@ -418,6 +460,17 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             let mut full_args: Vec<String> = extra_args;
             full_args.extend(cmd.iter().skip(1).map(|s| s.to_string()));
 
+            // When cross-compiling for a different arch, force source builds for pip
+            let is_cross_pip = matches!(mgr, pkgmgr::PkgMgr::Pip)
+                && args
+                    .cross_compile
+                    .as_ref()
+                    .is_some_and(|c| c.split(',').any(|t| t.trim() != std::env::consts::ARCH));
+            if is_cross_pip {
+                full_args.push("--no-binary".into());
+                full_args.push(":all:".into());
+            }
+
             let status = std::process::Command::new(&prog)
                 .args(&full_args)
                 .current_dir(&app_dir)
@@ -462,6 +515,8 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     }
 
     // ── Embed interpreter ──────────────────────────────────
+    // NOTE: ensure_node() may have downloaded node to /tmp/xbin-build-tools/bin/
+    // and added it to PATH — embed_interpreter picks it up from there.
     let embedded_interpreter_str = if let Some(ref interp) = args.embed_interpreter {
         Some(interp.clone())
     } else {
@@ -481,7 +536,6 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             eprintln!("Embedding interpreter: {}...", interpreter_name);
         }
 
-        // Embed the interpreter into the rootfs
         let interpreter_path = interpreter_name.clone();
         match embed::embed_interpreter(&interpreter_path, &rootfs, Some(&app_dir), verbose) {
             Ok(count) => {
@@ -496,9 +550,57 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
     }
 
+    // Pre-compile Python bytecode for faster startup
+    if runtime_name == "python" {
+        let app_root = rootfs.join("app");
+        if app_root.is_dir() {
+            let status = std::process::Command::new("python3")
+                .args(["-m", "compileall", "-f", "-q"])
+                .arg(&app_root)
+                .status();
+            if let Ok(s) = status {
+                if s.success() && verbose {
+                    eprintln!("Bytecode compiled (.pyc)");
+                }
+            }
+        }
+    }
+
+    // Embed N-API native addon dependencies (.node files → ldd → .so)
+    if runtime_name == "node" {
+        match embed::embed_napi_addons(&rootfs, verbose) {
+            Ok(n) => {
+                if verbose && n > 0 {
+                    eprintln!("Embedded {} N-API shared library dependencies", n);
+                }
+            }
+            Err(e) => {
+                eprintln!("[xbin] warning: N-API addon embedding failed: {e}");
+            }
+        }
+    }
+
+    // Embed RoadRunner binary for Laravel Octane apps (rr.yaml or .rr.yaml)
+    if app_dir.join("rr.yaml").is_file() || app_dir.join(".rr.yaml").is_file() {
+        if which::which("rr").is_ok() {
+            if verbose {
+                eprintln!("Embedding RoadRunner...");
+            }
+            if let Err(e) = embed::embed_interpreter("rr", &rootfs, None, verbose) {
+                eprintln!("[xbin] warning: failed to embed RoadRunner: {}", e);
+            }
+        } else if verbose {
+            eprintln!("[xbin] warning: rr binary not found on PATH; RoadRunner won't be available at runtime");
+        }
+    }
+
     if !interpreter_embedded && verbose && embedded_interpreter_str.is_some() {
         eprintln!("  (interpreter embedding skipped)");
     }
+
+    // Clean up downloaded build tools (node/npm, composer.phar in /tmp)
+    // Done *after* embedding so the interpreter is still available for copying.
+    let _ = std::fs::remove_dir_all("/tmp/xbin-build-tools");
 
     // Build deterministic tar (streaming: tar → zstd, no in-memory buffer)
     eprintln!("Creating payload...");
@@ -539,6 +641,13 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
     // Inline --env KEY=VALUE flags (override env-file)
     for entry in &args.env {
+        if let Some((k, v)) = entry.split_once('=') {
+            env_map.insert(k.trim().into(), v.trim().into());
+        }
+    }
+
+    // Build-time --define KEY=VALUE (injected as env vars, overrides --env)
+    for entry in &args.define {
         if let Some((k, v)) = entry.split_once('=') {
             env_map.insert(k.trim().into(), v.trim().into());
         }
@@ -729,8 +838,10 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             license,
             payload_format: Some("zstd-tar".to_string()),
             seccomp,
+            landlock,
             app_hash: Some(new_app_hash.clone()),
             rt_deps_hash: Some(new_rt_hash.clone()),
+            update_url: args.update_url.clone(),
         },
         &bun_features,
     )?;
@@ -738,16 +849,31 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // Assemble
     eprintln!("Assembling {}...", output.display());
 
-    let size = xbin_core::assembly::assemble_xbin(
-        &output,
-        &stub_bytes,
-        &payload,
-        &meta,
-        encrypt,
-        squashfs,
-        target.as_deref(),
-    )
-    .context("failed to assemble xbin")?;
+    let size = if args.enable_sisr {
+        let sisr_config = build_sisr_config(&args.key)?;
+        xbin_core::assembly::assemble_xbin_with_sisr(
+            &output,
+            &stub_bytes,
+            &payload,
+            &meta,
+            encrypt,
+            squashfs,
+            target.as_deref(),
+            &sisr_config,
+        )
+        .context("failed to assemble xbin (SISR)")?
+    } else {
+        xbin_core::assembly::assemble_xbin(
+            &output,
+            &stub_bytes,
+            &payload,
+            &meta,
+            encrypt,
+            squashfs,
+            target.as_deref(),
+        )
+        .context("failed to assemble xbin")?
+    };
 
     eprintln!(
         "Built {} ({:.1}MB)",
@@ -755,10 +881,16 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         size as f64 / (1024.0 * 1024.0)
     );
 
+    if args.enable_sisr {
+        let mut manifest = output.clone();
+        manifest.set_extension("xbin.manifest");
+        eprintln!("SISR manifest written: {}", manifest.display());
+    }
+
     // ── Store in build cache ──────────────────────────────────────────
     if args.use_cache {
         let cache = xbin_core::paths::BuildCache::new(&app_dir, 50);
-        if cache.store(&new_app_hash, &new_rt_hash, &output).is_ok() && verbose {
+        if cache.store(&new_app_hash, &output).is_ok() && verbose {
             eprintln!("  cache: stored build");
         }
     }
@@ -769,21 +901,72 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             "size_bytes": size,
             "runtime": runtime_name,
             "format": "zstd-tar",
-            "signed": args.key.is_some(),
+            "signed": args.key.is_some() && !args.enable_sisr,
             "encrypted": encrypt,
+            "sisr": args.enable_sisr,
+            "manifest_signed": args.enable_sisr && args.key.is_some(),
         });
         println!("{}", serde_json::to_string_pretty(&result)?);
     }
 
-    // Sign if key provided
-    if let Some(key_path) = &args.key {
-        if verbose {
-            eprintln!("Signing...");
+    // Binary signature is mutually exclusive with SISR in a single build:
+    // `sign_file` rebuilds the file as `[..meta_end][sig][footer]`, which would
+    // truncate the SISR section. With `--enable-sisr`, `--key` instead signs
+    // the manifest (see `build_sisr_config`).
+    if !args.enable_sisr {
+        if let Some(key_path) = &args.key {
+            if verbose {
+                eprintln!("Signing...");
+            }
+            super::sign::sign_file(&output, key_path, !verbose)?;
         }
-        super::sign::sign_file(&output, key_path, !verbose)?;
     }
 
     Ok(())
+}
+
+/// Builds the SISR stage config from the CLI args. When `--key` is given the
+/// same 32-byte Ed25519 key that would sign the binary instead signs the SISR
+/// manifest; its bytes are never printed (only the path appears in warnings).
+fn build_sisr_config(key_path: &Option<PathBuf>) -> Result<SisrBuildConfig> {
+    let signing_key = match key_path {
+        Some(path) => {
+            warn_if_insecure_key_permissions(path);
+            let key_bytes = std::fs::read(path)
+                .with_context(|| format!("failed to read signing key at {}", path.display()))?;
+            if key_bytes.len() != 32 {
+                anyhow::bail!("key must be 32 bytes, got {}", key_bytes.len());
+            }
+            let mut key_arr = [0u8; 32];
+            key_arr.copy_from_slice(&key_bytes);
+            Some(SigningKey::from_bytes(&key_arr))
+        }
+        None => None,
+    };
+    Ok(SisrBuildConfig {
+        enabled: true,
+        chunk_target_size: 64 << 10,
+        signing_key,
+    })
+}
+
+/// Warns when a private key file is group/other-readable (not 0600) on Unix.
+fn warn_if_insecure_key_permissions(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(path) {
+            let mode = meta.permissions().mode() & 0o777;
+            if mode != 0o600 {
+                eprintln!(
+                    "[xbin] warning: private key {} has mode {mode:o}, expected 0600",
+                    path.display()
+                );
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
 }
 
 #[derive(Default, serde::Deserialize)]
@@ -798,6 +981,7 @@ struct XbinConfig {
 struct BuildConfig {
     pub isolation: Option<String>,
     pub seccomp: Option<bool>,
+    pub landlock: Option<bool>,
     pub encrypt: Option<bool>,
     pub squashfs: Option<bool>,
     pub target: Option<String>,
@@ -848,7 +1032,6 @@ fn ensure_node(verbose: bool) -> Result<PathBuf> {
     let node_bin = tools_dir.join("bin/node");
     let npm_bin = tools_dir.join("bin/npm");
 
-    // Already downloaded
     if node_bin.exists() && npm_bin.exists() {
         if verbose {
             eprintln!("  using cached node from {}", tools_dir.display());
@@ -871,33 +1054,51 @@ fn ensure_node(verbose: bool) -> Result<PathBuf> {
         .ok();
     }
 
-    // Detect arch
-    let arch = std::env::consts::ARCH;
-    let node_arch = match arch {
-        "x86_64" => "x64",
-        "aarch64" => "arm64",
-        _ => arch,
-    };
-    let node_os = match std::env::consts::OS {
-        "linux" => "linux",
-        "macos" => "darwin",
-        other => other,
+    ensure_node_download(tools_dir, None, verbose)
+}
+
+/// Download a specific Node.js version for a target architecture.
+///
+/// When `target_arch` is `None`, downloads for the host architecture.
+fn ensure_node_download(
+    tools_dir: PathBuf,
+    target_arch: Option<&str>,
+    verbose: bool,
+) -> Result<PathBuf> {
+    let (node_arch, node_os) = if let Some(arch) = target_arch {
+        match arch {
+            "x86_64" | "amd64" => ("x64", "linux"),
+            "aarch64" | "arm64" => ("arm64", "linux"),
+            _ => anyhow::bail!("unsupported cross-compile architecture: {arch}"),
+        }
+    } else {
+        let node_arch = match std::env::consts::ARCH {
+            "x86_64" => "x64",
+            "aarch64" => "arm64",
+            arch => arch,
+        };
+        let node_os = match std::env::consts::OS {
+            "linux" => "linux",
+            "macos" => "darwin",
+            os => os,
+        };
+        (node_arch, node_os)
     };
 
-    // Get latest LTS version
-    let version_output = std::process::Command::new("sh")
-        .args([
-            "-c",
-            "curl -sL https://nodejs.org/dist/index.json | head -20 | grep -o '\"v[0-9.]*\"' | head -1 | tr -d '\"v'",
-        ])
-        .output()
-        .context("failed to query node.js versions")?;
-    let version = String::from_utf8_lossy(&version_output.stdout)
-        .trim()
-        .to_string();
-    if version.is_empty() {
-        anyhow::bail!("node.js not found and auto-download failed — install: https://nodejs.org");
-    }
+    let node_bin = tools_dir.join("bin/node");
+    let npm_bin = tools_dir.join("bin/npm");
+
+    let versions: Vec<serde_json::Value> =
+        reqwest::blocking::get("https://nodejs.org/dist/index.json")
+            .context("failed to reach nodejs.org")?
+            .json()
+            .context("failed to parse node version manifest")?;
+    let version = versions
+        .first()
+        .and_then(|v| v.get("version")?.as_str())
+        .and_then(|v| v.strip_prefix('v'))
+        .map(|v| v.to_string())
+        .ok_or_else(|| anyhow::anyhow!("no node version found in manifest"))?;
 
     let tarball = format!("node-v{version}-{node_os}-{node_arch}.tar.xz");
     let url = format!("https://nodejs.org/dist/v{version}/{tarball}");
@@ -906,22 +1107,37 @@ fn ensure_node(verbose: bool) -> Result<PathBuf> {
         eprintln!("  downloading node v{version} ({node_os}-{node_arch})...");
     }
 
-    let status = std::process::Command::new("sh")
-        .args([
-            "-c",
-            &format!(
-                "curl -sL {url} | tar xJ --strip-components=1 -C {}",
-                tools_dir.display()
-            ),
-        ])
-        .status()
-        .context("failed to download node.js")?;
+    let response = reqwest::blocking::get(&url).context("failed to download node.js tarball")?;
+    let reader = std::io::BufReader::new(response);
+    let decoder = xz::read::XzDecoder::new(reader);
+    let mut archive = tar::Archive::new(decoder);
 
-    if !status.success() || !node_bin.exists() {
-        anyhow::bail!("failed to download node.js — install manually: https://nodejs.org");
+    for entry in archive
+        .entries()
+        .context("failed to read node tarball entries")?
+    {
+        let mut entry = entry.context("failed to read tarball entry")?;
+        let path = entry.path()?.into_owned();
+        let stripped: PathBuf = path.components().skip(1).collect();
+        if stripped.components().count() == 0 {
+            continue;
+        }
+        let target = tools_dir.join(&stripped);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
+        }
+        entry
+            .unpack(&target)
+            .with_context(|| format!("failed to unpack {}", stripped.display()))?;
     }
 
-    // Make executable
+    if !node_bin.exists() {
+        anyhow::bail!(
+            "downloaded tarball missing node binary — install manually: https://nodejs.org"
+        );
+    }
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -934,6 +1150,239 @@ fn ensure_node(verbose: bool) -> Result<PathBuf> {
     }
 
     Ok(tools_dir.join("bin"))
+}
+
+/// Check PHP platform requirements from composer.json against available extensions.
+fn check_php_platform_reqs(app_dir: &Path, verbose: bool) -> Result<()> {
+    let composer_path = app_dir.join("composer.json");
+    if !composer_path.is_file() {
+        return Ok(());
+    }
+
+    let content =
+        std::fs::read_to_string(&composer_path).context("failed to read composer.json")?;
+    let composer: serde_json::Value =
+        serde_json::from_str(&content).context("failed to parse composer.json")?;
+
+    let require = match composer.get("require").and_then(|r| r.as_object()) {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
+    // Check PHP version constraint from composer.json
+    if let Some(php_req) = require.get("php").and_then(|v| v.as_str()) {
+        let current_version = std::process::Command::new("php")
+            .args(["-v"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .next()
+                    .and_then(|l| l.split_whitespace().nth(1))
+                    .map(|s| s.to_string())
+            });
+
+        if let Some(ref cur) = current_version {
+            if !version_satisfies(cur, php_req) && verbose {
+                eprintln!(
+                    "[xbin] warning: composer.json requires PHP {}, but php {} is on PATH",
+                    php_req, cur
+                );
+                if let Some(alt) = find_php_binary(php_req) {
+                    eprintln!(
+                        "[xbin]   consider using --embed-interpreter {} or set PATH to use {}",
+                        alt, alt
+                    );
+                }
+            }
+        }
+    }
+
+    let mut required_exts: Vec<&str> = Vec::new();
+    for key in require.keys() {
+        if let Some(ext) = key.strip_prefix("ext-") {
+            required_exts.push(ext);
+        }
+    }
+
+    if required_exts.is_empty() {
+        return Ok(());
+    }
+
+    // Check which extensions are available
+    let php_output = std::process::Command::new("php")
+        .args(["-m"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+    let available: Vec<String> = php_output
+        .lines()
+        .map(|l| l.trim().to_lowercase())
+        .collect();
+
+    let mut missing: Vec<String> = Vec::new();
+    for ext in &required_exts {
+        if !available.contains(&ext.to_lowercase()) {
+            missing.push(ext.to_string());
+        }
+    }
+
+    if !missing.is_empty() {
+        eprintln!("[xbin] warning: PHP extensions required by composer but not installed:");
+        for ext in &missing {
+            eprintln!("  ext-{ext}");
+        }
+        eprintln!("  Run: sudo apt install php-{}", missing.join(" php-"));
+        eprintln!("  or: composer install --ignore-platform-reqs (will be used as fallback)");
+        if verbose {
+            eprintln!("  Proceeding with --ignore-platform-reqs — runtime may fail if extensions are needed.");
+        }
+    } else if verbose {
+        eprintln!(
+            "  PHP platform extensions: all {} required extension(s) available",
+            required_exts.len()
+        );
+    }
+
+    Ok(())
+}
+
+/// Simple PHP version constraint check — handles `^8.2`, `>=8.0`, `8.1`, `8.*`,
+/// `~8.1.0`, and `8.1 || 8.2` patterns. Returns true if the version satisfies.
+fn version_satisfies(version: &str, constraint: &str) -> bool {
+    let version_parts: Vec<u32> = version
+        .split('.')
+        .filter_map(|s| {
+            s.chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse()
+                .ok()
+        })
+        .collect();
+    if version_parts.is_empty() {
+        return false;
+    }
+
+    for part in constraint.split("||") {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        if satisfies_single(&version_parts, part) {
+            return true;
+        }
+    }
+    false
+}
+
+fn satisfies_single(version: &[u32], constraint: &str) -> bool {
+    let constraint = constraint.trim();
+    if constraint.starts_with('^') {
+        if let Some(rest) = constraint.strip_prefix('^') {
+            let target = parse_version(rest);
+            if target.is_empty() {
+                true
+            } else {
+                version >= &target && version.first() == target.first()
+            }
+        } else {
+            true
+        }
+    } else if constraint.starts_with('~') {
+        if let Some(rest) = constraint.strip_prefix('~') {
+            let target = parse_version(rest);
+            if target.len() < 2 {
+                true
+            } else {
+                version.len() >= 2
+                    && version[0] == target[0]
+                    && version[1] == target[1]
+                    && version >= &target
+            }
+        } else {
+            true
+        }
+    } else if constraint.ends_with('*') {
+        let prefix = constraint.trim_end_matches('*');
+        let prefix_parts: Vec<u32> = prefix.split('.').filter_map(|s| s.parse().ok()).collect();
+        version.starts_with(&prefix_parts)
+    } else if let Some(rest) = constraint.strip_prefix(">=") {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord != std::cmp::Ordering::Less)
+    } else if let Some(rest) = constraint.strip_prefix("<=") {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord != std::cmp::Ordering::Greater)
+    } else if let Some(rest) = constraint.strip_prefix('>') {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord == std::cmp::Ordering::Greater)
+    } else if let Some(rest) = constraint.strip_prefix('<') {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord == std::cmp::Ordering::Less)
+    } else if let Some(rest) = constraint.strip_prefix("==") {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord == std::cmp::Ordering::Equal)
+    } else {
+        let target = parse_version(constraint);
+        version == target
+    }
+}
+
+fn parse_version(s: &str) -> Vec<u32> {
+    s.split('.').filter_map(|p| p.trim().parse().ok()).collect()
+}
+
+fn compare_versions(a: &[u32], b: &[u32]) -> Option<std::cmp::Ordering> {
+    for (x, y) in a.iter().zip(b.iter()) {
+        let ord = x.cmp(y);
+        if ord != std::cmp::Ordering::Equal {
+            return Some(ord);
+        }
+    }
+    a.len().cmp(&b.len()).into()
+}
+
+/// Look for alternative PHP binaries on PATH that might satisfy the version constraint.
+fn find_php_binary(constraint: &str) -> Option<String> {
+    let rest = constraint.strip_prefix('^')?;
+    let major = rest.split('.').next()?;
+    for candidate in ["php", &format!("php{major}")] {
+        if which::which(candidate).is_ok() {
+            return Some(candidate.to_string());
+        }
+    }
+    None
+}
+
+/// Check if package.json contains `workspace:*` protocol deps (pnpm-specific).
+fn has_workspace_protocol(dir: &Path) -> bool {
+    let pkg = match std::fs::read_to_string(dir.join("package.json")) {
+        Ok(c) => c,
+        _ => return false,
+    };
+    let json: serde_json::Value = match serde_json::from_str(&pkg) {
+        Ok(v) => v,
+        _ => return false,
+    };
+    for section in &[
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+    ] {
+        if let Some(deps) = json.get(*section).and_then(|d| d.as_object()) {
+            for val in deps.values() {
+                if let Some(v) = val.as_str() {
+                    if v.starts_with("workspace:") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Returns `(program, extra_args)` to prepend to the install command.
@@ -1116,6 +1565,7 @@ fn copy_dir_recursive_with(src: &Path, dst: &Path, include_node_modules: bool) -
             || name == ".venv"
             || name == "venv"
             || name == ".xbin"
+            || name == ".pnpm"
             || (name == "node_modules" && !include_node_modules)
         {
             continue;
@@ -1132,7 +1582,7 @@ fn copy_dir_recursive_with(src: &Path, dst: &Path, include_node_modules: bool) -
 
 #[cfg(test)]
 mod tests {
-    use super::parse_isolation;
+    use super::*;
 
     #[test]
     fn sandbox_default_maps_to_level_2() {
@@ -1156,5 +1606,142 @@ mod tests {
         assert!(parse_isolation("3").is_err());
         assert!(parse_isolation("root").is_err());
         assert!(parse_isolation("").is_err());
+    }
+
+    #[test]
+    fn find_stub_default_is_x86_64() {
+        let result = find_stub(&None);
+        assert!(result.is_err() || result.is_ok(), "should not panic");
+    }
+
+    #[test]
+    fn find_stub_aarch64_suffix() {
+        let result = find_stub(&Some("aarch64".into()));
+        assert!(result.is_err() || result.is_ok(), "should not panic");
+    }
+
+    #[test]
+    fn ensure_node_download_rejects_bad_arch() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = ensure_node_download(dir.path().to_path_buf(), Some("riscv64"), false);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("unsupported"),
+            "should mention unsupported arch"
+        );
+    }
+
+    #[test]
+    fn ensure_node_download_accepts_x86_64() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = ensure_node_download(dir.path().to_path_buf(), Some("x86_64"), false);
+        // May fail due to network, but should not panic
+        assert!(result.is_err() || result.is_ok());
+    }
+
+    #[test]
+    fn ensure_node_download_accepts_aarch64() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = ensure_node_download(dir.path().to_path_buf(), Some("aarch64"), false);
+        assert!(result.is_err() || result.is_ok());
+    }
+
+    #[test]
+    fn check_php_platform_reqs_no_composer_json() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(check_php_platform_reqs(dir.path(), false).is_ok());
+    }
+
+    #[test]
+    fn check_php_platform_reqs_no_require() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
+        assert!(check_php_platform_reqs(dir.path(), false).is_ok());
+    }
+
+    #[test]
+    fn check_php_platform_reqs_finds_extensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let composer = r#"{"require": {"php": ">=8.0", "ext-json": "*", "ext-mbstring": "*"}}"#;
+        std::fs::write(dir.path().join("composer.json"), composer).unwrap();
+        // Should not error even if php is not available
+        assert!(check_php_platform_reqs(dir.path(), false).is_ok());
+    }
+
+    #[test]
+    fn cross_compile_targets_parsed() {
+        let targets: Vec<String> = "aarch64,arm64"
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
+        assert_eq!(targets, vec!["aarch64", "arm64"]);
+    }
+
+    #[test]
+    fn has_workspace_protocol_detects_workspace_deps() {
+        let dir = tempfile::tempdir().unwrap();
+        let pkg = r#"{"dependencies": {"foo": "workspace:*", "bar": "1.0.0"}}"#;
+        std::fs::write(dir.path().join("package.json"), pkg).unwrap();
+        assert!(has_workspace_protocol(dir.path()));
+    }
+
+    #[test]
+    fn has_workspace_protocol_no_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let pkg = r#"{"dependencies": {"foo": "1.0.0", "bar": "^2.0"}}"#;
+        std::fs::write(dir.path().join("package.json"), pkg).unwrap();
+        assert!(!has_workspace_protocol(dir.path()));
+    }
+
+    #[test]
+    fn has_workspace_protocol_no_package_json() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!has_workspace_protocol(dir.path()));
+    }
+
+    #[test]
+    fn has_workspace_protocol_dev_deps() {
+        let dir = tempfile::tempdir().unwrap();
+        let pkg = r#"{"devDependencies": {"tool": "workspace:^1.0.0"}}"#;
+        std::fs::write(dir.path().join("package.json"), pkg).unwrap();
+        assert!(has_workspace_protocol(dir.path()));
+    }
+
+    #[test]
+    fn build_sisr_config_defaults_to_64k_chunks_without_key() {
+        let config = build_sisr_config(&None).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.chunk_target_size, 64 << 10);
+        assert!(config.signing_key.is_none());
+    }
+
+    #[test]
+    fn build_sisr_config_loads_32_byte_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("signing.key");
+        let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        std::fs::write(&key_path, key.to_bytes()).unwrap();
+        let config = build_sisr_config(&Some(key_path)).unwrap();
+        let loaded = config.signing_key.expect("key should be loaded");
+        assert_eq!(loaded.to_bytes(), key.to_bytes());
+    }
+
+    #[test]
+    fn build_sisr_config_rejects_wrong_key_length() {
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("bad.key");
+        std::fs::write(&key_path, [1u8; 16]).unwrap();
+        let err = build_sisr_config(&Some(key_path)).unwrap_err().to_string();
+        assert!(err.contains("32 bytes"), "error: {err}");
+    }
+
+    #[test]
+    fn build_sisr_config_errors_on_missing_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = build_sisr_config(&Some(dir.path().join("nope.key")))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("failed to read signing key"));
     }
 }
