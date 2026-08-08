@@ -3,6 +3,7 @@ use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use hkdf::Hkdf;
 use rand::RngCore;
 use sha2::Sha256;
+use zeroize::{Zeroize, Zeroizing};
 
 const NONCE_LEN: usize = 12;
 const HKDF_SALT: &[u8] = b"xbin-encrypt-v1";
@@ -14,10 +15,10 @@ pub struct EncryptMetadata {
     pub tag_offset: usize,
 }
 
-pub fn hkdf_derive_key(signing_seed: &[u8; 32]) -> anyhow::Result<[u8; 32]> {
+pub fn hkdf_derive_key(signing_seed: &[u8; 32]) -> anyhow::Result<Zeroizing<[u8; 32]>> {
     let hk = Hkdf::<Sha256>::new(Some(HKDF_SALT), signing_seed);
-    let mut key = [0u8; 32];
-    hk.expand(HKDF_INFO, &mut key)
+    let mut key = Zeroizing::new([0u8; 32]);
+    hk.expand(HKDF_INFO, &mut key[..])
         .map_err(|e| anyhow::anyhow!("HKDF expand failed: {e}"))?;
     Ok(key)
 }
@@ -28,21 +29,21 @@ pub fn encrypt_payload(
 ) -> anyhow::Result<(Vec<u8>, EncryptMetadata)> {
     let key = hkdf_derive_key(signing_seed)?;
     let cipher =
-        Aes256Gcm::new_from_slice(&key).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
+        Aes256Gcm::new_from_slice(&key[..]).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
 
     let mut nonce_bytes = [0u8; NONCE_LEN];
     rand::thread_rng().fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from(nonce_bytes);
-
-    let ct_with_tag = cipher
+    let ciphertext = cipher
         .encrypt(&nonce, plaintext)
         .map_err(|e| anyhow::anyhow!("aes encrypt: {e}"))?;
-    let ciphertext = ct_with_tag;
-
     let metadata = EncryptMetadata {
         nonce: nonce_bytes,
         tag_offset: plaintext.len(),
     };
+    // `Nonce::from`, metadata assignment, and `encrypt` all copied the nonce bytes;
+    // scrub the local copy that is no longer needed.
+    nonce_bytes.zeroize();
 
     Ok((ciphertext, metadata))
 }
@@ -54,7 +55,7 @@ pub fn decrypt_payload(
 ) -> anyhow::Result<Vec<u8>> {
     let key = hkdf_derive_key(signing_seed)?;
     let cipher =
-        Aes256Gcm::new_from_slice(&key).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
+        Aes256Gcm::new_from_slice(&key[..]).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
     let nonce = Nonce::from(*nonce);
 
     let plaintext = cipher

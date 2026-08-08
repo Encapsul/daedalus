@@ -833,7 +833,7 @@ fn build_single_target(
     // Build deterministic tar (streaming: tar → zstd, no in-memory buffer)
     eprintln!("Creating payload...");
     let t0 = std::time::Instant::now();
-    let payload =
+    let mut payload =
         xbin_core::tar::create_tar_zstd(&rootfs).context("failed to create tar+zstd payload")?;
     let compress_ms = t0.elapsed().as_millis();
     if verbose {
@@ -841,6 +841,46 @@ fn build_single_target(
             "  compress: {compress_ms}ms, {} MB",
             payload.len() as f64 / 1_048_576.0
         );
+    }
+
+    // ── Encryption (v4) ──────────────────────────────────────────────────
+    // AES-256-GCM, key derived from the Ed25519 signing seed via HKDF-SHA256
+    // (same key the stub derives at runtime). `--encrypt` therefore requires
+    // `--key`; the seed is embedded in meta `crypto` (seed-hex + nonce-hex).
+    // The ciphertext replaces the payload before assembly so the footer's
+    // integrity hash and signature both cover the *encrypted* bytes.
+    let mut crypto_meta: Option<serde_json::Value> = None;
+    if encrypt {
+        if args.enable_sisr {
+            anyhow::bail!("--encrypt is not supported together with --enable-sisr");
+        }
+        let key_path = args.key.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "--encrypt requires --key to derive the AES-256-GCM key from the signing seed"
+            )
+        })?;
+        let seed_bytes = std::fs::read(key_path)
+            .with_context(|| format!("failed to read signing key at {}", key_path.display()))?;
+        let seed: [u8; 32] = seed_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("signing key must be 32 bytes"))?;
+        let (ciphertext, em) = xbin_core::encrypt::encrypt_payload(&payload, &seed)
+            .context("AES-256-GCM payload encryption failed")?;
+        if verbose {
+            eprintln!(
+                "  encrypt: {} -> {} bytes (AES-256-GCM, tag at {})",
+                payload.len(),
+                ciphertext.len(),
+                em.tag_offset
+            );
+        }
+        payload = ciphertext;
+        crypto_meta = Some(serde_json::json!({
+            "nonce_hex": hex::encode(em.nonce),
+            "tag_offset": em.tag_offset,
+            "signing_seed_hex": hex::encode(seed),
+        }));
     }
 
     // Build metadata
@@ -1070,6 +1110,7 @@ fn build_single_target(
             app_hash: Some(new_app_hash.clone()),
             rt_deps_hash: Some(new_rt_hash.clone()),
             update_url: args.update_url.clone(),
+            crypto: crypto_meta,
         },
         &bun_features,
     )?;
