@@ -1214,7 +1214,7 @@ fn build_single_target(
             author,
             description,
             license,
-            payload_format: Some("zstd-tar".to_string()),
+            payload_format: Some(if squashfs { "squashfs" } else { "zstd-tar" }.to_string()),
             seccomp,
             landlock,
             app_hash: Some(new_app_hash.clone()),
