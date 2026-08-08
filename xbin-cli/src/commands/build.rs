@@ -63,7 +63,125 @@ fn parse_target(target: &str) -> (String, String) {
     (arch.to_string(), os.to_string())
 }
 
+/// Resolved, target-independent build settings shared by every target in a
+/// multi-arch build. Kept separate from `BuildArgs` so the per-target build
+/// loop takes a single struct instead of a parameter list.
+struct BuildPlan {
+    verbose: bool,
+    app_dir: PathBuf,
+    runtime: detect::Runtime,
+    runtime_name: String,
+    isolation: String,
+    isolation_num: u32,
+    no_install: bool,
+    seccomp: bool,
+    landlock: bool,
+    encrypt: bool,
+    squashfs: bool,
+    version_info: Option<String>,
+    author: Option<String>,
+    description: Option<String>,
+    license: Option<String>,
+    env_file: Option<PathBuf>,
+    targets: Vec<Option<String>>,
+    outputs: Vec<PathBuf>,
+}
+
+/// Expand `--target`/`--cross-compile` (each comma-separated) plus the config
+/// default into the ordered list of targets to build. `None` means "host
+/// target". Duplicates are removed, first occurrence wins.
+fn resolve_targets(args: &BuildArgs, config_target: Option<&str>) -> Vec<Option<String>> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    let mut push = |t: &str| {
+        let t = t.trim();
+        if t.is_empty() || !seen.insert(t.to_string()) {
+            return;
+        }
+        out.push(if t == "host" {
+            None
+        } else {
+            Some(t.to_string())
+        });
+    };
+    if let Some(t) = &args.target {
+        for t in t.split(',') {
+            push(t);
+        }
+    } else if let Some(t) = config_target {
+        for t in t.split(',') {
+            push(t);
+        }
+    }
+    if let Some(c) = &args.cross_compile {
+        for t in c.split(',') {
+            push(t);
+        }
+    }
+    if out.is_empty() {
+        out.push(None);
+    }
+    out
+}
+
+/// Filename slug for a target, used to disambiguate multi-arch artifacts.
+/// `None` (host build) keeps the plain output name.
+fn target_slug(target: Option<&str>) -> Option<String> {
+    target.map(|t| t.replace(['/', '\\'], "-"))
+}
+
+/// One output path per target. A single target keeps the historical naming
+/// (`-o app.xbin` stays `app.xbin`); multiple targets get a `<name>-<target>`
+/// suffix so linux and windows artifacts never overwrite each other.
+fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<PathBuf> {
+    if targets.len() == 1 {
+        let t = targets[0].as_deref();
+        let is_windows_target = t.is_some_and(|t| parse_target(t).1 == "windows");
+        let out = if args
+            .output
+            .extension()
+            .is_some_and(|e| e == "xbin" || e == "exe")
+        {
+            args.output.clone()
+        } else {
+            args.output.join(if is_windows_target {
+                "app.exe"
+            } else {
+                "app.xbin"
+            })
+        };
+        return vec![out];
+    }
+
+    targets
+        .iter()
+        .map(|t| {
+            let slug = target_slug(t.as_deref()).unwrap_or_else(|| "host".to_string());
+            let name = args
+                .output
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "app".to_string());
+            let is_windows = t.as_deref().is_some_and(|t| parse_target(t).1 == "windows");
+            let ext = if is_windows { "exe" } else { "xbin" };
+            let dir = args
+                .output
+                .parent()
+                .map_or_else(|| "".into(), Path::to_path_buf);
+            dir.join(format!("{name}-{slug}.{ext}"))
+        })
+        .collect()
+}
+
 #[derive(Args)]
+#[command(after_help = "\
+Examples:
+  xbin build ./myapp                         Build for the host (default output: app.xbin)
+  xbin build ./myapp -o myapp.xbin           Build for the host, custom output name
+  xbin build ./myapp --target linux-arm64 -o myapp.xbin     Single cross-target artifact
+  xbin build ./myapp --target linux-x64,linux-arm64 -o out/app.xbin  Multi-arch: emits app-linux-x64.xbin + app-linux-arm64.xbin
+  xbin build ./myapp --target win-x64 -o out/app.xbin       Cross-OS: Windows PE stub (.exe)
+  xbin build ./myapp --dry-run                              Preview the multi-target plan without building")]
 pub struct BuildArgs {
     /// Path to the app directory
     #[arg(default_value = ".")]
@@ -241,43 +359,13 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // Load .xbin.toml config if present
     let config = load_config(&app_dir);
 
-    let target = args.target.or(config.build.target);
-
-    // Windows-targeted builds produce a `.exe`; everything else `.xbin`.
-    let is_windows_target = target
-        .as_deref()
-        .is_some_and(|t| parse_target(t).1 == "windows");
-    let output = if args
-        .output
-        .extension()
-        .is_some_and(|e| e == "xbin" || e == "exe")
-    {
-        args.output.clone()
-    } else {
-        args.output.join(if is_windows_target {
-            "app.exe"
-        } else {
-            "app.xbin"
-        })
-    };
-
-    // Apply config defaults (CLI flags override)
+    // Apply config defaults (CLI flags override). Clone the args fields so
+    // `&args` stays borrowable for the per-target loop below.
     let isolation = if args.isolation != "sandbox" {
-        args.isolation
+        args.isolation.clone()
     } else {
         config.build.isolation.unwrap_or_else(|| "sandbox".into())
     };
-
-    let seccomp = args.seccomp || config.build.seccomp.unwrap_or(false);
-    let landlock = args.landlock || config.build.landlock.unwrap_or(false);
-    let encrypt = args.encrypt || config.build.encrypt.unwrap_or(false);
-    let squashfs = args.squashfs || config.build.squashfs.unwrap_or(false);
-    let version_info = args.version_info.or(config.package.version);
-    let author = args.author.or(config.package.author);
-    let description = args.description.or(config.package.description);
-    let license = args.license.or(config.package.license);
-    let env_file = args.env_file.or(config.build.env_file.map(PathBuf::from));
-    let no_install = args.no_install || config.build.no_install.unwrap_or(false);
     let isolation_num = parse_isolation(&isolation)
         .with_context(|| format!("invalid --isolation value: '{isolation}'"))?;
 
@@ -285,107 +373,182 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let runtime = detect::detect_runtime(&app_dir).context(
         "could not detect runtime — supported: python, node, deno, java, ruby, dotnet, go, php, perl, binary",
     )?;
-    let runtime_name = runtime.name();
+    let runtime_name = runtime.name().to_string();
 
     eprintln!("Detected runtime: {runtime_name}");
 
-    // Dry run: print plan and exit
+    let targets = resolve_targets(&args, config.build.target.as_deref());
+    let outputs = output_paths(&args, &targets);
+    let plan = BuildPlan {
+        verbose,
+        app_dir,
+        runtime,
+        runtime_name,
+        isolation,
+        isolation_num,
+        no_install: args.no_install || config.build.no_install.unwrap_or(false),
+        seccomp: args.seccomp || config.build.seccomp.unwrap_or(false),
+        landlock: args.landlock || config.build.landlock.unwrap_or(false),
+        encrypt: args.encrypt || config.build.encrypt.unwrap_or(false),
+        squashfs: args.squashfs || config.build.squashfs.unwrap_or(false),
+        version_info: args.version_info.clone().or(config.package.version),
+        author: args.author.clone().or(config.package.author),
+        description: args.description.clone().or(config.package.description),
+        license: args.license.clone().or(config.package.license),
+        env_file: args
+            .env_file
+            .clone()
+            .or(config.build.env_file.map(PathBuf::from)),
+        targets,
+        outputs,
+    };
+
     if args.dry_run {
-        eprintln!("Dry run — would build:");
-        eprintln!("  App:       {}", app_dir.display());
-        eprintln!("  Output:    {}", output.display());
-        eprintln!("  Runtime:   {runtime_name}");
-        eprintln!("  Isolation: {isolation}");
-        eprintln!("  Seccomp:   {seccomp}");
-        eprintln!("  Landlock:  {landlock}");
-        eprintln!("  Encrypt:   {encrypt}");
-        eprintln!("  SquashFS:  {squashfs}");
-        if args.enable_sisr {
-            eprintln!("  SISR:      enabled (delta-indexed, <output>.manifest)");
-            match &args.update_url {
-                Some(url) => eprintln!("  Update URL: {url}"),
-                None => eprintln!(
-                    "  Update URL: (none — updates must pass a URL or set XBIN_UPDATE_URL)"
-                ),
-            }
+        for (target, output) in plan.targets.iter().zip(&plan.outputs) {
+            print_dry_run(&args, &plan, target.as_deref(), output);
         }
-        if let Some(ref v) = version_info {
-            eprintln!("  Version:   {v}");
-        }
-        if let Some(ref a) = author {
-            eprintln!("  Author:    {a}");
-        }
-        if let Some(ref d) = description {
-            eprintln!("  Desc:      {d}");
-        }
-        if let Some(ref l) = license {
-            eprintln!("  License:   {l}");
-        }
-        if let Some(ref t) = target {
-            eprintln!("  Target:    {t}");
-        }
-        if let Some(ref e) = env_file {
-            eprintln!("  Env file:  {}", e.display());
-        }
-        if no_install {
-            eprintln!("  No install: yes");
-        }
-        if args.update {
-            eprintln!("  Update:    yes (incremental)");
-        }
-        if args.tree_shake {
-            eprintln!("  Tree-shake: yes");
-        }
-        if args.minify {
-            eprintln!("  Minify:    yes");
-        }
-        if args.persist {
-            eprintln!("  Persist:   yes");
-        }
-        if let Some(port) = args.health_port {
-            eprintln!("  Health:    port {port}");
-        }
-        if args.otel_endpoint.is_some() {
-            eprintln!("  OTel:      {}", args.otel_endpoint.as_deref().unwrap());
-        }
-        if !args.cron.is_empty() {
-            eprintln!("  Cron:      {} task(s)", args.cron.len());
-        }
-        if !args.include.is_empty() {
-            for inc in &args.include {
-                eprintln!("  Include:   {}", inc.display());
-            }
-        }
-
-        // Detect package managers
-        let all_mgrs = pkgmgr::detect_all_pkgmgrs(&app_dir, runtime_name);
-        if all_mgrs.is_empty() {
-            eprintln!("  Pkg mgr:   (none)");
-        } else {
-            for mgr in &all_mgrs {
-                eprintln!("  Pkg mgr:   {}", mgr.name());
-                if !no_install {
-                    let cmd = mgr.install_cmd();
-                    eprintln!("  Install:   {}", cmd.join(" "));
-                }
-            }
-        }
-
-        // Estimate sizes
-        let file_count = count_files(&app_dir);
-        eprintln!("  Files:     {file_count}");
-
-        if verbose {
-            eprintln!("\nFile tree:");
-            print_tree(&app_dir, 2);
-        }
-
         return Ok(());
     }
 
+    // Build one artifact per target; each gets its own output path.
+    let mut json_results: Vec<serde_json::Value> = Vec::new();
+    for (target, output) in plan.targets.iter().zip(&plan.outputs) {
+        if let Some(result) = build_single_target(&args, &plan, target.clone(), output)? {
+            json_results.push(result);
+        }
+    }
+    if args.json {
+        let doc = if json_results.len() == 1 {
+            json_results.remove(0)
+        } else {
+            serde_json::Value::Array(json_results)
+        };
+        println!("{}", serde_json::to_string_pretty(&doc)?);
+    }
+    Ok(())
+}
+
+/// Print the dry-run plan for one target (or the host when `target` is None).
+fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, output: &Path) {
+    eprintln!("Dry run — would build:");
+    eprintln!("  App:       {}", plan.app_dir.display());
+    eprintln!("  Output:    {}", output.display());
+    eprintln!("  Runtime:   {}", plan.runtime_name);
+    eprintln!("  Isolation: {}", plan.isolation);
+    eprintln!("  Seccomp:   {}", plan.seccomp);
+    eprintln!("  Landlock:  {}", plan.landlock);
+    eprintln!("  Encrypt:   {}", plan.encrypt);
+    eprintln!("  SquashFS:  {}", plan.squashfs);
+    if args.enable_sisr {
+        eprintln!("  SISR:      enabled (delta-indexed, <output>.manifest)");
+        match &args.update_url {
+            Some(url) => eprintln!("  Update URL: {url}"),
+            None => {
+                eprintln!("  Update URL: (none — updates must pass a URL or set XBIN_UPDATE_URL)");
+            }
+        }
+    }
+    if let Some(ref v) = plan.version_info {
+        eprintln!("  Version:   {v}");
+    }
+    if let Some(ref a) = plan.author {
+        eprintln!("  Author:    {a}");
+    }
+    if let Some(ref d) = plan.description {
+        eprintln!("  Desc:      {d}");
+    }
+    if let Some(ref l) = plan.license {
+        eprintln!("  License:   {l}");
+    }
+    if let Some(t) = target {
+        eprintln!("  Target:    {t}");
+    }
+    if let Some(ref e) = plan.env_file {
+        eprintln!("  Env file:  {}", e.display());
+    }
+    if plan.no_install {
+        eprintln!("  No install: yes");
+    }
+    if args.update {
+        eprintln!("  Update:    yes (incremental)");
+    }
+    if args.tree_shake {
+        eprintln!("  Tree-shake: yes");
+    }
+    if args.minify {
+        eprintln!("  Minify:    yes");
+    }
+    if args.persist {
+        eprintln!("  Persist:   yes");
+    }
+    if let Some(port) = args.health_port {
+        eprintln!("  Health:    port {port}");
+    }
+    if args.otel_endpoint.is_some() {
+        eprintln!("  OTel:      {}", args.otel_endpoint.as_deref().unwrap());
+    }
+    if !args.cron.is_empty() {
+        eprintln!("  Cron:      {} task(s)", args.cron.len());
+    }
+    if !args.include.is_empty() {
+        for inc in &args.include {
+            eprintln!("  Include:   {}", inc.display());
+        }
+    }
+
+    // Detect package managers
+    let all_mgrs = pkgmgr::detect_all_pkgmgrs(&plan.app_dir, &plan.runtime_name);
+    if all_mgrs.is_empty() {
+        eprintln!("  Pkg mgr:   (none)");
+    } else {
+        for mgr in &all_mgrs {
+            eprintln!("  Pkg mgr:   {}", mgr.name());
+            if !plan.no_install {
+                let cmd = mgr.install_cmd();
+                eprintln!("  Install:   {}", cmd.join(" "));
+            }
+        }
+    }
+
+    // Estimate sizes
+    let file_count = count_files(&plan.app_dir);
+    eprintln!("  Files:     {file_count}");
+
+    if plan.verbose {
+        eprintln!("\nFile tree:");
+        print_tree(&plan.app_dir, 2);
+    }
+}
+
+/// Build a single `.xbin`/`.exe` artifact for `target` (host when `None`).
+///
+/// Returns a JSON result object when `--json` was requested, which the caller
+/// collects and prints (one object per target, or an array for multi-arch).
+fn build_single_target(
+    args: &BuildArgs,
+    plan: &BuildPlan,
+    target: Option<String>,
+    output: &PathBuf,
+) -> Result<Option<serde_json::Value>> {
+    let verbose = plan.verbose;
+    let app_dir = &plan.app_dir;
+    let runtime = plan.runtime;
+    let runtime_name = &plan.runtime_name;
+    let isolation_num = plan.isolation_num;
+    let no_install = plan.no_install;
+    let seccomp = plan.seccomp;
+    let landlock = plan.landlock;
+    let encrypt = plan.encrypt;
+    let squashfs = plan.squashfs;
+    let version_info = plan.version_info.clone();
+    let author = plan.author.clone();
+    let description = plan.description.clone();
+    let license = plan.license.clone();
+    let env_file = plan.env_file.clone();
+
     // ── Tree-shaking: remove unused node_modules packages ──────────────
     if args.tree_shake {
-        let removed = xbin_core::treeshake::prune_node_modules(&app_dir, verbose)
+        let removed = xbin_core::treeshake::prune_node_modules(app_dir, verbose)
             .context("tree-shaking failed")?;
         if verbose {
             eprintln!("  tree-shake: removed {removed} unused package(s)");
@@ -395,33 +558,32 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // ── Minification: shrink JS/TS/CSS ────────────────────────────────
     if args.minify {
         let minified =
-            xbin_core::minify::minify_app_dir(&app_dir, verbose).context("minification failed")?;
+            xbin_core::minify::minify_app_dir(app_dir, verbose).context("minification failed")?;
         if verbose {
             eprintln!("  minify: minified {minified} file(s)");
         }
     }
 
     // ── Compute hashes for incremental update ──────────────────────────
-    let new_app_hash = xbin_core::include::hash_app_files(&app_dir);
-    let new_rt_hash = xbin_core::include::hash_lock_file(&app_dir);
+    let new_app_hash = xbin_core::include::hash_app_files(app_dir);
+    let new_rt_hash = xbin_core::include::hash_lock_file(app_dir);
 
     // ── Intelligent build cache: skip rebuild if hash matches ──────────
     if args.use_cache {
-        let cache = xbin_core::paths::BuildCache::new(&app_dir, 50);
-        if let Some(cached) = cache.find(&new_app_hash) {
+        let cache = xbin_core::paths::BuildCache::new(app_dir, 50);
+        if let Some(cached) = cache.find(&new_app_hash, target.as_deref()) {
             if verbose {
                 eprintln!("[xbin] cache hit — reusing cached build");
             }
             std::fs::copy(&cached, &output).context("failed to copy cached .xbin to output")?;
             if args.json {
-                let result = serde_json::json!({
+                return Ok(Some(serde_json::json!({
                     "output": output.to_string_lossy(),
-                    "runtime": runtime_name,
+                    "runtime": runtime_name.as_str(),
                     "cache_hit": true,
-                });
-                println!("{}", serde_json::to_string_pretty(&result)?);
+                })));
             }
-            return Ok(());
+            return Ok(None);
         }
         if verbose {
             eprintln!("[xbin] cache miss — building from scratch");
@@ -429,7 +591,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     }
 
     if args.clear_cache {
-        let cache = xbin_core::paths::BuildCache::new(&app_dir, 50);
+        let cache = xbin_core::paths::BuildCache::new(app_dir, 50);
         cache.clear().ok();
         if verbose {
             eprintln!("  cache: cleared");
@@ -438,12 +600,12 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
     // ── Incremental update: skip rebuild if nothing changed ────────────
     if args.update && output.exists() {
-        if let Some((old_app_hash, old_rt_hash)) = read_existing_hashes(&output) {
+        if let Some((old_app_hash, old_rt_hash)) = read_existing_hashes(output) {
             if old_app_hash == new_app_hash && old_rt_hash == new_rt_hash {
                 if verbose {
                     eprintln!("[xbin] everything up to date, nothing to rebuild");
                 }
-                return Ok(());
+                return Ok(None);
             } else if old_rt_hash == new_rt_hash && old_app_hash != new_app_hash {
                 if verbose {
                     eprintln!("[xbin] app changed, reusing runtime layer (full layer reuse not yet supported in Rust CLI — doing full rebuild)");
@@ -456,19 +618,19 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
     // ── PHP platform extensions check ──────────────────────────────────
     if runtime_name == "php" && !no_install {
-        check_php_platform_reqs(&app_dir, verbose)?;
+        check_php_platform_reqs(app_dir, verbose)?;
     }
 
     // Detect pnpm workspace with workspace:* protocol (cannot use npm)
-    if pkgmgr::detect_node_pkgmgr(&app_dir) == Some(pkgmgr::PkgMgr::Npm)
-        && has_workspace_protocol(&app_dir)
+    if pkgmgr::detect_node_pkgmgr(app_dir) == Some(pkgmgr::PkgMgr::Npm)
+        && has_workspace_protocol(app_dir)
     {
         eprintln!("[xbin] warning: package.json uses `workspace:*` protocol (pnpm-specific)");
         eprintln!("  but pnpm is not detected. Create `pnpm-workspace.yaml` or add a lockfile.");
     }
 
     // Detect and install all package managers (primary + secondary)
-    let all_pkg_mgrs = pkgmgr::detect_all_pkgmgrs(&app_dir, runtime_name);
+    let all_pkg_mgrs = pkgmgr::detect_all_pkgmgrs(app_dir, runtime_name);
     for mgr in &all_pkg_mgrs {
         if verbose {
             eprintln!("Package manager: {}", mgr.name());
@@ -515,7 +677,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
             // For composer: auto-download composer.phar if not on PATH
             let (prog, extra_args) = if matches!(mgr, pkgmgr::PkgMgr::Composer) {
-                ensure_composer(&app_dir, verbose)?
+                ensure_composer(app_dir, verbose)?
             } else {
                 (cmd[0].to_string(), Vec::new())
             };
@@ -536,7 +698,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
             let status = std::process::Command::new(&prog)
                 .args(&full_args)
-                .current_dir(&app_dir)
+                .current_dir(app_dir)
                 .status()
                 .context(format!("failed to run `{}` — is it installed?", prog))?;
             if !status.success() {
@@ -565,7 +727,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
     // Copy app files
     let include_node_modules = true;
-    copy_dir_recursive_with(&app_dir, &rootfs.join("app"), include_node_modules)
+    copy_dir_recursive_with(app_dir, &rootfs.join("app"), include_node_modules)
         .context("failed to copy app files")?;
 
     // ── Include extra files ───────────────────────────────────────────
@@ -585,7 +747,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let embedded_interpreter_str = if let Some(ref interp) = args.embed_interpreter {
         Some(interp.clone())
     } else {
-        match runtime_name {
+        match runtime_name.as_str() {
             "python" => Some("python3".to_string()),
             "node" => Some("node".to_string()),
             "php" => Some("php".to_string()),
@@ -602,7 +764,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         }
 
         let interpreter_path = interpreter_name.clone();
-        match embed::embed_interpreter(&interpreter_path, &rootfs, Some(&app_dir), verbose) {
+        match embed::embed_interpreter(&interpreter_path, &rootfs, Some(app_dir), verbose) {
             Ok(count) => {
                 if verbose {
                     eprintln!("Embedded interpreter ({} files copied)", count);
@@ -687,7 +849,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         .map_or_else(|| "app".to_string(), |n| n.to_string_lossy().into());
 
     let mut env_map = serde_json::Map::new();
-    env_map.insert("XBIN_RUNTIME".into(), runtime_name.into());
+    env_map.insert("XBIN_RUNTIME".into(), runtime_name.clone().into());
     env_map.insert("XBIN_APP_NAME".into(), app_name.clone().into());
 
     // Load env-file (KEY=VALUE per line, # comments, blank lines)
@@ -810,7 +972,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         .collect();
 
     let entrypoint =
-        detect::resolve_entrypoint(&app_dir, runtime).unwrap_or_else(|| vec!["run".to_string()]);
+        detect::resolve_entrypoint(app_dir, runtime).unwrap_or_else(|| vec!["run".to_string()]);
 
     let mut bun_features = BunFeatures::default();
 
@@ -832,7 +994,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             args.interpreter_path.clone(),
         )
     } else {
-        match runtime_name {
+        match runtime_name.as_str() {
             "python" => (Some(EmbeddedInterpreter::Python3), None),
             "node" => (Some(EmbeddedInterpreter::Node), None),
             "php" => (Some(EmbeddedInterpreter::Php), None),
@@ -918,7 +1080,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let size = if args.enable_sisr {
         let sisr_config = build_sisr_config(&args.key)?;
         xbin_core::assembly::assemble_xbin_with_sisr(
-            &output,
+            output,
             &stub_bytes,
             &payload,
             &meta,
@@ -930,7 +1092,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         .context("failed to assemble xbin (SISR)")?
     } else {
         xbin_core::assembly::assemble_xbin(
-            &output,
+            output,
             &stub_bytes,
             &payload,
             &meta,
@@ -955,24 +1117,14 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
     // ── Store in build cache ──────────────────────────────────────────
     if args.use_cache {
-        let cache = xbin_core::paths::BuildCache::new(&app_dir, 50);
-        if cache.store(&new_app_hash, &output).is_ok() && verbose {
+        let cache = xbin_core::paths::BuildCache::new(app_dir, 50);
+        if cache
+            .store(&new_app_hash, target.as_deref(), output)
+            .is_ok()
+            && verbose
+        {
             eprintln!("  cache: stored build");
         }
-    }
-
-    if args.json {
-        let result = serde_json::json!({
-            "output": output.to_string_lossy(),
-            "size_bytes": size,
-            "runtime": runtime_name,
-            "format": "zstd-tar",
-            "signed": args.key.is_some() && !args.enable_sisr,
-            "encrypted": encrypt,
-            "sisr": args.enable_sisr,
-            "manifest_signed": args.enable_sisr && args.key.is_some(),
-        });
-        println!("{}", serde_json::to_string_pretty(&result)?);
     }
 
     // Binary signature is mutually exclusive with SISR in a single build:
@@ -984,11 +1136,23 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             if verbose {
                 eprintln!("Signing...");
             }
-            super::sign::sign_file(&output, key_path, !verbose)?;
+            super::sign::sign_file(output, key_path, !verbose)?;
         }
     }
 
-    Ok(())
+    if args.json {
+        return Ok(Some(serde_json::json!({
+            "output": output.to_string_lossy(),
+            "size_bytes": size,
+            "runtime": runtime_name,
+            "format": "zstd-tar",
+            "signed": args.key.is_some() && !args.enable_sisr,
+            "encrypted": encrypt,
+            "sisr": args.enable_sisr,
+            "manifest_signed": args.enable_sisr && args.key.is_some(),
+        })));
+    }
+    Ok(None)
 }
 
 /// Builds the SISR stage config from the CLI args. When `--key` is given the
@@ -1618,13 +1782,20 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
     let is_windows = target
         .as_deref()
         .is_some_and(|t| parse_target(t).1 == "windows");
-    let arch_suffix = match target.as_deref() {
-        Some(t) if t == "aarch64" || t == "arm64" => "aarch64-unknown-linux-musl",
-        Some(t) if t.contains("darwin") => t,
-        Some(t) if t.contains("linux") => t,
-        Some(t) if is_windows && parse_target(t).0 == "x86_64" => "x86_64-pc-windows-gnu",
-        Some(t) if t.contains('-') => t,
-        _ => "x86_64-unknown-linux-musl",
+
+    // Derive the stub build triple from the canonical (arch, os) pair so that
+    // legacy short forms (`linux-x64`, `aarch64`, `x64`) resolve to the real
+    // musl/PE/Mach-O triple on disk. The previous matching on
+    // `t.contains("linux")` left short forms as-is (`linux-x64`) and silently
+    // fell through to a stale `/usr/local/bin/xbin-stub`, because no matching
+    // stub directory existed.
+    let arch_suffix = match target.as_deref().map(parse_target) {
+        Some((arch, os)) if os == "linux" => format!("{arch}-unknown-linux-musl"),
+        Some((arch, os)) if os == "darwin" => format!("{arch}-apple-darwin"),
+        Some((arch, os)) if os == "windows" => format!("{arch}-pc-windows-gnu"),
+        // Full but unrecognized triples: assume a Linux musl build (common case).
+        Some((arch, _)) => format!("{arch}-unknown-linux-musl"),
+        None => String::from("x86_64-unknown-linux-musl"),
     };
 
     let stub_name = if is_windows {
@@ -1634,15 +1805,15 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
     };
     let candidates = [
         PathBuf::from(&target_dir)
-            .join(arch_suffix)
+            .join(&arch_suffix)
             .join("release")
             .join(stub_name),
         PathBuf::from("/tmp/xbin-stub-target")
-            .join(arch_suffix)
+            .join(&arch_suffix)
             .join("release")
             .join(stub_name),
         PathBuf::from("stub/target")
-            .join(arch_suffix)
+            .join(&arch_suffix)
             .join("release")
             .join(stub_name),
         PathBuf::from("/usr/local/bin/xbin-stub"),
@@ -1848,10 +2019,155 @@ mod tests {
     }
 
     #[test]
+    fn resolve_targets_comma_list_and_cross_compile() {
+        let args = BuildArgs {
+            target: Some("linux-x64,win-x64".into()),
+            cross_compile: Some("aarch64".into()),
+            ..default_build_args()
+        };
+        let targets = resolve_targets(&args, None);
+        assert_eq!(
+            targets,
+            vec![
+                Some("linux-x64".into()),
+                Some("win-x64".into()),
+                Some("aarch64".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_targets_defaults_to_host() {
+        let args = default_build_args();
+        assert_eq!(resolve_targets(&args, None), vec![None]);
+        assert_eq!(
+            resolve_targets(&args, Some("linux-x64")),
+            vec![Some("linux-x64".into())]
+        );
+    }
+
+    #[test]
+    fn resolve_targets_dedupes() {
+        let args = BuildArgs {
+            target: Some("win-x64".into()),
+            cross_compile: Some("win-x64,win-arm64".into()),
+            ..default_build_args()
+        };
+        let targets = resolve_targets(&args, None);
+        assert_eq!(
+            targets,
+            vec![Some("win-x64".into()), Some("win-arm64".into())]
+        );
+    }
+
+    #[test]
+    fn output_paths_single_target_keeps_name() {
+        let args = BuildArgs {
+            target: Some("linux-x64".into()),
+            ..default_build_args()
+        };
+        let targets = resolve_targets(&args, None);
+        let outputs = output_paths(&args, &targets);
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].file_name().unwrap(), "app.xbin");
+    }
+
+    #[test]
+    fn output_paths_single_windows_explicit_name_kept() {
+        let args = BuildArgs {
+            target: Some("win-x64".into()),
+            output: PathBuf::from("myapp.exe"),
+            ..default_build_args()
+        };
+        let targets = resolve_targets(&args, None);
+        let outputs = output_paths(&args, &targets);
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].file_name().unwrap(), "myapp.exe");
+    }
+
+    #[test]
+    fn output_paths_single_windows_dir_naming() {
+        let args = BuildArgs {
+            target: Some("win-x64".into()),
+            output: PathBuf::from("dist"),
+            ..default_build_args()
+        };
+        let targets = resolve_targets(&args, None);
+        let outputs = output_paths(&args, &targets);
+        assert_eq!(outputs[0].file_name().unwrap(), "app.exe");
+    }
+
+    #[test]
+    fn output_paths_multi_target_suffixes() {
+        let args = BuildArgs {
+            target: Some("linux-x64,linux-arm64,win-x64".into()),
+            ..default_build_args()
+        };
+        let targets = resolve_targets(&args, None);
+        let outputs = output_paths(&args, &targets);
+        let names: Vec<String> = outputs
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "app-linux-x64.xbin",
+                "app-linux-arm64.xbin",
+                "app-win-x64.exe"
+            ]
+        );
+    }
+
+    fn default_build_args() -> BuildArgs {
+        BuildArgs {
+            app: PathBuf::from("."),
+            output: PathBuf::from("app.xbin"),
+            target: None,
+            isolation: "sandbox".into(),
+            seccomp: false,
+            landlock: false,
+            encrypt: false,
+            squashfs: false,
+            key: None,
+            enable_sisr: false,
+            update_url: None,
+            no_install: false,
+            env_file: None,
+            env: Vec::new(),
+            define: Vec::new(),
+            version_info: None,
+            author: None,
+            description: None,
+            license: None,
+            dry_run: false,
+            update: false,
+            include: Vec::new(),
+            persist: false,
+            tree_shake: false,
+            minify: false,
+            health_port: None,
+            otel_endpoint: None,
+            otel_protocol: "grpc".into(),
+            cron: Vec::new(),
+            redetect: false,
+            embed_interpreter: None,
+            interpreter_path: None,
+            wasm: false,
+            wasmtime_path: None,
+            cross_compile: None,
+            use_cache: false,
+            clear_cache: false,
+            health_endpoint: None,
+            json: false,
+            quiet: false,
+        }
+    }
+
+    #[test]
     fn ensure_node_download_rejects_bad_arch() {
         let dir = tempfile::tempdir().unwrap();
         let result = ensure_node_download(dir.path().to_path_buf(), Some("riscv64"), false);
-        assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(
             err.contains("unsupported"),
