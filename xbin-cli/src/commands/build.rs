@@ -328,6 +328,14 @@ pub struct BuildArgs {
     #[arg(long)]
     pub wasmtime_path: Option<PathBuf>,
 
+    /// Enable WASI for WASM modules (WebAssembly System Interface)
+    #[arg(long)]
+    pub wasi: bool,
+
+    /// Enable WASM component model support
+    #[arg(long)]
+    pub component_model: bool,
+
     /// Cross-compile for target architectures (comma-separated, e.g., aarch64,arm64)
     #[arg(long)]
     pub cross_compile: Option<String>,
@@ -1124,6 +1132,19 @@ fn build_single_target(
     let entrypoint =
         detect::resolve_entrypoint(app_dir, runtime).unwrap_or_else(|| vec!["run".to_string()]);
 
+    let entrypoint = if runtime == detect::Runtime::Wasm && (args.wasi || args.component_model) {
+        let mut ep = entrypoint.clone();
+        if args.component_model {
+            ep.insert(1, "--component-model".into());
+        }
+        if args.wasi {
+            ep.insert(1, "--wasi".into());
+        }
+        ep
+    } else {
+        entrypoint
+    };
+
     let mut bun_features = BunFeatures::default();
 
     // Set embedded interpreter based on either explicit --embed-interpreter or auto-detection
@@ -1172,8 +1193,13 @@ fn build_single_target(
         if let Some(ref path) = args.wasmtime_path {
             bun_features.wasm.wasmtime_path = Some(path.display().to_string());
         }
+        bun_features.wasm.wasi = args.wasi;
+        bun_features.wasm.component_model = args.component_model;
         if verbose {
-            eprintln!("  wasm: enabled");
+            eprintln!(
+                "  wasm: enabled (wasi={}, component_model={})",
+                args.wasi, args.component_model
+            );
         }
     }
 
@@ -2396,6 +2422,8 @@ mod tests {
             interpreter_path: None,
             wasm: false,
             wasmtime_path: None,
+            wasi: false,
+            component_model: false,
             cross_compile: None,
             use_cache: false,
             clear_cache: false,
