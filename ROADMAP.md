@@ -198,6 +198,18 @@ worked.
 - [x] EDGE EMBED : multiples versions PHP → contraintes de version dans `check_php_platform_reqs`
 - [x] Fix sécurité : cron `@every` invalide → 3600s au lieu de 0 (plus de boucle CPU)
 - [x] Fix sécurité : niveau de compression par défaut 3 au lieu de 19 (`python.rs`)
+- [x] CT hardening : `verify_sha256` (stub) compare en temps constant (XOR
+      bit-mask) au lieu de `!=` early-exit → pas de fuite de préfixe sur le
+      digest SHA-256 (equivalent `subtle::ConstantTimeEq`, zero dépendance)
+- [x] v4 `--encrypt` opérationnel : chiffrement AES-256-GCM du payload (clé
+      dérivée de la seed Ed25519 via HKDF), métadonnées `crypto` (nonce/seed)
+      dans le JSON v4, `FLAG_ENCRYPTED` + footer v4, et hash/signature qui
+      couvrent le **ciphertext**. `--encrypt` exige `--key`.
+- [x] Alignement `trust` path : la CLI écrit/lit `~/.xbin/trusted-keys` (ou
+      `$XBIN_TRUSTED_DIR`), exactement comme le stub → corrige le
+      "trusted keys directory not found" sur les binaires signés/chiffrés.
+- [x] `hkdf_derive_key` (stub) : adapter au retour `Zeroizing<..>` du core
+      après le refactor zeroize (déblocage compile).
 
 ### ⏳ En cours / À faire
 
@@ -209,6 +221,16 @@ worked.
 - [ ] **DESIGN : supprimer `docs/planning/`** (toujours présent : HANDOFF.md, xbin-project.md, .excalidraw, .pdf)
 - [ ] **Zeroization des clés crypto** : `encrypt.rs`, `keygen.rs`, `sign.rs` — ajouter le crate `zeroize`, wrapper `Zeroizing<T>` (audit : HIGH-2)
 - [ ] **Symlinks** : ROADMAP.md, CODE_STYLE.md, RULES.md, CLAUDE.md, AGENTS.md → copies hors repo + symlinks à l'intérieur
+- [ ] **Stub DRY** : `stub/src/main.rs::trusted_keys_dir()` duplique
+      `xbin_core::paths::trusted_keys_dir()` (identique pour l'instant).
+      Factoriser pour appeler le core → édition du stub (security-critical,
+      ask-first). Pas bloquant tant que les deux implémentations restent
+      identiques.
+- [ ] `--encrypt` + `--enable-sisr` : actuellement rejeté
+      (`--encrypt is not supported together with --enable-sisr`). Implémenter
+      le chunkage du ciphertext + déchiffrement SISR dans le stub.
+- [ ] clig.dev : `xbin trust --json` pour une sortie machine-parseable
+      (`verify`/`inspect` l'ont déjà ; `trust` non). Facultatif.
 
 ### 🔒 Correctifs sécurité restants (audit)
 
