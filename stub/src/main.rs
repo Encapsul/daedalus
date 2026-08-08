@@ -12,6 +12,8 @@
 mod config;
 #[cfg(target_os = "linux")]
 mod landlock;
+#[cfg(target_os = "macos")]
+mod macos_sandbox;
 mod squashfs_extract;
 #[cfg(target_os = "windows")]
 mod win;
@@ -1127,9 +1129,9 @@ fn cache_dir() -> io::Result<PathBuf> {
 fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
     atomic_extract(cache_root, rootfs, |tmp_rootfs| {
         for blob in blobs {
-            let decoder = ruzstd::StreamingDecoder::new(io::Cursor::new(*blob))
+            let mut decoder = zstd::Decoder::new(io::Cursor::new(*blob))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("zstd: {e}")))?;
-            let mut archive = tar::Archive::new(decoder);
+            let mut archive = tar::Archive::new(&mut decoder);
             archive.set_preserve_permissions(true);
             archive.set_overwrite(true);
             archive.unpack(tmp_rootfs)?;
@@ -1384,6 +1386,13 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
         }
     }
 
+    #[cfg(target_os = "macos")]
+    {
+        if meta.landlock {
+            macos_sandbox::apply_sandbox(rootfs);
+        }
+    }
+
     // ── Platform-specific argv build + process launch ─────────────────────
     #[cfg(unix)]
     {
@@ -1614,6 +1623,13 @@ fn supervise_services(
                     "[xbin] warning: landlock not available, running without filesystem sandbox: {e}"
                 );
             }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if meta.landlock {
+            macos_sandbox::apply_sandbox(rootfs);
         }
     }
 

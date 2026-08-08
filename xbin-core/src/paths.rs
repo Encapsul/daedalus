@@ -12,13 +12,22 @@ pub fn format_size(bytes: u64) -> String {
 }
 
 pub fn cache_dir() -> PathBuf {
-    if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
-        PathBuf::from(xdg).join("xbin")
-    } else if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".cache").join("xbin")
-    } else {
-        PathBuf::from(".xbin").join("cache")
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            return PathBuf::from(local_app_data).join("xbin");
+        }
     }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
+            return PathBuf::from(xdg).join("xbin");
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(".cache").join("xbin");
+        }
+    }
+    PathBuf::from(".xbin").join("cache")
 }
 
 /// Simple hash-based build cache.

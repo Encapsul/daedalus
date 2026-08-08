@@ -72,20 +72,19 @@ worked.
 - [x] **Self-path** — `self_exe()` wrapper: readlink(`/proc/self/exe`) on
       Linux, `std::env::current_exe()` on macOS. Applied at all four sites
       (`run()`, `bin_path`, SISR update + remote). (`stub/src/main.rs:305`)
-- [ ] **Cache dir** — use `dirs::cache_dir()` (already a dep,
-      `stub/Cargo.toml:28`) → `~/Library/Caches/xbin/<hash>/rootfs/`.
-      (`cache_dir()` currently hardcodes `~/.cache/xbin`.)
+- [x] **Cache dir** — `dirs::cache_dir()` returns `~/Library/Caches/xbin` on
+      macOS; `xbin-core/src/paths.rs` has been updated to use `LOCALAPPDATA` on
+      Windows and `XDG_CACHE_HOME`/`~/.cache` on Linux. (`cache_dir()` now
+      handles all three platforms.)
 - [x] **cfg-gate Linux-only code** — `enter_userns`/`pivot_root_into`/
       `install_seccomp_denylist`/`write_proc` are `#[cfg(target_os = "linux")]`;
       the `use_pivot` blocks in `exec_app`/`supervise_services` and
       `enter_namespace_if_needed` are no-ops off-Linux; `mod landlock` is
       cfg-gated. macOS gets plain extract-to-cache + exec.
 - [x] **exec model** — `execvp` via libc exists on macOS; unchanged.
-- [ ] **Code-signing gotcha** — appending payload+footer invalidates a signed
-      Mach-O. Either re-sign after assembly (`codesign`) or embed the payload
-      in a Mach-O section. Implement the re-sign path and document it.
-      (x.bin is meant for unsigned distribution, but notarization must not
-      break.)
+- [x] **Code-signing gotcha** — re-sign after assembly using `codesign` in
+      `xbin-cli/src/commands/build.rs:sign_macos_binary()`. Ad-hoc signing by
+      default; distribution uses `XBIN_CODESIGN_IDENTITY` env var.
 - [x] **darwin runtimes** — `ensure_node_download` maps `(os, arch)` →
       nodejs.org tarballs incl. `node-v<ver>-darwin-{arm64,x64}.tar.gz`
       (gzip via `flate2`); `ensure_node` downloads into a per-target cache
@@ -95,11 +94,12 @@ worked.
       {aarch64,x86_64}-apple-darwin` (zig libSystem stubs) produces both
       Mach-O stubs; `find_stub` maps darwin triples to the stub triple.
       Cross-build assembled end-to-end on the Linux builder (Mach-O arm64).
-- [ ] **Sandbox** — seccomp/landlock have no macOS equivalent; evaluate
-      Seatbelt (`sandbox_exec`) as optional hardening. Note as a documented
-      gap in the security posture.
-- [ ] **Smoke test macOS** — Actions `macos-14` runner: pack hello-node, run,
-      HTTP 200.
+- [x] **Sandbox** — Seatbelt (`sandbox-exec`) evaluated as optional hardening.
+      `stub/src/macos_sandbox.rs` provides a baseline profile restricting
+      filesystem access to the rootfs and xbin cache. Applied when
+      `meta.landlock` is true on macOS.
+- [x] **Smoke test macOS** — CI job added to `.github/workflows/ci.yml`
+      (`macos` runner: `macos-latest`, builds CLI, runs hello-web smoke test).
 - [ ] **Cross-target dependency install** — `npm install` cannot run a target
       node on a foreign host (Linux builder + darwin target). For target
       builds, either skip install for zero-dep apps (current behavior) or
@@ -121,7 +121,7 @@ worked.
 - [x] **Stub build** — `x86_64-pc-windows-gnu` / `-msvc` (CLI already builds
       for windows-gnu, ROADMAP §3).
 - [x] **Output extension** — assemble to `app.exe` for PE targets.
-- [ ] **Smoke test Windows** — Actions `windows-latest` runner: pack, run,
+- [x] **Smoke test Windows** — Actions `windows-latest` runner: pack, run,
       HTTP 200.
 
 ## Phase 4 — Multi-target CLI (the enabler for "run everywhere")
@@ -132,8 +132,8 @@ worked.
       (`find_stub`), runtime download (`ensure_node`), and interpreter embed.
       Short OS aliases now include `linux-x64`/`linux-arm64`; remaining:
       `--cross-compile` comma list.
-- [ ] **Multi-arch output** — `xbin build --target linux-x64,linux-arm64`
-      emits one artifact per target.
+- [x] **Multi-arch output** — `xbin build --target linux-x64,linux-arm64`
+      emits one artifact per target (see `output_paths()` in `build.rs`).
 - [x] **Per-target stub selection** — `find_stub` keyed by target maps to the
       per-(os,arch) stub triple (ELF musl / Mach-O darwin / PE windows).
 - [x] **Per-target runtimes** — `ensure_node_download` matrix keyed by (os,

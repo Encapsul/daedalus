@@ -1,0 +1,85 @@
+x.bin Project Environment Details
+==================================
+
+Working Directory: /workspaces/x.bin
+Workspace Root: /workspaces/x.bin
+Current Time: 2026-08-08T14:45:00+00:00
+
+---
+
+Project Architecture:
+- xbin-core: Library (~4000 lines) - format, compression, runtime detection, encryption, assembly
+- xbin-cli: CLI (2331 lines in build.rs alone) - commands: build, run, sign, keygen, verify, inspect, doctor, scan, publish, upgrade, clean, completion
+- stub: Launcher (2455 lines) - Linux-only ELF self-extracting launcher (only crate with unsafe)
+
+---
+
+.xbin Format:
+- Layout: [stub][payload][metadata][footer]
+- Magic: XBIN\x01, Footer magic: 0xBEEF_CAFE
+- Integrity: SHA-256(payload || meta_bytes)
+- Versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs)
+
+---
+
+Supported Runtimes:
+Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP (Laravel/Octane), Perl, Hugo, Binary (ELF/PE)
+
+---
+
+Critical Dependencies:
+zstd (multithreaded compression + decompression with zstdmt), backhand (squashfs extraction), tar/flate2 (archives)
+ed25519-dalek + zeroize (Ed25519 keys with zeroization)
+aes-gcm + hkdf (AES-256-GCM encryption)
+dirs (standard directories), human-panic (panic handler)
+
+---
+
+Phase 0 - Security Issues (FIXED):
+1. PATH injection via std::env::set_var("PATH", ...) - FIXED: use Command::env() for isolated env vars - xbin-cli/src/commands/build.rs:665
+2. Stale stub bug - FIXED: removed fallback to /usr/local/bin/xbin-stub, prefer fresh builds - xbin-cli/src/commands/build.rs:1860
+3. DEFAULT_REGISTRY placeholder "xbin.example.com" - FIXED: made registry URL mandatory - xbin-cli/src/commands/publish.rs:5
+4. HKDF salt fixed "xbin-encrypt-v1" - FIXED: random per-encryption salt with encryption_salt_hex field - xbin-core/src/encrypt.rs:9
+5. human_panic exposes file/line - FIXED: basic setup_panic!() to hide source locations - xbin-cli/src/main.rs:108
+6. Duplication of trusted_keys_dir() functions - RESOLVED: consolidated to xbin_core::paths::trusted_keys_dir() - stub/src/main.rs:976 vs xbin-core/src/paths.rs:193
+
+---
+
+Phase Status:
+- Phase 0 (security): ✅ DONE - All critical issues fixed and verified (fmt, clippy, tests pass)
+- Phase 1 (linux-arm64): ✅ DONE (2026-08-07) - Verified end-to-end with QEMU
+- Phase 2 (macOS): ✅ DONE - Self-path, cache dir (dirs::cache_dir), runtimes, stub build, code-signing (codesign), Seatbelt sandbox, smoke test CI
+- Phase 3 (Windows): ✅ DONE - Self-path (GetModuleFileNameW), cache dir (LOCALAPPDATA), no-exec (CreateProcess), cfg-gate, win-x64 runtime, stub build, output extension (.exe), smoke test CI
+- Phase 4 (Multi-target CLI): ✅ DONE - One --target syntax, multi-arch output (output_paths), per-target stub selection, per-target runtimes, per-platform file naming
+- Phase 5 (Performance): ✅ DONE (partial) - Cold start improved: replaced ruzstd (single-thread) with zstd + zstdmt (multithreaded decompression)
+- Phase 6 (CI matrix): 🟡 PARTIAL - Added macOS and Windows jobs to ci.yml; release.yml needs QEMU boot test for linux-aarch64
+- Phase 7 (Feature backlog): ⚠️ BACKLOG - Electron, SISR remote cache, sandboxing RUN 4/5, WASM, remove docs/planning/, symlinks
+
+---
+
+Critical Security Issues (All Resolved - Committed):
+1. PATH injection - FIXED: isolated env vars via Command::env() instead of global mutation
+2. Stale stub embedding - FIXED: removed fallback, warns if xbin-stub on PATH
+3. Static HKDF salt - FIXED: random per-encryption salt via gen_random()
+4. human_panic info disclosure - FIXED: basic setup_panic!() to hide source locations
+5. DEFAULT_REGISTRY non-functional placeholder - FIXED: registry URL mandatory, rejects placeholder
+6. Code duplication (trusted_keys_dir) - RESOLVED: consolidated to xbin_core::paths::trusted_keys_dir()
+
+---
+
+Technical Constraints:
+- Uses vfat filesystem (no exec bit)
+- Cargo target dir: /tmp/xbin-stub-target (.cargo/config.toml)
+- Build artifacts cannot live in repo tree
+- PATH: tools in ~/.local/bin (prefix with export PATH)
+- musl target for stub: --target $(uname -m)-unknown-linux-musl
+- CI runs clippy per-crate (not workspace-wide)
+- Verification loop MANDATORY before finishing changes
+
+---
+
+Build & Test Commands:
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test --workspace
+cargo build --release

@@ -3330,7 +3330,6 @@ dependencies = [
  "hkdf",
  "libc",
  "rand 0.8.7",
- "ruzstd",
  "serde",
  "serde_json",
  "sha2",
