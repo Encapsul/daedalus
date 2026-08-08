@@ -64,10 +64,15 @@ pub fn embed_interpreter(
 
     let mut count = 0;
 
-    // Copy the interpreter binary to rootfs/usr/bin/
+    // Copy the interpreter binary to rootfs/usr/bin/, keeping the source
+    // filename so a Windows `node.exe` lands as `node.exe` (CreateProcessW
+    // resolves the bare name via PATH and appends `.exe`).
     let bin_dir = rootfs.join("usr/bin");
     fs::create_dir_all(&bin_dir)?;
-    let dest_bin = bin_dir.join(interpreter);
+    let dest_name = interp_path
+        .file_name()
+        .unwrap_or_else(|| std::ffi::OsStr::new(interpreter));
+    let dest_bin = bin_dir.join(dest_name);
     fs::copy(&interp_path, &dest_bin)?;
     count += 1;
 
@@ -143,11 +148,18 @@ pub fn embed_interpreter(
 
 /// Find the interpreter binary on the system PATH.
 fn find_interpreter(name: &str) -> Option<PathBuf> {
-    let output = Command::new("which").arg(name).output().ok()?;
-    if output.status.success() {
-        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !path.is_empty() {
-            return Some(PathBuf::from(path));
+    // Cross-compilation: the target runtime is staged as `<name>.exe` in a
+    // tools dir prepended to PATH (e.g. `node.exe` for a win-x64 build), so
+    // try the suffixed form first — it wins over any host interpreter and is
+    // a no-op miss on POSIX hosts that have no `.exe` binaries on PATH.
+    let candidates = [format!("{name}.exe"), name.to_string()];
+    for candidate in candidates {
+        let output = Command::new("which").arg(&candidate).output().ok()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Some(PathBuf::from(path));
+            }
         }
     }
     None
