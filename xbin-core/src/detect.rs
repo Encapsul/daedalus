@@ -196,7 +196,7 @@ fn detect_hugo(dir: &Path) -> bool {
 }
 
 fn detect_binary(dir: &Path) -> bool {
-    let mut elf_count = 0;
+    let mut native_count = 0;
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return false,
@@ -206,22 +206,23 @@ fn detect_binary(dir: &Path) -> bool {
         if !path.is_file() {
             continue;
         }
-        if std::fs::File::open(&path)
-            .ok()
-            .and_then(|mut f| {
-                let mut buf = [0u8; 4];
-                f.read_exact(&mut buf).ok()?;
-                Some(&buf[..] == b"\x7fELF")
-            })
-            .unwrap_or(false)
-        {
-            elf_count += 1;
-            if elf_count > 1 {
+        if is_native_binary(&path) {
+            native_count += 1;
+            if native_count > 1 {
                 return false;
             }
         }
     }
-    elf_count == 1
+    native_count == 1
+}
+
+/// True if `path` is an ELF or PE (`.exe`) executable by magic bytes.
+fn is_native_binary(path: &Path) -> bool {
+    let mut magic = [0u8; 4];
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut magic))
+        .map(|()| &magic[..] == b"\x7fELF" || (magic[0] == b'M' && magic[1] == b'Z'))
+        .unwrap_or(false)
 }
 
 /// Resolve the entrypoint argv for a detected runtime.
@@ -250,8 +251,8 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             ])
         }
         Runtime::Go | Runtime::Binary => {
-            let elf = find_elf(app_dir)?;
-            Some(vec![format!("/app/{}", elf)])
+            let bin = find_native_binary(app_dir)?;
+            Some(vec![format!("/app/{}", bin)])
         }
         Runtime::Hugo => Some(vec!["hugo".into(), "server".into()]),
         Runtime::Java => {
@@ -368,17 +369,13 @@ fn find_first_ext(dir: &Path, ext: &str) -> Option<String> {
     None
 }
 
-/// Find a single ELF executable in the directory.
-fn find_elf(dir: &Path) -> Option<String> {
+/// Find the single native entry binary (ELF or PE `.exe`) in `dir`.
+fn find_native_binary(dir: &Path) -> Option<String> {
     let entries = std::fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {
         let p = entry.path();
-        if p.is_file() {
-            let mut buf = [0u8; 4];
-            if std::fs::File::open(&p).ok()?.read_exact(&mut buf).is_ok() && &buf[..] == b"\x7fELF"
-            {
-                return p.file_name()?.to_str().map(String::from);
-            }
+        if p.is_file() && is_native_binary(&p) {
+            return p.file_name()?.to_str().map(String::from);
         }
     }
     None
@@ -498,5 +495,24 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("config.toml"), "[server]").unwrap();
         assert_eq!(detect_runtime(dir.path()), Some(Runtime::Hugo));
+    }
+
+    #[test]
+    fn detect_pe_exe_as_binary() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("app.exe"), b"MZ\x90\x00").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Binary));
+        assert_eq!(
+            resolve_entrypoint(dir.path(), Runtime::Binary),
+            Some(vec!["/app/app.exe".into()])
+        );
+    }
+
+    #[test]
+    fn pe_and_elf_is_not_binary() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("app.exe"), b"MZ\x90\x00").unwrap();
+        std::fs::write(dir.path().join("app2"), b"\x7fELF\x02\x01").unwrap();
+        assert_ne!(detect_runtime(dir.path()), Some(Runtime::Binary));
     }
 }

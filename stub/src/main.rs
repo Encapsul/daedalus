@@ -13,11 +13,15 @@ mod config;
 #[cfg(target_os = "linux")]
 mod landlock;
 mod squashfs_extract;
+#[cfg(target_os = "windows")]
+mod win;
 
 use serde::Deserialize;
+#[cfg(unix)]
 use std::ffi::CString;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
+#[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::exit;
@@ -27,7 +31,8 @@ use xbin_core::sisr::resilience::{backup_path_for, create_backup, discard_backup
 
 /// Standard library search paths for `LD_LIBRARY_PATH`.
 /// Kept in sync with cli/xbin/build.py `LD_LIBRARY_PATH` construction.
-#[cfg(target_arch = "x86_64")]
+/// Linux-only: Windows loads DLLs from the exe dir / PATH / System32.
+#[cfg(all(unix, target_arch = "x86_64"))]
 const LD_PATHS: &[&str] = &[
     "lib",
     "lib64",
@@ -35,7 +40,7 @@ const LD_PATHS: &[&str] = &[
     "usr/lib64",
     "usr/lib/x86_64-linux-gnu",
 ];
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(unix, target_arch = "aarch64"))]
 const LD_PATHS: &[&str] = &[
     "lib",
     "lib64",
@@ -43,9 +48,9 @@ const LD_PATHS: &[&str] = &[
     "usr/lib64",
     "usr/lib/aarch64-linux-gnu",
 ];
-#[cfg(target_arch = "x86")]
+#[cfg(all(unix, target_arch = "x86"))]
 const LD_PATHS: &[&str] = &["lib", "usr/lib", "usr/lib/i386-linux-gnu"];
-#[cfg(target_arch = "arm")]
+#[cfg(all(unix, target_arch = "arm"))]
 const LD_PATHS: &[&str] = &["lib", "usr/lib", "usr/lib/arm-linux-gnueabihf"];
 
 /// Absolute forms of `LD_PATHS`, used after `pivot_root` where the process
@@ -53,6 +58,7 @@ const LD_PATHS: &[&str] = &["lib", "usr/lib", "usr/lib/arm-linux-gnueabihf"];
 /// / `LD_LIBRARY_PATH` entries against the current directory — with `cwd`
 /// set to `/app` that misses `/usr/bin`, so pivot mode must use `/`-prefixed
 /// entries (they resolve inside the new root).
+#[cfg(unix)]
 const LD_PATHS_ABS: &[&str] = &[
     "/lib",
     "/lib64",
@@ -87,8 +93,12 @@ struct Metadata {
     #[serde(default)]
     isolation: u8,
     #[serde(default)]
+    // Read only in the Linux seccomp/landlock setup path; unused elsewhere.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     seccomp: bool,
     #[serde(default)]
+    // Read only in the Linux landlock setup path; unused elsewhere.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     landlock: bool,
     #[serde(default)]
     services: Vec<Service>,
@@ -442,6 +452,9 @@ fn mark_pending_after_update(updated: &Path, store: &HealthStore) -> io::Result<
 enum ChildStatus {
     StillRunning,
     Exited(i32),
+    // Constructed only by the unix waitpid path; matched but never
+    // constructed on Windows.
+    #[cfg_attr(windows, allow(dead_code))]
     Signaled(i32),
 }
 
@@ -453,6 +466,7 @@ enum ChildStatus {
 /// - exits non-zero or dies by signal → failure: record it (quarantining
 ///   after `max_attempts`), restore the pre-update binary from the snapshot,
 ///   and re-exec it so the user is running a known-good version.
+#[cfg(unix)]
 fn supervised_launch(
     meta: &Metadata,
     rootfs: &Path,
@@ -515,7 +529,72 @@ fn supervised_launch(
     }
 }
 
+/// Windows health gate: spawn the app with CreateProcess and poll it for
+/// `policy.timeout_ms`, with the same confirm-vs-rollback semantics as the
+/// unix `fork`/`waitpid` version.
+#[cfg(windows)]
+fn supervised_launch(
+    meta: &Metadata,
+    rootfs: &Path,
+    app_config: &config::AppConfig,
+    store: &HealthStore,
+    version_id: &str,
+    bin_path: &Path,
+) -> io::Result<()> {
+    let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
+    let policy = health_policy();
+
+    let child = if meta.services.is_empty() {
+        spawn_app_windows(meta, rootfs, app_config)?
+    } else {
+        // Service supervisors share the app spawn path; Windows service
+        // supervision inside a health gate is not yet supported.
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "health-gated service supervision is not supported on Windows",
+        ));
+    };
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(policy.timeout_ms);
+    let status = loop {
+        match win::try_wait(&child)? {
+            Some(code) if code == 0 => break ChildStatus::Exited(0),
+            Some(code) => break ChildStatus::Exited(code),
+            None if std::time::Instant::now() >= deadline => break ChildStatus::StillRunning,
+            None => std::thread::sleep(std::time::Duration::from_millis(50)),
+        }
+    };
+
+    match status {
+        ChildStatus::StillRunning | ChildStatus::Exited(0) => {
+            store.confirm(version_id)?;
+            let _ = discard_backup(&backup_path_for(bin_path));
+            if verbose {
+                eprintln!("[xbin] health gate: version {version_id} healthy");
+            }
+            let code = win::wait(&child)?;
+            exit(code);
+        }
+        ChildStatus::Exited(code) => {
+            eprintln!("[xbin] health gate: version {version_id} failed (exit {code})");
+            let quarantined = store.record_failure(version_id, policy.max_attempts)?;
+            if quarantined {
+                eprintln!(
+                    "[xbin] version {version_id} quarantined after {} failed launches",
+                    policy.max_attempts
+                );
+            }
+            rollback_to_previous(bin_path, verbose)
+        }
+        ChildStatus::Signaled(code) => {
+            eprintln!("[xbin] health gate: version {version_id} failed (exit {code})");
+            rollback_to_previous(bin_path, verbose)
+        }
+    }
+}
+
 /// Polls `pid` with `WNOHANG` until it exits or `timeout_ms` elapses.
+#[cfg(unix)]
 fn wait_for_child_status(pid: i32, timeout_ms: u64) -> io::Result<ChildStatus> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     loop {
@@ -545,6 +624,7 @@ fn wait_for_child_status(pid: i32, timeout_ms: u64) -> io::Result<ChildStatus> {
 }
 
 /// Blocks until `pid` exits and returns its process exit code.
+#[cfg(unix)]
 fn wait_child_exit_code(pid: i32) -> io::Result<i32> {
     let mut status: i32 = 0;
     // SAFETY: waitpid(2) blocks until `pid` exits; status is filled by the
@@ -556,6 +636,7 @@ fn wait_child_exit_code(pid: i32) -> io::Result<i32> {
     Ok(decode_exit_status(status))
 }
 
+#[cfg(unix)]
 fn decode_exit_status(status: i32) -> i32 {
     if libc::WIFSIGNALED(status) {
         128 + libc::WTERMSIG(status)
@@ -593,6 +674,7 @@ fn rollback_to_previous(bin_path: &Path, verbose: bool) -> io::Result<()> {
 }
 
 /// Re-execs the current stub binary (a `.xbin` file) with the original argv.
+#[cfg(unix)]
 fn exec_again(bin_path: &Path) -> io::Result<()> {
     let prog = cstr(bin_path.as_os_str().as_bytes())?;
     let mut argv: Vec<CString> = Vec::new();
@@ -608,6 +690,17 @@ fn exec_again(bin_path: &Path) -> io::Result<()> {
         libc_execvp(prog.as_ptr(), argv_ptrs.as_ptr());
     }
     Err(io::Error::last_os_error())
+}
+
+/// Re-runs the current stub binary as a detached child and exits (Windows has
+/// no exec: the launcher cannot replace its own process image).
+#[cfg(windows)]
+fn exec_again(bin_path: &Path) -> io::Result<()> {
+    let argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    let env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
+    let child = win::spawn(bin_path, &argv, &env, None, true)?;
+    let _ = child.pid;
+    exit(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -990,13 +1083,27 @@ fn hex_decode(s: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
+/// Platform cache root for extracted rootfs trees.
+/// Linux: `$XDG_CACHE_HOME/xbin` or `~/.cache/xbin`.
+/// macOS: `~/Library/Caches/xbin` (`dirs::cache_dir()`).
+/// Windows: `%LOCALAPPDATA%\xbin`.
 fn cache_dir() -> io::Result<PathBuf> {
-    if let Some(d) = std::env::var_os("XDG_CACHE_HOME") {
-        return Ok(PathBuf::from(d).join("xbin"));
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(d) = std::env::var_os("XDG_CACHE_HOME") {
+            return Ok(PathBuf::from(d).join("xbin"));
+        }
+        let home = std::env::var_os("HOME")
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME not set"))?;
+        Ok(PathBuf::from(home).join(".cache").join("xbin"))
     }
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME not set"))?;
-    Ok(PathBuf::from(home).join(".cache").join("xbin"))
+    #[cfg(not(target_os = "linux"))]
+    {
+        let dir = dirs::cache_dir().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "no cache directory available")
+        })?;
+        Ok(dir.join("xbin"))
+    }
 }
 
 fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
@@ -1075,35 +1182,41 @@ fn setup_env(
 ) -> io::Result<std::collections::BTreeMap<String, String>> {
     let mut env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
 
-    if use_pivot {
-        env.insert("LD_LIBRARY_PATH".into(), LD_PATHS_ABS.join(":"));
-    } else {
-        let mut paths: Vec<String> = LD_PATHS
-            .iter()
-            .map(|p| rootfs.join(p))
-            .filter(|p| p.exists())
-            .map(|p| p.to_string_lossy().into_owned())
-            .collect();
-        if let Some(existing) = env.get("LD_LIBRARY_PATH") {
-            if !existing.is_empty() {
-                // Append existing entries, deduplicated to avoid exceeding
-                // the environment variable length limit.
-                let existing_entries: Vec<String> = existing
-                    .split(':')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                for entry in &existing_entries {
-                    if !paths.iter().any(|p| p == entry) {
-                        paths.push(entry.clone());
+    // LD_LIBRARY_PATH only matters for ELF dynamic linking; on macOS/Windows
+    // the OS loader resolves system libs on its own.
+    #[cfg(unix)]
+    {
+        if use_pivot {
+            env.insert("LD_LIBRARY_PATH".into(), LD_PATHS_ABS.join(":"));
+        } else {
+            let mut paths: Vec<String> = LD_PATHS
+                .iter()
+                .map(|p| rootfs.join(p))
+                .filter(|p| p.exists())
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect();
+            if let Some(existing) = env.get("LD_LIBRARY_PATH") {
+                if !existing.is_empty() {
+                    // Append existing entries, deduplicated to avoid exceeding
+                    // the environment variable length limit.
+                    let existing_entries: Vec<String> = existing
+                        .split(':')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    for entry in &existing_entries {
+                        if !paths.iter().any(|p| p == entry) {
+                            paths.push(entry.clone());
+                        }
                     }
                 }
             }
+            env.insert("LD_LIBRARY_PATH".into(), paths.join(":"));
         }
-        env.insert("LD_LIBRARY_PATH".into(), paths.join(":"));
     }
 
     // PATH: bundled binaries (usr/bin, bin, usr/local/bin) before system PATH.
+    // join_paths uses the platform separator (`:` on unix, `;` on Windows).
     if use_pivot {
         env.insert("PATH".into(), BIN_PATHS_ABS.join(":"));
     } else {
@@ -1118,7 +1231,11 @@ fn setup_env(
                 paths.push(existing.clone());
             }
         }
-        env.insert("PATH".into(), paths.join(":"));
+        // The existing PATH string is itself a single segment containing the
+        // separator, so `join_paths` would reject it; use the platform
+        // separator directly (`:` unix, `;` Windows).
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        env.insert("PATH".into(), paths.join(sep));
     }
 
     if let Some(cwd) = orig_cwd {
@@ -1159,6 +1276,7 @@ fn make_resolve<'a>(rootfs: &'a Path, use_pivot: bool) -> impl Fn(&str) -> PathB
 }
 
 /// Convert a `BTreeMap<String,String>` to a null-terminated `Vec<CString>` for execve.
+#[cfg(unix)]
 fn env_to_cstrings(env: &std::collections::BTreeMap<String, String>) -> io::Result<Vec<CString>> {
     env.iter()
         .map(|(k, v)| cstr(format!("{k}={v}").as_bytes()))
@@ -1166,14 +1284,15 @@ fn env_to_cstrings(env: &std::collections::BTreeMap<String, String>) -> io::Resu
 }
 
 /// Check if an executable path exists and is executable.
-/// Searches PATH directories when given a bare name (no `/`).
+/// Searches PATH directories when given a bare name (no directory component).
+#[cfg(unix)]
 fn is_executable(prog: &[u8]) -> bool {
     if prog.is_empty() {
         return false;
     }
     let path = String::from_utf8_lossy(prog);
     // If it's an absolute or relative path with a directory component, check it directly.
-    if path.contains('/') {
+    if path.contains('/') || path.contains('\\') {
         return check_executable(&path);
     }
     // Otherwise search PATH directories (mirrors execvp behavior).
@@ -1216,12 +1335,13 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
         ));
     }
 
+    #[cfg(unix)]
     let orig_cwd = std::env::current_dir().ok();
     #[cfg(target_os = "linux")]
     let use_pivot = meta.isolation >= 2;
     // No pivot_root/namespaces outside Linux: extract + exec with rootfs
     // paths baked into LD_LIBRARY_PATH / PATH.
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(all(unix, not(target_os = "linux")))]
     let use_pivot = false;
 
     maybe_start_health(meta);
@@ -1246,8 +1366,82 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
         }
     }
 
-    let resolve = make_resolve(rootfs, use_pivot);
+    // ── Platform-specific argv build + process launch ─────────────────────
+    #[cfg(unix)]
+    {
+        let (prog, direct_exec, interpreter_name) = resolve_entrypoint(meta, rootfs, use_pivot);
+        let resolve = make_resolve(rootfs, use_pivot);
+        let prog_c = cstr(prog.as_os_str().as_bytes())?;
+        let prog_path_bytes = prog.as_os_str().as_bytes();
 
+        if !is_executable(prog_path_bytes) {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "[xbin] error: interpreter '{}' not found (tried: {})",
+                    interpreter_name,
+                    prog.display()
+                ),
+            ));
+        }
+
+        let mut argv: Vec<CString> = Vec::new();
+        if direct_exec {
+            argv.push(prog_c.clone());
+            for a in &meta.entrypoint[1..] {
+                argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
+            }
+        } else {
+            if !is_executable(interpreter_name.as_bytes()) {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("[xbin] error: interpreter '{}' not found", interpreter_name),
+                ));
+            }
+            argv.push(cstr(interpreter_name.as_bytes())?);
+            for a in &meta.entrypoint[1..] {
+                argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
+            }
+        }
+        for a in std::env::args_os().skip(1) {
+            argv.push(cstr(a.as_bytes())?);
+        }
+
+        let env = setup_env(meta, rootfs, use_pivot, orig_cwd.as_deref(), app_config)?;
+
+        if let Some(cwd) = &meta.cwd {
+            let dir = resolve(cwd);
+            std::env::set_current_dir(&dir).ok();
+        }
+        // Set environment variables so execvp inherits them.
+        for (k, v) in &env {
+            std::env::set_var(k, v);
+        }
+
+        let argv_ptrs = to_ptr_vec(&argv);
+        // SAFETY: execvp(3) replaces the current process. prog_c is a valid
+        // CString, argv_ptrs is null-terminated. We never return on success.
+        // execvp searches PATH for bare command names (e.g. "python3") and
+        // uses absolute paths as-is (e.g. "/app/app.py"). Environment is
+        // inherited from the current process after set_var calls above.
+        unsafe {
+            libc_execvp(prog_c.as_ptr(), argv_ptrs.as_ptr());
+        }
+        Err(io::Error::last_os_error())
+    }
+
+    #[cfg(windows)]
+    {
+        let child = spawn_app_windows(meta, rootfs, app_config)?;
+        let code = win::wait(&child)?;
+        exit(code);
+    }
+}
+
+/// Resolve the entrypoint program + interpreter details shared by the
+/// single-app and service-supervisor launch paths.
+fn resolve_entrypoint(meta: &Metadata, rootfs: &Path, use_pivot: bool) -> (PathBuf, bool, String) {
+    let resolve = make_resolve(rootfs, use_pivot);
     let mut prog = resolve(&meta.entrypoint[0]);
 
     // Compiled binaries (go/binary) exec `entrypoint[0]` directly; interpreted
@@ -1282,72 +1476,88 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
         }
     }
 
-    let prog_c = cstr(prog.as_os_str().as_bytes())?;
+    (prog, direct_exec, interpreter_name.to_string())
+}
 
-    let prog_path_bytes = prog.as_os_str().as_bytes();
-    let _prog_path_str = std::str::from_utf8(prog_path_bytes).unwrap_or_default();
+/// Spawn the app as a child process on Windows (CreateProcess), returning the
+/// child handle. The caller decides whether to poll (health gate) or wait.
+#[cfg(windows)]
+fn spawn_app_windows(
+    meta: &Metadata,
+    rootfs: &Path,
+    app_config: &config::AppConfig,
+) -> io::Result<win::Child> {
+    let (prog, direct_exec, interpreter_name) = resolve_entrypoint(meta, rootfs, false);
+    let env = setup_env(meta, rootfs, false, None, app_config)?;
+    let cwd = meta.cwd.as_ref().map(|c| make_resolve(rootfs, false)(c));
+    let resolve = make_resolve(rootfs, false);
 
-    if !is_executable(prog.as_os_str().as_bytes()) {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!(
-                "[xbin] error: interpreter '{}' not found (tried: {})",
-                interpreter_name,
-                prog.display()
-            ),
-        ));
+    // Interpreter lookup already searched rootfs bin dirs; on Windows the
+    // binary carries an `.exe` suffix, so re-resolve with the extension.
+    let mut cmd = prog;
+    if !is_executable_path(&cmd) {
+        cmd = find_in_bin_paths(rootfs, &meta.entrypoint[0]).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "[xbin] error: interpreter '{}' not found (tried: {})",
+                    interpreter_name,
+                    cmd.display()
+                ),
+            )
+        })?;
     }
 
-    let mut argv: Vec<CString> = Vec::new();
+    // argv[0] mirrors the unix exec path: the interpreter name for interpreted
+    // runtimes, the resolved program path for direct-exec binaries.
+    let mut argv: Vec<std::ffi::OsString> = Vec::new();
     if direct_exec {
-        if !is_executable(prog_path_bytes) {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("[xbin] error: executable '{}' not found", prog.display()),
-            ));
-        }
-        argv.push(prog_c.clone());
-        for a in &meta.entrypoint[1..] {
-            argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
-        }
+        argv.push(cmd.as_os_str().to_os_string());
     } else {
-        if !is_executable(interpreter_name.as_bytes()) {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("[xbin] error: interpreter '{}' not found", interpreter_name),
-            ));
-        }
-        argv.push(cstr(interpreter_name.as_bytes())?);
-        for a in &meta.entrypoint[1..] {
-            argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
-        }
+        argv.push(std::ffi::OsString::from(interpreter_name));
+    }
+    for a in &meta.entrypoint[1..] {
+        argv.push(resolve(a).into_os_string());
     }
     for a in std::env::args_os().skip(1) {
-        argv.push(cstr(a.as_bytes())?);
+        argv.push(a);
     }
 
-    let env = setup_env(meta, rootfs, use_pivot, orig_cwd.as_deref(), app_config)?;
+    win::spawn(&cmd, &argv, &env, cwd.as_deref(), false)
+}
 
-    if let Some(cwd) = &meta.cwd {
-        let dir = resolve(cwd);
-        std::env::set_current_dir(&dir).ok();
-    }
+/// Resolve a bare interpreter/command name against the rootfs bin dirs,
+/// trying the `.exe` suffix on Windows.
+#[cfg(windows)]
+fn find_in_bin_paths(rootfs: &Path, name: &str) -> Option<PathBuf> {
+    #[cfg(windows)]
+    let candidates = [name.to_string(), format!("{name}.exe")];
+    #[cfg(not(windows))]
+    let candidates = [name.to_string()];
+    BIN_PATHS.iter().find_map(|dir| {
+        let base = rootfs.join(dir);
+        candidates.iter().find_map(|c| {
+            let candidate = base.join(c);
+            if check_executable(&candidate.to_string_lossy()) {
+                Some(candidate)
+            } else {
+                None
+            }
+        })
+    })
+}
 
-    // Set environment variables so execvp inherits them.
-    for (k, v) in &env {
-        std::env::set_var(k, v);
+/// `is_executable` for a `Path` (avoids unix-only `OsStr::as_bytes`).
+#[cfg(windows)]
+fn is_executable_path(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        is_executable(path.as_os_str().as_bytes())
     }
-
-    let argv_ptrs = to_ptr_vec(&argv);
-    // SAFETY: execvp(3) replaces the current process. prog_c is a valid CString,
-    // argv_ptrs is null-terminated. We never return on success.
-    // execvp searches PATH for bare command names (e.g. "python3") and uses
-    // absolute paths as-is (e.g. "/app/app.py"). Environment is inherited
-    // from the current process after set_var calls above.
-    unsafe {
-        libc_execvp(prog_c.as_ptr(), argv_ptrs.as_ptr());
+    #[cfg(not(unix))]
+    {
+        check_executable(&path.to_string_lossy())
     }
-    Err(io::Error::last_os_error())
 }
 
 // ---------------------------------------------------------------------------
@@ -1355,6 +1565,7 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
 // ---------------------------------------------------------------------------
 
 /// Supervise multiple services: fork+exec each, health-check ports, wait for all.
+#[cfg(unix)]
 fn supervise_services(
     meta: &Metadata,
     rootfs: &Path,
@@ -1397,7 +1608,67 @@ fn supervise_services(
     wait_for_children(&children, verbose)
 }
 
+/// Supervise multiple services on Windows: spawn each with CreateProcess,
+/// health-check ports, then wait for all handles.
+#[cfg(windows)]
+fn supervise_services(
+    meta: &Metadata,
+    rootfs: &Path,
+    app_config: &config::AppConfig,
+) -> io::Result<()> {
+    let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
+
+    maybe_start_health(meta);
+
+    let base_env = setup_env(meta, rootfs, false, None, app_config)?;
+    let resolve = make_resolve(rootfs, false);
+
+    let mut children = Vec::new();
+    for svc in &meta.services {
+        let mut prog = resolve(&svc.cmd[0]);
+        if !is_executable_path(&prog) {
+            prog = find_in_bin_paths(rootfs, &svc.cmd[0]).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("[xbin] error: service '{}' not found", svc.cmd[0]),
+                )
+            })?;
+        }
+        let mut argv: Vec<std::ffi::OsString> = vec![prog.as_os_str().to_os_string()];
+        for a in &svc.cmd[1..] {
+            argv.push(resolve(a).into_os_string());
+        }
+        let mut env = base_env.clone();
+        for (k, v) in &svc.env {
+            env.insert(k.clone(), v.replace("${ROOTFS}", &rootfs.to_string_lossy()));
+        }
+        let child = win::spawn(&prog, &argv, &env, None, false)?;
+        if verbose {
+            eprintln!("[xbin] service '{}' started (pid {})", svc.name, child.pid);
+        }
+        children.push((svc.name.clone(), child));
+    }
+
+    wait_for_health(meta, verbose)?;
+
+    let mut exit_code = 0i32;
+    for (name, child) in &children {
+        let code = win::wait(child)?;
+        if verbose {
+            eprintln!("[xbin] service '{}' exited with code {}", name, code);
+        }
+        if code != 0 && exit_code == 0 {
+            exit_code = code;
+        }
+    }
+    if exit_code != 0 {
+        exit(exit_code);
+    }
+    Ok(())
+}
+
 /// Fork+exec each service, returning (name, pid) pairs.
+#[cfg(unix)]
 fn fork_services(
     meta: &Metadata,
     base_env: &std::collections::BTreeMap<String, String>,
@@ -1479,6 +1750,7 @@ fn wait_for_health(meta: &Metadata, verbose: bool) -> io::Result<()> {
 
 /// Wait for all children to exit. Forward SIGTERM/SIGINT to children.
 /// Returns the exit code of the first failed service, or 0 if all succeeded.
+#[cfg(unix)]
 fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Result<()> {
     let mut exit_code = 0i32;
     let mut remaining = children.len();
@@ -1546,6 +1818,7 @@ fn wait_for_port(port: u16, timeout_secs: u64) -> io::Result<()> {
     }
 }
 
+#[cfg(unix)]
 fn install_signal_handler(children: &[(String, i32)]) {
     use std::sync::atomic::{compiler_fence, Ordering};
     // SAFETY: We write to a static mut exactly once, before any signal handler
@@ -1567,8 +1840,10 @@ fn install_signal_handler(children: &[(String, i32)]) {
     }
 }
 
+#[cfg(unix)]
 static mut CHILD_PIDS: Vec<i32> = Vec::new();
 
+#[cfg(unix)]
 extern "C" fn signal_forward(sig: i32) {
     // SAFETY: Called from a signal handler context. Only uses kill(2)
     // (async-signal-safe) and iterates CHILD_PIDS (immutable after install).
@@ -1934,11 +2209,13 @@ fn write_proc(path: &str, contents: &str) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
 fn cstr(bytes: &[u8]) -> io::Result<CString> {
     CString::new(bytes)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "path contains null byte"))
 }
 
+#[cfg(unix)]
 fn to_ptr_vec(v: &[CString]) -> Vec<*const core::ffi::c_char> {
     let mut ptrs: Vec<*const core::ffi::c_char> = v.iter().map(|c| c.as_ptr()).collect();
     ptrs.push(std::ptr::null());
@@ -1952,6 +2229,8 @@ fn nanos() -> u128 {
         .unwrap_or(0)
 }
 
+/// Acquire an exclusive advisory lock (flock(2)) on `f`.
+#[cfg(unix)]
 fn flock_exclusive(f: &File) -> io::Result<()> {
     use std::os::unix::io::AsRawFd;
     const LOCK_EX: i32 = 2;
@@ -1964,6 +2243,15 @@ fn flock_exclusive(f: &File) -> io::Result<()> {
     Ok(())
 }
 
+/// Windows has no flock(2). The extraction lock protects concurrent cold
+/// starts of the same binary; the atomic tmp→cache rename means both writers
+/// produce identical content, so a lost lock only wastes duplicate work.
+#[cfg(windows)]
+fn flock_exclusive(_f: &File) -> io::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
 extern "C" {
     #[link_name = "execvp"]
     fn libc_execvp(path: *const core::ffi::c_char, argv: *const *const core::ffi::c_char) -> i32;

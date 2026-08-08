@@ -176,38 +176,44 @@ pub fn prompt_for_secrets(config: &mut AppConfig, required: &[String]) -> io::Re
     Ok(())
 }
 
-/// Read a line of input with masked echo
+/// Read a line of input with masked echo.
+/// Windows `console::ReadConsole` echo suppression would need the winapi
+/// console API; read unmasked (the value is user-provided at first run).
 fn read_line_masked() -> io::Result<String> {
-    // Save current terminal settings
-    let stdin = io::stdin();
-    let mut handle = stdin.lock();
+    #[cfg(unix)]
+    {
+        // Try to disable echo via termios
+        let stdin = io::stdin();
+        let mut handle = stdin.lock();
 
-    // Try to disable echo via termios
-    // SAFETY: We're just modifying terminal settings temporarily
-    unsafe {
-        let mut termios: libc::termios = std::mem::zeroed();
-        if libc::tcgetattr(0, &mut termios) == 0 {
-            let saved = termios;
-            termios.c_lflag &= !libc::ECHO;
-            libc::tcsetattr(0, libc::TCSAFLUSH, &termios);
+        // SAFETY: We're just modifying terminal settings temporarily
+        unsafe {
+            let mut termios: libc::termios = std::mem::zeroed();
+            if libc::tcgetattr(0, &mut termios) == 0 {
+                let saved = termios;
+                termios.c_lflag &= !libc::ECHO;
+                libc::tcsetattr(0, libc::TCSAFLUSH, &termios);
 
-            let mut input = String::new();
-            handle.read_line(&mut input)?;
+                let mut input = String::new();
+                handle.read_line(&mut input)?;
 
-            // Restore terminal settings
-            libc::tcsetattr(0, libc::TCSAFLUSH, &saved);
+                // Restore terminal settings
+                libc::tcsetattr(0, libc::TCSAFLUSH, &saved);
 
-            // Print newline after masked input
-            println!();
+                // Print newline after masked input
+                println!();
 
-            Ok(input.trim().to_string())
-        } else {
-            // Fallback: read without masking
-            let mut input = String::new();
-            handle.read_line(&mut input)?;
-            Ok(input.trim().to_string())
+                return Ok(input.trim().to_string());
+            }
         }
     }
+
+    // Fallback: read without masking
+    let stdin = io::stdin();
+    let mut handle = stdin.lock();
+    let mut input = String::new();
+    handle.read_line(&mut input)?;
+    Ok(input.trim().to_string())
 }
 
 #[allow(dead_code)]
