@@ -3112,6 +3112,7 @@ dependencies = [
  "clap_complete",
  "clap_mangen",
  "ed25519-dalek",
+ "flate2",
  "hex",
  "human-panic",
  "libc",
