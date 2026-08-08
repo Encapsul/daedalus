@@ -73,3 +73,39 @@ jobs:
         run: mkdir -p /tmp/xbin-trusted && cp /tmp/xbin-keys/*.pub /tmp/xbin-trusted/
       - name: xbin verify
         run: ./target/release/xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted
+
+  macos:
+    name: macOS (native)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy -p xbin-core --all-targets -- -D warnings
+      - run: cargo clippy -p xbin-stub -- -D warnings
+      - run: cargo clippy -p xbin-cli -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo build --release -p xbin-cli
+      - name: Smoke test
+        run: |
+          ./target/release/xbin build examples/hello-web -o /tmp/hello-web.xbin
+          ./target/release/xbin inspect /tmp/hello-web.xbin
+
+  windows:
+    name: Windows (native)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy -p xbin-core --all-targets -- -D warnings
+      - run: cargo clippy -p xbin-stub -- -D warnings
+      - run: cargo clippy -p xbin-cli -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo build --release -p xbin-cli
+      - name: Smoke test
+        run: |
+          .\target\release\xbin.exe build examples\hello-web -o C:\tmp\hello-web.xbin
+          .\target\release\xbin.exe inspect C:\tmp\hello-web.xbin

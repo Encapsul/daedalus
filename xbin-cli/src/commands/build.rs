@@ -1157,6 +1157,15 @@ fn build_single_target(
         size as f64 / (1024.0 * 1024.0)
     );
 
+    // macOS code signing: re-sign the assembled binary since appending
+    // payload + metadata invalidates any existing Mach-O signature.
+    if target
+        .as_ref()
+        .is_some_and(|t| t.contains("darwin") || t.contains("apple") || t.contains("macos"))
+    {
+        sign_macos_binary(output, verbose)?;
+    }
+
     if args.enable_sisr {
         let mut manifest = output.clone();
         manifest.set_extension("xbin.manifest");
@@ -1201,6 +1210,49 @@ fn build_single_target(
         })));
     }
     Ok(None)
+}
+
+/// Re-sign a macOS Mach-O binary using `codesign` after assembly.
+///
+/// Appending payload + metadata invalidates any existing code signature,
+/// so we must re-sign the final `.xbin` (Mach-O stub + appended data).
+///
+/// On non-macOS hosts this is a no-op. On macOS without a signing identity
+/// the binary is left unsigned with a warning.
+fn sign_macos_binary(path: &Path, verbose: bool) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+
+        // Ad-hoc signing is sufficient for local development; distribution
+        // requires a Developer ID in the user's keychain.
+        let identity = match std::env::var("XBIN_CODESIGN_IDENTITY") {
+            Ok(id) if !id.is_empty() => id,
+            _ => "-".to_string(),
+        };
+
+        let output = Command::new("codesign")
+            .args(["--sign", &identity, "--force", "--timestamp"])
+            .arg(path)
+            .output()
+            .context("failed to run codesign — is it installed?")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("codesign failed: {stderr}");
+        }
+
+        if verbose {
+            eprintln!("  macOS: re-signed Mach-O with identity '{identity}'");
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (path, verbose);
+    }
+
+    Ok(())
 }
 
 /// Builds the SISR stage config from the CLI args. When `--key` is given the
