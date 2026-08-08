@@ -38,8 +38,18 @@ pub fn create_deterministic_tar(root: &Path) -> io::Result<Vec<u8>> {
 /// full uncompressed tar in memory. Uses multithreaded zstd for speed.
 /// This is the BLAZING FAST path: level 3 + streaming + parallel.
 pub fn create_tar_zstd(root: &Path) -> io::Result<Vec<u8>> {
+    create_tar_zstd_with_level(root, crate::compress::DEFAULT_LEVEL)
+}
+
+/// Same as [`create_tar_zstd`] but with a caller-chosen zstd compression level.
+///
+/// Level 1 = fastest decompression / largest artifact; level 3 = default
+/// balance; level 19 = smallest artifact / slowest build. The stub's
+/// single-threaded decompressor benefits most from lower levels when cold
+/// start time matters more than on-disk footprint.
+pub fn create_tar_zstd_with_level(root: &Path, level: i32) -> io::Result<Vec<u8>> {
     let entries = collect_entries(root)?;
-    let mut encoder = zstd::Encoder::new(Vec::new(), crate::compress::DEFAULT_LEVEL)
+    let mut encoder = zstd::Encoder::new(Vec::new(), level)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     let _ = encoder.multithread(num_cpus());
     {
