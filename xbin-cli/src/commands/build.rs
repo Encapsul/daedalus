@@ -26,11 +26,11 @@ fn parse_isolation(value: &str) -> Result<u32> {
 /// Parse a `--target` value into `(arch, os)`.
 ///
 /// Accepts legacy short forms (`aarch64`, `x86_64` — defaulting to Linux),
-/// OS shorthands (`win-x64`, `win-arm64`), and full Rust triples
-/// (`aarch64-apple-darwin`, `x86_64-unknown-linux-musl`).
+/// OS shorthands (`win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`), and
+/// full Rust triples (`aarch64-apple-darwin`, `x86_64-unknown-linux-musl`).
 fn parse_target(target: &str) -> (String, String) {
     let parts: Vec<&str> = target.split('-').collect();
-    let shorthand_os = matches!(parts.first(), Some(&"win" | &"macos"));
+    let shorthand_os = matches!(parts.first(), Some(&"win" | &"macos" | &"linux"));
     let arch = if shorthand_os {
         match parts.get(1).copied() {
             Some("x64" | "amd64") => "x86_64",
@@ -579,8 +579,9 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     }
 
     // ── Embed interpreter ──────────────────────────────────
-    // NOTE: ensure_node() may have downloaded node to /tmp/xbin-build-tools/bin/
-    // and added it to PATH — embed_interpreter picks it up from there.
+    // NOTE: ensure_node() may have downloaded the target runtime to
+    // <cache_dir>/build-tools/<target>/bin and added it to PATH —
+    // embed_interpreter picks it up from there (`.exe` first for cross-OS).
     let embedded_interpreter_str = if let Some(ref interp) = args.embed_interpreter {
         Some(interp.clone())
     } else {
@@ -1103,8 +1104,11 @@ fn ensure_node(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
     let tools_dir = cache_dir()
         .join("build-tools")
         .join(format!("node-{suffix}"));
-    let node_bin = tools_dir.join("bin/node");
-    let npm_bin = tools_dir.join("bin/npm");
+    let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
+    let node_name = if is_windows { "node.exe" } else { "node" };
+    let npm_name = if is_windows { "npm.cmd" } else { "npm" };
+    let node_bin = tools_dir.join("bin").join(node_name);
+    let npm_bin = tools_dir.join("bin").join(npm_name);
 
     if node_bin.exists() && npm_bin.exists() {
         if verbose {
@@ -1140,7 +1144,7 @@ fn ensure_node_download(
     verbose: bool,
 ) -> Result<PathBuf> {
     // Map the target to node's official `os-arch` tarball naming. Node ships
-    // static builds for linux (musl-compatible) and darwin.
+    // static builds for linux (musl-compatible), darwin, and windows (`win`).
     let (node_arch, node_os) = if let Some(target) = target_arch {
         let (arch, os) = parse_target(target);
         let node_arch = match arch.as_str() {
@@ -1151,6 +1155,7 @@ fn ensure_node_download(
         let node_os = match os.as_str() {
             "linux" => "linux",
             "darwin" => "darwin",
+            "windows" => "win",
             _ => anyhow::bail!("unsupported cross-compile OS: {os}"),
         };
         (node_arch.to_string(), node_os.to_string())
@@ -1163,13 +1168,19 @@ fn ensure_node_download(
         let node_os = match std::env::consts::OS {
             "linux" => "linux",
             "macos" => "darwin",
+            "windows" => "win",
             os => os,
         };
         (node_arch.to_string(), node_os.to_string())
     };
 
-    let node_bin = tools_dir.join("bin/node");
-    let npm_bin = tools_dir.join("bin/npm");
+    // Windows dists name the binaries `node.exe` / `npm.cmd`.
+    let node_bin = tools_dir
+        .join("bin")
+        .join(if node_os == "win" { "node.exe" } else { "node" });
+    let npm_bin = tools_dir
+        .join("bin")
+        .join(if node_os == "win" { "npm.cmd" } else { "npm" });
 
     let versions: Vec<serde_json::Value> =
         reqwest::blocking::get("https://nodejs.org/dist/index.json")
@@ -1183,11 +1194,11 @@ fn ensure_node_download(
         .map(|v| v.to_string())
         .ok_or_else(|| anyhow::anyhow!("no node version found in manifest"))?;
 
-    // nodejs.org serves .tar.xz on Linux and .tar.gz on macOS.
-    let ext = if node_os == "darwin" {
-        "tar.gz"
-    } else {
-        "tar.xz"
+    // nodejs.org serves .tar.xz on Linux, .tar.gz on macOS, and .zip on Windows.
+    let ext = match node_os.as_str() {
+        "darwin" => "tar.gz",
+        "win" => "zip",
+        _ => "tar.xz",
     };
     let tarball = format!("node-v{version}-{node_os}-{node_arch}.{ext}");
     let url = format!("https://nodejs.org/dist/v{version}/{tarball}");
@@ -1197,32 +1208,40 @@ fn ensure_node_download(
     }
 
     let response = reqwest::blocking::get(&url).context("failed to download node.js tarball")?;
-    let reader = std::io::BufReader::new(response);
-    let decoder: Box<dyn std::io::Read> = if node_os == "darwin" {
-        Box::new(flate2::read::GzDecoder::new(reader))
+    if node_os == "win" {
+        // ZipArchive needs a seekable reader; buffer the ~30 MB dist in memory.
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut std::io::BufReader::new(response), &mut bytes)
+            .context("failed to read node.js zip")?;
+        extract_node_zip(std::io::Cursor::new(bytes), &tools_dir)?;
     } else {
-        Box::new(xz::read::XzDecoder::new(reader))
-    };
-    let mut archive = tar::Archive::new(decoder);
+        let reader = std::io::BufReader::new(response);
+        let decoder: Box<dyn std::io::Read> = if node_os == "darwin" {
+            Box::new(flate2::read::GzDecoder::new(reader))
+        } else {
+            Box::new(xz::read::XzDecoder::new(reader))
+        };
+        let mut archive = tar::Archive::new(decoder);
 
-    for entry in archive
-        .entries()
-        .context("failed to read node tarball entries")?
-    {
-        let mut entry = entry.context("failed to read tarball entry")?;
-        let path = entry.path()?.into_owned();
-        let stripped: PathBuf = path.components().skip(1).collect();
-        if stripped.components().count() == 0 {
-            continue;
+        for entry in archive
+            .entries()
+            .context("failed to read node tarball entries")?
+        {
+            let mut entry = entry.context("failed to read tarball entry")?;
+            let path = entry.path()?.into_owned();
+            let stripped: PathBuf = path.components().skip(1).collect();
+            if stripped.components().count() == 0 {
+                continue;
+            }
+            let target = tools_dir.join(&stripped);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create directory {}", parent.display()))?;
+            }
+            entry
+                .unpack(&target)
+                .with_context(|| format!("failed to unpack {}", stripped.display()))?;
         }
-        let target = tools_dir.join(&stripped);
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create directory {}", parent.display()))?;
-        }
-        entry
-            .unpack(&target)
-            .with_context(|| format!("failed to unpack {}", stripped.display()))?;
     }
 
     if !node_bin.exists() {
@@ -1243,6 +1262,55 @@ fn ensure_node_download(
     }
 
     Ok(tools_dir.join("bin"))
+}
+
+/// Extract the Windows node dist zip into `tools_dir/bin/`.
+///
+/// The zip layout is a single top-level `node-v<ver>-win-x64/` directory whose
+/// contents (`node.exe`, `npm.cmd`, `node_modules/`) we strip into `bin/` so
+/// the layout matches the linux/darwin tarballs. `npm.cmd` resolves `node.exe`
+/// and `node_modules/npm` relative to its own directory, so they must stay
+/// siblings. Entry names are validated against path traversal before use.
+fn extract_node_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Path) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(reader).context("failed to read node.js zip")?;
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .with_context(|| format!("failed to read zip entry {i}"))?;
+        let name = std::path::Path::new(entry.name());
+        // Zip-slip guard: reject absolute paths and any traversal component.
+        if name.is_absolute()
+            || name.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            })
+        {
+            continue;
+        }
+        let stripped: PathBuf = name.components().skip(1).collect();
+        if stripped.components().count() == 0 {
+            continue;
+        }
+        let target = tools_dir.join("bin").join(&stripped);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&target)
+                .with_context(|| format!("failed to create directory {}", target.display()))?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
+        }
+        let mut file = std::fs::File::create(&target)
+            .with_context(|| format!("failed to create {}", target.display()))?;
+        std::io::copy(&mut entry, &mut file)
+            .with_context(|| format!("failed to unpack {}", stripped.display()))?;
+    }
+    Ok(())
 }
 
 /// Check PHP platform requirements from composer.json against available extensions.
@@ -1771,6 +1839,11 @@ mod tests {
         assert_eq!(
             parse_target("win-arm64"),
             ("aarch64".into(), "windows".into())
+        );
+        assert_eq!(parse_target("linux-x64"), ("x86_64".into(), "linux".into()));
+        assert_eq!(
+            parse_target("linux-arm64"),
+            ("aarch64".into(), "linux".into())
         );
     }
 

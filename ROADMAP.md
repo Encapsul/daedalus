@@ -107,18 +107,20 @@ worked.
 
 ## Phase 3 — Port Windows (PE / EXE stub)
 
-- [ ] **Self-path** — `GetModuleFileNameW` (windows crate / winapi).
-- [ ] **Cache dir** — `%LOCALAPPDATA%\xbin\cache\<hash>\rootfs\`.
-- [ ] **No exec on Windows** — spawn the entrypoint child with `CreateProcess`
+- [x] **Self-path** — `GetModuleFileNameW` (windows crate / winapi).
+- [x] **Cache dir** — `%LOCALAPPDATA%\xbin\cache\<hash>\rootfs\`.
+- [x] **No exec on Windows** — spawn the entrypoint child with `CreateProcess`
       and either wait for it (exit code passthrough) or detach. The stub
       cannot exec over itself.
-- [ ] **cfg-gate** — Linux-only modules (unshare/seccomp/landlock/pivot_root)
+- [x] **cfg-gate** — Linux-only modules (unshare/seccomp/landlock/pivot_root)
       compile out; new `#[cfg(target_os = "windows")]` module.
-- [ ] **win-x64 runtime** — `download_node` → `node-v<ver>-win-x64.zip`;
-      extraction needs a zip reader (`zip` crate; the repo has `tar.rs` only).
-- [ ] **Stub build** — `x86_64-pc-windows-gnu` / `-msvc` (CLI already builds
+- [x] **win-x64 runtime** — `download_node` → `node-v<ver>-win-x64.zip`;
+      extraction uses the `zip` crate; `node.exe`/`npm.cmd` staged in the
+      tools dir and embedded as `usr/bin/node.exe` (cross-OS embed resolves
+      the `.exe` from the target tools dir ahead of the host interpreter).
+- [x] **Stub build** — `x86_64-pc-windows-gnu` / `-msvc` (CLI already builds
       for windows-gnu, ROADMAP §3).
-- [ ] **Output extension** — assemble to `app.exe` for PE targets.
+- [x] **Output extension** — assemble to `app.exe` for PE targets.
 - [ ] **Smoke test Windows** — Actions `windows-latest` runner: pack, run,
       HTTP 200.
 
@@ -128,15 +130,16 @@ worked.
       (`aarch64-apple-darwin`, `x86_64-unknown-linux-musl`) and short forms
       (`x86_64`|`aarch64`, defaulting to Linux). Wired into stub selection
       (`find_stub`), runtime download (`ensure_node`), and interpreter embed.
-      Remaining: `--cross-compile` comma list + `linux-x64`/`win-x64` aliases.
+      Short OS aliases now include `linux-x64`/`linux-arm64`; remaining:
+      `--cross-compile` comma list.
 - [ ] **Multi-arch output** — `xbin build --target linux-x64,linux-arm64`
       emits one artifact per target.
 - [x] **Per-target stub selection** — `find_stub` keyed by target maps to the
-      per-(os,arch) stub triple (ELF musl / Mach-O darwin).
+      per-(os,arch) stub triple (ELF musl / Mach-O darwin / PE windows).
 - [x] **Per-target runtimes** — `ensure_node_download` matrix keyed by (os,
-      arch) incl. darwin; embeds the runtime matching the target, not the
-      builder's host.
-- [ ] **Per-platform file naming** — `.xbin` for ELF/Mach-O, `.exe` for PE.
+      arch) incl. darwin + windows (zip); embeds the runtime matching the
+      target, not the builder's host.
+- [x] **Per-platform file naming** — `.xbin` for ELF/Mach-O, `.exe` for PE.
 - [ ] **Docs** — `xbin build --help` examples + README support matrix.
 
 ## Phase 5 — Benchmark-driven performance (see "Comparative benchmark")
