@@ -20,6 +20,10 @@ pub struct TrustArgs {
     /// Show what would be done without doing it
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 pub fn run(args: TrustArgs) -> Result<()> {
@@ -28,10 +32,9 @@ pub fn run(args: TrustArgs) -> Result<()> {
     let key_bytes = std::fs::read(&args.pubkey)
         .with_context(|| format!("failed to read public key at {}", args.pubkey.display()))?;
     if key_bytes.len() != 32 {
-        anyhow::bail!("public key must be 32 bytes, got {}", key_bytes.len());
+        anyhow::bail!("public key must be 32 bytes, got {} bytes", key_bytes.len());
     }
 
-    // Compute fingerprint
     let mut hasher = Sha256::new();
     hasher.update(&key_bytes);
     let fingerprint = hex::encode(hasher.finalize());
@@ -39,6 +42,16 @@ pub fn run(args: TrustArgs) -> Result<()> {
     let dest = trusted_dir.join(format!("{fingerprint}.pub"));
 
     if args.dry_run {
+        if args.json {
+            let out = serde_json::json!({
+                "dry_run": true,
+                "pubkey": args.pubkey.to_string_lossy().to_string(),
+                "fingerprint": fingerprint,
+                "stored_at": dest.to_string_lossy().to_string(),
+            });
+            println!("{}", serde_json::to_string(&out)?);
+            return Ok(());
+        }
         eprintln!("Would trust key {}", args.pubkey.display());
         eprintln!("  fingerprint: {fingerprint}");
         eprintln!("  stored at:   {}", dest.display());
@@ -52,6 +65,17 @@ pub fn run(args: TrustArgs) -> Result<()> {
         )
     })?;
     std::fs::copy(&args.pubkey, &dest)?;
+
+    if args.json {
+        let out = serde_json::json!({
+            "trusted": true,
+            "pubkey": args.pubkey.to_string_lossy().to_string(),
+            "fingerprint": fingerprint,
+            "stored_at": dest.to_string_lossy().to_string(),
+        });
+        println!("{}", serde_json::to_string(&out)?);
+        return Ok(());
+    }
 
     if !args.quiet {
         eprintln!("Trusted key {}", args.pubkey.display());
