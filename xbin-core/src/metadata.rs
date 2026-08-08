@@ -58,6 +58,8 @@ impl Default for HealthCheck {
 pub struct WasmConfig {
     pub enabled: bool,
     pub wasmtime_path: Option<String>,
+    pub wasi: bool,
+    pub component_model: bool,
     pub wasi_fs_map: Vec<WasiFsMap>,
 }
 
