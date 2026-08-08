@@ -219,7 +219,7 @@ worked.
 - [ ] **RUN 4.1–4.6** : sandboxing + protection contre l'évasion de conteneur
 - [ ] **RUN 5.1–5.6** : support runtime WebAssembly + edge cases
 - [ ] **DESIGN : supprimer `docs/planning/`** (toujours présent : HANDOFF.md, xbin-project.md, .excalidraw, .pdf)
-- [ ] **Zeroization des clés crypto** : `encrypt.rs`, `keygen.rs`, `sign.rs` — ajouter le crate `zeroize`, wrapper `Zeroizing<T>` (audit : HIGH-2)
+- [x] **Zeroization des clés crypto** : `encrypt.rs`, `keygen.rs`, `sign.rs` — `Zeroizing<T>` ajouté, `Zeroizing::new` autour des clés (audit HIGH-2) ✅ vérifié e2e + clippy
 - [ ] **Symlinks** : ROADMAP.md, CODE_STYLE.md, RULES.md, CLAUDE.md, AGENTS.md → copies hors repo + symlinks à l'intérieur
 - [ ] **Stub DRY** : `stub/src/main.rs::trusted_keys_dir()` duplique
       `xbin_core::paths::trusted_keys_dir()` (identique pour l'instant).
@@ -232,14 +232,15 @@ worked.
 - [ ] clig.dev : `xbin trust --json` pour une sortie machine-parseable
       (`verify`/`inspect` l'ont déjà ; `trust` non). Facultatif.
 
-### 🔒 Correctifs sécurité restants (audit)
+### 🔒 Correctifs sécurité Phase 0 — résolus (audit)
 
-- [ ] CRITICAL : `isolation.parse().unwrap_or(1)` — rejeter les valeurs invalides au lieu de fail-open (build.rs)
-- [ ] HIGH : temp dir prévisible `/tmp/xbin-build-tools/node` → `tempfile::tempdir()`
-- [ ] HIGH : injection PATH via `set_var("PATH", ...)` → `Command::env()`
-- [ ] MEDIUM : `human_panic` — masquer file/line dans les messages de panique
-- [ ] MEDIUM : salt/info HKDF fixes → sel aléatoire par chiffrement
-- [ ] MEDIUM : `DEFAULT_REGISTRY` placeholder `xbin.example.com` → config obligatoire
+- [x] CRITICAL : `isolation.parse().unwrap_or(1)` → `parse_isolation` fail-closed (`bail!` + `.with_context()?`, build.rs:17) ✅ clippy+tests
+- [x] HIGH : temp dir prévisible `/tmp/xbin-build-tools/node` → `tempfile::tempdir()` (build.rs:729) ✅ clippy+tests
+- [x] HIGH : injection PATH via `set_var("PATH", ...)` → `Command::env()` ✅ clippy+tests
+- [x] MEDIUM : `human_panic` — `setup_panic!()` cache les file/line du message stdout ✅ (nota: le rapport disque `~/.cache/.../*.panic` conserve la backtrace → hardening optionnel)
+- [x] MEDIUM : salt/info HKDF fixes → sel aléatoire par chiffrement (`encryption_salt_hex` dans CryptoMeta) ✅ vérifié e2e (v4 --encrypt, sel random, decrypt stub sans env)
+- [x] MEDIUM : `DEFAULT_REGISTRY` placeholder `xbin.example.com` → `Option<Registry>` + `XBIN_REGISTRY` fail-closed ✅
+- [n] **Nit non critique** : `scan.rs:227` garde `meta.get("isolation").unwrap_or(1)` — mais il s'agit du `xbin scan` (rapport JSON d'un binaire existant, default level 1 pour les binaires legacy), **pas** du `isolation.parse()` d'entrée utilisateur. Ne force pas le sandbox à l'exécution. Laissé tel quel (changement de sortie `scan` → à valider) ; optionnel.
 
 ---
 
