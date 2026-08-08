@@ -162,6 +162,8 @@ fn add_path_beneath(ruleset_fd: i32, path: &Path, access: u64) -> io::Result<()>
     };
 
     // Close parent_fd regardless of result
+    // SAFETY: parent_fd is a valid file descriptor from open(2). close(2) is
+    // always safe on a valid fd.
     unsafe { libc::close(parent_fd) };
 
     if rc < 0 {

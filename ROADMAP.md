@@ -1235,50 +1235,65 @@ objectifs. Mets-le en évidence dès le premier paragraphe du README.
 - 100+ packages dans le registry
 - 10+ contributeurs
 
-## Issues Found — Code Review (unstaged working tree)
+## Issues Found — Code Review (committed at 1ff0f81)
 
-Code review of the current working tree (compiles clean, clippy clean, all tests pass).
+Code review of commit `1ff0f81`.
+
+**Build break found during re-verification (FIXED):**
+- `stub/src/seccomp.rs` was missing `use std::io;` — the extracted module's
+  `install_seccomp_denylist()` returns `io::Result<()>` with no import in scope.
+  Fixed by adding `use std::io;` at module top. (clippy was failing after
+  the initial build that had cached a different version of the file.)
+
+### Verification status after fix:
+- `cargo fmt --check` ✅
+- `cargo clippy -p xbin-core --all-targets -- -D warnings` ✅
+- `cargo clippy -p xbin-stub --all-targets -- -D warnings` ✅
+- `cargo clippy -p xbin-cli --all-targets -- -D warnings` ✅
+- `cargo test --workspace` ✅ (347 passed, 0 failed, 1 ignored)
 
 ### Critical (runtime failures — would break real-world apps)
 
-1. **`JAVA_OPTS` not split into individual JVM arguments** — `xbin-core/src/detect.rs:376-379`
+1. **`JAVA_OPTS` not split into individual JVM arguments** — `xbin-core/src/detect.rs:388-389`
    `cmd.insert(1, opts)` inserts the entire string (e.g. `"-Xmx512m -XX:+UseG1GC"`) as a single argv element. JVM rejects multi-option strings passed as one arg.
    **Fix**: split on whitespace, insert each option as separate argument.
 
-2. **Django `DJANGO_SETTINGS_MODULE` detection from `manage.py` produces garbage** — `stub/src/main.rs:1393-1403`
+2. **Django `DJANGO_SETTINGS_MODULE` detection from `manage.py` produces garbage** — `stub/src/exec.rs:218-226`
    `trim_matches` with set `{'=', ' ', '"', '\''}` does not strip `,` or `)`, so parsing
    `os.environ.setdefault("DJANGO_SETTINGS_MODULE", "myproject.settings")`
    yields `, "myproject.settings")` — breaks every standard Django project.
-   Completely untested (no test in `main.rs`).
-   **Fix**: use proper AST/regex extraction instead of naive string splitting.
+   Completely untested (no test in `stub/src/exec.rs` `mod tests`).
+   **Fix**: use proper regex extraction instead of naive string splitting.
 
-3. **Bun entrypoint broken when `start` script is exactly `"bun"`** — `xbin-core/src/detect.rs:334-337`
+3. **Bun entrypoint broken when `start` script is exactly `"bun"`** — `xbin-core/src/detect.rs:543-544`
    `strip_prefix("bun ").unwrap_or("bun")` → produces `["bun", "run", "bun"]` (tries to execute a file named "bun").
    **Fix**: when `cmd == "bun"` (no args), fall through to file-based search instead of constructing a broken command.
 
 ### Medium
 
-4. **Dead code in Node entrypoint step 2** — `xbin-core/src/detect.rs:288-292`
+4. **Dead code in Node entrypoint step 2** — `xbin-core/src/detect.rs:326-330`
    `find_node_entry` returns filenames ("index.js" etc.) — never strings starting with `"bun "`. The bun check in step 2 is unreachable dead code. Bun is already handled by `detect_bun_entry` in step 0.
    **Fix**: remove the dead `entry.starts_with("bun ")` branch.
 
-5. **`.env` parsing too simplistic** — `stub/src/main.rs:1287-1300`
-   Does not handle `export KEY=value`, quoted values (`KEY="a b"`), inline comments
-   (`KEY=val # comment`), or variable expansion. Would silently misparse
-   common dotenv files.
-   **Fix**: use a proper dotenv parsing crate or more robust line parser.
+5. **`.env` parsing in stub doesn't use `xbin-core::dotenv`** — `stub/src/exec.rs:113-126`
+   A robust `dotenv::parse_dotenv` / `load_dotenv` already exists in
+   `xbin-core/src/dotenv.rs` (handles `export`, quotes, comments, secret
+   detection, has 7 tests). But `exec.rs::setup_env` still uses a naive
+   `split_once('=')` parser that doesn't handle `export KEY=value`,
+   quoted values (`KEY="a b"`), or inline comments.
+   **Fix**: replace the inline parser with `xbin_core::dotenv::load_dotenv(rootfs, None, verbose)`.
 
-6. **`LD_LIBRARY_PATH` walk misses versioned `.so` files** — `stub/src/main.rs:1354-1388`
+6. **`LD_LIBRARY_PATH` walk misses versioned `.so` files** — `stub/src/exec.rs:169-202`
    Only matches `ext == "so"` — misses `libfoo.so.1.2.3` where `extension()` returns
    `"1.2.3"`.
    **Fix**: also match files whose name contains `.so.` (e.g. via `file_name().to_string_lossy().contains(".so.")`).
 
-7. **`pyproject.toml` parsed via string matching, not TOML** — `xbin-core/src/detect.rs:433-444, 497-511`
+7. **`pyproject.toml` parsed via string matching, not TOML** — `xbin-core/src/detect.rs:427, 463`
    `detect_python_module` and `detect_asgi_entrypoint` use `.lines().find(|l| l.contains(...))`
    instead of parsing TOML structure. Commented-out lines (`# entrypoint = "bad"`) or keys in other sections could trigger false matches.
    **Fix**: use `toml::from_str` (transitive dep already available) to parse `pyproject.toml` properly.
 
-8. **`find_dotnet_self_contained` calls `read_dir` twice on same directory** — `xbin-core/src/detect.rs:711-733`
+8. **`find_dotnet_self_contained` calls `read_dir` twice on same directory** — `xbin-core/src/detect.rs:564, 576`
    Two separate `std::fs::read_dir(publish_dir)` blocks — one for files, one for subdirs.
    **Fix**: merge into single iteration checking `is_file()` vs `is_dir()`.
 
@@ -1289,13 +1304,13 @@ Code review of the current working tree (compiles clean, clippy clean, all tests
    `--xbin-update=https://...` (with `=` separator) is not recognized.
    **Fix**: check for `=` in the flag argument itself.
 
-10. **`detect_web_port` Node.js port detection fragile** — `stub/src/main.rs:1520-1530`
+10. **`detect_web_port` Node.js port detection fragile** — `stub/src/exec.rs:268-282`
     Parses `--port 3000` via `split_whitespace().nth(1)` — fails for
     `--port=3000` or `--port $PORT`.
     **Fix**: handle both `--port=N` and `--port N` forms, and skip non-numeric values gracefully.
 
 ### New unit tests needed
 
-- `detect_django_settings` (in `stub/src/main.rs`) — currently untested, and the one test case that would exist would fail
-- `find_dotnet_self_contained` — no test coverage for the self-contained publish detection
-- `detect_bun_entry` with `cmd == "bun"` — no test for the exact-string edge case
+- `detect_django_settings` (in `stub/src/exec.rs`) — currently untested; the parser is broken for standard manage.py patterns
+- `find_dotnet_self_contained` (in `xbin-core/src/detect.rs`) — no test coverage for self-contained publish detection
+- `detect_bun_entry` with `cmd == "bun"` (in `xbin-core/src/detect.rs`) — no test for the exact-string edge case that produces a broken command
