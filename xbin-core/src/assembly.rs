@@ -94,6 +94,12 @@ pub fn build_meta_json(
         meta["update_url"] = serde_json::Value::String(u.clone());
     }
 
+    // Emit crypto metadata for v4 encrypted builds. Omitted for plaintext so
+    // old stubs/parsers see no unexpected field.
+    if let Some(c) = &options.crypto {
+        meta["crypto"] = c.clone();
+    }
+
     if bun_features.health_check.enabled {
         meta["health_check"] = serde_json::to_value(&bun_features.health_check)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -140,6 +146,10 @@ pub struct MetaOptions {
     pub rt_deps_hash: Option<String>,
     /// Base URL of the SISR update channel (`{url}/manifest`, `{url}/chunks/<hex>`).
     pub update_url: Option<String>,
+    /// AES-256-GCM crypto metadata (nonce, tag offset, signing seed) emitted into
+    /// the `crypto` meta field when `--encrypt` is enabled. `None` for plaintext
+    /// builds so the field is omitted entirely.
+    pub crypto: Option<serde_json::Value>,
 }
 
 /// Assemble a .xbin file from its components (without signing).
@@ -217,7 +227,16 @@ pub fn assemble_xbin_with_sisr(
     let footer = Footer {
         format_version: fmt_ver,
         arch,
-        flags: if sisr.is_some() { format::FLAG_SISR } else { 0 },
+        flags: {
+            let mut f = 0u8;
+            if sisr.is_some() {
+                f |= format::FLAG_SISR;
+            }
+            if encrypt {
+                f |= format::FLAG_ENCRYPTED;
+            }
+            f
+        },
         payload_offset,
         payload_csize: payload.len() as u64,
         payload_usize: if encrypt { CRYPTO_AES_256_GCM } else { 0 },
@@ -401,6 +420,34 @@ mod tests {
     }
 
     #[test]
+    fn assemble_encrypt_sets_flags_and_integrity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let out = tmp.path().join("enc.xbin");
+        let stub = b"STUB";
+        let payload = b"CIPHERTEXT_PAYLOAD";
+        let meta = br#"{"name":"test"}"#;
+
+        let size = assemble_xbin(&out, stub, payload, meta, true, false, None).unwrap();
+        assert!(size > 0);
+
+        let data = fs::read(&out).unwrap();
+        let mut cursor = std::io::Cursor::new(data);
+        let footer = Footer::read_from(&mut cursor).unwrap();
+        // v4: signed-equivalent is handled by the CLI sign step; assemble with
+        // encrypt=true stamps the v4 layout + FLAG_ENCRYPTED + AES crypto_suite.
+        assert_eq!(footer.format_version, 4);
+        assert_eq!(
+            footer.flags & format::FLAG_ENCRYPTED,
+            format::FLAG_ENCRYPTED
+        );
+        assert_eq!(footer.flags & format::FLAG_SIGNED, 0);
+        assert_eq!(footer.crypto_suite(), CRYPTO_AES_256_GCM);
+        assert_eq!(footer.payload_csize, payload.len() as u64);
+        // Integrity hash covers the (encrypted) payload || metadata.
+        assert_eq!(footer.payload_sha256, sha2_hash(payload, meta));
+    }
+
+    #[test]
     fn build_meta_json_produces_valid_json() {
         let opts = MetaOptions {
             version: Some("1.0".into()),
@@ -413,6 +460,7 @@ mod tests {
             app_hash: None,
             rt_deps_hash: None,
             update_url: None,
+            crypto: None,
         };
         let bun_features = BunFeatures::default();
         let json = build_meta_json(

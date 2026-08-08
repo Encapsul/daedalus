@@ -1022,7 +1022,16 @@ fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> {
     let mut h = Sha256::new();
     h.update(data);
     let got = h.finalize();
-    if got.as_slice() != expected {
+    // Constant-time comparison: an integrity digest must never be compared with
+    // an early-exit `==`/`!=`, which leaks the length of the matching prefix.
+    // XOR-fold both 32-byte buffers and branch only on the aggregate bit, after
+    // the whole array has been consumed — equivalent to subtle::ConstantTimeEq
+    // but with no extra dependency on the security-critical stub.
+    let mut acc = 0u8;
+    for (a, b) in got.as_slice().iter().zip(expected) {
+        acc |= a ^ b;
+    }
+    if acc != 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "payload integrity check failed (SHA-256 mismatch)",
@@ -1043,6 +1052,7 @@ fn hkdf_derive_key(signing_seed: &[u8]) -> io::Result<[u8; 32]> {
         .map_err(|_| err("signing seed must be exactly 32 bytes"))?;
     xbin_core::encrypt::hkdf_derive_key(seed)
         .map_err(|e| err(&format!("HKDF key derivation failed: {e}")))
+        .map(|key| *key)
 }
 
 /// Decrypt an AES-256-GCM payload.

@@ -3314,6 +3314,7 @@ dependencies = [
  "tar",
  "tempfile",
  "which",
+ "zeroize",
  "zstd",
 ]
 

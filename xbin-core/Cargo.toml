@@ -31,6 +31,8 @@ aes-gcm = "0.10"
 hkdf = "0.12"
 rand = "0.8"
 anyhow = "1"
+# Secret material cleanup: Zeroizing<..> drops zero the AES key/nonce on scope exit.
+zeroize = "1"
 
 # Path utilities
 pathdiff = "0.2"
