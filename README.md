@@ -50,6 +50,27 @@ The tool handles runtime detection, dependency installation, compression, and si
 
 Each runtime has specific detection logic and framework support that triggers when building.
 
+### Target & host support
+
+`xbin build --target <list>` packages one artifact **per target**. A comma-separated
+list emits one `<name>-<target>.xbin` per target into the output directory. The
+stubs and (where available) embedded runtimes are cross-selected by target.
+
+| `--target` short form | Resolved triple | Stub | Runtime arch | Notes |
+|-----------------------|-----------------|------|--------------|-------|
+| *(none)* / `host`     | host triple     | host stub | host     | Native build |
+| `linux-x64`           | `x86_64-unknown-linux-musl` | ELF (static) | node x64 linux | |
+| `linux-arm64`         | `aarch64-unknown-linux-musl` | ELF (static) | node arm64 linux | |
+| `darwin-x64`          | `x86_64-apple-darwin` | Mach-O | node x64 darwin | macOS host runs this |
+| `darwin-arm64`        | `aarch64-apple-darwin` | Mach-O | node arm64 darwin | native Apple Silicon |
+| `win-x64`             | `x86_64-pc-windows-gnu` | PE (.exe) | node x64 win | cross-OS from any host |
+| `win-arm64`           | `aarch64-pc-windows-gnu` | PE (.exe) | node arm64 win | cross-OS from any host |
+
+- The builder host can be any supported OS (Linux/macOS/Windows). Cross-OS packaging
+  (e.g. building a Windows `.exe` on Linux) bundles the matching stub + runtime;
+  the produced artifact runs only on its target OS.
+- Full triples (`aarch64-apple-darwin`, `x86_64-unknown-linux-musl`) are also accepted.
+
 ## CLI commands
 
 | Command | Description |
@@ -86,11 +107,19 @@ Each runtime has specific detection logic and framework support that triggers wh
 # Embed interpreter for self-contained binaries (Bun-inspired)
 xbin build ./myapp --embed-interpreter python3 -o myapp.xbin
 
-# Enable WASM support (Wasmer-inspired) — metadata only, not functional yet
-xbin build ./myapp --wasm --wasmtime-path /usr/bin/wasmtime -o myapp.xbin
+# Multi-arch packaging: one artifact per target
+xbin build ./myapp --target linux-x64,linux-arm64 -o out/app.xbin
+#  -> out/app-linux-x64.xbin, out/app-linux-arm64.xbin
+
+# Cross-OS packaging: Windows artifact built on Linux/macOS
+xbin build ./myapp --target win-x64 -o out/app.xbin
+#  -> out/app-win-x64.exe (stubs+runtime selected for the target OS)
 
 # Cross-compilation (Bun-inspired) — metadata only, not functional yet
 xbin build ./myapp --cross-compile aarch64,arm64 -o myapp.xbin
+
+# Enable WASM support (Wasmer-inspired) — metadata only, not functional yet
+xbin build ./myapp --wasm --wasmtime-path /usr/bin/wasmtime -o myapp.xbin
 
 # HTTP health check endpoint (Wasmer-inspired) — metadata only, not functional yet
 xbin build ./myapp --health-port 8080 --health-endpoint /health -o myapp.xbin

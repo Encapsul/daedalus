@@ -32,6 +32,7 @@ pub fn cache_dir() -> PathBuf {
 /// ```text
 /// ~/.cache/xbin/builds/<app_sha256>/output.xbin
 /// ~/.cache/xbin/builds/<app_sha256>/.meta
+/// ~/.cache/xbin/builds/<app_sha256>-<target>/output.xbin   (cross-target builds)
 /// ```
 pub struct BuildCache {
     base_dir: PathBuf,
@@ -42,6 +43,15 @@ pub struct BuildCache {
 struct CacheMeta {
     app_hash: String,
     timestamp_secs: u64,
+}
+
+/// Cache key directory: the app hash alone for host builds, `hash-<target>`
+/// for cross-target builds so per-arch artifacts never collide.
+fn cache_key(app_hash: &str, target: Option<&str>) -> String {
+    match target {
+        Some(t) => format!("{app_hash}-{t}"),
+        None => app_hash.to_string(),
+    }
 }
 
 impl BuildCache {
@@ -57,11 +67,12 @@ impl BuildCache {
         }
     }
 
-    /// Look up a cached `.xbin` whose app-hash matches.
+    /// Look up a cached `.xbin` whose app-hash (and target, for cross
+    /// builds) matches.
     ///
     /// Returns `Some(path)` if a valid cached build exists, `None` otherwise.
-    pub fn find(&self, app_hash: &str) -> Option<PathBuf> {
-        let entry_dir = self.base_dir.join(app_hash);
+    pub fn find(&self, app_hash: &str, target: Option<&str>) -> Option<PathBuf> {
+        let entry_dir = self.base_dir.join(cache_key(app_hash, target));
         let xbin = entry_dir.join("output.xbin");
         if xbin.is_file() {
             Some(xbin)
@@ -71,8 +82,16 @@ impl BuildCache {
     }
 
     /// Store a built `.xbin` into the cache under the given app hash.
-    pub fn store(&self, app_hash: &str, xbin_path: &Path) -> std::io::Result<()> {
-        let entry_dir = self.base_dir.join(app_hash);
+    ///
+    /// Cross-target builds pass the target string so a linux and a windows
+    /// artifact of the same app never collide under one hash key.
+    pub fn store(
+        &self,
+        app_hash: &str,
+        target: Option<&str>,
+        xbin_path: &Path,
+    ) -> std::io::Result<()> {
+        let entry_dir = self.base_dir.join(cache_key(app_hash, target));
         std::fs::create_dir_all(&entry_dir)?;
 
         std::fs::copy(xbin_path, entry_dir.join("output.xbin"))?;
@@ -199,10 +218,33 @@ mod tests {
         let fake_xbin = tmp.path().join("fake.xbin");
         std::fs::write(&fake_xbin, b"fake xbin").unwrap();
 
-        cache.store("aaa", &fake_xbin).unwrap();
-        let found = cache.find("aaa");
+        cache.store("aaa", None, &fake_xbin).unwrap();
+        let found = cache.find("aaa", None);
         assert!(found.is_some());
         assert_eq!(found.unwrap().file_name().unwrap(), "output.xbin");
+    }
+
+    #[test]
+    fn build_cache_targets_do_not_collide() {
+        let _guard = XdgGuard::new();
+        let tmp = tempfile::tempdir().unwrap();
+        XdgGuard::redirect(tmp.path());
+        let app_dir = tmp.path().join("myapp");
+        std::fs::create_dir_all(&app_dir).unwrap();
+        let cache = BuildCache::new(&app_dir, 10);
+
+        let fake_linux = tmp.path().join("linux.xbin");
+        std::fs::write(&fake_linux, b"linux").unwrap();
+        let fake_win = tmp.path().join("win.exe");
+        std::fs::write(&fake_win, b"windows").unwrap();
+
+        cache.store("aaa", Some("win-x64"), &fake_win).unwrap();
+        cache.store("aaa", None, &fake_linux).unwrap();
+
+        assert!(cache.find("aaa", None).is_some());
+        assert!(cache.find("aaa", Some("win-x64")).is_some());
+        let win = cache.find("aaa", Some("win-x64")).unwrap();
+        assert_eq!(std::fs::read_to_string(win).unwrap(), "windows");
     }
 
     #[test]
@@ -213,7 +255,7 @@ mod tests {
         let app_dir = tmp.path().join("myapp");
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 10);
-        assert!(cache.find("xxx").is_none());
+        assert!(cache.find("xxx", None).is_none());
     }
 
     #[test]
@@ -227,10 +269,10 @@ mod tests {
 
         let fake_xbin = tmp.path().join("fake.xbin");
         std::fs::write(&fake_xbin, b"fake xbin").unwrap();
-        cache.store("aaa", &fake_xbin).unwrap();
+        cache.store("aaa", None, &fake_xbin).unwrap();
 
         cache.clear().unwrap();
-        assert!(cache.find("aaa").is_none());
+        assert!(cache.find("aaa", None).is_none());
     }
 
     #[test]
@@ -245,11 +287,11 @@ mod tests {
         let fake_xbin = tmp.path().join("fake.xbin");
         std::fs::write(&fake_xbin, b"fake xbin").unwrap();
 
-        cache.store("a1", &fake_xbin).unwrap();
+        cache.store("a1", None, &fake_xbin).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        cache.store("a2", &fake_xbin).unwrap();
+        cache.store("a2", None, &fake_xbin).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        cache.store("a3", &fake_xbin).unwrap();
+        cache.store("a3", None, &fake_xbin).unwrap();
 
         let entries = cache.list_entries().unwrap();
         assert!(entries.len() <= 2);
