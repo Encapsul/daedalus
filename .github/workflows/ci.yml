@@ -37,6 +37,38 @@ jobs:
       - run: cargo clippy -p xbin-stub -- -D warnings
       - run: cargo clippy -p xbin-cli -- -D warnings
       - run: cargo test --workspace
+      - name: cargo doc (no-deps)
+        run: cargo doc --no-deps -p xbin-core -p xbin-stub -p xbin-cli
+      - name: 'Check // SAFETY: comments before unsafe blocks'
+        run: |
+          set -e
+          FAIL=0
+          for f in $(find stub/src -name '*.rs'); do
+            unsafe_count=$(grep -cE '^\s*unsafe\s*[{(]|^\s*unsafe\s+fn' "$f" || true)
+            safety_count=$(grep -c '// SAFETY:' "$f" || true)
+            if [ "$unsafe_count" -gt 0 ] && [ "$unsafe_count" -ne "$safety_count" ]; then
+              echo "FAIL: $f has $unsafe_count unsafe blocks but $safety_count SAFETY comments"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All unsafe blocks in stub/ have SAFETY comments."
+      - name: 'Check //! module doc headers'
+        run: |
+          set -e
+          FAIL=0
+          for f in $(find stub/src xbin-core/src -name '*.rs' | sort); do
+            if ! head -1 "$f" | grep -q '^//!'; then
+              echo "FAIL: $f missing //! module doc header"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All modules in stub/ and xbin-core/ have doc headers."
       - run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
       - run: cargo build -p xbin-cli
       - run: cargo install cargo-audit cargo-outdated --locked
@@ -89,6 +121,8 @@ jobs:
       - run: cargo clippy -p xbin-cli -- -D warnings
       - run: cargo test --workspace
       - run: cargo build --release -p xbin-cli
+      - name: Build stub for smoke test
+        run: cargo build -p xbin-stub
       - name: Smoke test
         run: |
           ./target/release/xbin build examples/hello-web -o /tmp/hello-web.xbin
@@ -123,10 +157,11 @@ jobs:
         with:
           targets: aarch64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
-      - name: Install QEMU + cargo-zigbuild
-        run: |
-          sudo apt-get update && sudo apt-get install -y qemu-user-static
-          cargo install cargo-zigbuild --locked
+      - name: Install QEMU + zig
+        run: sudo apt-get update && sudo apt-get install -y qemu-user-static
+      - uses: mlugg/setup-zig@v2
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
       - name: Build aarch64 stub + CLI
         run: |
           cargo zigbuild --release --target aarch64-unknown-linux-musl -p xbin-stub
