@@ -2,17 +2,15 @@ use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
 
-const DEFAULT_REGISTRY: &str = "https://xbin.example.com/api/v1/upload";
-
 #[derive(Args)]
 pub struct PublishArgs {
     /// Path to the .xbin file to publish
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
 
-    /// Registry URL to upload to
-    #[arg(long, default_value = DEFAULT_REGISTRY)]
-    pub registry: String,
+    /// Registry URL to upload to (required, cannot use placeholder)
+    #[arg(long, env = "XBIN_REGISTRY")]
+    pub registry: Option<String>,
 
     /// Authentication token for the registry
     #[arg(long, env = "XBIN_TOKEN")]
@@ -26,6 +24,8 @@ pub struct PublishArgs {
     #[arg(short, long)]
     pub verbose: bool,
 }
+
+const DEFAULT_REGISTRY_PLACEHOLDER: &str = "https://xbin.example.com";
 
 pub fn run(args: PublishArgs) -> Result<()> {
     let file = args.file.canonicalize().context("failed to find file")?;
@@ -42,14 +42,30 @@ pub fn run(args: PublishArgs) -> Result<()> {
         .context("failed to read file metadata")?
         .len();
 
+    // Registry URL is mandatory - no placeholder allowed as default
+    let registry = match &args.registry {
+        Some(url) => url.clone(),
+        None => {
+            anyhow::bail!("registry URL is required (use --registry or XBIN_REGISTRY env var)")
+        }
+    };
+
+    // Reject placeholder URLs that would result in a non-functional upload
+    if registry.contains(DEFAULT_REGISTRY_PLACEHOLDER) {
+        anyhow::bail!(
+            "cannot use placeholder registry URL '{}'; please provide a valid registry endpoint with --registry or XBIN_REGISTRY",
+            DEFAULT_REGISTRY_PLACEHOLDER
+        );
+    }
+
     if args.verbose {
         eprintln!("[xbin] publish: {}", file.display());
         eprintln!("  size: {meta_size} bytes");
-        eprintln!("  registry: {}", args.registry);
+        eprintln!("  registry: {}", registry);
     }
 
     if args.dry_run {
-        eprintln!("Would publish {} to {}", file.display(), args.registry);
+        eprintln!("Would publish {} to {}", file.display(), registry);
         return Ok(());
     }
 
@@ -71,7 +87,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
     let part = reqwest::blocking::multipart::Part::bytes(content);
     let form = reqwest::blocking::multipart::Form::new().part("file", part);
 
-    let mut request = client.post(&args.registry).multipart(form);
+    let mut request = client.post(&registry).multipart(form);
 
     if let Some(ref t) = token {
         request = request.header("Authorization", format!("Bearer {t}"));

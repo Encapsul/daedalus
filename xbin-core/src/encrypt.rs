@@ -6,17 +6,20 @@ use sha2::Sha256;
 use zeroize::{Zeroize, Zeroizing};
 
 const NONCE_LEN: usize = 12;
-const HKDF_SALT: &[u8] = b"xbin-encrypt-v1";
 const HKDF_INFO: &[u8] = b"aes-256-gcm-key";
 
 #[derive(Debug, Clone)]
 pub struct EncryptMetadata {
+    pub salt: [u8; 32], // Random salt for HKDF
     pub nonce: [u8; NONCE_LEN],
     pub tag_offset: usize,
 }
 
-pub fn hkdf_derive_key(signing_seed: &[u8; 32]) -> anyhow::Result<Zeroizing<[u8; 32]>> {
-    let hk = Hkdf::<Sha256>::new(Some(HKDF_SALT), signing_seed);
+pub fn hkdf_derive_key(
+    signing_seed: &[u8; 32],
+    salt: &[u8; 32],
+) -> anyhow::Result<Zeroizing<[u8; 32]>> {
+    let hk = Hkdf::<Sha256>::new(Some(salt), signing_seed);
     let mut key = Zeroizing::new([0u8; 32]);
     hk.expand(HKDF_INFO, &mut key[..])
         .map_err(|e| anyhow::anyhow!("HKDF expand failed: {e}"))?;
@@ -27,7 +30,11 @@ pub fn encrypt_payload(
     plaintext: &[u8],
     signing_seed: &[u8; 32],
 ) -> anyhow::Result<(Vec<u8>, EncryptMetadata)> {
-    let key = hkdf_derive_key(signing_seed)?;
+    // Generate a random salt per encryption operation to ensure unique key derivation
+    let mut salt = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut salt);
+
+    let key = hkdf_derive_key(signing_seed, &salt)?;
     let cipher =
         Aes256Gcm::new_from_slice(&key[..]).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
 
@@ -38,6 +45,7 @@ pub fn encrypt_payload(
         .encrypt(&nonce, plaintext)
         .map_err(|e| anyhow::anyhow!("aes encrypt: {e}"))?;
     let metadata = EncryptMetadata {
+        salt,
         nonce: nonce_bytes,
         tag_offset: plaintext.len(),
     };
@@ -52,8 +60,9 @@ pub fn decrypt_payload(
     ciphertext: &[u8],
     signing_seed: &[u8; 32],
     nonce: &[u8; NONCE_LEN],
+    salt: &[u8; 32],
 ) -> anyhow::Result<Vec<u8>> {
-    let key = hkdf_derive_key(signing_seed)?;
+    let key = hkdf_derive_key(signing_seed, salt)?;
     let cipher =
         Aes256Gcm::new_from_slice(&key[..]).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
     let nonce = Nonce::from(*nonce);
@@ -71,8 +80,9 @@ mod tests {
     #[test]
     fn test_hkdf_deterministic() {
         let seed = [0x42u8; 32];
-        let key1 = hkdf_derive_key(&seed).unwrap();
-        let key2 = hkdf_derive_key(&seed).unwrap();
+        let salt = [0x01u8; 32]; // Deterministic salt for test
+        let key1 = hkdf_derive_key(&seed, &salt).unwrap();
+        let key2 = hkdf_derive_key(&seed, &salt).unwrap();
         assert_eq!(key1, key2);
         assert_eq!(key1.len(), 32);
     }
@@ -94,7 +104,7 @@ mod tests {
         assert_eq!(meta.nonce.len(), NONCE_LEN);
         assert_eq!(meta.tag_offset, plaintext.len());
 
-        let decrypted = decrypt_payload(&ciphertext, &seed, &meta.nonce).unwrap();
+        let decrypted = decrypt_payload(&ciphertext, &seed, &meta.nonce, &meta.salt).unwrap();
         assert_eq!(decrypted, plaintext);
     }
 
@@ -117,7 +127,7 @@ mod tests {
         let plaintext = b"secret data";
 
         let (ciphertext, meta) = encrypt_payload(plaintext, &seed1).unwrap();
-        let result = decrypt_payload(&ciphertext, &seed2, &meta.nonce);
+        let result = decrypt_payload(&ciphertext, &seed2, &meta.nonce, &meta.salt);
 
         assert!(result.is_err());
     }

@@ -14,25 +14,25 @@ portability items lives in "Portabilité du stub" and "Blocants Critiques".
 
 ## Phase 0 — Security & correctness (do first, everywhere)
 
-- [ ] **Isolation fail-open** — `isolation.parse().unwrap_or(1)` accepts any
+- [x] **Isolation fail-open** — `isolation.parse().unwrap_or(1)` accepts any
       invalid `--isolation` value (audit CRITICAL). Reject with an error
       instead of defaulting to sandbox. (`xbin-cli/src/commands/build.rs`)
-- [ ] **Predictable temp dir** — `/tmp/xbin-build-tools/node` is a fixed
+- [x] **Predictable temp dir** — `/tmp/xbin-build-tools/node` is a fixed
       location (audit HIGH). Use `tempfile::tempdir()`.
       (`xbin-cli/src/commands/build.rs:1060`)
-- [ ] **PATH injection** — `std::env::set_var("PATH", ...)` mutates the global
+- [x] **PATH injection** — `std::env::set_var("PATH", ...)` mutates the global
       environment (audit HIGH). Use `Command::env()`.
-- [ ] **Panic leaks** — `human_panic` prints file/line on panic (audit MEDIUM).
+- [x] **Panic leaks** — `human_panic` prints file/line on panic (audit MEDIUM).
       Hide source locations.
-- [ ] **HKDF salt** — deterministic salt for key derivation (audit MEDIUM).
+- [x] **HKDF salt** — deterministic salt for key derivation (audit MEDIUM).
       Generate a random per-encryption salt. (`xbin-core/src/encrypt.rs`)
-- [ ] **`DEFAULT_REGISTRY` placeholder** — `xbin.example.com` must not be a
+- [x] **`DEFAULT_REGISTRY` placeholder** — `xbin.example.com` must not be a
       working default (audit MEDIUM). Make the registry URL mandatory.
-- [ ] **Zeroization of keys** — add `zeroize` + `Zeroizing<T>` in
+- [x] **Zeroization of keys** — add `zeroize` + `Zeroizing<T>` in
       `encrypt.rs`, `keygen.rs`, `sign.rs`. (audit HIGH-2)
-- [ ] **`find_stub` stale-stub bug** — `find_stub` prefers `/usr/local/bin/xbin-stub`
+- [x] **`find_stub` stale-stub bug** — `find_stub` prefers `/usr/local/bin/xbin-stub`
       which can silently embed an obsolete stub (a 2026-07-27 stub with a
-      relative-PATH bug was embedded this way). Prefer fresh builds
+      relative-PATH bug was embedded). Prefer fresh builds
       (native `target/` then musl `target/`), warn if the embedded stub is
       older than N days. (`xbin-cli/src/commands/build.rs:1444`)
 

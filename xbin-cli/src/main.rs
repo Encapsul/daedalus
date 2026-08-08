@@ -105,6 +105,7 @@ enum Shell {
 }
 
 fn main() -> ExitCode {
+    // Hide source locations in panic messages for security (no file/line info leakage)
     human_panic::setup_panic!();
 
     let cli = Cli::parse();
