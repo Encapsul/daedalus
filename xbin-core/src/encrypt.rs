@@ -108,15 +108,16 @@ fn derive_chunk_key(
     key
 }
 
-/// Build a per-chunk GCM nonce: 8-byte big-endian chunk index + 4-byte base nonce suffix.
+/// Build a per-chunk GCM nonce from `base_nonce` and `chunk_index`.
 ///
-/// Uses the last 8 bytes of `base_nonce` as the fixed nonce for all chunks.
-/// Per-chunk key independence (via HKDF with chunk index) makes nonce reuse
-/// safe: each chunk key is unique, so the nonce is never reused under the
-/// same key.
-fn chunk_nonce(base_nonce: &[u8; NONCE_LEN], _chunk_index: u64) -> [u8; NONCE_LEN] {
+/// Layout: `[base_nonce[0..4]; chunk_index: u64 be]`.
+/// Each chunk gets a unique nonce by encoding the big-endian chunk index
+/// in the last 8 bytes, so nonce uniqueness is guaranteed without relying
+/// solely on HKDF key independence.
+fn chunk_nonce(base_nonce: &[u8; NONCE_LEN], chunk_index: u64) -> [u8; NONCE_LEN] {
     let mut nonce = [0u8; NONCE_LEN];
-    nonce[4..12].copy_from_slice(&base_nonce[4..12]);
+    nonce[0..4].copy_from_slice(&base_nonce[0..4]);
+    nonce[4..12].copy_from_slice(&chunk_index.to_be_bytes());
     nonce
 }
 

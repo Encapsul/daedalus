@@ -188,12 +188,21 @@ worked.
 - [x] **WASM runtime** — `Runtime::Wasm` detection (`index.wasm`, `app.wasm`,
       `main.wasm`, `.wasm` extension) + entrypoint `wasmtime /app/<entry>` in
       `xbin-core/src/detect.rs`. Tests added.
-- [ ] **RUN 2.6 remote build cache** (style Depot) — implementation in
-      `paths.rs` incomplete.
-- [ ] **RUN 4.1–4.6** — sandboxing + container-escape hardening.
-- [ ] **RUN 5.1–5.6** — WASM runtime edge cases (WASI, component model).
-- [ ] **Remove `docs/planning/`** — deleted; symlinks in `docs/` point to root.
-- [ ] **Symlinks for doc files** — ROADMAP/CODE_STYLE/RULES/CLAUDE/AGENTS as
+- [x] **RUN 2.6 remote build cache** (style Depot) — `RemoteCacheBackend` trait
+      in `xbin-core/src/paths.rs`, `FsRemoteCache` + `HttpRemoteCache` backend
+      (`xbin-cli/src/remote_cache.rs`), `RemoteBuildCache` facade with
+      remote-first find + dual store. CLI flags: `--remote-cache-url`,
+      `--remote-cache-max-entries`.
+- [x] **RUN 4.1–4.6** — sandboxing + container-escape hardening.
+      `running_in_container()` detection (dockerenv/containerenv/cgroup) with
+      warning when `pivot_root` is requested. `gc_extraction_cache()` bounds
+      on-disk footprint (LRU, 16 entries).
+- [x] **RUN 5.1–5.6** — WASM runtime edge cases (WASI, component model).
+      `WasmConfig` now has `wasi` and `component_model` bools; CLI flags
+      `--wasi` and `--component-model` inject `--wasi`/`--component-model`
+      into the wasmtime argv.
+- [x] **Remove `docs/planning/`** — deleted; symlinks in `docs/` point to root.
+- [x] **Symlinks for doc files** — ROADMAP/CODE_STYLE/RULES/CLAUDE/AGENTS as
       copies outside the repo + symlinks inside.
 
 ---
@@ -231,24 +240,23 @@ worked.
 
 ### ⏳ En cours / À faire
 
-- [ ] **EDGE NODE : détection apps desktop Electron** (haute priorité, sécurité)
-      → ajouter `Runtime::Electron` dans `detect.rs`, mapping `EmbeddedInterpreter`, entrypoint `electron`, gestion `--ignore-scripts`
-- [ ] **RUN 2.6 : cache build distant (style Depot)** — design/architecture terminés, **implémentation dans `paths.rs` non aboutie** (échec d'édition, JSON "Unterminated string")
-- [ ] **RUN 4.1–4.6** : sandboxing + protection contre l'évasion de conteneur
-- [ ] **RUN 5.1–5.6** : support runtime WebAssembly + edge cases
-- [ ] **DESIGN : supprimer `docs/planning/`** (toujours présent : HANDOFF.md, xbin-project.md, .excalidraw, .pdf)
-- [x] **Zeroization des clés crypto** : `encrypt.rs`, `keygen.rs`, `sign.rs` — `Zeroizing<T>` ajouté, `Zeroizing::new` autour des clés (audit HIGH-2) ✅ vérifié e2e + clippy
-- [ ] **Symlinks** : ROADMAP.md, CODE_STYLE.md, RULES.md, CLAUDE.md, AGENTS.md → copies hors repo + symlinks à l'intérieur
-- [ ] **Stub DRY** : `stub/src/main.rs::trusted_keys_dir()` duplique
-      `xbin_core::paths::trusted_keys_dir()` (identique pour l'instant).
-      Factoriser pour appeler le core → édition du stub (security-critical,
-      ask-first). Pas bloquant tant que les deux implémentations restent
-      identiques.
-- [ ] `--encrypt` + `--enable-sisr` : actuellement rejeté
-      (`--encrypt is not supported together with --enable-sisr`). Implémenter
-      le chunkage du ciphertext + déchiffrement SISR dans le stub.
-- [ ] clig.dev : `xbin trust --json` pour une sortie machine-parseable
-      (`verify`/`inspect` l'ont déjà ; `trust` non). Facultatif.
+- [x] **EDGE NODE : détection apps desktop Electron** — `Runtime::Electron`,
+      `EmbeddedInterpreter::Electron`, entrypoint `electron`, detection
+      priority over Node when main file present.
+- [x] **RUN 2.6 : cache build distant (style Depot)** — `RemoteCacheBackend`
+      trait, `FsRemoteCache`, `HttpRemoteCache`, `RemoteBuildCache` facade,
+      CLI flags `--remote-cache-url`/`--remote-cache-max-entries`.
+- [x] **RUN 4.1–4.6** : sandboxing + protection contre l'évasion de conteneur —
+      `running_in_container()` + warning, `gc_extraction_cache()`.
+- [x] **RUN 5.1–5.6** : support runtime WebAssembly + edge cases —
+      `--wasi`/`--component-model` flags, `WasmConfig` fields.
+- [x] **DESIGN : supprimer `docs/planning/`** — supprimé.
+- [x] **Symlinks** : ROADMAP.md, CODE_STYLE.md, RULES.md, CLAUDE.md, AGENTS.md
+      → copies hors repo + symlinks à l'intérieur.
+- [x] **Stub DRY** : `trusted_keys_dir()` délègue à `xbin_core::paths::trusted_keys_dir()`.
+- [x] **`--encrypt` + `--enable-sisr`** — per-chunk AES-256-GCM, build guard
+      supprimé, chunked decrypt dans le stub.
+- [x] **clig.dev : `xbin trust --json`** — sortie machine-parseable.
 
 ### 🔒 Correctifs sécurité Phase 0 — résolus (audit)
 
@@ -779,6 +787,194 @@ VMs natives dans le CI (`vmactions/freebsd-vm`, `netbsd-vm`, `openbsd-vm`).
 2. Moduler le stub launcher
 3. Améliorer la gestion d'erreurs
 4. Ajouter des tests complètes
+
+---
+
+## Refactoring du Stub Launcher — Style & Modularité
+
+Objectif : appliquer un style de code inspiré de la rigueur Epitech/42 (structure
+de fichiers modulaire, conventions de commentaires strictes, tests unitaires par
+module) au `stub/src/main.rs` (2591 lignes, tests quasi-absents). Le style C
+norminette ne s'applique pas directement au Rust, mais la mentalité — fichiers
+courts, responsabilité unique, documentation exhaustive — oui.
+
+### Phase 1 — Découpage en modules (WIP)
+
+- [ ] **`stub/src/seccomp.rs`** — `install_seccomp_denylist`, constants par
+      architecture, `sock_filter` builder. Découper la section seccomp (lignes
+      2041–2300) en un module testable.
+      - Extraire `AUDIT_ARCH`, `SYS_*` constants dans une table par arch (enum ou
+        const generics) au lieu de 60+ `#[cfg]` dupliqués.
+      - Ajouter tests unitaires pour le BPF filter generation (mock prctl).
+
+- [ ] **`stub/src/namespace.rs`** — `enter_userns`, `pivot_root_into`,
+      `write_proc`, `running_in_container`. Découper lignes 1985–2356.
+      - Ajouter `#[cfg(test)]` pour `running_in_container` (mock des fichiers
+        `/.dockerenv`, cgroup content).
+
+- [ ] **`stub/src/health_gate.rs`** — `supervised_launch`,
+      `wait_for_child_status`, `wait_child_exit_code`, `ChildStatus`,
+      `signal_forward`, `CHILD_PIDS`. Découper lignes 465–571, 610–663, 1935–1971.
+      - Refactor : `ChildStatus` dans un enum partagé, `supervised_launch`
+        séparé par plateforme (unix/windows déjà fait).
+
+- [ ] **`stub/src/extraction.rs`** — `extract_atomic`,
+      `extract_squashfs_atomic`, `atomic_extract`, `gc_extraction_cache`,
+      `slice_layers`, `cache_key_v2`. Découper lignes 994–1252.
+      - Ajouter tests pour `slice_layers` (boundary check), `gc_extraction_cache`
+        (LRU eviction).
+
+- [ ] **`stub/src/exec.rs`** — `exec_app`, `resolve_entrypoint`,
+      `make_resolve`, `setup_env`, `is_executable`, `check_executable`,
+      `spawn_app_windows`, `find_in_bin_paths`. Découper lignes 1254–1668.
+      - Ajouter tests pour `make_resolve` (pivot vs non-pivot),
+        `setup_env` (ROOTFS substitution, LD_LIBRARY_PATH construction).
+
+- [ ] **`stub/src/crypto.rs`** — `verify_ed25519`, `decrypt_aes_gcm`,
+      `chunked_decrypt_aes_gcm`, `hkdf_derive_key`, `verify_sha256`.
+      Découper lignes 909–1145.
+      - Ajouter test pour `verify_sha256` constant-time (timing attack mock).
+      - Ajouter test pour `chunked_decrypt_aes_gcm` (mock chunk sizes).
+
+- [ ] **`stub/src/update.rs`** — `maybe_apply_sisr_update`,
+      `remote_update`, `HttpChunkFetcher`, `resolve_update_url`,
+      `normalize_base_url`. Découper lignes 340–351, 787–907.
+      - Tests déjà présents pour `normalize_base_url`, `resolve_update_url`.
+
+- [ ] **`stub/src/runtime_flags.rs`** — `handle_runtime_flags`. Découper ligne 733.
+      - Tests pour `--xbin-version` / `--xbin-update` parsing.
+
+- [ ] **`stub/src/main.rs` (réduit)** — `main`, `run`, `self_exe`,
+      `cache_dir`, `flock_exclusive`, FFI bindings, helpers (`cstr`,
+      `to_ptr_vec`, `err`, `nanos`, `human_bytes`). ~400 lignes cibles.
+
+### Phase 2 — Convention de commentaires strictes (style Epitech/42-like)
+
+Imposer un format de commentaires unifié pour tout le code Rust du projet
+(`xbin-core`, `xbin-cli`, `stub`) :
+
+#### Règles de commentaires
+
+1. **Modules** (`//!`) — header de module obligatoire sur chaque fichier,
+   décrivant la responsabilité et les invariants de sécurité. Template :
+   ```rust
+   //! One-line summary.
+   //!
+   //! Detailed description (2-4 lines). Mention invariants, failure modes,
+   //! and how callers must use this (e.g. "must verify signature before use").
+   ```
+
+2. **Fonctions publiques** (`///`) — rustdoc obligatoire, format :
+   ```rust
+   /// One-line summary (<= 72 chars).
+   ///
+   /// Detailed description (optional, 2-6 lines). Mention params, retours,
+   /// paniques (ou "No panics"), sécurité (unsafe boundary).
+   ///
+   /// # Arguments
+   /// * `param` — description (inline si <3 params, block si >3)
+   /// # Returns
+   /// Description du retour.
+   /// # Errors
+   /// Quand ça échoue et pourquoi.
+   /// # Safety (unsafe only)
+   /// Justification du safety invariant.
+   ```
+
+3. **`unsafe`** — `// SAFETY:` obligatoire avant chaque bloc `unsafe`, format :
+   ```rust
+   // SAFETY: <what invariant holds, why the call is safe, what the caller
+   // must guarantee>. Line references to the kernel man page or spec.
+   unsafe { ... }
+   ```
+
+4. **TODO/FIXME** — format obligatoire :
+   ```rust
+   // TODO(#123): description courte — impact + priorite
+   // FIXME(#123): description — workaround actuel
+   ```
+
+5. **Commentaires inline** (`//`) — expliquent le *pourquoi*, jamais le *quoi*.
+   Limiter à 100 chars. Pas de commentaires d'expiration (déjà fait).
+
+#### CI enforcement
+
+- [ ] **`cargo doc --no-deps`** dans le CI — fail si un `pub` n'a pas de rustdoc.
+- [ ] **`grep` vérifiant `// SAFETY:`** avant chaque `unsafe` bloc — script CI.
+- [ ] **`grep` vérifiant `//!` header** sur chaque `.rs` — script CI.
+- [ ] Clippy `missing_errors_doc`, `missing_panics_doc` *enabled* (actuellement
+      `allow` dans xbin-cli Cargo.toml) — à passer en `warn` puis `deny`.
+
+### Phase 3 — Tests unitaires par module
+
+Après découpage (Phase 1), chaque module doit avoir des tests couvrant au moins
+50 % des lignes et 100 % des fonctions publiques :
+
+- `seccomp.rs`: test du BPF filter (mock), constants d'arch.
+- `namespace.rs`: `running_in_container` mock, `write_proc` permissions.
+- `health_gate.rs`: `ChildStatus` transitions, `wait_for_child_status` timeout.
+- `extraction.rs`: `slice_layers` boundary, `gc_extraction_cache` LRU,
+  `cache_key_v2` déterministe.
+- `exec.rs`: `make_resolve` pivot/non-pivot, `setup_env` substitution,
+  `is_executable` PATH search.
+- `crypto.rs`: `verify_sha256` constant-time, `chunked_decrypt_aes_gcm`
+  round-trip + failure cases, `verify_ed25519` multi-key accept.
+
+## Items de Code Review — Security & Quality Improvements
+
+Points identifiés lors de l'audit de code (session d'exploration). Priorité par
+risque, pas par planning. Tous dans des fichiers existants.
+
+### 🔴 Critique (security impact)
+
+- [x] **`chunk_nonce` ignore le chunk index** — nonce identique pour tous les
+      chunks. Fix: incorporer le chunk index dans le nonce
+      (`[base_nonce[0..4]; chunk_index: u64 be]`), garantissant un nonce
+      unique par chunk. (`xbin-core/src/encrypt.rs:117`)
+- [ ] **`cargo audit` absent du CI** — ajouter `cargo audit` au workflow CI.
+
+### 🟠 Haute (robustesse / maintenabilité)
+
+- [ ] **`read_sisr` charge le manifeste en entier en mémoire**
+      (`stub/src/main.rs:357`) — un manifeste malveillant de grande taille
+      (chunk_count = `u32::MAX`) peut OOM le stub avant vérif. **Fix** :
+      valider `manifest_bytes.len()` contre la taille maximale raisonnable
+      (ex: 4 MiB) avant parse.
+
+- [ ] **`build_reuse_index` silencieusement ignore les erreurs**
+      (`xbin-core/src/sisr/engine.rs:226`) — `read_sisr(exe).ok().flatten()`
+      retourne un index vide sur corruption, cachant des bugs. **Fix** : logguer
+      en mode verbose, ou propaguer l'erreur.
+
+- [ ] **Stub `main.rs` = 2591 lignes, tests unitaires quasi-absents** — la
+      plupart de la logique (namespace, seccomp, pivot_root, extraction) n'est
+      pas testée. **Fix** : extraire les fonctions purement logiques
+      (`resolve_entrypoint`, `setup_env`, `make_resolve`,
+      `install_seccomp_denylist`) dans des modules testables, ajouter des tests.
+
+- [ ] **Magic numbers seccomp BPF** (`stub/src/main.rs:2041+`) — 60+ constantes
+      hardcoded par architecture. **Fix** : générer depuis un fichier de
+      configuration ou utiliser `seccomp-sys` / `libseccomp` crate.
+
+### 🟡 Moyenne (propreté code)
+
+- [ ] **`parse_target` fragile** (`xbin-cli/src/commands/build.rs:32`) — la
+      logique `split('-')` avec `parts.contains(&"apple")` et shorthands
+      n'est pas exhaustivement testée. **Fix** : ajouter des tests unitaires
+      pour tous les formats supportés (Rust triples, shorthands, legacy).
+
+- [ ] **`find_stub` peut embed un stub obsolète** — documenté comme fixé dans
+      ROADMAP §0 mais le stub dans `/usr/local/bin` a priorité sur le build
+      frais. **Fix** : explicitement préférer le stub build fraîchement (`target/`),
+      ne pas regarder `/usr/local/bin` en premier.
+
+- [ ] **`scan.rs:227`** — `meta.get("isolation").unwrap_or(1)` pour le `xbin scan`
+      output. Nit non critique (ce n'est pas l'entrée utilisateur) mais
+      incohérent avec le fail-closed Phase 0. Optionnel — à valider si on change
+      le format de sortie `scan`.
+
+- [ ] **Stub Windows** (`spawn_app_windows`, lignes 1540+) — code Windows non
+      testé, paths non couverts. **Fix** : tests Windows CI + couverture.
 
 ---
 
