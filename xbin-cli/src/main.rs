@@ -236,7 +236,7 @@ FILES
        ~/.cache/xbin/<hash>/rootfs/
               Extracted rootfs for each built binary, keyed by SHA-256 hash.
 
-       ~/.local/share/xbin/trusted-keys/
+       ~/.xbin/trusted-keys/
               Directory of trusted public keys for signature verification.
 
        ~/.local/share/xbin/keys/

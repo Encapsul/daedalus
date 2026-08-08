@@ -181,6 +181,25 @@ pub fn default_trusted_dir() -> PathBuf {
     }
 }
 
+/// Directory the stub launcher reads trusted Ed25519 public keys from.
+///
+/// Mirrors `xbin-stub`'s `trusted_keys_dir()` exactly so that
+/// `xbin trust` / `xbin verify` write to and read from the *same* location
+/// the launcher checks. Honors `$XBIN_TRUSTED_DIR`; otherwise defaults to
+/// `~/.xbin/trusted-keys/` (home-relative). The home-relative default — not
+/// `XDG_DATA_HOME` — is intentional: the stub resolves trust anchors without
+/// consulting environment variables that could be spoofed in sandboxed or
+/// elevated (`sudo`/setuid) contexts.
+pub fn trusted_keys_dir() -> PathBuf {
+    if let Some(d) = std::env::var_os("XBIN_TRUSTED_DIR") {
+        PathBuf::from(d)
+    } else if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".xbin").join("trusted-keys")
+    } else {
+        PathBuf::from(".xbin").join("trusted-keys")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,6 +221,34 @@ mod tests {
             match &self.0 {
                 Some(v) => std::env::set_var("XDG_CACHE_HOME", v),
                 None => std::env::remove_var("XDG_CACHE_HOME"),
+            }
+        }
+    }
+
+    /// RAII guard for an arbitrary env var (saves/restores across a test).
+    struct EnvGuard {
+        var: &'static str,
+        prev: Option<String>,
+    }
+    impl EnvGuard {
+        fn new(var: &'static str) -> Self {
+            Self {
+                var,
+                prev: std::env::var(var).ok(),
+            }
+        }
+        fn set(&self, val: &str) {
+            std::env::set_var(self.var, val);
+        }
+        fn clear(&self) {
+            std::env::remove_var(self.var);
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(v) => std::env::set_var(self.var, v),
+                None => std::env::remove_var(self.var),
             }
         }
     }
@@ -295,5 +342,26 @@ mod tests {
 
         let entries = cache.list_entries().unwrap();
         assert!(entries.len() <= 2);
+    }
+
+    #[test]
+    fn trusted_keys_dir_matches_stub_default() {
+        // $XBIN_TRUSTED_DIR wins; else ~/.xbin/trusted-keys (home-relative),
+        // matching the stub launcher exactly (no XDG resolution).
+        let xbin = EnvGuard::new("XBIN_TRUSTED_DIR");
+        let home = EnvGuard::new("HOME");
+        xbin.clear();
+        home.set("/fake/home");
+        assert_eq!(
+            trusted_keys_dir(),
+            PathBuf::from("/fake/home/.xbin/trusted-keys")
+        );
+        xbin.set("/custom/keys");
+        assert_eq!(trusted_keys_dir(), PathBuf::from("/custom/keys"));
+        xbin.clear();
+        assert_eq!(
+            trusted_keys_dir(),
+            PathBuf::from("/fake/home/.xbin/trusted-keys")
+        );
     }
 }
