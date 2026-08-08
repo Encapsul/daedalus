@@ -50,7 +50,18 @@ pub fn extract_squashfs_blob(blob: &[u8], dest: &Path) -> io::Result<()> {
                         fs::remove_file(&target)?;
                     }
                 }
-                std::os::unix::fs::symlink(&sym.link, &target)?;
+                #[cfg(unix)]
+                {
+                    std::os::unix::fs::symlink(&sym.link, &target)?;
+                }
+                // Windows: copy the link target contents so the file is usable.
+                #[cfg(windows)]
+                {
+                    let src = target.parent().unwrap_or(Path::new(".")).join(&sym.link);
+                    if src.is_file() {
+                        fs::copy(&src, &target)?;
+                    }
+                }
             }
             InnerNode::CharacterDevice(_)
             | InnerNode::BlockDevice(_)
@@ -77,8 +88,15 @@ pub fn extract_squashfs_layers(blobs: &[&[u8]], dest: &Path) -> io::Result<()> {
 }
 
 /// Set file permissions from a squashfs mode (u16, POSIX mode bits).
+/// No-op on Windows (no POSIX permissions).
+#[cfg(unix)]
 fn set_permissions(path: &Path, mode: u16) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let perms = std::fs::Permissions::from_mode(u32::from(mode));
     std::fs::set_permissions(path, perms)
+}
+
+#[cfg(windows)]
+fn set_permissions(_path: &Path, _mode: u16) -> io::Result<()> {
+    Ok(())
 }

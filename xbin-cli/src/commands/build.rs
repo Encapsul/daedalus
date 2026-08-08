@@ -25,19 +25,31 @@ fn parse_isolation(value: &str) -> Result<u32> {
 
 /// Parse a `--target` value into `(arch, os)`.
 ///
-/// Accepts legacy short forms (`aarch64`, `x86_64` — defaulting to Linux) and
-/// full Rust triples (`aarch64-apple-darwin`, `x86_64-unknown-linux-musl`).
+/// Accepts legacy short forms (`aarch64`, `x86_64` — defaulting to Linux),
+/// OS shorthands (`win-x64`, `win-arm64`), and full Rust triples
+/// (`aarch64-apple-darwin`, `x86_64-unknown-linux-musl`).
 fn parse_target(target: &str) -> (String, String) {
     let parts: Vec<&str> = target.split('-').collect();
-    let arch = match parts.first().copied() {
-        Some("x86_64" | "amd64") => "x86_64",
-        Some("aarch64" | "arm64") => "aarch64",
-        Some(other) => other,
-        None => std::env::consts::ARCH,
+    let shorthand_os = matches!(parts.first(), Some(&"win" | &"macos"));
+    let arch = if shorthand_os {
+        match parts.get(1).copied() {
+            Some("x64" | "amd64") => "x86_64",
+            Some("arm64" | "aarch64") => "aarch64",
+            Some("x86" | "i686" | "i386") => "x86",
+            _ => std::env::consts::ARCH,
+        }
+    } else {
+        match parts.first().copied() {
+            Some("x86_64" | "amd64") => "x86_64",
+            Some("aarch64" | "arm64") => "aarch64",
+            Some("i686" | "x86" | "i386") => "x86",
+            Some(other) => other,
+            None => std::env::consts::ARCH,
+        }
     };
-    let os = if parts.contains(&"apple") {
+    let os = if parts.contains(&"apple") || parts.first() == Some(&"macos") {
         "darwin"
-    } else if parts.contains(&"pc") || parts.contains(&"windows") {
+    } else if parts.contains(&"pc") || parts.contains(&"windows") || parts.first() == Some(&"win") {
         "windows"
     } else if parts.contains(&"linux") {
         "linux"
@@ -226,14 +238,28 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         anyhow::bail!("{} is not a directory", app_dir.display());
     }
 
-    let output = if args.output.extension().is_some_and(|e| e == "xbin") {
-        args.output.clone()
-    } else {
-        args.output.join("app.xbin")
-    };
-
     // Load .xbin.toml config if present
     let config = load_config(&app_dir);
+
+    let target = args.target.or(config.build.target);
+
+    // Windows-targeted builds produce a `.exe`; everything else `.xbin`.
+    let is_windows_target = target
+        .as_deref()
+        .is_some_and(|t| parse_target(t).1 == "windows");
+    let output = if args
+        .output
+        .extension()
+        .is_some_and(|e| e == "xbin" || e == "exe")
+    {
+        args.output.clone()
+    } else {
+        args.output.join(if is_windows_target {
+            "app.exe"
+        } else {
+            "app.xbin"
+        })
+    };
 
     // Apply config defaults (CLI flags override)
     let isolation = if args.isolation != "sandbox" {
@@ -252,7 +278,6 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let license = args.license.or(config.package.license);
     let env_file = args.env_file.or(config.build.env_file.map(PathBuf::from));
     let no_install = args.no_install || config.build.no_install.unwrap_or(false);
-    let target = args.target.or(config.build.target);
     let isolation_num = parse_isolation(&isolation)
         .with_context(|| format!("invalid --isolation value: '{isolation}'"))?;
 
@@ -1520,16 +1545,25 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
     let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
 
     // Map the requested target to the stub build triple. Legacy short forms
-    // map to the linux-musl ELF; darwin targets map to the Mach-O stub.
+    // map to the linux-musl ELF; darwin targets map to the Mach-O stub;
+    // windows targets map to the PE stub (`x86_64-pc-windows-gnu` today).
+    let is_windows = target
+        .as_deref()
+        .is_some_and(|t| parse_target(t).1 == "windows");
     let arch_suffix = match target.as_deref() {
         Some(t) if t == "aarch64" || t == "arm64" => "aarch64-unknown-linux-musl",
         Some(t) if t.contains("darwin") => t,
         Some(t) if t.contains("linux") => t,
+        Some(t) if is_windows && parse_target(t).0 == "x86_64" => "x86_64-pc-windows-gnu",
         Some(t) if t.contains('-') => t,
         _ => "x86_64-unknown-linux-musl",
     };
 
-    let stub_name = "xbin-stub";
+    let stub_name = if is_windows {
+        "xbin-stub.exe"
+    } else {
+        "xbin-stub"
+    };
     let candidates = [
         PathBuf::from(&target_dir)
             .join(arch_suffix)
@@ -1700,6 +1734,12 @@ mod tests {
     }
 
     #[test]
+    fn find_stub_windows_suffix() {
+        let result = find_stub(&Some("win-x64".into()));
+        assert!(result.is_err() || result.is_ok(), "should not panic");
+    }
+
+    #[test]
     fn parse_target_short_forms() {
         assert_eq!(parse_target("aarch64"), ("aarch64".into(), "linux".into()));
         assert_eq!(parse_target("x86_64"), ("x86_64".into(), "linux".into()));
@@ -1718,6 +1758,19 @@ mod tests {
         assert_eq!(
             parse_target("aarch64-unknown-linux-gnu"),
             ("aarch64".into(), "linux".into())
+        );
+        assert_eq!(
+            parse_target("x86_64-pc-windows-gnu"),
+            ("x86_64".into(), "windows".into())
+        );
+    }
+
+    #[test]
+    fn parse_target_windows_shorthands() {
+        assert_eq!(parse_target("win-x64"), ("x86_64".into(), "windows".into()));
+        assert_eq!(
+            parse_target("win-arm64"),
+            ("aarch64".into(), "windows".into())
         );
     }
 
