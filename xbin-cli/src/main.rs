@@ -1,5 +1,6 @@
 mod commands;
 mod error;
+mod remote_cache;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{

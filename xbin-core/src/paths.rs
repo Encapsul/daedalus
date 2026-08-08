@@ -240,6 +240,104 @@ pub fn trusted_keys_dir() -> PathBuf {
     }
 }
 
+/// Minimal remote build cache (Depot-style).
+///
+/// A remote cache stores/retrieves build artifacts by content hash so identical
+/// sources can be reused across machines. The interface is intentionally small:
+/// `get(hash)` and `put(hash, bytes)`.
+///
+/// Backends:
+/// - `HttpRemoteCache` — GET/PUT against a configurable base URL (in `xbin-cli`)
+/// - `FsRemoteCache` — local directory mirror (useful for testing/proxying)
+///
+/// URLs encode the hash directly: `{base}/{hash}`. No JSON metadata is needed
+/// on the wire because the hash is the content address.
+pub trait RemoteCacheBackend: Send + Sync {
+    fn get(&self, hash: &str) -> std::io::Result<Option<Vec<u8>>>;
+    fn put(&self, hash: &str, bytes: &[u8]) -> std::io::Result<()>;
+}
+
+/// Local-directory remote cache.
+///
+/// Stores artifacts under `root/{hash}`. Useful for testing or as a
+/// user-space "remote" when the cache directory lives on a network mount.
+pub struct FsRemoteCache {
+    root: PathBuf,
+}
+
+impl FsRemoteCache {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+}
+
+impl RemoteCacheBackend for FsRemoteCache {
+    fn get(&self, hash: &str) -> std::io::Result<Option<Vec<u8>>> {
+        let path = self.root.join(hash);
+        match std::fs::read(&path) {
+            Ok(data) => Ok(Some(data)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn put(&self, hash: &str, bytes: &[u8]) -> std::io::Result<()> {
+        let path = self.root.join(hash);
+        std::fs::create_dir_all(&self.root)?;
+        std::fs::write(path, bytes)
+    }
+}
+
+/// Facade over a remote cache backend with local fallback.
+///
+/// The facade first probes the remote backend; on miss it falls back to the
+/// local `BuildCache`. Stores always go to both.
+pub struct RemoteBuildCache {
+    backend: Box<dyn RemoteCacheBackend>,
+    local: BuildCache,
+}
+
+impl RemoteBuildCache {
+    pub fn new(
+        backend: impl RemoteCacheBackend + 'static,
+        app_dir: &Path,
+        max_entries: usize,
+    ) -> Self {
+        Self {
+            backend: Box::new(backend),
+            local: BuildCache::new(app_dir, max_entries),
+        }
+    }
+
+    /// Try remote first, then local, then build miss.
+    ///
+    /// On remote hit the artifact is written into the local cache so the
+    /// returned path remains valid after this call returns.
+    pub fn find(&self, app_hash: &str, target: Option<&str>) -> Option<PathBuf> {
+        let key = cache_key(app_hash, target);
+        if let Ok(Some(data)) = self.backend.get(&key) {
+            let entry_dir = self.local.base_dir.join(&key);
+            if std::fs::create_dir_all(&entry_dir).is_ok() {
+                let _ = std::fs::write(entry_dir.join("output.xbin"), data);
+            }
+        }
+        self.local.find(app_hash, target)
+    }
+
+    /// Store to both local and remote.
+    pub fn store(
+        &self,
+        app_hash: &str,
+        target: Option<&str>,
+        xbin_path: &Path,
+    ) -> std::io::Result<()> {
+        let key = cache_key(app_hash, target);
+        let data = std::fs::read(xbin_path)?;
+        let _ = self.backend.put(&key, &data);
+        self.local.store(app_hash, target, xbin_path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,5 +501,33 @@ mod tests {
             trusted_keys_dir(),
             PathBuf::from("/fake/home/.xbin/trusted-keys")
         );
+    }
+
+    #[test]
+    fn fs_remote_cache_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let backend = FsRemoteCache::new(tmp.path());
+        let app_dir = tmp.path().join("myapp");
+        std::fs::create_dir_all(&app_dir).unwrap();
+        let cache = RemoteBuildCache::new(backend, &app_dir, 10);
+
+        let fake = tmp.path().join("artifact.xbin");
+        std::fs::write(&fake, b"remote bytes").unwrap();
+        cache.store("h1", None, &fake).unwrap();
+
+        let found = cache.find("h1", None);
+        assert!(found.is_some());
+        assert_eq!(std::fs::read(found.unwrap()).unwrap(), b"remote bytes");
+    }
+
+    #[test]
+    fn fs_remote_cache_miss_falls_back_to_local() {
+        let tmp = tempfile::tempdir().unwrap();
+        let backend = FsRemoteCache::new(tmp.path().join("empty-remote"));
+        let app_dir = tmp.path().join("myapp");
+        std::fs::create_dir_all(&app_dir).unwrap();
+        let cache = RemoteBuildCache::new(backend, &app_dir, 10);
+
+        assert!(cache.find("missing", None).is_none());
     }
 }

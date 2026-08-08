@@ -1145,19 +1145,21 @@ fn hex_decode(s: &str) -> Option<Vec<u8>> {
 
 /// Platform cache root for extracted rootfs trees.
 /// Linux: `$XDG_CACHE_HOME/xbin` or `~/.cache/xbin`.
-/// macOS: `~/Library/Caches/xbin` (`dirs::cache_dir()`).
+/// macOS: `$XDG_CACHE_HOME/xbin` if set, else `~/Library/Caches/xbin`
+/// (`dirs::cache_dir()`).
 /// Windows: `%LOCALAPPDATA%\xbin`.
+/// Linux: `$XDG_CACHE_HOME/xbin` or `~/.cache/xbin`.
 fn cache_dir() -> io::Result<PathBuf> {
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(d) = std::env::var_os("XDG_CACHE_HOME") {
-            return Ok(PathBuf::from(d).join("xbin"));
-        }
-        let home = std::env::var_os("HOME")
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME not set"))?;
-        Ok(PathBuf::from(home).join(".cache").join("xbin"))
+    if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
+        return Ok(PathBuf::from(xdg).join("xbin"));
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        let local = std::env::var_os("LOCALAPPDATA")
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "LOCALAPPDATA not set"))?;
+        Ok(PathBuf::from(local).join("xbin"))
+    }
+    #[cfg(not(target_os = "windows"))]
     {
         let dir = dirs::cache_dir().ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "no cache directory available")
