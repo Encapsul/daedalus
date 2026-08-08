@@ -3313,6 +3313,7 @@ dependencies = [
  "sha2",
  "tar",
  "tempfile",
+ "toml 0.8.23",
  "which",
  "zeroize",
  "zstd",

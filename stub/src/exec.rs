@@ -109,20 +109,9 @@ pub fn setup_env(
         env.insert("DATABASE_URL".into(), url);
     }
 
-    // Inject .env file if present in rootfs
-    let dotenv_path = rootfs.join(".env");
-    if dotenv_path.is_file() {
-        if let Ok(content) = std::fs::read_to_string(&dotenv_path) {
-            for line in content.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                if let Some((k, v)) = line.split_once('=') {
-                    env.insert(k.trim().to_string(), v.trim().to_string());
-                }
-            }
-        }
+    let dotenv_env = xbin_core::dotenv::load_dotenv(rootfs, None, false);
+    for (k, v) in dotenv_env {
+        env.insert(k, v);
     }
 
     // Framework-specific defaults
@@ -175,7 +164,11 @@ pub fn setup_env(
             let p = entry.path();
             if p.is_file() {
                 if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
-                    if ext == "so" || ext == "dylib" {
+                    let is_so = ext == "so"
+                        || p.file_name()
+                            .map(|n| n.to_string_lossy().contains(".so."))
+                            .unwrap_or(false);
+                    if is_so || ext == "dylib" {
                         if let Some(parent) = p.parent() {
                             if parent != rootfs {
                                 lib_dirs.push(parent.to_string_lossy().into_owned());
@@ -222,8 +215,24 @@ pub fn detect_django_settings(app_dir: &Path) -> Option<String> {
             .find(|l| l.contains("DJANGO_SETTINGS_MODULE"))
         {
             if let Some(module) = line.split("DJANGO_SETTINGS_MODULE").nth(1) {
-                let module =
-                    module.trim_matches(|c: char| c == '=' || c == ' ' || c == '"' || c == '\'');
+                let module = module.trim();
+                // Use rfind to locate the VALUE's closing quote. After splitting
+                // on "DJANGO_SETTINGS_MODULE", the first quote in the remainder
+                // is often the closing quote of the key argument (e.g. `setdefault("KEY", "value")`).
+                // We want the last pair of matching quotes — that's the value.
+                if let Some(close) = module.rfind('"') {
+                    if let Some(open) = module[..close].rfind('"') {
+                        return Some(module[open + 1..close].to_string());
+                    }
+                }
+                if let Some(close) = module.rfind('\'') {
+                    if let Some(open) = module[..close].rfind('\'') {
+                        return Some(module[open + 1..close].to_string());
+                    }
+                }
+                let module = module
+                    .trim_start_matches(|c: char| c == '=' || c.is_whitespace())
+                    .trim_end_matches(|c: char| c == ')' || c == ',' || c.is_whitespace());
                 if !module.is_empty() {
                     return Some(module.to_string());
                 }
@@ -272,9 +281,15 @@ pub fn detect_web_port(app_dir: &Path, runtime: &str) -> Option<u16> {
                         .get("scripts")
                         .and_then(|s| s.get("start"))
                         .and_then(|v| v.as_str())
-                        .and_then(|cmd| cmd.split("--port").nth(1))
-                        .and_then(|p| p.split_whitespace().next())
-                        .and_then(|p| p.parse::<u16>().ok())
+                        .and_then(|cmd| {
+                            if let Some(port_str) = cmd.split("--port").nth(1) {
+                                let port_str = port_str.split_whitespace().next()?;
+                                let port_str = port_str.strip_prefix('=').unwrap_or(port_str);
+                                port_str.parse::<u16>().ok()
+                            } else {
+                                None
+                            }
+                        })
                     {
                         return Some(port);
                     }
@@ -943,5 +958,30 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("bin")).unwrap();
         std::fs::write(tmp.path().join("bin").join("rails"), "").unwrap();
         assert_eq!(detect_web_port(tmp.path(), "ruby"), Some(3000));
+    }
+
+    #[test]
+    fn detect_django_settings_handles_commas_and_parens() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("manage.py"),
+            "os.environ.setdefault(\"DJANGO_SETTINGS_MODULE\", \"myproject.settings\")\n",
+        )
+        .unwrap();
+        assert_eq!(
+            detect_django_settings(tmp.path()),
+            Some("myproject.settings".to_string())
+        );
+    }
+
+    #[test]
+    fn detect_web_port_handles_port_equals_syntax() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("package.json"),
+            r#"{"scripts":{"start":"next start --port=3000"}}"#,
+        )
+        .unwrap();
+        assert_eq!(detect_web_port(tmp.path(), "node"), Some(3000));
     }
 }

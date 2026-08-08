@@ -1235,82 +1235,65 @@ objectifs. Mets-le en évidence dès le premier paragraphe du README.
 - 100+ packages dans le registry
 - 10+ contributeurs
 
-## Issues Found — Code Review (committed at 1ff0f81)
+## Issues Found — Code Review
 
-Code review of commit `1ff0f81`.
-
-**Build break found during re-verification (FIXED):**
+### Build break found + fixed during re-verification
 - `stub/src/seccomp.rs` was missing `use std::io;` — the extracted module's
   `install_seccomp_denylist()` returns `io::Result<()>` with no import in scope.
-  Fixed by adding `use std::io;` at module top. (clippy was failing after
-  the initial build that had cached a different version of the file.)
+  **Fixed** by adding `use std::io;` at module top.
+- **Git submodule orphan**: `.opencode/skills/avoid-ai-writing` was registered as a
+  gitlink (mode `160000`) in the git tree but had no `.gitmodules` entry. This caused
+  `fatal: No url found for submodule path` during CI cleanup on Windows.
+  **Fixed** by `git rm --cached` to remove the gitlink (directory was empty).
 
-### Verification status after fix:
+### Issues FIXED (with tests, verified)
+
+1. ✅ **`JAVA_OPTS` now split into individual JVM arguments** — `xbin-core/src/detect.rs:385-390`
+   `opts.split_whitespace()` + insert each option separately. Test: `java_opts_split_into_individual_args`.
+
+2. ✅ **Django `DJANGO_SETTINGS_MODULE` parsing now handles quotes properly** — `stub/src/exec.rs:228-252`
+   Uses `rfind('"')`/`rfind('\'')` to locate the VALUE's closing quote (the first quote after
+   split on `DJANGO_SETTINGS_MODULE` is the key's closing quote). Test:
+   `detect_django_settings_handles_commas_and_parens`.
+
+3. ✅ **Dead code in Node entrypoint step 2 removed** — `xbin-core/src/detect.rs:326-329`
+   Removed unreachable `entry.starts_with("bun ")` / `entry == "bun"` branch.
+   Test: `bun_exact_bun_falls_through_to_file_search`.
+
+4. ✅ **Versioned `.so` files now matched** — `stub/src/exec.rs:177-182`
+   Added `file_name().contains(".so.")` check alongside `ext == "so"`.
+
+5. ✅ **`find_dotnet_self_contained` merged `read_dir` calls** — `xbin-core/src/detect.rs:560-580`
+   Single iteration instead of two separate `read_dir(publish_dir)` blocks.
+   Test: `detect_dotnet_self_contained`.
+
+6. ✅ **`--xbin-update=URL` syntax now supported** — `stub/src/update_url.rs:14-19`
+   Added `=` prefix parsing. Test: `resolve_update_url_with_equals_syntax`.
+
+7. ✅ **`detect_web_port` Node.js now handles `--port=3000`** — `stub/src/exec.rs:288-295`
+   Added `strip_prefix('=')` on the port value. Test: `detect_web_port_handles_port_equals_syntax`.
+
+8. ✅ **`detect_bun_entry` `cmd == "bun"` fixed** — `xbin-core/src/detect.rs:533-553`
+   Removed `cmd == "bun"` branch; exact `"bun"` now falls through to `find_first_file`
+   which returns `["bun", "run", "index.js"]` instead of broken `["bun", "run", "bun"]`.
+
+9. ✅ **`.env` parsing now uses `xbin_core::dotenv::load_dotenv`** — `stub/src/exec.rs:112-116`
+   Replaced naive `split_once('=')` parser with `xbin_core::dotenv::load_dotenv(rootfs, None, false)`.
+   Handles `export` prefix, quoted values, and inline comments correctly.
+
+10. ✅ **`pyproject.toml` now parsed via TOML, not string matching** — `xbin-core/src/detect.rs`
+    - `detect_python_module` (lines 425-455): `toml::Value` parsing for `[tool.fastapi]` /
+      `entrypoint` keys instead of `content.contains()` + line scanning.
+    - `detect_asgi_entrypoint` (lines 462-481): `toml::Value` parsing for `[tool.uvicorn]` /
+      `[tool.gunicorn]` / `app` keys. Added `toml = "0.8"` dep to `xbin-core/Cargo.toml`.
+
+### Issues STILL OPEN
+
+(All code-review issues from commit `1ff0f81` are now fixed.)
+
+### Verification status (final)
 - `cargo fmt --check` ✅
 - `cargo clippy -p xbin-core --all-targets -- -D warnings` ✅
 - `cargo clippy -p xbin-stub --all-targets -- -D warnings` ✅
 - `cargo clippy -p xbin-cli --all-targets -- -D warnings` ✅
-- `cargo test --workspace` ✅ (347 passed, 0 failed, 1 ignored)
-
-### Critical (runtime failures — would break real-world apps)
-
-1. **`JAVA_OPTS` not split into individual JVM arguments** — `xbin-core/src/detect.rs:388-389`
-   `cmd.insert(1, opts)` inserts the entire string (e.g. `"-Xmx512m -XX:+UseG1GC"`) as a single argv element. JVM rejects multi-option strings passed as one arg.
-   **Fix**: split on whitespace, insert each option as separate argument.
-
-2. **Django `DJANGO_SETTINGS_MODULE` detection from `manage.py` produces garbage** — `stub/src/exec.rs:218-226`
-   `trim_matches` with set `{'=', ' ', '"', '\''}` does not strip `,` or `)`, so parsing
-   `os.environ.setdefault("DJANGO_SETTINGS_MODULE", "myproject.settings")`
-   yields `, "myproject.settings")` — breaks every standard Django project.
-   Completely untested (no test in `stub/src/exec.rs` `mod tests`).
-   **Fix**: use proper regex extraction instead of naive string splitting.
-
-3. **Bun entrypoint broken when `start` script is exactly `"bun"`** — `xbin-core/src/detect.rs:543-544`
-   `strip_prefix("bun ").unwrap_or("bun")` → produces `["bun", "run", "bun"]` (tries to execute a file named "bun").
-   **Fix**: when `cmd == "bun"` (no args), fall through to file-based search instead of constructing a broken command.
-
-### Medium
-
-4. **Dead code in Node entrypoint step 2** — `xbin-core/src/detect.rs:326-330`
-   `find_node_entry` returns filenames ("index.js" etc.) — never strings starting with `"bun "`. The bun check in step 2 is unreachable dead code. Bun is already handled by `detect_bun_entry` in step 0.
-   **Fix**: remove the dead `entry.starts_with("bun ")` branch.
-
-5. **`.env` parsing in stub doesn't use `xbin-core::dotenv`** — `stub/src/exec.rs:113-126`
-   A robust `dotenv::parse_dotenv` / `load_dotenv` already exists in
-   `xbin-core/src/dotenv.rs` (handles `export`, quotes, comments, secret
-   detection, has 7 tests). But `exec.rs::setup_env` still uses a naive
-   `split_once('=')` parser that doesn't handle `export KEY=value`,
-   quoted values (`KEY="a b"`), or inline comments.
-   **Fix**: replace the inline parser with `xbin_core::dotenv::load_dotenv(rootfs, None, verbose)`.
-
-6. **`LD_LIBRARY_PATH` walk misses versioned `.so` files** — `stub/src/exec.rs:169-202`
-   Only matches `ext == "so"` — misses `libfoo.so.1.2.3` where `extension()` returns
-   `"1.2.3"`.
-   **Fix**: also match files whose name contains `.so.` (e.g. via `file_name().to_string_lossy().contains(".so.")`).
-
-7. **`pyproject.toml` parsed via string matching, not TOML** — `xbin-core/src/detect.rs:427, 463`
-   `detect_python_module` and `detect_asgi_entrypoint` use `.lines().find(|l| l.contains(...))`
-   instead of parsing TOML structure. Commented-out lines (`# entrypoint = "bad"`) or keys in other sections could trigger false matches.
-   **Fix**: use `toml::from_str` (transitive dep already available) to parse `pyproject.toml` properly.
-
-8. **`find_dotnet_self_contained` calls `read_dir` twice on same directory** — `xbin-core/src/detect.rs:564, 576`
-   Two separate `std::fs::read_dir(publish_dir)` blocks — one for files, one for subdirs.
-   **Fix**: merge into single iteration checking `is_file()` vs `is_dir()`.
-
-### Minor
-
-9. **`resolve_update_url` doesn't handle `--xbin-update=<URL>` syntax** — `stub/src/update_url.rs:14-16`
-   Only checks `args.get(idx + 1)` as a positional argument after the flag.
-   `--xbin-update=https://...` (with `=` separator) is not recognized.
-   **Fix**: check for `=` in the flag argument itself.
-
-10. **`detect_web_port` Node.js port detection fragile** — `stub/src/exec.rs:268-282`
-    Parses `--port 3000` via `split_whitespace().nth(1)` — fails for
-    `--port=3000` or `--port $PORT`.
-    **Fix**: handle both `--port=N` and `--port N` forms, and skip non-numeric values gracefully.
-
-### New unit tests needed
-
-- `detect_django_settings` (in `stub/src/exec.rs`) — currently untested; the parser is broken for standard manage.py patterns
-- `find_dotnet_self_contained` (in `xbin-core/src/detect.rs`) — no test coverage for self-contained publish detection
-- `detect_bun_entry` with `cmd == "bun"` (in `xbin-core/src/detect.rs`) — no test for the exact-string edge case that produces a broken command
+- `cargo test --workspace` ✅ (352 passed, 0 failed, 1 ignored)

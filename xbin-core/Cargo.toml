@@ -44,6 +44,9 @@ hex = "0.4"
 # SISR manifest signing (Ed25519, zeroize on drop)
 ed25519-dalek = "2"
 
+# TOML parsing for pyproject.toml
+toml = "0.8"
+
 # Secret detection in .env files
 regex = "1"
 

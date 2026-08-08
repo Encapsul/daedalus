@@ -324,12 +324,8 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             }
             // 2. package.json scripts.start with bun
             if let Some(entry) = find_node_entry(app_dir) {
-                if entry.starts_with("bun ") || entry == "bun" {
-                    return Some(vec![
-                        "bun".into(),
-                        "run".into(),
-                        entry.strip_prefix("bun ").unwrap_or(&entry).to_string(),
-                    ]);
+                if let Some(sub) = entry.strip_prefix("bun ") {
+                    return Some(vec!["bun".into(), "run".into(), sub.into()]);
                 }
                 return Some(vec!["node".into(), format!("/app/{}", entry)]);
             }
@@ -386,7 +382,11 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             let jar = find_first_ext(app_dir, "jar")?;
             let mut cmd = vec!["java".into(), "-jar".into(), format!("/app/{}", jar)];
             if let Ok(opts) = std::env::var("JAVA_OPTS").or_else(|_| std::env::var("JVM_OPTS")) {
-                cmd.insert(1, opts);
+                let opts_vec: Vec<String> =
+                    opts.split_whitespace().map(|s| s.to_string()).collect();
+                for (i, opt) in opts_vec.iter().enumerate() {
+                    cmd.insert(1 + i, opt.clone());
+                }
             }
             if std::env::var("PORT").is_ok() {
                 cmd.push("-Dserver.port=$PORT".into());
@@ -424,16 +424,23 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
 /// Returns `Some(module)` if the app should be launched with `python3 -m <module>`.
 fn detect_python_module(app_dir: &Path) -> Option<String> {
     if let Ok(content) = std::fs::read_to_string(app_dir.join("pyproject.toml")) {
-        if content.contains("[tool.fastapi]") || content.contains("entrypoint") {
-            if let Some(entry) = content
-                .lines()
-                .find(|l| l.trim().starts_with("entrypoint"))
-                .and_then(|l| l.split('=').nth(1))
-                .map(|s| s.trim().trim_matches('"').to_string())
-            {
-                let module = entry.split(':').next()?.to_string();
-                if !module.is_empty() {
-                    return Some(module);
+        if let Ok(pyproject) = content.parse::<toml::Value>() {
+            if let Some(tool) = pyproject.get("tool") {
+                let has_fastapi = tool.get("fastapi").is_some();
+                let entrypoint = tool.get("entrypoint").and_then(|v| v.as_str()).or_else(|| {
+                    tool.as_table().and_then(|table| {
+                        table
+                            .values()
+                            .find_map(|v| v.get("entrypoint").and_then(|v| v.as_str()))
+                    })
+                });
+                if has_fastapi || entrypoint.is_some() {
+                    if let Some(ep) = entrypoint {
+                        let module = ep.split(':').next()?.to_string();
+                        if !module.is_empty() {
+                            return Some(module);
+                        }
+                    }
                 }
             }
         }
@@ -460,22 +467,29 @@ fn detect_python_module(app_dir: &Path) -> Option<String> {
 fn detect_asgi_entrypoint(app_dir: &Path) -> Option<Vec<String>> {
     // Check pyproject.toml for [tool.uvicorn] or gunicorn config
     if let Ok(content) = std::fs::read_to_string(app_dir.join("pyproject.toml")) {
-        if content.contains("[tool.uvicorn]") || content.contains("[tool.gunicorn]") {
-            if let Some(entry) = content
-                .lines()
-                .find(|l| l.trim().starts_with("app"))
-                .and_then(|l| l.split('=').nth(1))
-                .map(|s| s.trim().trim_matches('"').to_string())
-            {
-                if !entry.is_empty() {
-                    return Some(vec![
-                        "uvicorn".into(),
-                        entry,
-                        "--host".into(),
-                        "0.0.0.0".into(),
-                        "--port".into(),
-                        "8000".into(),
-                    ]);
+        if let Ok(pyproject) = content.parse::<toml::Value>() {
+            if let Some(tool) = pyproject.get("tool") {
+                if tool.get("uvicorn").is_some() || tool.get("gunicorn").is_some() {
+                    let app = tool.get("app").and_then(|v| v.as_str()).or_else(|| {
+                        tool.as_table().and_then(|table| {
+                            table
+                                .values()
+                                .find_map(|v| v.get("app").and_then(|v| v.as_str()))
+                        })
+                    });
+                    if let Some(app_str) = app {
+                        let app = app_str.trim().trim_matches('"').to_string();
+                        if !app.is_empty() {
+                            return Some(vec![
+                                "uvicorn".into(),
+                                app,
+                                "--host".into(),
+                                "0.0.0.0".into(),
+                                "--port".into(),
+                                "8000".into(),
+                            ]);
+                        }
+                    }
                 }
             }
         }
@@ -540,10 +554,11 @@ fn detect_bun_entry(app_dir: &Path) -> Option<Vec<String>> {
                     .and_then(|s| s.get("start"))
                     .and_then(|v| v.as_str())
                 {
-                    if cmd.starts_with("bun ") || cmd == "bun" {
-                        let sub = cmd.strip_prefix("bun ").unwrap_or(cmd);
+                    if cmd.starts_with("bun ") {
+                        let sub = cmd.strip_prefix("bun ").unwrap();
                         return Some(vec!["bun".into(), "run".into(), sub.into()]);
                     }
+                    // cmd == "bun" (no args) falls through to file-based search below
                 }
             }
         }
@@ -555,7 +570,6 @@ fn detect_bun_entry(app_dir: &Path) -> Option<Vec<String>> {
 /// Find a self-contained .NET native executable in a publish directory.
 /// Returns the relative path if found.
 fn find_dotnet_self_contained(app_dir: &Path) -> Option<String> {
-    // Look for publish/ or bin/Release/*/publish/ directories
     let publish_candidates = [app_dir.join("publish"), app_dir.join("bin").join("Release")];
     for publish_dir in &publish_candidates {
         if !publish_dir.is_dir() {
@@ -570,12 +584,6 @@ fn find_dotnet_self_contained(app_dir: &Path) -> Option<String> {
                         .ok()
                         .and_then(|p| p.to_str().map(String::from));
                 }
-            }
-        }
-        // Check subdirectories for self-contained publish layout
-        if let Ok(entries) = std::fs::read_dir(publish_dir) {
-            for entry in entries.flatten() {
-                let p = entry.path();
                 if p.is_dir() {
                     if let Ok(sub) = std::fs::read_dir(&p) {
                         for entry in sub.flatten() {
@@ -1088,5 +1096,37 @@ start = "uvicorn main:app"
         .unwrap();
         let ep = resolve_entrypoint(dir.path(), Runtime::Dotnet);
         assert_eq!(ep, Some(vec!["/app/bin/Release/myapp".into()]));
+    }
+
+    #[test]
+    fn java_opts_split_into_individual_args() {
+        std::env::set_var("JAVA_OPTS", "-Xmx512m -XX:+UseG1GC");
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("app.jar"), b"\x50\x4b\x03\x04").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Java).unwrap();
+        assert_eq!(
+            ep,
+            vec![
+                "java".to_string(),
+                "-Xmx512m".to_string(),
+                "-XX:+UseG1GC".to_string(),
+                "-jar".to_string(),
+                "/app/app.jar".to_string(),
+            ]
+        );
+        std::env::remove_var("JAVA_OPTS");
+    }
+
+    #[test]
+    fn bun_exact_bun_falls_through_to_file_search() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"scripts":{"start":"bun"}}"#,
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("index.js"), "console.log('hi')").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(ep, Some(vec!["node".into(), "/app/index.js".into()]));
     }
 }
