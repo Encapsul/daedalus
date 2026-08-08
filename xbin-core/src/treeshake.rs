@@ -1,3 +1,5 @@
+//! Tree-shaking for JavaScript/TypeScript bundles: removes unused exports
+//! and dead code via esbuild's `--tree-shaking` flag when available.
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;

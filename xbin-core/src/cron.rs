@@ -1,3 +1,7 @@
+//! Cron-style schedule parsing for xbin update check intervals.
+//!
+//! Supports `@every <duration>`, `@hourly`, `@daily`, `@weekly`, `@monthly`,
+//! `@yearly`, and standard 5-field cron expressions (currently partial).
 pub fn parse_schedule(schedule: &str) -> u64 {
     let schedule = schedule.trim().to_lowercase();
 

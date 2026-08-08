@@ -1,3 +1,5 @@
+//! Runtime embedder: locates and bundles interpreters, package managers,
+//! native libraries, and framework-specific files into the payload.
 use std::collections::HashSet;
 use std::fs;
 use std::io;

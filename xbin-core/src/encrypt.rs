@@ -1,3 +1,5 @@
+//! Payload encryption: AES-256-GCM with HKDF-SHA256 key derivation
+//! from an Ed25519 signing seed. Supports full-payload and per-chunk modes.
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use hkdf::Hkdf;

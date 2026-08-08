@@ -1,3 +1,4 @@
+//! Standalone Ed25519 crypto tool for key generation, signing, and verification.
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand::RngCore;
 use sha2::{Digest, Sha256};

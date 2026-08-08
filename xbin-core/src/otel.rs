@@ -1,3 +1,4 @@
+//! OpenTelemetry environment variable construction for instrumented apps.
 use std::collections::HashMap;
 
 pub fn build_otel_env(

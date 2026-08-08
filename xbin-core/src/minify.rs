@@ -1,3 +1,5 @@
+//! JavaScript/CSS/HTML minification via external tools (esbuild, cssnano,
+//! etc.). Falls back to passthrough when no minifier is available.
 use std::fs;
 use std::io;
 use std::path::Path;

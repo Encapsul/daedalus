@@ -1,3 +1,5 @@
+//! File-tree walker that selects which files to include in the payload,
+//! respecting `.xbinignore`, `.gitignore`, and built-in skip directories.
 use std::fs;
 use std::io;
 use std::path::Path;

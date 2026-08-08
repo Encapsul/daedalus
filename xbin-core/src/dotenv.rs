@@ -1,3 +1,8 @@
+//! `.env` file parsing and secret detection for xbin.
+//!
+//! Provides `parse_dotenv` (KEY=value parsing with `export` prefix, quote
+//! stripping, and comment handling) and `load_dotenv` (resolved against an
+//! app directory). Includes secret key detection for security warnings.
 use std::collections::HashMap;
 use std::fs;
 use std::hash::BuildHasher;

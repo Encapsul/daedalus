@@ -1,3 +1,4 @@
+//! Persistent data directory resolution (`XDG_DATA_HOME` / `~/.local/share` / `~/Library/Application Support`).
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
