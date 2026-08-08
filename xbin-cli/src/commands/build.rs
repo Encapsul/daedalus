@@ -348,6 +348,10 @@ pub struct BuildArgs {
     #[arg(long)]
     pub remote_cache_max_entries: Option<usize>,
 
+    /// Zstd compression level (1=fastest/largest, 3=default, 19=smallest/slowest)
+    #[arg(long, default_value = "3")]
+    pub compression_level: i32,
+
     /// Health check endpoint path (default: /health)
     #[arg(long)]
     pub health_endpoint: Option<String>,
@@ -704,6 +708,11 @@ fn build_single_target(
 
             // When cross-compiling for a different OS/arch, tell npm/pnpm/yarn/bun
             // to install dependencies for the target platform, not the host.
+            //
+            // We also pass --ignore-scripts: the target node binary cannot run
+            // on a foreign host (e.g. macOS node on Linux), so any install
+            // scripts that compile native modules would fail. Pure-JS deps and
+            // prebuilt binaries selected by --platform/--arch still work.
             let is_cross_node = matches!(
                 mgr,
                 pkgmgr::PkgMgr::Npm
@@ -734,9 +743,17 @@ fn build_single_target(
                         full_args.push(npm_platform.into());
                         full_args.push("--arch".into());
                         full_args.push(npm_arch.into());
+                        full_args.push("--ignore-scripts".into());
                     } else if matches!(mgr, pkgmgr::PkgMgr::Yarn) {
                         full_args.push("--platform".into());
                         full_args.push(npm_platform.into());
+                        full_args.push("--ignore-scripts".into());
+                    } else if matches!(mgr, pkgmgr::PkgMgr::Bun) {
+                        full_args.push("--platform".into());
+                        full_args.push(npm_platform.into());
+                        full_args.push("--arch".into());
+                        full_args.push(npm_arch.into());
+                        full_args.push("--ignore-scripts".into());
                     }
                 }
             }
@@ -886,8 +903,8 @@ fn build_single_target(
     // Build deterministic tar (streaming: tar → zstd, no in-memory buffer)
     eprintln!("Creating payload...");
     let t0 = std::time::Instant::now();
-    let mut payload =
-        xbin_core::tar::create_tar_zstd(&rootfs).context("failed to create tar+zstd payload")?;
+    let mut payload = xbin_core::tar::create_tar_zstd_with_level(&rootfs, args.compression_level)
+        .context("failed to create tar+zstd payload")?;
     let compress_ms = t0.elapsed().as_millis();
     if verbose {
         eprintln!(
@@ -2384,6 +2401,7 @@ mod tests {
             clear_cache: false,
             remote_cache_url: None,
             remote_cache_max_entries: None,
+            compression_level: 3,
             health_endpoint: None,
             json: false,
             quiet: false,
