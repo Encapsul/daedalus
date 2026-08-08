@@ -195,3 +195,78 @@ fn test_upgrade_binary_converts_legacy_file() {
 
     assert!(dir.path().join("migrated.xbin.manifest").exists());
 }
+
+#[test]
+fn test_inspect_reports_encrypted_v4() {
+    use std::io::Cursor;
+    use xbin_core::assembly::{assemble_xbin, build_meta_json, MetaOptions};
+    use xbin_core::encrypt::encrypt_payload;
+    use xbin_core::format::{Footer, CRYPTO_AES_256_GCM, FLAG_ENCRYPTED, FLAG_SIGNED};
+    use xbin_core::metadata::BunFeatures;
+
+    let dir = tempdir().unwrap();
+    let out = dir.path().join("enc.xbin");
+    let stub = b"STUB_DATA";
+    let seed = [0xABu8; 32];
+    let plaintext = b"SECRET_PAYLOAD_THAT_MUST_BE_ENCRYPTED";
+
+    // 1. Encrypt the payload (AES-256-GCM, HKDF from the signing seed).
+    let (ciphertext, em) = encrypt_payload(plaintext, &seed).unwrap();
+    assert_ne!(&ciphertext[..], plaintext);
+
+    // 2. Build meta JSON with the `crypto` field (nonce + signing seed).
+    let crypto_value = serde_json::json!({
+        "nonce_hex": hex::encode(em.nonce),
+        "tag_offset": em.tag_offset,
+        "signing_seed_hex": hex::encode(seed),
+    });
+    let meta = build_meta_json(
+        "enc",
+        "binary",
+        0,
+        &["/app/app".to_string()],
+        &[],
+        &[],
+        &MetaOptions {
+            version: None,
+            author: None,
+            description: None,
+            license: None,
+            payload_format: Some("raw".to_string()),
+            seccomp: false,
+            landlock: false,
+            app_hash: None,
+            rt_deps_hash: None,
+            update_url: None,
+            crypto: Some(crypto_value),
+        },
+        &BunFeatures::default(),
+    )
+    .unwrap();
+
+    // 3. Assemble as v4 encrypted; integrity hash + footer cover the ciphertext.
+    assemble_xbin(&out, stub, &ciphertext, &meta, true, false, None).unwrap();
+
+    // 4. `xbin inspect` must report encrypted=true + v4, and echo the crypto meta.
+    xbin()
+        .args(["inspect", "--json", out.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""encrypted": true"#))
+        .stdout(predicate::str::contains(r#""format_version": 4"#))
+        .stdout(predicate::str::contains("nonce_hex"));
+
+    // 5. Footer carries the encrypted flag + AES suite, and hashes the ciphertext.
+    let data = std::fs::read(&out).unwrap();
+    let footer = Footer::read_from(&mut Cursor::new(&data)).unwrap();
+    assert_eq!(footer.format_version, 4);
+    assert_ne!(
+        footer.flags & FLAG_ENCRYPTED,
+        0,
+        "FLAG_ENCRYPTED must be set"
+    );
+    assert_eq!(footer.flags & FLAG_SIGNED, 0, "no signature in this test");
+    assert_eq!(footer.crypto_suite(), CRYPTO_AES_256_GCM);
+    assert_eq!(footer.payload_csize, ciphertext.len() as u64);
+    assert_eq!(footer.payload_usize, CRYPTO_AES_256_GCM);
+}
