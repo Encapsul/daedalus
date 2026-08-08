@@ -11,6 +11,15 @@ use crate::Metadata;
 /// Resolves the update channel base URL:
 /// `--xbin-update <URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
 pub fn resolve_update_url(args: &[OsString], idx: usize, meta: &Metadata) -> io::Result<String> {
+    if let Some(arg) = args.get(idx) {
+        let arg_str = arg.to_string_lossy();
+        if arg_str.starts_with("--xbin-update=") {
+            let url = arg_str.strip_prefix("--xbin-update=").unwrap_or("");
+            if !url.is_empty() {
+                return normalize_base_url(url);
+            }
+        }
+    }
     if let Some(next) = args.get(idx + 1) {
         let candidate = next.to_string_lossy();
         if !candidate.starts_with('-') && !candidate.is_empty() {
@@ -150,5 +159,32 @@ mod tests {
         };
         let err = resolve_update_url(&args, 0, &meta).unwrap_err();
         assert!(err.to_string().contains("no update URL"));
+    }
+
+    #[test]
+    fn resolve_update_url_handles_equals_syntax() {
+        let args = vec![OsString::from("--xbin-update=https://arg.example/app")];
+        let meta = Metadata {
+            update_url: None,
+            ..Metadata {
+                name: "test".into(),
+                version: None,
+                runtime: String::new(),
+                entrypoint: Vec::new(),
+                env: std::collections::BTreeMap::new(),
+                cwd: None,
+                layers: Vec::new(),
+                isolation: 0,
+                seccomp: false,
+                landlock: false,
+                services: Vec::new(),
+                crypto: None,
+                payload_format: String::new(),
+                health_check: None,
+                update_url: Some("https://meta.example/app".into()),
+            }
+        };
+        let base = resolve_update_url(&args, 0, &meta).unwrap();
+        assert_eq!(base, "https://arg.example/app");
     }
 }
