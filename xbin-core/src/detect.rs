@@ -1,7 +1,7 @@
 //! Runtime detection — identifies which runtime an app directory uses.
 //!
 //! Detection order matches the Python registry:
-//! Python > Deno > Node > Java > Ruby > .NET > Go > PHP > Perl > Binary
+//! Python > Deno > Node > Electron > Java > Ruby > .NET > Go > PHP > Perl > Hugo > Wasm > Binary
 
 use std::io::Read;
 use std::path::Path;
@@ -133,6 +133,7 @@ fn detect_python(dir: &Path) -> bool {
         || dir.join("pyproject.toml").is_file()
         || dir.join("setup.py").is_file()
         || dir.join("requirements.txt").is_file()
+        || dir.join("__main__.py").is_file()
 }
 
 fn detect_deno(dir: &Path) -> bool {
@@ -269,15 +270,82 @@ fn is_native_binary(path: &Path) -> bool {
 /// Returns `None` if the entry file cannot be determined.
 /// Interpreter names are bare (e.g. `python3`, `node`) — the stub uses
 /// `execvp` which resolves them via PATH. App paths use `/app/` prefix.
+///
+/// NOTE: intentionally >100 lines because this is the central dispatch for
+/// all supported runtimes (Python, Node, PHP, Ruby, Java, .NET, Go, …).
+#[allow(clippy::too_many_lines)]
 pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String>> {
     match runtime {
         Runtime::Python => {
+            // 0. Django manage.py
+            if app_dir.join("manage.py").is_file() {
+                return Some(vec![
+                    "python3".into(),
+                    "/app/manage.py".into(),
+                    "runserver".into(),
+                    "0.0.0.0:8000".into(),
+                ]);
+            }
+            // 1. FastAPI / ASGI: uvicorn or gunicorn with uvicorn worker
+            if let Some(asgi) = detect_asgi_entrypoint(app_dir) {
+                return Some(asgi);
+            }
+            // 2. PEP 621 pyproject.toml [project.scripts]
+            if let Some(script) = detect_pyproject_scripts(app_dir) {
+                return Some(script);
+            }
+            // 3. python -m module
+            if let Some(module) = detect_python_module(app_dir) {
+                return Some(vec!["python3".into(), "-m".into(), module]);
+            }
+            // 4. Script fallback
             let entry =
                 find_first_file(app_dir, &["app.py", "main.py", "__main__.py", "server.py"])?;
             Some(vec!["python3".into(), format!("/app/{}", entry)])
         }
         Runtime::Node => {
-            let entry = find_node_entry(app_dir)?;
+            // 0. Bun runtime detection
+            if app_dir.join("bun.lockb").is_file() || app_dir.join("bunfig.toml").is_file() {
+                if let Some(bun_entry) = detect_bun_entry(app_dir) {
+                    return Some(bun_entry);
+                }
+            }
+            // 1. Next.js standalone output
+            if app_dir
+                .join(".next")
+                .join("standalone")
+                .join("server.js")
+                .is_file()
+            {
+                return Some(vec![
+                    "node".into(),
+                    "/app/.next/standalone/server.js".into(),
+                ]);
+            }
+            // 2. package.json scripts.start with bun
+            if let Some(entry) = find_node_entry(app_dir) {
+                if entry.starts_with("bun ") || entry == "bun" {
+                    return Some(vec![
+                        "bun".into(),
+                        "run".into(),
+                        entry.strip_prefix("bun ").unwrap_or(&entry).to_string(),
+                    ]);
+                }
+                return Some(vec!["node".into(), format!("/app/{}", entry)]);
+            }
+            // 3. Common Node entry files
+            let entry = find_first_file(
+                app_dir,
+                &[
+                    "bin/www",
+                    "dist/main.js",
+                    "index.js",
+                    "app.js",
+                    "server.js",
+                    "main.js",
+                    "server/server.js",
+                ],
+            )?;
             Some(vec!["node".into(), format!("/app/{}", entry)])
         }
         Runtime::Electron => {
@@ -298,16 +366,12 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             let bin = find_native_binary(app_dir)?;
             Some(vec![format!("/app/{}", bin)])
         }
-        Runtime::Hugo => Some(vec!["hugo".into(), "server".into()]),
-        Runtime::Java => {
-            let jar = find_first_ext(app_dir, "jar")?;
-            Some(vec!["java".into(), "-jar".into(), format!("/app/{}", jar)])
-        }
-        Runtime::Ruby => {
-            let entry = find_first_file(app_dir, &["config.ru", "app.rb", "main.rb"])?;
-            Some(vec!["ruby".into(), format!("/app/{}", entry)])
-        }
         Runtime::Dotnet => {
+            // 0. Self-contained publish: look for native executable in publish/ dir
+            if let Some(native) = find_dotnet_self_contained(app_dir) {
+                return Some(vec![format!("/app/{}", native)]);
+            }
+            // 1. Framework-dependent: dotnet run --project <csproj>
             let csproj = find_first_ext(app_dir, "csproj")?;
             let name = csproj.trim_end_matches(".csproj");
             Some(vec![
@@ -316,6 +380,33 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
                 "--project".into(),
                 format!("/app/{}", name),
             ])
+        }
+        Runtime::Hugo => Some(vec!["hugo".into(), "server".into()]),
+        Runtime::Java => {
+            let jar = find_first_ext(app_dir, "jar")?;
+            let mut cmd = vec!["java".into(), "-jar".into(), format!("/app/{}", jar)];
+            if let Ok(opts) = std::env::var("JAVA_OPTS").or_else(|_| std::env::var("JVM_OPTS")) {
+                cmd.insert(1, opts);
+            }
+            if std::env::var("PORT").is_ok() {
+                cmd.push("-Dserver.port=$PORT".into());
+            }
+            Some(cmd)
+        }
+        Runtime::Ruby => {
+            // 0. bin/rails (standard Rails)
+            if app_dir.join("bin").join("rails").is_file() {
+                return Some(vec![
+                    "ruby".into(),
+                    "/app/bin/rails".into(),
+                    "server".into(),
+                    "-b".into(),
+                    "0.0.0.0".into(),
+                ]);
+            }
+            // 1. Fallback
+            let entry = find_first_file(app_dir, &["config.ru", "app.rb", "main.rb"])?;
+            Some(vec!["ruby".into(), format!("/app/{}", entry)])
         }
         Runtime::Php => resolve_php_entrypoint(app_dir),
         Runtime::Perl => {
@@ -329,15 +420,204 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
     }
 }
 
+/// Detect Python `-m` module entrypoint from `pyproject.toml` or package layout.
+/// Returns `Some(module)` if the app should be launched with `python3 -m <module>`.
+fn detect_python_module(app_dir: &Path) -> Option<String> {
+    if let Ok(content) = std::fs::read_to_string(app_dir.join("pyproject.toml")) {
+        if content.contains("[tool.fastapi]") || content.contains("entrypoint") {
+            if let Some(entry) = content
+                .lines()
+                .find(|l| l.trim().starts_with("entrypoint"))
+                .and_then(|l| l.split('=').nth(1))
+                .map(|s| s.trim().trim_matches('"').to_string())
+            {
+                let module = entry.split(':').next()?.to_string();
+                if !module.is_empty() {
+                    return Some(module);
+                }
+            }
+        }
+    }
+    if app_dir.join("__main__.py").is_file() {
+        if let Ok(entries) = std::fs::read_dir(app_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir()
+                    && p.join("__init__.py").is_file()
+                    && !p.file_name()?.to_str()?.starts_with('.')
+                {
+                    return p.file_name()?.to_str().map(String::from);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Detect ASGI entrypoint (uvicorn / gunicorn with uvicorn worker) from
+/// `pyproject.toml`, `requirements.txt`, or installed package layout.
+/// Returns `Some(argv)` with the full server command.
+fn detect_asgi_entrypoint(app_dir: &Path) -> Option<Vec<String>> {
+    // Check pyproject.toml for [tool.uvicorn] or gunicorn config
+    if let Ok(content) = std::fs::read_to_string(app_dir.join("pyproject.toml")) {
+        if content.contains("[tool.uvicorn]") || content.contains("[tool.gunicorn]") {
+            if let Some(entry) = content
+                .lines()
+                .find(|l| l.trim().starts_with("app"))
+                .and_then(|l| l.split('=').nth(1))
+                .map(|s| s.trim().trim_matches('"').to_string())
+            {
+                if !entry.is_empty() {
+                    return Some(vec![
+                        "uvicorn".into(),
+                        entry,
+                        "--host".into(),
+                        "0.0.0.0".into(),
+                        "--port".into(),
+                        "8000".into(),
+                    ]);
+                }
+            }
+        }
+    }
+    // Check requirements.txt for uvicorn/gunicorn presence
+    if let Ok(content) = std::fs::read_to_string(app_dir.join("requirements.txt")) {
+        if content.contains("uvicorn") || content.contains("gunicorn") {
+            // Find the app module: look for main.py, app.py, or package __main__.py
+            let app_module = find_first_file(app_dir, &["main.py", "app.py"])
+                .or_else(|| detect_python_module(app_dir).map(|m| format!("{m}:app")))?;
+            let module = app_module.strip_suffix(".py").unwrap_or(&app_module);
+            return Some(vec![
+                "uvicorn".into(),
+                format!("{module}:app"),
+                "--host".into(),
+                "0.0.0.0".into(),
+                "--port".into(),
+                "8000".into(),
+            ]);
+        }
+    }
+    None
+}
+
+/// Detect PEP 621 `[project.scripts]` entrypoints from `pyproject.toml`.
+/// Returns `Some(argv)` if a `start` or run script is defined.
+fn detect_pyproject_scripts(app_dir: &Path) -> Option<Vec<String>> {
+    let content = std::fs::read_to_string(app_dir.join("pyproject.toml")).ok()?;
+    let mut in_scripts = false;
+    let mut start_cmd = None;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("[project.scripts]") {
+            in_scripts = true;
+            continue;
+        }
+        if in_scripts && trimmed.starts_with('[') {
+            break;
+        }
+        if in_scripts && trimmed.starts_with("start") {
+            if let Some((_, cmd)) = trimmed.split_once('=') {
+                start_cmd = Some(cmd.trim().trim_matches('"').to_string());
+                break;
+            }
+        }
+    }
+    start_cmd.map(|cmd| {
+        let parts: Vec<&str> = cmd.split_whitespace().collect();
+        parts.into_iter().map(|s| s.into()).collect()
+    })
+}
+
+/// Detect Bun runtime entrypoint from `package.json` or fallback files.
+/// Returns `Some(argv)` with bun run command.
+fn detect_bun_entry(app_dir: &Path) -> Option<Vec<String>> {
+    let pkg_path = app_dir.join("package.json");
+    if pkg_path.is_file() {
+        if let Ok(contents) = std::fs::read_to_string(&pkg_path) {
+            if let Ok(pkg) = serde_json::from_str::<serde_json::Value>(&contents) {
+                if let Some(cmd) = pkg
+                    .get("scripts")
+                    .and_then(|s| s.get("start"))
+                    .and_then(|v| v.as_str())
+                {
+                    if cmd.starts_with("bun ") || cmd == "bun" {
+                        let sub = cmd.strip_prefix("bun ").unwrap_or(cmd);
+                        return Some(vec!["bun".into(), "run".into(), sub.into()]);
+                    }
+                }
+            }
+        }
+    }
+    find_first_file(app_dir, &["index.ts", "index.js", "main.ts", "main.js"])
+        .map(|f| vec!["bun".into(), "run".into(), f])
+}
+
+/// Find a self-contained .NET native executable in a publish directory.
+/// Returns the relative path if found.
+fn find_dotnet_self_contained(app_dir: &Path) -> Option<String> {
+    // Look for publish/ or bin/Release/*/publish/ directories
+    let publish_candidates = [app_dir.join("publish"), app_dir.join("bin").join("Release")];
+    for publish_dir in &publish_candidates {
+        if !publish_dir.is_dir() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(publish_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() && is_native_binary(&p) {
+                    return p
+                        .strip_prefix(app_dir)
+                        .ok()
+                        .and_then(|p| p.to_str().map(String::from));
+                }
+            }
+        }
+        // Check subdirectories for self-contained publish layout
+        if let Ok(entries) = std::fs::read_dir(publish_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    if let Ok(sub) = std::fs::read_dir(&p) {
+                        for entry in sub.flatten() {
+                            let ep = entry.path();
+                            if ep.is_file() && is_native_binary(&ep) {
+                                return ep
+                                    .strip_prefix(app_dir)
+                                    .ok()
+                                    .and_then(|p| p.to_str().map(String::from));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Detect the PHP document root and build the built-in server command.
 /// Handles: Laravel (artisan), WordPress/OpenEMR (root index.php),
-/// `CakePHP` (webroot/), Yii (web/), Slim (public/), and generic fallbacks.
+/// `CakePHP` (webroot/), Yii (web/), Slim (public/), `FrankenPHP`, and generic fallbacks.
 fn resolve_php_entrypoint(app_dir: &Path) -> Option<Vec<String>> {
     // 0. Laravel Octane with RoadRunner — rr binary replaces php -S
     if app_dir.join("rr.yaml").is_file() || app_dir.join(".rr.yaml").is_file() {
         return Some(vec!["rr".into(), "/app".into()]);
     }
+    // 0b. FrankenPHP standalone binary with embedded Laravel
+    if app_dir.join("frankenphp").is_file() && app_dir.join("Caddyfile").is_file() {
+        return Some(vec!["/app/frankenphp".into(), "php-server".into()]);
+    }
+
     if app_dir.join("artisan").is_file() {
+        if app_dir
+            .join("vendor")
+            .join("laravel")
+            .join("octane")
+            .is_dir()
+            && (app_dir.join("frankenphp").is_file() || app_dir.join("Caddyfile").is_file())
+        {
+            return Some(vec!["/app/frankenphp".into(), "php-server".into()]);
+        }
         return Some(server_cmd("/app/public"));
     }
 
@@ -461,6 +741,9 @@ fn find_node_entry(dir: &Path) -> Option<String> {
     find_first_file(
         dir,
         &[
+            "bin/www",
+            "dist/main.js",
+            ".next/standalone/server.js",
             "index.js",
             "app.js",
             "server.js",
@@ -618,5 +901,192 @@ mod tests {
         std::fs::write(dir.path().join("index.wasm"), b"\x00asm").unwrap();
         let ep = resolve_entrypoint(dir.path(), Runtime::Wasm);
         assert_eq!(ep, Some(vec!["wasmtime".into(), "/app/index.wasm".into()]));
+    }
+
+    #[test]
+    fn detect_python_fastapi_module_entrypoint() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("pyproject.toml"),
+            r#"[tool.fastapi]
+entrypoint = "app.main:app"
+"#,
+        )
+        .unwrap();
+        std::fs::create_dir(dir.path().join("app")).unwrap();
+        std::fs::write(dir.path().join("app").join("__init__.py"), "").unwrap();
+        std::fs::write(dir.path().join("app").join("main.py"), "").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Python));
+        let ep = resolve_entrypoint(dir.path(), Runtime::Python);
+        assert_eq!(
+            ep,
+            Some(vec!["python3".into(), "-m".into(), "app.main".into()])
+        );
+    }
+
+    #[test]
+    fn detect_python_package_main_entrypoint() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("__main__.py"), "print('hi')").unwrap();
+        std::fs::create_dir(dir.path().join("mypackage")).unwrap();
+        std::fs::write(dir.path().join("mypackage").join("__init__.py"), "").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Python);
+        assert_eq!(
+            ep,
+            Some(vec!["python3".into(), "-m".into(), "mypackage".into()])
+        );
+    }
+
+    #[test]
+    fn detect_python_script_fallback() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("app.py"), "print('hi')").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Python);
+        assert_eq!(ep, Some(vec!["python3".into(), "/app/app.py".into()]));
+    }
+
+    #[test]
+    fn detect_django_manage_py() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("manage.py"), "#!/usr/bin/env python\n").unwrap();
+        std::fs::write(dir.path().join("requirements.txt"), "Django\n").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Python);
+        assert_eq!(
+            ep,
+            Some(vec![
+                "python3".into(),
+                "/app/manage.py".into(),
+                "runserver".into(),
+                "0.0.0.0:8000".into(),
+            ])
+        );
+    }
+
+    #[test]
+    fn detect_fastapi_uvicorn_entrypoint() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("requirements.txt"), "fastapi\nuvicorn\n").unwrap();
+        std::fs::write(dir.path().join("main.py"), "app = FastAPI()\n").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Python);
+        assert_eq!(
+            ep,
+            Some(vec![
+                "uvicorn".into(),
+                "main:app".into(),
+                "--host".into(),
+                "0.0.0.0".into(),
+                "--port".into(),
+                "8000".into(),
+            ])
+        );
+    }
+
+    #[test]
+    fn detect_python_pyproject_scripts() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("pyproject.toml"),
+            r#"[project.scripts]
+start = "uvicorn main:app"
+"#,
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("main.py"), "").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Python);
+        assert_eq!(ep, Some(vec!["uvicorn".into(), "main:app".into()]));
+    }
+
+    #[test]
+    fn detect_node_express_bin_www() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        std::fs::create_dir(dir.path().join("bin")).unwrap();
+        std::fs::write(dir.path().join("bin").join("www"), "#!/usr/bin/env node\n").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(ep, Some(vec!["node".into(), "/app/bin/www".into()]));
+    }
+
+    #[test]
+    fn detect_node_nestjs_dist_main() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        std::fs::create_dir(dir.path().join("dist")).unwrap();
+        std::fs::write(dir.path().join("dist").join("main.js"), "console.log('hi')").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(ep, Some(vec!["node".into(), "/app/dist/main.js".into()]));
+    }
+
+    #[test]
+    fn detect_nextjs_standalone() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        std::fs::create_dir_all(dir.path().join(".next").join("standalone")).unwrap();
+        std::fs::write(
+            dir.path()
+                .join(".next")
+                .join("standalone")
+                .join("server.js"),
+            "console.log('next')",
+        )
+        .unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(
+            ep,
+            Some(vec![
+                "node".into(),
+                "/app/.next/standalone/server.js".into()
+            ])
+        );
+    }
+
+    #[test]
+    fn detect_rails_bin_rails() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("Gemfile"), "gem 'rails'\n").unwrap();
+        std::fs::create_dir(dir.path().join("bin")).unwrap();
+        std::fs::write(
+            dir.path().join("bin").join("rails"),
+            "#!/usr/bin/env ruby\n",
+        )
+        .unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Ruby);
+        assert_eq!(
+            ep,
+            Some(vec![
+                "ruby".into(),
+                "/app/bin/rails".into(),
+                "server".into(),
+                "-b".into(),
+                "0.0.0.0".into(),
+            ])
+        );
+    }
+
+    #[test]
+    fn detect_php_frankenphp() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("artisan"), "#!/usr/bin/env php\n").unwrap();
+        std::fs::write(dir.path().join("frankenphp"), "#!/usr/bin/env php\n").unwrap();
+        std::fs::write(dir.path().join("Caddyfile"), "{\n\tfrankenphp\n}\n").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Php);
+        assert_eq!(
+            ep,
+            Some(vec!["/app/frankenphp".into(), "php-server".into()])
+        );
+    }
+
+    #[test]
+    fn detect_dotnet_self_contained() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("app.csproj"), "<Project />").unwrap();
+        std::fs::create_dir_all(dir.path().join("bin").join("Release")).unwrap();
+        std::fs::write(
+            dir.path().join("bin").join("Release").join("myapp"),
+            b"\x7fELF",
+        )
+        .unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Dotnet);
+        assert_eq!(ep, Some(vec!["/app/bin/Release/myapp".into()]));
     }
 }

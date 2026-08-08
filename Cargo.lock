@@ -3337,6 +3337,7 @@ dependencies = [
  "tempfile",
  "toml 0.8.23",
  "ureq",
+ "walkdir",
  "xbin-core",
  "zstd",
  "zstd-sys",

@@ -152,7 +152,7 @@ pub fn spawn(
             0, // bInheritHandles = FALSE
             flags,
             env_block.as_ptr() as *mut c_void,
-            cwd_wide.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+            cwd_wide.as_ref().map_or(std::ptr::null(), Vec::as_ptr),
             &mut si,
             &mut pi,
         )
