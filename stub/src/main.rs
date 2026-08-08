@@ -1441,6 +1441,11 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
 
     maybe_start_health(meta);
 
+    #[cfg(target_os = "linux")]
+    if use_pivot && running_in_container() {
+        eprintln!("[xbin] warning: running inside a container — namespace isolation may be restricted by the host");
+    }
+
     enter_namespace_if_needed(meta.isolation)?;
     #[cfg(target_os = "linux")]
     if use_pivot {
@@ -1964,6 +1969,38 @@ extern "C" fn signal_forward(sig: i32) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Container escape hardening
+// ---------------------------------------------------------------------------
+
+/// Detect if the launcher is running inside a known container environment.
+///
+/// Checks `/.dockerenv`, `/run/.containerenv`, and cgroup v1/v2 hints.
+/// Returns `true` when a container runtime is detected.
+///
+/// This is a best-effort hint, not a security boundary: a compromised
+/// container can fake these files. Combined with namespace isolation and
+/// Landlock/seccomp, it raises the bar against container escapes.
+#[cfg(target_os = "linux")]
+fn running_in_container() -> bool {
+    const CGROUP_HINTS: [&str; 3] = ["/.dockerenv", "/run/.containerenv", "/.containerenv"];
+    CGROUP_HINTS.iter().any(|p| Path::new(p).exists())
+        || std::fs::read_to_string("/proc/1/cgroup")
+            .ok()
+            .is_some_and(|c| {
+                c.contains("docker") || c.contains("kubepod") || c.contains("containerd")
+            })
+        || std::fs::read_to_string("/proc/self/cgroup")
+            .ok()
+            .is_some_and(|c| {
+                c.contains("docker") || c.contains("kubepod") || c.contains("containerd")
+            })
+}
+
+// ---------------------------------------------------------------------------
+// Namespace setup
+// ---------------------------------------------------------------------------
 
 /// Enter a new user + mount namespace (unprivileged). Linux-only.
 #[cfg(target_os = "linux")]
