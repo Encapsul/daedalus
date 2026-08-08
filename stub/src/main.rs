@@ -276,6 +276,7 @@ fn run() -> io::Result<()> {
     flock_exclusive(&lock)?;
 
     if !ready_marker.exists() {
+        let _ = gc_extraction_cache(16);
         let is_squashfs = meta.payload_format == format::PAYLOAD_FORMAT_SQUASHFS;
         if is_squashfs {
             let blobs = slice_layers(&payload, footer.payload_offset, &meta, layered)?;
@@ -1148,7 +1149,6 @@ fn hex_decode(s: &str) -> Option<Vec<u8>> {
 /// macOS: `$XDG_CACHE_HOME/xbin` if set, else `~/Library/Caches/xbin`
 /// (`dirs::cache_dir()`).
 /// Windows: `%LOCALAPPDATA%\xbin`.
-/// Linux: `$XDG_CACHE_HOME/xbin` or `~/.cache/xbin`.
 fn cache_dir() -> io::Result<PathBuf> {
     if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
         return Ok(PathBuf::from(xdg).join("xbin"));
@@ -1166,6 +1166,39 @@ fn cache_dir() -> io::Result<PathBuf> {
         })?;
         Ok(dir.join("xbin"))
     }
+}
+
+/// Garbage-collect the extracted rootfs cache, keeping at most `max_entries`
+/// directories (LRU by `.ready` mtime). Called before a cold extraction so
+/// the cache does not grow without bound.
+///
+/// The extraction cache lives under `cache_dir()/{hash}/rootfs/`. Each entry
+/// has a `.ready` marker whose mtime is updated on every warm hit, giving a
+/// cheap LRU signal without extra metadata files.
+fn gc_extraction_cache(max_entries: usize) -> io::Result<()> {
+    let base = cache_dir()?;
+    let mut entries: Vec<_> = match fs::read_dir(&base) {
+        Ok(iter) => iter.filter_map(Result::ok).collect(),
+        Err(_) => return Ok(()),
+    };
+    entries.retain(|e| e.path().is_dir() && e.path().join("rootfs").is_dir());
+    if entries.len() <= max_entries {
+        return Ok(());
+    }
+    entries.sort_by_key(|e| {
+        e.path()
+            .join(".ready")
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::UNIX_EPOCH)
+    });
+    while entries.len() > max_entries {
+        if let Some(oldest) = entries.first() {
+            let _ = fs::remove_dir_all(oldest.path());
+            entries.remove(0);
+        }
+    }
+    Ok(())
 }
 
 fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
