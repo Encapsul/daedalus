@@ -69,33 +69,41 @@ worked.
 
 ## Phase 2 — Port macOS (Mach-O stub)
 
-- [ ] **Self-path** — replace `/proc/self/exe` reads with
-      `std::env::current_exe()` behind `#[cfg(target_os)]` (works on macOS and
-      Linux). (`stub/src/main.rs`)
+- [x] **Self-path** — `self_exe()` wrapper: readlink(`/proc/self/exe`) on
+      Linux, `std::env::current_exe()` on macOS. Applied at all four sites
+      (`run()`, `bin_path`, SISR update + remote). (`stub/src/main.rs:305`)
 - [ ] **Cache dir** — use `dirs::cache_dir()` (already a dep,
       `stub/Cargo.toml:28`) → `~/Library/Caches/xbin/<hash>/rootfs/`.
-- [ ] **cfg-gate Linux-only code** — `unshare`/`pivot_root`/`mount`,
-      seccomp (`seccomp.rs`), landlock (`landlock.rs`), `/proc` reads are
-      Linux-only; compile them out on macOS. macOS gets plain
-      extract-to-cache + exec (no chroot/pivot).
-- [ ] **exec model** — keep `execv` via libc (exists on macOS) or use
-      `std::process::Command`.
+      (`cache_dir()` currently hardcodes `~/.cache/xbin`.)
+- [x] **cfg-gate Linux-only code** — `enter_userns`/`pivot_root_into`/
+      `install_seccomp_denylist`/`write_proc` are `#[cfg(target_os = "linux")]`;
+      the `use_pivot` blocks in `exec_app`/`supervise_services` and
+      `enter_namespace_if_needed` are no-ops off-Linux; `mod landlock` is
+      cfg-gated. macOS gets plain extract-to-cache + exec.
+- [x] **exec model** — `execvp` via libc exists on macOS; unchanged.
 - [ ] **Code-signing gotcha** — appending payload+footer invalidates a signed
       Mach-O. Either re-sign after assembly (`codesign`) or embed the payload
       in a Mach-O section. Implement the re-sign path and document it.
       (x.bin is meant for unsigned distribution, but notarization must not
       break.)
-- [ ] **darwin runtimes** — extend `download_node` with `darwin-x64` /
-      `darwin-arm64` tarballs (`node-v<ver>-darwin-arm64.tar.gz`).
-      (`build.rs:1060`)
-- [ ] **Stub build for darwin** — `rustup target add aarch64-apple-darwin
-      x86_64-apple-darwin`; cross toolchain (zigbuild/osxcross) or build the
-      stub natively on a macOS CI runner, then assemble on the build host.
+- [x] **darwin runtimes** — `ensure_node_download` maps `(os, arch)` →
+      nodejs.org tarballs incl. `node-v<ver>-darwin-{arm64,x64}.tar.gz`
+      (gzip via `flate2`); `ensure_node` downloads into a per-target cache
+      dir and prepends to PATH so the embedded interpreter is the target
+      node. (`build.rs:1058`)
+- [x] **Stub build for darwin** — `cargo zigbuild --target
+      {aarch64,x86_64}-apple-darwin` (zig libSystem stubs) produces both
+      Mach-O stubs; `find_stub` maps darwin triples to the stub triple.
+      Cross-build assembled end-to-end on the Linux builder (Mach-O arm64).
 - [ ] **Sandbox** — seccomp/landlock have no macOS equivalent; evaluate
       Seatbelt (`sandbox_exec`) as optional hardening. Note as a documented
       gap in the security posture.
 - [ ] **Smoke test macOS** — Actions `macos-14` runner: pack hello-node, run,
       HTTP 200.
+- [ ] **Cross-target dependency install** — `npm install` cannot run a target
+      node on a foreign host (Linux builder + darwin target). For target
+      builds, either skip install for zero-dep apps (current behavior) or
+      use `npm install --platform/--arch` for the target layout.
 
 ## Phase 3 — Port Windows (PE / EXE stub)
 
@@ -116,16 +124,18 @@ worked.
 
 ## Phase 4 — Multi-target CLI (the enabler for "run everywhere")
 
-- [ ] **One `--target` syntax** — replace `--target arch` (x86_64|aarch64)
-      and `--cross-compile` with a full `os-arch` or Rust-triple syntax:
-      `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win-x64`.
-      (`build.rs:68`, `build.rs:813`)
+- [x] **One `--target` syntax** — `parse_target` accepts Rust triples
+      (`aarch64-apple-darwin`, `x86_64-unknown-linux-musl`) and short forms
+      (`x86_64`|`aarch64`, defaulting to Linux). Wired into stub selection
+      (`find_stub`), runtime download (`ensure_node`), and interpreter embed.
+      Remaining: `--cross-compile` comma list + `linux-x64`/`win-x64` aliases.
 - [ ] **Multi-arch output** — `xbin build --target linux-x64,linux-arm64`
       emits one artifact per target.
-- [ ] **Per-target stub selection** — `find_stub` keyed by triple, pulls the
-      per-(os,arch) stub (ELF/Mach-O/PE).
-- [ ] **Per-target runtimes** — `download_node` matrix keyed by (os, arch);
-      embed the runtime matching the target, not the builder's host.
+- [x] **Per-target stub selection** — `find_stub` keyed by target maps to the
+      per-(os,arch) stub triple (ELF musl / Mach-O darwin).
+- [x] **Per-target runtimes** — `ensure_node_download` matrix keyed by (os,
+      arch) incl. darwin; embeds the runtime matching the target, not the
+      builder's host.
 - [ ] **Per-platform file naming** — `.xbin` for ELF/Mach-O, `.exe` for PE.
 - [ ] **Docs** — `xbin build --help` examples + README support matrix.
 

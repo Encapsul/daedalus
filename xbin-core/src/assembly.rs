@@ -28,17 +28,14 @@ pub fn fmt_version(squashfs: bool, encrypt: bool, signed: bool) -> u8 {
 }
 
 /// Determine architecture from target string or host.
+/// Accepts short forms (`aarch64`) and Rust triples (`aarch64-apple-darwin`).
 pub fn resolve_arch(target_arch: Option<&str>) -> u8 {
-    match target_arch {
-        Some("aarch64" | "arm64") => format::ARCH_AARCH64,
-        Some("x86_64") => format::ARCH_X86_64,
-        _ => {
-            if cfg!(target_arch = "aarch64") {
-                format::ARCH_AARCH64
-            } else {
-                format::ARCH_X86_64
-            }
-        }
+    let arch = target_arch
+        .map(|t| t.split('-').next().unwrap_or(t))
+        .unwrap_or_else(|| std::env::consts::ARCH);
+    match arch {
+        "aarch64" | "arm64" => format::ARCH_AARCH64,
+        _ => format::ARCH_X86_64,
     }
 }
 

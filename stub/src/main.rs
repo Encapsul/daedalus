@@ -10,6 +10,7 @@
 //! `pivot_root_into()`, and `install_seccomp_denylist()`.
 
 mod config;
+#[cfg(target_os = "linux")]
 mod landlock;
 mod squashfs_extract;
 
@@ -159,7 +160,7 @@ fn run() -> io::Result<()> {
     // Load configuration (multi-layered: CLI args → local config → env vars → global config)
     let app_config = config::AppConfig::load();
 
-    let (mut exe, mut footer, mut meta_bytes, mut meta) = read_from(Path::new("/proc/self/exe"))?;
+    let (mut exe, mut footer, mut meta_bytes, mut meta) = read_from(&self_exe()?)?;
 
     // Intercept xbin-reserved runtime flags (`--xbin-update`, `--xbin-version`)
     // before they could reach the host app. Handled modes are terminal: the
@@ -168,9 +169,9 @@ fn run() -> io::Result<()> {
     handle_runtime_flags(&meta)?;
 
     // Canonical on-disk path — the file the update engine swaps in place.
-    // Kept separate from /proc/self/exe because the kernel can pin the
-    // pre-swap inode of the running image after a rename.
-    let mut bin_path = fs::canonicalize(Path::new("/proc/self/exe"))?;
+    // Kept separate from the running image path because the kernel can pin
+    // the pre-swap inode of the running image after a rename.
+    let mut bin_path = self_exe()?;
 
     // SISR self-update: rebuild the binary in place from a signed delta before
     // reading the payload, so this run executes the new version.
@@ -302,6 +303,14 @@ fn read_from(path: &Path) -> io::Result<(File, Footer, Vec<u8>, Metadata)> {
     Ok((exe, footer, meta_bytes, meta))
 }
 
+/// Canonical absolute path of the running executable (the .xbin file itself).
+/// Linux: readlink(/proc/self/exe); macOS: `_NSGetExecutablePath` via
+/// `std::env::current_exe()`. Both are resolved to the on-disk path, which is
+/// the file the update engine swaps in place.
+fn self_exe() -> io::Result<PathBuf> {
+    fs::canonicalize(std::env::current_exe()?)
+}
+
 // ---------------------------------------------------------------------------
 // SISR self-update
 // ---------------------------------------------------------------------------
@@ -339,7 +348,7 @@ fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
         .join("chunks");
     let fetcher = xbin_core::sisr::engine::DirectoryChunkFetcher::new(&chunks_root);
 
-    let current = fs::canonicalize(Path::new("/proc/self/exe"))?;
+    let current = self_exe()?;
     let store = HealthStore::new(&health_store_dir()?);
     refuse_quarantined_target(&store, &current, &remote.manifest, &fetcher)?;
 
@@ -690,7 +699,7 @@ fn remote_update(base: &str) -> io::Result<()> {
     let total = remote.manifest.chunks.len();
     eprintln!("[xbin] update: manifest verified ({total} chunks)");
 
-    let current = fs::canonicalize(Path::new("/proc/self/exe"))?;
+    let current = self_exe()?;
     let store = HealthStore::new(&health_store_dir()?);
     let fetcher = HttpChunkFetcher::new(&format!("{base}/chunks"), total);
     refuse_quarantined_target(&store, &current, &remote.manifest, &fetcher)?;
@@ -1045,7 +1054,10 @@ fn atomic_extract(
 // ---------------------------------------------------------------------------
 
 /// Enter user + mount namespace if isolation >= 2; no-op otherwise.
+/// No-op on non-Linux platforms (no namespaces available).
+#[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
 fn enter_namespace_if_needed(isolation: u8) -> io::Result<()> {
+    #[cfg(target_os = "linux")]
     if isolation >= 2 {
         enter_userns()?;
     }
@@ -1205,11 +1217,17 @@ fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &config::AppConfig) -> i
     }
 
     let orig_cwd = std::env::current_dir().ok();
+    #[cfg(target_os = "linux")]
     let use_pivot = meta.isolation >= 2;
+    // No pivot_root/namespaces outside Linux: extract + exec with rootfs
+    // paths baked into LD_LIBRARY_PATH / PATH.
+    #[cfg(not(target_os = "linux"))]
+    let use_pivot = false;
 
     maybe_start_health(meta);
 
     enter_namespace_if_needed(meta.isolation)?;
+    #[cfg(target_os = "linux")]
     if use_pivot {
         pivot_root_into(rootfs)?;
         if meta.seccomp {
@@ -1343,11 +1361,15 @@ fn supervise_services(
     app_config: &config::AppConfig,
 ) -> io::Result<()> {
     let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
+    #[cfg(target_os = "linux")]
     let use_pivot = meta.isolation >= 2;
+    #[cfg(not(target_os = "linux"))]
+    let use_pivot = false;
 
     maybe_start_health(meta);
 
     enter_namespace_if_needed(meta.isolation)?;
+    #[cfg(target_os = "linux")]
     if use_pivot {
         pivot_root_into(rootfs)?;
         if meta.seccomp {
@@ -1559,7 +1581,8 @@ extern "C" fn signal_forward(sig: i32) {
     }
 }
 
-/// Enter a new user + mount namespace (unprivileged).
+/// Enter a new user + mount namespace (unprivileged). Linux-only.
+#[cfg(target_os = "linux")]
 fn enter_userns() -> io::Result<()> {
     // SAFETY: getuid(2) and getgid(2) are always safe, returning the
     // caller's UID/GID.
@@ -1587,12 +1610,13 @@ fn enter_userns() -> io::Result<()> {
 // Seccomp BPF denylist
 // ---------------------------------------------------------------------------
 
-/// Install a seccomp-bpf denylist after `pivot_root`.
+/// Install a seccomp-bpf denylist after `pivot_root`. Linux-only.
 ///
 /// Blocks syscalls that have no legitimate use in a packaged web/server app
 /// and represent escalation paths not covered by namespace isolation.
 /// The list is conservative: only ~14 syscalls, all clearly dangerous.
 /// Apps that work without seccomp continue working with it.
+#[cfg(target_os = "linux")]
 fn install_seccomp_denylist() -> io::Result<()> {
     // BPF instruction encodings (linux/filter.h).
     const BPF_LD: u16 = 0x00;
@@ -1854,8 +1878,9 @@ fn install_seccomp_denylist() -> io::Result<()> {
     Ok(())
 }
 
-/// Switch root to `rootfs` via `pivot_root(2)`.
+/// Switch root to `rootfs` via `pivot_root(2)`. Linux-only.
 /// The old root is mounted at `rootfs/.old_root` and immediately detached.
+#[cfg(target_os = "linux")]
 fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
     let new_root = std::fs::canonicalize(rootfs)?;
     let new_root_c = cstr(new_root.as_os_str().as_bytes())?;
@@ -1901,6 +1926,8 @@ fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Write a procfs file (`uid_map`/`gid_map`). Linux-only.
+#[cfg(target_os = "linux")]
 fn write_proc(path: &str, contents: &str) -> io::Result<()> {
     let mut f = File::create(path)?;
     f.write_all(contents.as_bytes())?;

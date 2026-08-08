@@ -23,6 +23,34 @@ fn parse_isolation(value: &str) -> Result<u32> {
     }
 }
 
+/// Parse a `--target` value into `(arch, os)`.
+///
+/// Accepts legacy short forms (`aarch64`, `x86_64` — defaulting to Linux) and
+/// full Rust triples (`aarch64-apple-darwin`, `x86_64-unknown-linux-musl`).
+fn parse_target(target: &str) -> (String, String) {
+    let parts: Vec<&str> = target.split('-').collect();
+    let arch = match parts.first().copied() {
+        Some("x86_64" | "amd64") => "x86_64",
+        Some("aarch64" | "arm64") => "aarch64",
+        Some(other) => other,
+        None => std::env::consts::ARCH,
+    };
+    let os = if parts.contains(&"apple") {
+        "darwin"
+    } else if parts.contains(&"pc") || parts.contains(&"windows") {
+        "windows"
+    } else if parts.contains(&"linux") {
+        "linux"
+    } else if target.contains('-') {
+        // Unrecognized full triple: assume a Linux OS — the common case.
+        "linux"
+    } else {
+        // Legacy short forms (`aarch64`, `x86_64`) target Linux by default.
+        "linux"
+    };
+    (arch.to_string(), os.to_string())
+}
+
 #[derive(Args)]
 pub struct BuildArgs {
     /// Path to the app directory
@@ -424,8 +452,18 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         if !no_install {
             let cmd = mgr.install_cmd();
 
-            // Check if the binary exists before trying to run it
-            if !is_command_available(cmd[0]) {
+            // Check if the binary exists before trying to run it. For
+            // cross-target builds the builder's host toolchain has the wrong
+            // arch/OS, so always download the target node instead.
+            let need_target_node = target.is_some()
+                && matches!(
+                    mgr,
+                    pkgmgr::PkgMgr::Npm
+                        | pkgmgr::PkgMgr::Pnpm
+                        | pkgmgr::PkgMgr::Yarn
+                        | pkgmgr::PkgMgr::Bun
+                );
+            if !is_command_available(cmd[0]) || need_target_node {
                 // For node/npm: download static node to temp dir
                 if matches!(
                     mgr,
@@ -434,7 +472,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
                         | pkgmgr::PkgMgr::Yarn
                         | pkgmgr::PkgMgr::Bun
                 ) {
-                    let bin_dir = ensure_node(verbose)?;
+                    let bin_dir = ensure_node(target.as_deref(), verbose)?;
                     // Prepend to PATH for this process only
                     let current = std::env::var("PATH").unwrap_or_default();
                     std::env::set_var("PATH", format!("{}:{current}", bin_dir.display()));
@@ -487,7 +525,8 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     }
 
     // Clean up downloaded build tools (node/npm, composer.phar) from cache
-    let _ = std::fs::remove_dir_all(cache_dir().join("build-tools"));
+    // (deferred: for cross-target builds the downloaded node must remain on
+    // PATH until the interpreter is embedded below).
 
     // Find stub binary
     let stub = find_stub(&target)?;
@@ -601,6 +640,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // Clean up downloaded build tools (node/npm, composer.phar in /tmp)
     // Done *after* embedding so the interpreter is still available for copying.
     let _ = std::fs::remove_dir_all("/tmp/xbin-build-tools");
+    let _ = std::fs::remove_dir_all(cache_dir().join("build-tools"));
 
     // Build deterministic tar (streaming: tar → zstd, no in-memory buffer)
     eprintln!("Creating payload...");
@@ -1023,12 +1063,21 @@ fn is_command_available(name: &str) -> bool {
 }
 
 /// Ensure node + npm are available for the build.
-/// Downloads a static node to `~/.cache/xbin/build-tools/node/` if not on
+/// Downloads a static node to `~/.cache/xbin/build-tools/node/` (or a
+/// per-target subdir when `--target` requests a non-host platform) if not on
 /// PATH. The user-writable cache dir (0700) avoids the symlink attacks a
 /// predictable world-writable `/tmp` path would allow. Does NOT pollute the
 /// user's system PATH.
-fn ensure_node(verbose: bool) -> Result<PathBuf> {
-    let tools_dir = cache_dir().join("build-tools").join("node");
+fn ensure_node(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
+    let suffix = target
+        .map(|t| {
+            let (arch, os) = parse_target(t);
+            format!("{os}-{arch}")
+        })
+        .unwrap_or_else(|| "host".to_string());
+    let tools_dir = cache_dir()
+        .join("build-tools")
+        .join(format!("node-{suffix}"));
     let node_bin = tools_dir.join("bin/node");
     let npm_bin = tools_dir.join("bin/npm");
 
@@ -1054,7 +1103,7 @@ fn ensure_node(verbose: bool) -> Result<PathBuf> {
         .ok();
     }
 
-    ensure_node_download(tools_dir, None, verbose)
+    ensure_node_download(tools_dir, target, verbose)
 }
 
 /// Download a specific Node.js version for a target architecture.
@@ -1065,12 +1114,21 @@ fn ensure_node_download(
     target_arch: Option<&str>,
     verbose: bool,
 ) -> Result<PathBuf> {
-    let (node_arch, node_os) = if let Some(arch) = target_arch {
-        match arch {
-            "x86_64" | "amd64" => ("x64", "linux"),
-            "aarch64" | "arm64" => ("arm64", "linux"),
+    // Map the target to node's official `os-arch` tarball naming. Node ships
+    // static builds for linux (musl-compatible) and darwin.
+    let (node_arch, node_os) = if let Some(target) = target_arch {
+        let (arch, os) = parse_target(target);
+        let node_arch = match arch.as_str() {
+            "x86_64" | "amd64" => "x64",
+            "aarch64" | "arm64" => "arm64",
             _ => anyhow::bail!("unsupported cross-compile architecture: {arch}"),
-        }
+        };
+        let node_os = match os.as_str() {
+            "linux" => "linux",
+            "darwin" => "darwin",
+            _ => anyhow::bail!("unsupported cross-compile OS: {os}"),
+        };
+        (node_arch.to_string(), node_os.to_string())
     } else {
         let node_arch = match std::env::consts::ARCH {
             "x86_64" => "x64",
@@ -1082,7 +1140,7 @@ fn ensure_node_download(
             "macos" => "darwin",
             os => os,
         };
-        (node_arch, node_os)
+        (node_arch.to_string(), node_os.to_string())
     };
 
     let node_bin = tools_dir.join("bin/node");
@@ -1100,7 +1158,13 @@ fn ensure_node_download(
         .map(|v| v.to_string())
         .ok_or_else(|| anyhow::anyhow!("no node version found in manifest"))?;
 
-    let tarball = format!("node-v{version}-{node_os}-{node_arch}.tar.xz");
+    // nodejs.org serves .tar.xz on Linux and .tar.gz on macOS.
+    let ext = if node_os == "darwin" {
+        "tar.gz"
+    } else {
+        "tar.xz"
+    };
+    let tarball = format!("node-v{version}-{node_os}-{node_arch}.{ext}");
     let url = format!("https://nodejs.org/dist/v{version}/{tarball}");
 
     if verbose {
@@ -1109,7 +1173,11 @@ fn ensure_node_download(
 
     let response = reqwest::blocking::get(&url).context("failed to download node.js tarball")?;
     let reader = std::io::BufReader::new(response);
-    let decoder = xz::read::XzDecoder::new(reader);
+    let decoder: Box<dyn std::io::Read> = if node_os == "darwin" {
+        Box::new(flate2::read::GzDecoder::new(reader))
+    } else {
+        Box::new(xz::read::XzDecoder::new(reader))
+    };
     let mut archive = tar::Archive::new(decoder);
 
     for entry in archive
@@ -1441,7 +1509,7 @@ fn ensure_composer(app_dir: &Path, verbose: bool) -> Result<(String, Vec<String>
     )
 }
 
-fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
+fn find_stub(target: &Option<String>) -> Result<PathBuf> {
     if let Ok(path) = std::env::var("XBIN_STUB_PATH") {
         let p = PathBuf::from(path);
         if p.exists() {
@@ -1451,8 +1519,13 @@ fn find_stub(target_arch: &Option<String>) -> Result<PathBuf> {
 
     let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
 
-    let arch_suffix = match target_arch.as_deref() {
-        Some("aarch64") => "aarch64-unknown-linux-musl",
+    // Map the requested target to the stub build triple. Legacy short forms
+    // map to the linux-musl ELF; darwin targets map to the Mach-O stub.
+    let arch_suffix = match target.as_deref() {
+        Some(t) if t == "aarch64" || t == "arm64" => "aarch64-unknown-linux-musl",
+        Some(t) if t.contains("darwin") => t,
+        Some(t) if t.contains("linux") => t,
+        Some(t) if t.contains('-') => t,
         _ => "x86_64-unknown-linux-musl",
     };
 
@@ -1618,6 +1691,34 @@ mod tests {
     fn find_stub_aarch64_suffix() {
         let result = find_stub(&Some("aarch64".into()));
         assert!(result.is_err() || result.is_ok(), "should not panic");
+    }
+
+    #[test]
+    fn find_stub_darwin_suffix() {
+        let result = find_stub(&Some("aarch64-apple-darwin".into()));
+        assert!(result.is_err() || result.is_ok(), "should not panic");
+    }
+
+    #[test]
+    fn parse_target_short_forms() {
+        assert_eq!(parse_target("aarch64"), ("aarch64".into(), "linux".into()));
+        assert_eq!(parse_target("x86_64"), ("x86_64".into(), "linux".into()));
+    }
+
+    #[test]
+    fn parse_target_full_triples() {
+        assert_eq!(
+            parse_target("aarch64-apple-darwin"),
+            ("aarch64".into(), "darwin".into())
+        );
+        assert_eq!(
+            parse_target("x86_64-unknown-linux-musl"),
+            ("x86_64".into(), "linux".into())
+        );
+        assert_eq!(
+            parse_target("aarch64-unknown-linux-gnu"),
+            ("aarch64".into(), "linux".into())
+        );
     }
 
     #[test]
