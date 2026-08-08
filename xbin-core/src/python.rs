@@ -312,6 +312,11 @@ fn py_detect_perl(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
+fn py_detect_electron(app_dir: &str) -> bool {
+    detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Electron)
+}
+
+#[pyfunction]
 fn py_detect_binary(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Binary)
 }

@@ -52,6 +52,7 @@ pub struct BuildCache {
 struct CacheMeta {
     app_hash: String,
     timestamp_secs: u64,
+    ttl_hours: Option<u64>,
 }
 
 /// Cache key directory: the app hash alone for host builds, `hash-<target>`
@@ -111,6 +112,7 @@ impl BuildCache {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
+            ttl_hours: Some(24),
         };
         let meta_json = serde_json::to_string(&meta)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -157,6 +159,35 @@ impl BuildCache {
             if let Some(oldest) = entries.first() {
                 let _ = std::fs::remove_dir_all(oldest);
                 entries.remove(0);
+            }
+        }
+    }
+
+    /// Garbage-collect cache entries older than their TTL.
+    ///
+    /// Entries with `ttl_hours` set are removed if their age exceeds that
+    /// threshold. Entries without a TTL are kept indefinitely.
+    pub fn gc(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let Some(entries) = self.list_entries() else {
+            return;
+        };
+        for entry in entries {
+            let meta_path = entry.join(".meta");
+            let meta = std::fs::read_to_string(&meta_path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<CacheMeta>(&s).ok());
+            if let Some(meta) = meta {
+                if let Some(ttl_hours) = meta.ttl_hours {
+                    let age_secs = now.saturating_sub(meta.timestamp_secs);
+                    let ttl_secs = ttl_hours.saturating_mul(3600);
+                    if age_secs > ttl_secs {
+                        let _ = std::fs::remove_dir_all(&entry);
+                    }
+                }
             }
         }
     }

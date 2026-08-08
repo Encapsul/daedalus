@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use xbin_core::paths::{cache_dir, format_size};
+use xbin_core::paths::{cache_dir, format_size, BuildCache};
 
 #[derive(Args)]
 pub struct CleanArgs {
@@ -8,12 +8,23 @@ pub struct CleanArgs {
     #[arg(long)]
     pub all: bool,
 
+    /// Garbage-collect expired cache entries (TTL-based)
+    #[arg(long)]
+    pub gc: bool,
+
     /// Skip confirmation
     #[arg(short, long)]
     pub force: bool,
 }
 
 pub fn run(args: CleanArgs) -> Result<()> {
+    if args.gc {
+        let cache = BuildCache::new(std::path::Path::new("."), 50);
+        cache.gc();
+        eprintln!("Cache garbage-collected (expired entries removed)");
+        return Ok(());
+    }
+
     let cache_dir = cache_dir();
 
     if !cache_dir.exists() {

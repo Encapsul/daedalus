@@ -253,7 +253,17 @@ fn run() -> io::Result<()> {
             if verbose {
                 eprintln!("[xbin] decrypting AES-256-GCM payload");
             }
-            decrypt_aes_gcm(&payload, crypto)?
+            let is_sisr = footer.flags & format::FLAG_SISR != 0;
+            if is_sisr && !meta.layers.is_empty() {
+                let chunk_sizes: Vec<usize> = meta
+                    .layers
+                    .iter()
+                    .map(|l| l.uncompressed_size as usize)
+                    .collect();
+                chunked_decrypt_aes_gcm(&payload, crypto, &chunk_sizes)?
+            } else {
+                decrypt_aes_gcm(&payload, crypto)?
+            }
         } else {
             return Err(err("encrypted payload but no crypto metadata"));
         }
@@ -977,11 +987,7 @@ fn load_trusted_keys() -> io::Result<Vec<ed25519_dalek::VerifyingKey>> {
 /// Return the directory where trusted Ed25519 public keys are stored.
 /// Override via `$XBIN_TRUSTED_DIR`; default `~/.xbin/trusted-keys/`.
 fn trusted_keys_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("XBIN_TRUSTED_DIR") {
-        return PathBuf::from(d);
-    }
-    let home = std::env::var_os("HOME").unwrap_or_default();
-    PathBuf::from(home).join(".xbin").join("trusted-keys")
+    xbin_core::paths::trusted_keys_dir()
 }
 
 // ---------------------------------------------------------------------------
@@ -1091,6 +1097,40 @@ fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec<u8>
     cipher
         .decrypt(nonce, ciphertext)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("AES decrypt: {e}")))
+}
+
+/// Decrypt an AES-256-GCM payload that was encrypted in per-chunk mode
+/// (`encrypt_chunks` in `xbin-core/src/encrypt.rs`).
+///
+/// Each chunk was encrypted with an independent key derived via HKDF from the
+/// signing seed, salt, and chunk index. The ciphertext layout is
+/// `[ct_chunk_0 || tag_0][ct_chunk_1 || tag_1]...`. `chunk_sizes` gives the
+/// plaintext length of each chunk in order.
+fn chunked_decrypt_aes_gcm(
+    ciphertext: &[u8],
+    crypto: &CryptoMeta,
+    chunk_sizes: &[usize],
+) -> io::Result<Vec<u8>> {
+    use xbin_core::encrypt::{decrypt_chunks, NONCE_LEN};
+
+    let signing_seed = hex_decode(&crypto.signing_seed_hex)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad signing seed hex"))?;
+    let signing_seed: [u8; 32] = signing_seed
+        .try_into()
+        .map_err(|_| err("signing seed must be 32 bytes"))?;
+
+    let salt_bytes = hex_decode(&crypto.encryption_salt_hex)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption salt hex"))?;
+    let salt: [u8; 32] = salt_bytes
+        .try_into()
+        .map_err(|_| err("encryption salt must be exactly 32 bytes"))?;
+
+    let nonce_bytes = hex_decode(&crypto.nonce_hex)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad nonce hex"))?;
+    let mut base_nonce = [0u8; NONCE_LEN];
+    base_nonce.copy_from_slice(&nonce_bytes);
+
+    decrypt_chunks(ciphertext, &signing_seed, &salt, &base_nonce, chunk_sizes)
 }
 
 fn hex_decode(s: &str) -> Option<Vec<u8>> {

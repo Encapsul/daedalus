@@ -104,7 +104,10 @@ stubs and (where available) embedded runtimes are cross-selected by target.
 > the standard flags below for functional behavior today.
 
 ```bash
-# Embed interpreter for self-contained binaries (Bun-inspired)
+# Basic build
+xbin build ./myapp -o myapp.xbin
+
+# Embed interpreter for self-contained binaries
 xbin build ./myapp --embed-interpreter python3 -o myapp.xbin
 
 # Multi-arch packaging: one artifact per target
@@ -126,6 +129,22 @@ xbin build ./myapp --health-port 8080 --health-endpoint /health -o myapp.xbin
 
 # Intelligent build caching (Wasmer-inspired) — metadata only, not functional yet
 xbin build ./myapp --use-cache --clear-cache -o myapp.xbin
+
+# Sign and encrypt
+xbin keygen --key-dir ~/.xbin/keys
+xbin build ./myapp --sign --key ~/.xbin/keys/*.key -o myapp.xbin
+xbin build ./myapp --encrypt --key ~/.xbin/keys/*.key -o myapp-secure.xbin
+
+# Self-updating binary with SISR
+xbin build ./myapp --enable-sisr --update-url https://updates.example.com -o myapp.xbin
+#  -> myapp.xbin + myapp.xbin.manifest
+
+# Persistent storage
+xbin build ./myapp --persist -o myapp.xbin
+#  -> XBIN_PERSIST_DIR injected into app environment
+
+# Environment injection
+xbin build ./myapp --env-file .env --env KEY=VALUE -o myapp.xbin
 ```
 
 #### Embedded Runtime Options
@@ -156,6 +175,22 @@ xbin build ./myapp --use-cache
 # Clear cache before building
 xbin build ./myapp --clear-cache
 ```
+
+## Support matrix
+
+| Host → Target | linux-x64 | linux-arm64 | macos-x64 | macos-arm64 | win-x64 | win-arm64 |
+|--------------|-----------|-------------|-----------|-------------|---------|-----------|
+| linux-x64    | ✅ native | ✅ cross    | ✅ cross  | ✅ cross    | ✅ cross | ✅ cross |
+| linux-arm64  | ✅ cross  | ✅ native   | ✅ cross  | ✅ cross    | ✅ cross | ✅ cross |
+| macos-x64    | ✅ cross  | ✅ cross    | ✅ native | ✅ cross    | ✅ cross | ✅ cross |
+| macos-arm64  | ✅ cross  | ✅ cross    | ✅ cross  | ✅ native   | ✅ cross | ✅ cross |
+| win-x64      | ❌        | ❌          | ❌        | ❌          | ✅ native | ✅ cross |
+| win-arm64    | ❌        | ❌          | ❌        | ❌          | ✅ cross | ✅ native |
+
+- ✅ = stub + runtime download tested
+- ❌ = CLI-only (no stub build); artifact cannot be produced from this host
+- Cross-OS builds embed the target stub + runtime; the artifact runs only on its target OS
+- Cross-arch builds require `cargo zigbuild` (zig as cc/linker) for the stub; the CLI itself builds with standard `cargo`
 
 ## Configuration
 

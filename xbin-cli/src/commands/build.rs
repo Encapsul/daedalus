@@ -195,19 +195,19 @@ pub struct BuildArgs {
     #[arg(short, long)]
     pub key: Option<PathBuf>,
 
-    /// Isolation mode
+    /// Isolation mode: sandbox, none, or 0-2
     #[arg(long, default_value = "sandbox")]
     pub isolation: String,
 
-    /// Enable seccomp BPF
+    /// Enable seccomp BPF filter
     #[arg(long)]
     pub seccomp: bool,
 
-    /// Enable Landlock LSM filesystem sandbox (stub isolation >= 2)
+    /// Enable Landlock LSM filesystem sandbox
     #[arg(long)]
     pub landlock: bool,
 
-    /// Enable encryption
+    /// Enable AES-256-GCM encryption (requires --key)
     #[arg(long)]
     pub encrypt: bool,
 
@@ -215,15 +215,15 @@ pub struct BuildArgs {
     #[arg(long)]
     pub squashfs: bool,
 
-    /// Enable SISR delta-indexing and self-update support (writes `<output>.manifest`)
+    /// Enable SISR delta-indexing and self-update support
     #[arg(long)]
     pub enable_sisr: bool,
 
-    /// Base URL of the SISR update channel (manifest + chunks); embedded in the binary
+    /// Base URL of the SISR update channel
     #[arg(long)]
     pub update_url: Option<String>,
 
-    /// Target architecture
+    /// Target architecture (e.g., aarch64, `x86_64`, linux-arm64, macos-arm64)
     #[arg(long)]
     pub target: Option<String>,
 
@@ -239,7 +239,7 @@ pub struct BuildArgs {
     #[arg(long = "env", action = clap::ArgAction::Append)]
     pub env: Vec<String>,
 
-    /// Define build-time constants (repeatable): --define KEY=VALUE (injected as env vars)
+    /// Define build-time constants (repeatable): --define KEY=VALUE
     #[arg(long = "define", action = clap::ArgAction::Append)]
     pub define: Vec<String>,
 
@@ -390,7 +390,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         seccomp: args.seccomp || config.build.seccomp.unwrap_or(false),
         landlock: args.landlock || config.build.landlock.unwrap_or(false),
         encrypt: args.encrypt || config.build.encrypt.unwrap_or(false),
-        squashfs: args.squashfs || config.build.squashfs.unwrap_or(false),
+        squashfs: args.squashfs || config.build.squashfs.unwrap_or(true),
         version_info: args.version_info.clone().or(config.package.version),
         author: args.author.clone().or(config.package.author),
         description: args.description.clone().or(config.package.description),
@@ -693,6 +693,45 @@ fn build_single_target(
                 full_args.push(":all:".into());
             }
 
+            // When cross-compiling for a different OS/arch, tell npm/pnpm/yarn/bun
+            // to install dependencies for the target platform, not the host.
+            let is_cross_node = matches!(
+                mgr,
+                pkgmgr::PkgMgr::Npm
+                    | pkgmgr::PkgMgr::Pnpm
+                    | pkgmgr::PkgMgr::Yarn
+                    | pkgmgr::PkgMgr::Bun
+            ) && target.as_ref().is_some_and(|t| {
+                let (t_arch, t_os) = parse_target(t);
+                t_arch != std::env::consts::ARCH || t_os != std::env::consts::OS
+            });
+            if is_cross_node {
+                if let Some(target_str) = target.as_ref() {
+                    let (t_arch, t_os) = parse_target(target_str);
+                    let npm_arch = match t_arch.as_str() {
+                        "x86_64" => "x64",
+                        "aarch64" | "arm64" => "arm64",
+                        "i686" | "i386" | "x86" => "ia32",
+                        other => other,
+                    };
+                    let npm_platform = match t_os.as_str() {
+                        "darwin" => "darwin",
+                        "windows" => "win32",
+                        "linux" => "linux",
+                        other => other,
+                    };
+                    if matches!(mgr, pkgmgr::PkgMgr::Npm | pkgmgr::PkgMgr::Pnpm) {
+                        full_args.push("--platform".into());
+                        full_args.push(npm_platform.into());
+                        full_args.push("--arch".into());
+                        full_args.push(npm_arch.into());
+                    } else if matches!(mgr, pkgmgr::PkgMgr::Yarn) {
+                        full_args.push("--platform".into());
+                        full_args.push(npm_platform.into());
+                    }
+                }
+            }
+
             let mut command = std::process::Command::new(&prog);
             command.args(&full_args).current_dir(app_dir);
 
@@ -854,11 +893,16 @@ fn build_single_target(
     // `--key`; the seed is embedded in meta `crypto` (seed-hex + nonce-hex).
     // The ciphertext replaces the payload before assembly so the footer's
     // integrity hash and signature both cover the *encrypted* bytes.
+    //
+    // When combined with `--enable-sisr`, the payload is encrypted in
+    // per-chunk mode: each SISR plaintext chunk gets an independent AES key
+    // derived via HKDF(seed, salt, chunk_index), and the manifest tracks the
+    // ciphertext hashes. The stub decrypts each chunk independently at
+    // runtime before SISR extraction.
     let mut crypto_meta: Option<serde_json::Value> = None;
+    let mut sisr_artifacts_opt: Option<xbin_core::sisr_stage::SisrArtifacts> = None;
+
     if encrypt {
-        if args.enable_sisr {
-            anyhow::bail!("--encrypt is not supported together with --enable-sisr");
-        }
         let key_path = args.key.as_ref().ok_or_else(|| {
             anyhow::anyhow!(
                 "--encrypt requires --key to derive the AES-256-GCM key from the signing seed"
@@ -870,24 +914,57 @@ fn build_single_target(
             .as_slice()
             .try_into()
             .map_err(|_| anyhow::anyhow!("signing key must be 32 bytes"))?;
-        let (ciphertext, em) = xbin_core::encrypt::encrypt_payload(&payload, &seed)
-            .context("AES-256-GCM payload encryption failed")?;
-        if verbose {
-            eprintln!(
-                "  encrypt: {} -> {} bytes (AES-256-GCM, tag at {})",
-                payload.len(),
-                ciphertext.len(),
-                em.tag_offset
-            );
+
+        if args.enable_sisr {
+            let sisr_config = build_sisr_config(&args.key)?;
+            let artifacts = xbin_core::sisr_stage::build_artifacts(&payload, &sisr_config)
+                .context("SISR stage failed during encrypt+SISR build")?;
+            let chunk_sizes: Vec<usize> = artifacts
+                .manifest
+                .chunks
+                .iter()
+                .map(|c| c.length as usize)
+                .collect();
+            let salt = xbin_core::encrypt::generate_salt();
+            let nonce = xbin_core::encrypt::generate_nonce();
+            let ciphertext =
+                xbin_core::encrypt::encrypt_chunks(&payload, &seed, &salt, &nonce, &chunk_sizes)
+                    .context("chunked AES-256-GCM payload encryption failed")?;
+            payload = ciphertext;
+            crypto_meta = Some(serde_json::json!({
+                "nonce_hex": hex::encode(nonce),
+                "signing_seed_hex": hex::encode(seed),
+                "encryption_salt_hex": hex::encode(salt),
+                "chunked": true,
+            }));
+            sisr_artifacts_opt = Some(artifacts);
+            if verbose {
+                eprintln!(
+                    "  encrypt+SISR: {} -> {} bytes (per-chunk AES-256-GCM, {} chunks)",
+                    payload.len(),
+                    payload.len(),
+                    chunk_sizes.len()
+                );
+            }
+        } else {
+            let (ciphertext, em) = xbin_core::encrypt::encrypt_payload(&payload, &seed)
+                .context("AES-256-GCM payload encryption failed")?;
+            payload = ciphertext;
+            crypto_meta = Some(serde_json::json!({
+                "nonce_hex": hex::encode(em.nonce),
+                "tag_offset": em.tag_offset,
+                "signing_seed_hex": hex::encode(seed),
+                "encryption_salt_hex": hex::encode(em.salt),
+            }));
+            if verbose {
+                eprintln!(
+                    "  encrypt: {} -> {} bytes (AES-256-GCM, tag at {})",
+                    payload.len(),
+                    payload.len(),
+                    em.tag_offset
+                );
+            }
         }
-        payload = ciphertext;
-        crypto_meta = Some(serde_json::json!({
-            "nonce_hex": hex::encode(em.nonce),
-            "tag_offset": em.tag_offset,
-            "signing_seed_hex": hex::encode(seed),
-            // New field: encryption_salt_hex for HKDF salt to prevent salt reuse
-            "encryption_salt_hex": hex::encode(em.salt),
-        }));
     }
 
     // Build metadata
@@ -1127,17 +1204,31 @@ fn build_single_target(
 
     let size = if args.enable_sisr {
         let sisr_config = build_sisr_config(&args.key)?;
-        xbin_core::assembly::assemble_xbin_with_sisr(
-            output,
-            &stub_bytes,
-            &payload,
-            &meta,
-            encrypt,
-            squashfs,
-            target.as_deref(),
-            &sisr_config,
-        )
-        .context("failed to assemble xbin (SISR)")?
+        if let Some(artifacts) = sisr_artifacts_opt {
+            xbin_core::assembly::assemble_xbin_with_sisr_artifacts(
+                output,
+                &stub_bytes,
+                &payload,
+                &meta,
+                encrypt,
+                squashfs,
+                target.as_deref(),
+                Some(artifacts),
+            )
+            .context("failed to assemble xbin (SISR+encrypt)")?
+        } else {
+            xbin_core::assembly::assemble_xbin_with_sisr(
+                output,
+                &stub_bytes,
+                &payload,
+                &meta,
+                encrypt,
+                squashfs,
+                target.as_deref(),
+                &sisr_config,
+            )
+            .context("failed to assemble xbin (SISR)")?
+        }
     } else {
         xbin_core::assembly::assemble_xbin(
             output,
@@ -1451,12 +1542,19 @@ fn ensure_node_download(
             .context("failed to reach nodejs.org")?
             .json()
             .context("failed to parse node version manifest")?;
-    let version = versions
-        .first()
-        .and_then(|v| v.get("version")?.as_str())
-        .and_then(|v| v.strip_prefix('v'))
-        .map(|v| v.to_string())
-        .ok_or_else(|| anyhow::anyhow!("no node version found in manifest"))?;
+    let version = if let Ok(pinned) = std::env::var("XBIN_NODE_VERSION") {
+        if verbose {
+            eprintln!("  using pinned node version {pinned} (XBIN_NODE_VERSION)");
+        }
+        pinned
+    } else {
+        versions
+            .first()
+            .and_then(|v| v.get("version")?.as_str())
+            .and_then(|v| v.strip_prefix('v'))
+            .map(|v| v.to_string())
+            .ok_or_else(|| anyhow::anyhow!("no node version found in manifest"))?
+    };
 
     // nodejs.org serves .tar.xz on Linux, .tar.gz on macOS, and .zip on Windows.
     let ext = match node_os.as_str() {
