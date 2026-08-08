@@ -15,6 +15,10 @@ use crate::manifest::DeltaManifest;
 /// Byte size of the fixed `SISR` footer extension.
 pub const SIZE: usize = format::SISR_FOOTER_EXT_SIZE;
 
+/// Maximum allowed manifest size (4 MiB). Prevents OOM from malicious
+/// binaries claiming an enormous chunk table.
+pub const MAX_MANIFEST_SIZE: usize = 4 * 1024 * 1024;
+
 /// Version of the `SISR` extension schema understood by this crate.
 pub const SISR_VERSION: u16 = 1;
 
@@ -119,6 +123,9 @@ pub fn read_sisr<R: Read + Seek>(r: &mut R) -> io::Result<Option<(SisrFooterExt,
     r.seek(SeekFrom::Start(ext.chunk_table_offset))?;
     let len = usize::try_from(ext.chunk_table_len)
         .map_err(|_| err("SISR chunk table length overflow"))?;
+    if len > MAX_MANIFEST_SIZE {
+        return Err(err("SISR manifest exceeds maximum allowed size"));
+    }
     let mut buf = vec![0u8; len];
     r.read_exact(&mut buf)?;
     let manifest = DeltaManifest::parse(&buf)?;

@@ -864,7 +864,24 @@ Imposer un format de commentaires unifié pour tout le code Rust du projet
    //! and how callers must use this (e.g. "must verify signature before use").
    ```
 
-2. **Fonctions publiques** (`///`) — rustdoc obligatoire, format :
+2. **Fonctions publiques** (`///` ou `/** */`) — rustdoc obligatoire, format
+   inspiré des headers Epitech/42 (bloc structuré, tags `@param`/`@return`
+   adaptés en markdown) :
+
+   ```rust
+   /**
+    * verify_sha256 - Verify a SHA-256 digest in constant time.
+    * @data: The input bytes whose hash was computed.
+    * @expected: The expected 32-byte digest from the footer.
+    * @return: Ok(()) if the hashes match, Err otherwise.
+    *
+    * Uses an XOR-fold accumulation instead of early-exit comparison to prevent
+    * timing side-channels on the integrity digest.
+    */
+   pub fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> { ... }
+   ```
+
+   Ou en style `///` équivalent (rustdoc natif) :
    ```rust
    /// One-line summary (<= 72 chars).
    ///
@@ -935,16 +952,18 @@ risque, pas par planning. Tous dans des fichiers existants.
 
 ### 🟠 Haute (robustesse / maintenabilité)
 
+- [x] **`chunk_nonce` ignore le chunk index** — fixé: nonce unique par chunk
+      (`[base_nonce[0..4]; chunk_index: u64 be]`).
+- [x] **`cargo audit` absent du CI** — ajouté aux jobs rust/macos/windows.
 - [ ] **`read_sisr` charge le manifeste en entier en mémoire**
-      (`stub/src/main.rs:357`) — un manifeste malveillant de grande taille
-      (chunk_count = `u32::MAX`) peut OOM le stub avant vérif. **Fix** :
-      valider `manifest_bytes.len()` contre la taille maximale raisonnable
-      (ex: 4 MiB) avant parse.
-
+       (`stub/src/main.rs:357`) — un manifeste malveillant de grande taille
+       (chunk_count = `u32::MAX`) peut OOM le stub avant vérif. **Fix** :
+       valider `manifest_bytes.len()` contre la taille maximale raisonnable
+       (ex: 4 MiB) avant parse.
 - [ ] **`build_reuse_index` silencieusement ignore les erreurs**
-      (`xbin-core/src/sisr/engine.rs:226`) — `read_sisr(exe).ok().flatten()`
-      retourne un index vide sur corruption, cachant des bugs. **Fix** : logguer
-      en mode verbose, ou propaguer l'erreur.
+       (`xbin-core/src/sisr/engine.rs:226`) — `read_sisr(exe).ok().flatten()`
+       retourne un index vide sur corruption, cachant des bugs. **Fix** : logguer
+       en mode verbose, ou propaguer l'erreur.
 
 - [ ] **Stub `main.rs` = 2591 lignes, tests unitaires quasi-absents** — la
       plupart de la logique (namespace, seccomp, pivot_root, extraction) n'est
