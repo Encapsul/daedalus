@@ -130,6 +130,7 @@ struct CryptoMeta {
     #[allow(dead_code)]
     tag_offset: usize,
     signing_seed_hex: String,
+    encryption_salt_hex: String,
 }
 
 #[derive(Deserialize)]
@@ -1045,12 +1046,12 @@ fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Derive a 32-byte AES key from an Ed25519 signing seed via HKDF-SHA256.
-/// Uses the shared implementation in xbin-core.
-fn hkdf_derive_key(signing_seed: &[u8]) -> io::Result<[u8; 32]> {
+/// Uses the shared implementation in xbin-core with the salt from metadata.
+fn hkdf_derive_key(signing_seed: &[u8], salt: &[u8; 32]) -> io::Result<[u8; 32]> {
     let seed: &[u8; 32] = signing_seed
         .try_into()
         .map_err(|_| err("signing seed must be exactly 32 bytes"))?;
-    xbin_core::encrypt::hkdf_derive_key(seed)
+    xbin_core::encrypt::hkdf_derive_key(seed, salt)
         .map_err(|e| err(&format!("HKDF key derivation failed: {e}")))
         .map(|key| *key)
 }
@@ -1070,7 +1071,14 @@ fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec<u8>
         return Err(err("signing seed must be 32 bytes"));
     }
 
-    let aes_key = hkdf_derive_key(&signing_seed)?;
+    // Decode the encryption salt from metadata
+    let salt_bytes = hex_decode(&crypto.encryption_salt_hex)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption salt hex"))?;
+    let salt: [u8; 32] = salt_bytes
+        .try_into()
+        .map_err(|_| err("encryption salt must be exactly 32 bytes"))?;
+
+    let aes_key = hkdf_derive_key(&signing_seed, &salt)?;
     let cipher = Aes256Gcm::new_from_slice(&aes_key)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("AES init: {e}")))?;
 

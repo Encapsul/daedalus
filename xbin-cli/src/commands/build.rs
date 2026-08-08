@@ -650,6 +650,7 @@ fn build_single_target(
                         | pkgmgr::PkgMgr::Yarn
                         | pkgmgr::PkgMgr::Bun
                 );
+            let mut node_bin_dir: Option<PathBuf> = None;
             if !is_command_available(cmd[0]) || need_target_node {
                 // For node/npm: download static node to temp dir
                 if matches!(
@@ -660,9 +661,7 @@ fn build_single_target(
                         | pkgmgr::PkgMgr::Bun
                 ) {
                     let bin_dir = ensure_node(target.as_deref(), verbose)?;
-                    // Prepend to PATH for this process only
-                    let current = std::env::var("PATH").unwrap_or_default();
-                    std::env::set_var("PATH", format!("{}:{current}", bin_dir.display()));
+                    node_bin_dir = Some(bin_dir);
                 } else {
                     eprintln!(
                         "[xbin] skipping {} — `{}` not found on PATH",
@@ -672,8 +671,6 @@ fn build_single_target(
                     continue;
                 }
             }
-
-            eprintln!("Installing dependencies ({})...", mgr.name());
 
             // For composer: auto-download composer.phar if not on PATH
             let (prog, extra_args) = if matches!(mgr, pkgmgr::PkgMgr::Composer) {
@@ -696,9 +693,17 @@ fn build_single_target(
                 full_args.push(":all:".into());
             }
 
-            let status = std::process::Command::new(&prog)
-                .args(&full_args)
-                .current_dir(app_dir)
+            let mut command = std::process::Command::new(&prog);
+            command.args(&full_args).current_dir(app_dir);
+
+            // If we downloaded node for npm/yarn/bun, prepend its bin dir to PATH
+            // using Command::env() instead of mutating global std::env::PATH
+            if let Some(ref bin_dir) = node_bin_dir {
+                let current = std::env::var("PATH").unwrap_or_default();
+                command.env("PATH", format!("{}:{}", bin_dir.display(), current));
+            }
+
+            let status = command
                 .status()
                 .context(format!("failed to run `{}` — is it installed?", prog))?;
             if !status.success() {
@@ -880,6 +885,8 @@ fn build_single_target(
             "nonce_hex": hex::encode(em.nonce),
             "tag_offset": em.tag_offset,
             "signing_seed_hex": hex::encode(seed),
+            // New field: encryption_salt_hex for HKDF salt to prevent salt reuse
+            "encryption_salt_hex": hex::encode(em.salt),
         }));
     }
 
@@ -1857,7 +1864,6 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
             .join(&arch_suffix)
             .join("release")
             .join(stub_name),
-        PathBuf::from("/usr/local/bin/xbin-stub"),
     ];
 
     for candidate in &candidates {
@@ -1866,7 +1872,14 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
         }
     }
 
+    // Removed stale fallback `/usr/local/bin/xbin-stub` to prevent embedding
+    // an obsolete stub with unknown bugs. Users must build a fresh stub via
+    // `make stub` or set `XBIN_STUB_PATH` explicitly.
     if let Ok(p) = which::which("xbin-stub") {
+        eprintln!(
+            "[xbin] warning: found xbin-stub on PATH at {}; prefer 'make stub' for reproducible builds",
+            p.display()
+        );
         return Ok(p);
     }
 
