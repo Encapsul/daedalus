@@ -224,7 +224,10 @@ fn inspect_file(path: &Path) -> Option<serde_json::Value> {
         "name": meta.get("name").and_then(|v| v.as_str()).unwrap_or("unknown"),
         "version": meta.get("version").and_then(|v| v.as_str()).unwrap_or(""),
         "author": meta.get("author").and_then(|v| v.as_str()).unwrap_or(""),
-        "isolation": meta.get("isolation").and_then(|v| v.as_u64()).unwrap_or(1),
+        // Default to isolation level 0 (none) for legacy/missing field, matching the
+        // stub's `#[serde(default)] u8` = u8::default()=0. Must NOT fabricate a
+        // sandbox level — scan must agree with how the stub actually executes.
+        "isolation": meta.get("isolation").and_then(|v| v.as_u64()).unwrap_or(0),
         "created": created,
         "signed": footer.is_signed(),
         "payload_compressed_size": footer.payload_csize,
