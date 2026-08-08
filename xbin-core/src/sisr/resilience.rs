@@ -140,6 +140,7 @@ mod tests {
         assert_eq!(fs::read(&bin).unwrap(), b"v1-bytes");
     }
 
+    #[cfg(unix)]
     #[test]
     fn restore_backup_errors_when_snapshot_missing() {
         let tmp = tempfile::tempdir().unwrap();
@@ -149,6 +150,7 @@ mod tests {
         assert_eq!(fs::read(&bin).unwrap(), b"v1-bytes");
     }
 
+    #[cfg(unix)]
     #[test]
     fn discard_backup_removes_and_is_idempotent() {
         let tmp = tempfile::tempdir().unwrap();

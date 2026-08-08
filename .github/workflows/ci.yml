@@ -119,8 +119,10 @@ jobs:
         with:
           targets: aarch64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
-      - name: Install QEMU
-        run: sudo apt-get update && sudo apt-get install -y qemu-user-static
+      - name: Install QEMU + cargo-zigbuild
+        run: |
+          sudo apt-get update && sudo apt-get install -y qemu-user-static
+          cargo install cargo-zigbuild --locked
       - name: Build aarch64 stub + CLI
         run: |
           cargo zigbuild --release --target aarch64-unknown-linux-musl -p xbin-stub

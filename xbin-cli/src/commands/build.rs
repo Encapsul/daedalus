@@ -1,3 +1,4 @@
+use crate::remote_cache::remote_cache_from_args;
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use ed25519_dalek::SigningKey;
@@ -338,6 +339,14 @@ pub struct BuildArgs {
     /// Clear build cache before building
     #[arg(long)]
     pub clear_cache: bool,
+
+    /// Remote cache base URL (Depot-style: GET/PUT `{url}/{hash}`)
+    #[arg(long)]
+    pub remote_cache_url: Option<String>,
+
+    /// Remote cache max entries (default: 50)
+    #[arg(long)]
+    pub remote_cache_max_entries: Option<usize>,
 
     /// Health check endpoint path (default: /health)
     #[arg(long)]
@@ -1272,6 +1281,17 @@ fn build_single_target(
             && verbose
         {
             eprintln!("  cache: stored build");
+        }
+    }
+
+    // ── Store in remote cache (Depot-style) ───────────────────────────
+    if let Some(remote) = remote_cache_from_args(args, app_dir) {
+        if remote
+            .store(&new_app_hash, target.as_deref(), output)
+            .is_ok()
+            && verbose
+        {
+            eprintln!("  remote cache: stored build");
         }
     }
 
@@ -2362,6 +2382,8 @@ mod tests {
             cross_compile: None,
             use_cache: false,
             clear_cache: false,
+            remote_cache_url: None,
+            remote_cache_max_entries: None,
             health_endpoint: None,
             json: false,
             quiet: false,
