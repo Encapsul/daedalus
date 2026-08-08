@@ -4,7 +4,7 @@ use ed25519_dalek::{Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use xbin_core::format::{Footer, SIG_BLOCK_SIZE_FIELD};
-use xbin_core::paths::default_trusted_dir;
+use xbin_core::paths::trusted_keys_dir;
 
 fn write_json_output(value: &serde_json::Value, output: Option<&std::path::Path>) -> Result<()> {
     let json_str = serde_json::to_string_pretty(value)?;
@@ -41,7 +41,7 @@ pub struct VerifyArgs {
 }
 
 pub fn run(args: VerifyArgs) -> Result<()> {
-    let trusted_dir = args.trusted_dir.unwrap_or_else(default_trusted_dir);
+    let trusted_dir = args.trusted_dir.unwrap_or_else(trusted_keys_dir);
 
     let mut f = std::fs::File::open(&args.file)
         .with_context(|| format!("failed to open {}", args.file.display()))?;

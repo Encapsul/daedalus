@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use xbin_core::paths::default_trusted_dir;
+use xbin_core::paths::trusted_keys_dir;
 
 #[derive(Args)]
 pub struct TrustArgs {
@@ -23,7 +23,7 @@ pub struct TrustArgs {
 }
 
 pub fn run(args: TrustArgs) -> Result<()> {
-    let trusted_dir = args.trusted_dir.unwrap_or_else(default_trusted_dir);
+    let trusted_dir = args.trusted_dir.unwrap_or_else(trusted_keys_dir);
 
     let key_bytes = std::fs::read(&args.pubkey)
         .with_context(|| format!("failed to read public key at {}", args.pubkey.display()))?;
