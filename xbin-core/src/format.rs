@@ -166,8 +166,28 @@ fn u64_le(b: &[u8]) -> io::Result<u64> {
 }
 
 pub fn read_at<R: Read + Seek>(f: &mut R, off: u64, len: usize) -> io::Result<Vec<u8>> {
-    f.seek(SeekFrom::Start(off))?;
+    // `off` and `len` originate from a `.xbin` footer (untrusted input). A
+    // malicious footer can set `len` to `u64::MAX`, which the call sites fold to
+    // `usize::MAX` via `as usize`; allocating `vec![0u8; len]` up-front would then
+    // OOM/abort the process *before* signature or SHA-256 verification. Bound the
+    // allocation to the real stream length and reject out-of-range reads.
+    let stream_len = {
+        let cur = f.stream_position()?;
+        let end = f.seek(SeekFrom::End(0))?;
+        f.seek(SeekFrom::Start(cur))?;
+        end
+    };
+    let end = off
+        .checked_add(len as u64)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "offset+len overflows u64"))?;
+    if end > stream_len {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "footer field exceeds file size",
+        ));
+    }
     let mut buf = vec![0u8; len];
+    f.seek(SeekFrom::Start(off))?;
     f.read_exact(&mut buf)?;
     Ok(buf)
 }
@@ -440,6 +460,17 @@ mod tests {
         let mut cursor = Cursor::new(data);
         let result = read_at(&mut cursor, 3, 3).unwrap();
         assert_eq!(result, vec![42, 43, 44]);
+    }
+
+    #[test]
+    fn read_at_rejects_oversized_len_without_allocating() {
+        // Simulates a malicious footer whose csize/len field is u64::MAX, which
+        // the call sites fold to `usize::MAX` via `as usize`. read_at must reject
+        // it via the file-size bound instead of allocating (and aborting).
+        let data = b"xbin";
+        let mut cursor = Cursor::new(data);
+        let result = read_at(&mut cursor, 0, usize::MAX);
+        assert!(result.is_err(), "oversized read must be rejected");
     }
 }
 
