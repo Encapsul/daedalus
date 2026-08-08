@@ -1,3 +1,4 @@
+//! Standard paths: cache directory, trusted keys directory, format size helpers.
 use std::path::{Path, PathBuf};
 
 #[allow(clippy::cast_precision_loss)]

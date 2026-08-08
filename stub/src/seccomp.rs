@@ -3,6 +3,7 @@
 //! Provides `install_seccomp_denylist()` which installs a conservative BPF
 //! filter after `pivot_root`. Linux-only.
 
+#[cfg(target_os = "linux")]
 use std::io;
 
 /// Install a seccomp-bpf denylist after `pivot_root`. Linux-only.
@@ -13,7 +14,6 @@ use std::io;
 /// Apps that work without seccomp continue working with it.
 #[cfg(target_os = "linux")]
 pub fn install_seccomp_denylist() -> io::Result<()> {
-    use std::io;
     // BPF instruction encodings (linux/filter.h).
     const BPF_LD: u16 = 0x00;
     const BPF_W: u16 = 0x00;
@@ -22,10 +22,6 @@ pub fn install_seccomp_denylist() -> io::Result<()> {
     const BPF_JEQ: u16 = 0x10;
     const BPF_RET: u16 = 0x06;
     const BPF_K: u16 = 0x00;
-
-    /// `seccomp_data.arch` is at offset 4, `seccomp_data.nr` is at offset 0.
-    const SECCOMP_RET_KILL_PROCESS: u32 = 0x0002_0000;
-    const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
 
     // Audit arch — differs between x86_64 and aarch64.
     // libc does not expose AUDIT_ARCH, so we keep these values here.
@@ -62,6 +58,10 @@ pub fn install_seccomp_denylist() -> io::Result<()> {
     const SYS_FINIT_MODULE: u32 = libc::SYS_finit_module as u32;
     const SYS_DELETE_MODULE: u32 = libc::SYS_delete_module as u32;
     const SYS_NFSSERVCTL: u32 = libc::SYS_nfsservctl as u32;
+
+    // Seccomp return codes
+    const SECCOMP_RET_KILL_PROCESS: u32 = 0x0002_0000;
+    const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
 
     let arch_load = |code: u16, jt: u8, jf: u8, k: u32| libc::sock_filter {
         code: code | BPF_W | BPF_ABS,
