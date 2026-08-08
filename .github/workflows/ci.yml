@@ -44,12 +44,14 @@ jobs:
           set -e
           FAIL=0
           for f in $(find stub/src -name '*.rs'); do
-            unsafe_count=$(grep -cE '^\s*unsafe\s*[{(]|^\s*unsafe\s+fn' "$f" || true)
-            safety_count=$(grep -c '// SAFETY:' "$f" || true)
-            if [ "$unsafe_count" -gt 0 ] && [ "$unsafe_count" -ne "$safety_count" ]; then
-              echo "FAIL: $f has $unsafe_count unsafe blocks but $safety_count SAFETY comments"
-              FAIL=1
-            fi
+            while IFS= read -r line; do
+              linenum=$(echo "$line" | cut -d: -f1)
+              start=$((linenum > 5 ? linenum - 5 : 1))
+              if ! sed -n "${start},${linenum}p" "$f" | grep -q '// SAFETY:'; then
+                echo "FAIL: $f:$linenum has unsafe block without // SAFETY: comment in preceding lines"
+                FAIL=1
+              fi
+            done < <(grep -nE '\bunsafe\s*\{|\bunsafe\s+fn' "$f" || true)
           done
           if [ "$FAIL" -ne 0 ]; then
             exit 1

@@ -13,6 +13,7 @@ use std::io;
 /// Apps that work without seccomp continue working with it.
 #[cfg(target_os = "linux")]
 pub fn install_seccomp_denylist() -> io::Result<()> {
+    use std::io;
     // BPF instruction encodings (linux/filter.h).
     const BPF_LD: u16 = 0x00;
     const BPF_W: u16 = 0x00;
@@ -40,6 +41,12 @@ pub fn install_seccomp_denylist() -> io::Result<()> {
 
     // Syscall numbers — use libc constants instead of hardcoded values.
     // libc exposes the correct per-arch syscall numbers via cfg(target_arch).
+    // kexec_file_load is x86_64-only; other arches reuse kexec_load.
+    #[cfg(target_arch = "x86_64")]
+    const SYS_KEXEC_FILE_LOAD: u32 = libc::SYS_kexec_file_load as u32;
+    #[cfg(not(target_arch = "x86_64"))]
+    const SYS_KEXEC_FILE_LOAD: u32 = libc::SYS_kexec_load as u32;
+
     const SYS_PTRACE: u32 = libc::SYS_ptrace as u32;
     const SYS_MOUNT: u32 = libc::SYS_mount as u32;
     const SYS_UMOUNT2: u32 = libc::SYS_umount2 as u32;
@@ -55,7 +62,6 @@ pub fn install_seccomp_denylist() -> io::Result<()> {
     const SYS_FINIT_MODULE: u32 = libc::SYS_finit_module as u32;
     const SYS_DELETE_MODULE: u32 = libc::SYS_delete_module as u32;
     const SYS_NFSSERVCTL: u32 = libc::SYS_nfsservctl as u32;
-    const SYS_KEXEC_FILE_LOAD: u32 = libc::SYS_kexec_file_load as u32;
 
     let arch_load = |code: u16, jt: u8, jf: u8, k: u32| libc::sock_filter {
         code: code | BPF_W | BPF_ABS,

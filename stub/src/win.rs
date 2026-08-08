@@ -165,7 +165,6 @@ pub fn spawn(
         ));
     }
 
-    // SAFETY: pi.dw_process_id is filled by the kernel on success.
     let pid = pi.dw_process_id;
     // SAFETY: pi.h_thread is a handle we own; close it (the process handle is
     // kept for waiting).
