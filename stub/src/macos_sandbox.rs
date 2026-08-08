@@ -12,6 +12,7 @@
 
 #![cfg(target_os = "macos")]
 
+use std::io::Write;
 use std::path::Path;
 
 /// Apply a Seatbelt sandbox profile when running under macOS.

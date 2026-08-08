@@ -12,6 +12,7 @@ pub enum Runtime {
     Python,
     Deno,
     Node,
+    Electron,
     Java,
     Ruby,
     Dotnet,
@@ -19,6 +20,7 @@ pub enum Runtime {
     Php,
     Perl,
     Hugo,
+    Wasm,
     Binary,
 }
 
@@ -28,6 +30,7 @@ impl Runtime {
             Self::Python => "python",
             Self::Deno => "deno",
             Self::Node => "node",
+            Self::Electron => "electron",
             Self::Java => "java",
             Self::Ruby => "ruby",
             Self::Dotnet => "dotnet",
@@ -35,6 +38,7 @@ impl Runtime {
             Self::Php => "php",
             Self::Perl => "perl",
             Self::Hugo => "hugo",
+            Self::Wasm => "wasm",
             Self::Binary => "binary",
         }
     }
@@ -52,12 +56,18 @@ pub fn detect_runtime(app_dir: &Path) -> Option<Runtime> {
             || app_dir.join("artisan").is_file()
             || app_dir.join("entry.php").is_file());
     let node_has_entry = detect_node(app_dir) && find_node_entry(app_dir).is_some();
+    let electron_has_entry = detect_electron(app_dir)
+        && (find_first_file(app_dir, &["main.js", "main.ts", "index.js", "index.ts"]).is_some()
+            || app_dir.join("package.json").is_file());
     let python_has_entry = detect_python(app_dir)
         && find_first_file(app_dir, &["app.py", "main.py", "__main__.py", "server.py"]).is_some();
 
     // Priority: prefer runtime with entry file, then fallback to detection order
     if php_has_entry && detected.iter().any(|(r, _)| *r == Runtime::Php) {
         return Some(Runtime::Php);
+    }
+    if electron_has_entry && detected.iter().any(|(r, _)| *r == Runtime::Electron) {
+        return Some(Runtime::Electron);
     }
     if node_has_entry && detected.iter().any(|(r, _)| *r == Runtime::Node) {
         return Some(Runtime::Node);
@@ -82,6 +92,9 @@ fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
     if detect_node(dir) {
         candidates.push((Runtime::Node, true));
     }
+    if detect_electron(dir) {
+        candidates.push((Runtime::Electron, true));
+    }
     if detect_java(dir) {
         candidates.push((Runtime::Java, true));
     }
@@ -102,6 +115,9 @@ fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
     }
     if detect_hugo(dir) {
         candidates.push((Runtime::Hugo, true));
+    }
+    if detect_wasm(dir) {
+        candidates.push((Runtime::Wasm, true));
     }
     if detect_binary(dir) {
         candidates.push((Runtime::Binary, true));
@@ -125,6 +141,22 @@ fn detect_deno(dir: &Path) -> bool {
 
 fn detect_node(dir: &Path) -> bool {
     dir.join("package.json").is_file()
+}
+
+fn detect_electron(dir: &Path) -> bool {
+    let package_json = dir.join("package.json");
+    if !package_json.is_file() {
+        return false;
+    }
+    if let Ok(content) = std::fs::read_to_string(package_json) {
+        if content.contains("\"electron\"") || content.contains("'electron'") {
+            return true;
+        }
+    }
+    dir.join("main.js").is_file()
+        || dir.join("main.ts").is_file()
+        || dir.join("index.js").is_file()
+        || dir.join("index.ts").is_file()
 }
 
 fn detect_java(dir: &Path) -> bool {
@@ -195,6 +227,13 @@ fn detect_hugo(dir: &Path) -> bool {
         || dir.join("config.yaml").is_file()
 }
 
+fn detect_wasm(dir: &Path) -> bool {
+    dir.join("index.wasm").is_file()
+        || dir.join("app.wasm").is_file()
+        || dir.join("main.wasm").is_file()
+        || dir.extension().is_some_and(|ext| ext == "wasm")
+}
+
 fn detect_binary(dir: &Path) -> bool {
     let mut native_count = 0;
     let entries = match std::fs::read_dir(dir) {
@@ -241,6 +280,11 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             let entry = find_node_entry(app_dir)?;
             Some(vec!["node".into(), format!("/app/{}", entry)])
         }
+        Runtime::Electron => {
+            let entry = find_first_file(app_dir, &["main.js", "main.ts", "index.js", "index.ts"])
+                .or_else(|| find_node_entry(app_dir))?;
+            Some(vec!["electron".into(), format!("/app/{}", entry)])
+        }
         Runtime::Deno => {
             let entry = find_first_file(app_dir, &["main.ts", "main.js", "index.ts", "index.js"])?;
             Some(vec![
@@ -277,6 +321,10 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
         Runtime::Perl => {
             let entry = find_first_file(app_dir, &["app.pl", "main.pl", "bin/app"])?;
             Some(vec!["perl".into(), format!("/app/{}", entry)])
+        }
+        Runtime::Wasm => {
+            let entry = find_first_file(app_dir, &["index.wasm", "app.wasm", "main.wasm"])?;
+            Some(vec!["wasmtime".into(), format!("/app/{}", entry)])
         }
     }
 }
@@ -498,6 +546,40 @@ mod tests {
     }
 
     #[test]
+    fn detect_electron_app() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"dependencies": {"electron": "^30.0.0"}}"#,
+        )
+        .unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Electron));
+    }
+
+    #[test]
+    fn detect_electron_main_js() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("main.js"), "console.log('hello')").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Electron));
+    }
+
+    #[test]
+    fn electron_entrypoint_uses_main_js() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"dependencies": {"electron": "^30.0.0"}}"#,
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("main.js"), "console.log('hello')").unwrap();
+        assert_eq!(
+            resolve_entrypoint(dir.path(), Runtime::Electron),
+            Some(vec!["electron".into(), "/app/main.js".into()])
+        );
+    }
+
+    #[test]
     fn detect_pe_exe_as_binary() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("app.exe"), b"MZ\x90\x00").unwrap();
@@ -514,5 +596,27 @@ mod tests {
         std::fs::write(dir.path().join("app.exe"), b"MZ\x90\x00").unwrap();
         std::fs::write(dir.path().join("app2"), b"\x7fELF\x02\x01").unwrap();
         assert_ne!(detect_runtime(dir.path()), Some(Runtime::Binary));
+    }
+
+    #[test]
+    fn detect_wasm_by_filename() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("app.wasm"), b"\x00asm").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Wasm));
+    }
+
+    #[test]
+    fn detect_wasm_by_extension() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("main.wasm"), b"\x00asm").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Wasm));
+    }
+
+    #[test]
+    fn detect_wasm_entrypoint() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("index.wasm"), b"\x00asm").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Wasm);
+        assert_eq!(ep, Some(vec!["wasmtime".into(), "/app/index.wasm".into()]));
     }
 }

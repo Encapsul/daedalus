@@ -15,6 +15,7 @@ pub enum EmbeddedInterpreter {
     Java,
     Go,
     Wasm,
+    Electron,
     Custom(String),
 }
 
@@ -30,6 +31,7 @@ impl std::fmt::Display for EmbeddedInterpreter {
             EmbeddedInterpreter::Java => write!(f, "java"),
             EmbeddedInterpreter::Go => write!(f, "go"),
             EmbeddedInterpreter::Wasm => write!(f, "wasm"),
+            EmbeddedInterpreter::Electron => write!(f, "electron"),
             EmbeddedInterpreter::Custom(p) => write!(f, "{p}"),
         }
     }

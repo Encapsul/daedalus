@@ -140,41 +140,59 @@ worked.
       arch) incl. darwin + windows (zip); embeds the runtime matching the
       target, not the builder's host.
 - [x] **Per-platform file naming** — `.xbin` for ELF/Mach-O, `.exe` for PE.
-- [ ] **Docs** — `xbin build --help` examples + README support matrix.
+- [x] **Docs** — `xbin build --help` examples + README support matrix.
 
 ## Phase 5 — Benchmark-driven performance (see "Comparative benchmark")
 
 - [ ] **Cold start < 500 ms** — current 2091 ms is single-threaded zstd
-      extraction of the node runtime (warm start is 95 ms → launcher is fast).
-      Use `zstdmt` multithreaded decompression (`zstd` crate with `zstdmt` is
-      already a dev-dep; backhand supports zstd) or lower build compression.
+  extraction of the node runtime (warm start is 95 ms → launcher is fast).
+  The `zstd` crate's `zstdmt` feature only enables multithreaded *compression*;
+  the streaming `Decoder` has no multithreaded decompression API in 0.13.
+  Options: (a) use `zstd-safe` raw API with `ZSTD_DCtx_setParameter` +
+  `ZSTD_c_nbWorkers` equivalent if exposed in future zstd releases, (b) spawn
+  N threads each decompressing a slice of the stream manually, (c) lower
+  build compression level for faster decompression at the cost of larger
+  artifacts.
 - [ ] **On-disk footprint 122.6 MiB ≫ artifact 44 MiB** — cache GC
-      (limitation #14), squashfs mount by default (v5 supported), cross-version
-      dedup (limitation #11).
+  (limitation #14), squashfs mount by default (v5 supported), cross-version
+  dedup (limitation #11).
 - [ ] **Pin builder Node version** — release pipeline embeds the builder's
-      node; pin it for reproducible artifacts.
+  node; pin it for reproducible artifacts.
 - [ ] **Re-run benchmark** after each perf change (`bash benchmarks/comparison/run.sh`).
 
 ## Phase 6 — CI / verification matrix
 
-- [ ] **`release.yml` matrix** — linux x86_64 + aarch64 (QEMU boot test),
+- [x] **`release.yml` matrix** — linux x86_64 + aarch64 (QEMU boot test),
       macOS native, Windows native; each builds CLI + stub, packs hello-node,
-      runs it.
-- [ ] **Cross-platform verification loop** — per-platform
+      runs it. (`release.yml` includes linux matrix with zigbuild, darwin-amd64,
+      darwin-arm64, windows-amd64, QEMU aarch64 boot test).
+- [x] **Cross-platform verification loop** — per-platform
       `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --workspace`
-      (per-crate clippy, per AGENTS.md).
+      (per-crate clippy, per AGENTS.md). Verified in CI jobs: rust, macos, windows.
 
 ## Phase 7 — Feature backlog (existing open items)
 
-- [ ] **Electron desktop apps** — `Runtime::Electron` in `detect.rs`,
-      `EmbeddedInterpreter` mapping, entrypoint `electron`,
-      `--ignore-scripts`. (high priority, security)
+- [x] **Electron desktop apps** — `Runtime::Electron` in `detect.rs`,
+      `EmbeddedInterpreter::Electron` mapping, entrypoint `electron`
+      (main.js/main.ts/index.js/index.ts or package.json with electron dep).
+      Detection priority: Electron beats Node when main file present.
+      (`xbin-core/src/detect.rs`, `xbin-core/src/metadata.rs`)
+- [x] **`--encrypt` + `--enable-sisr`** — per-chunk AES-256-GCM encryption
+      (`encrypt_chunks`/`decrypt_chunks` in `xbin-core/src/encrypt.rs`). Each
+      SISR chunk gets an independent HKDF-derived key; manifest tracks
+      ciphertext hashes; stub decrypts each chunk independently before SISR
+      extraction. Build guard removed; chunked decrypt wired into stub `run()`.
+- [x] **`trusted_keys_dir` DRY** — `stub/src/main.rs::trusted_keys_dir()` now
+      delegates to `xbin_core::paths::trusted_keys_dir()`; single source of
+      truth for `$XBIN_TRUSTED_DIR` / `~/.xbin/trusted-keys` resolution.
+- [x] **WASM runtime** — `Runtime::Wasm` detection (`index.wasm`, `app.wasm`,
+      `main.wasm`, `.wasm` extension) + entrypoint `wasmtime /app/<entry>` in
+      `xbin-core/src/detect.rs`. Tests added.
 - [ ] **RUN 2.6 remote build cache** (style Depot) — implementation in
       `paths.rs` incomplete.
 - [ ] **RUN 4.1–4.6** — sandboxing + container-escape hardening.
-- [ ] **RUN 5.1–5.6** — WASM runtime support + edge cases.
-- [ ] **Remove `docs/planning/`** — still present (HANDOFF.md,
-      xbin-project.md, .excalidraw, .pdf).
+- [ ] **RUN 5.1–5.6** — WASM runtime edge cases (WASI, component model).
+- [ ] **Remove `docs/planning/`** — deleted; symlinks in `docs/` point to root.
 - [ ] **Symlinks for doc files** — ROADMAP/CODE_STYLE/RULES/CLAUDE/AGENTS as
       copies outside the repo + symlinks inside.
 

@@ -226,3 +226,31 @@ jobs:
             dist/xbin_*.tar.gz dist/checksums.txt \
           || gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
              dist/xbin_*.tar.gz dist/checksums.txt --clobber
+
+  # ── QEMU boot test for linux-aarch64 ─────────────────────────────────
+  qemu-aarch64:
+    name: QEMU aarch64 boot test
+    runs-on: ubuntu-latest
+    needs: [linux]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - name: Install QEMU
+        run: sudo apt-get update && sudo apt-get install -y qemu-user-static
+      - name: Build aarch64 stub + CLI
+        run: |
+          cargo zigbuild --release --target aarch64-unknown-linux-musl -p xbin-stub
+          cargo zigbuild --release --target aarch64-unknown-linux-musl -p xbin-cli
+      - name: Build hello-web for aarch64
+        run: |
+          ./target/release/xbin build examples/hello-web --target aarch64 -o /tmp/hello-web-aarch64.xbin
+      - name: Run under QEMU
+        run: |
+          qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/hello-web-aarch64.xbin &
+          PID=$!
+          sleep 5
+          curl -s http://127.0.0.1:3000 | grep -q "Hello" && echo "QEMU boot test passed" || (echo "QEMU boot test failed" && kill $PID && exit 1)
+          kill $PID || true

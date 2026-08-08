@@ -36,6 +36,14 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Build a .xbin binary from an app directory
+    ///
+    /// Examples:
+    ///   xbin build ./myapp -o myapp.xbin
+    ///   xbin build ./myapp --target aarch64 --squashfs
+    ///   xbin build ./myapp --sign --key ~/.xbin/keys/*.key
+    ///   xbin build ./myapp --encrypt --key ~/.xbin/keys/*.key
+    ///   xbin build ./myapp --health-port 8081
+    ///   xbin build ./myapp --persist --env-file .env
     Build(Box<commands::build::BuildArgs>),
 
     /// Execute a .xbin file

@@ -200,24 +200,51 @@ pub fn assemble_xbin_with_sisr(
     target_arch: Option<&str>,
     config: &SisrBuildConfig,
 ) -> std::io::Result<u64> {
+    assemble_xbin_with_sisr_artifacts(
+        out_path,
+        stub_bytes,
+        payload,
+        meta_bytes,
+        encrypt,
+        squashfs,
+        target_arch,
+        if config.enabled {
+            Some(sisr_stage::build_artifacts(payload, config)?)
+        } else {
+            None
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_xbin_with_sisr_artifacts(
+    out_path: &Path,
+    stub_bytes: &[u8],
+    payload: &[u8],
+    meta_bytes: &[u8],
+    encrypt: bool,
+    squashfs: bool,
+    target_arch: Option<&str>,
+    sisr_artifacts: Option<sisr_stage::SisrArtifacts>,
+) -> std::io::Result<u64> {
     let fmt_ver = fmt_version(squashfs, encrypt, false);
     let arch = resolve_arch(target_arch);
     let payload_offset = stub_bytes.len() as u64;
 
-    let sisr = if config.enabled {
-        let artifacts = sisr_stage::build_artifacts(payload, config)?;
-        let manifest_offset = payload_offset + payload.len() as u64 + meta_bytes.len() as u64;
-        let ext = SisrFooterExt {
-            sisr_version: SISR_VERSION,
-            chunk_table_offset: manifest_offset,
-            chunk_table_len: u32::try_from(artifacts.manifest_bytes.len())
-                .map_err(|_| io_err("SISR manifest exceeds capacity"))?,
-            merkle_root: artifacts.merkle_root,
-            signature: artifacts.signature,
-        };
-        Some((artifacts, ext))
-    } else {
-        None
+    let (sisr_artifacts, ext) = match sisr_artifacts {
+        Some(artifacts) => {
+            let manifest_offset = payload_offset + payload.len() as u64 + meta_bytes.len() as u64;
+            let ext = SisrFooterExt {
+                sisr_version: SISR_VERSION,
+                chunk_table_offset: manifest_offset,
+                chunk_table_len: u32::try_from(artifacts.manifest_bytes.len())
+                    .map_err(|_| io_err("SISR manifest exceeds capacity"))?,
+                merkle_root: artifacts.merkle_root,
+                signature: artifacts.signature,
+            };
+            (Some(artifacts), Some(ext))
+        }
+        None => (None, None),
     };
 
     let meta_offset = payload_offset + payload.len() as u64;
@@ -229,7 +256,7 @@ pub fn assemble_xbin_with_sisr(
         arch,
         flags: {
             let mut f = 0u8;
-            if sisr.is_some() {
+            if sisr_artifacts.is_some() {
                 f |= format::FLAG_SISR;
             }
             if encrypt {
@@ -250,7 +277,7 @@ pub fn assemble_xbin_with_sisr(
     f.write_all(stub_bytes)?;
     f.write_all(payload)?;
     f.write_all(meta_bytes)?;
-    if let Some((artifacts, ext)) = &sisr {
+    if let Some((artifacts, ext)) = sisr_artifacts.as_ref().zip(ext.as_ref()) {
         f.write_all(&artifacts.manifest_bytes)?;
         f.write_all(&ext.pack())?;
     }
@@ -264,7 +291,7 @@ pub fn assemble_xbin_with_sisr(
         fs::set_permissions(out_path, fs::Permissions::from_mode(0o755))?;
     }
 
-    if let Some((artifacts, _)) = &sisr {
+    if let Some((artifacts, _)) = sisr_artifacts.as_ref().zip(ext.as_ref()) {
         let remote = RemoteManifest {
             merkle_root: artifacts.merkle_root,
             signature: artifacts.signature,

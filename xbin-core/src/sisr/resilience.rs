@@ -81,8 +81,10 @@ pub fn discard_backup(backup: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
+    #[cfg(unix)]
     fn bin_and_backup(tmp: &Path) -> (PathBuf, PathBuf) {
         let bin = tmp.join("app.xbin");
         fs::write(&bin, b"v1-bytes").unwrap();
@@ -107,6 +109,7 @@ mod tests {
         assert_eq!(backup_path_for(bin), PathBuf::from("/srv/runner.bak"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn create_backup_snapshots_bytes_and_mode() {
         let tmp = tempfile::tempdir().unwrap();
@@ -125,6 +128,7 @@ mod tests {
             .contains(".tmp-")));
     }
 
+    #[cfg(unix)]
     #[test]
     fn restore_backup_swaps_bytes_back_atomically() {
         let tmp = tempfile::tempdir().unwrap();
