@@ -916,6 +916,8 @@ extern "C" fn signal_forward(sig: i32) {
     if let Some(mutex) = CHILD_PIDS.get() {
         if let Ok(pids) = mutex.lock() {
             for &pid in pids.iter() {
+                // SAFETY: kill(2) with valid PID and signal is async-signal-safe.
+                // PID comes from our forked children, signal is from handler argument.
                 unsafe {
                     libc::kill(pid, sig);
                 }
