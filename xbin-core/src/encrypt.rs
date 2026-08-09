@@ -1,8 +1,9 @@
 //! Payload encryption: AES-256-GCM with HKDF-SHA256 key derivation
-//! from an Ed25519 signing seed. Supports full-payload and per-chunk modes.
+//! from a random encryption key. Supports full-payload and per-chunk modes.
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use hkdf::Hkdf;
+use rand::rngs::OsRng;
 use rand::RngCore;
 use sha2::Sha256;
 use std::io;
@@ -20,10 +21,10 @@ pub struct EncryptMetadata {
 }
 
 pub fn hkdf_derive_key(
-    signing_seed: &[u8; 32],
+    encryption_key: &[u8; 32],
     salt: &[u8; 32],
 ) -> anyhow::Result<Zeroizing<[u8; 32]>> {
-    let hk = Hkdf::<Sha256>::new(Some(salt), signing_seed);
+    let hk = Hkdf::<Sha256>::new(Some(salt), encryption_key);
     let mut key = Zeroizing::new([0u8; 32]);
     hk.expand(HKDF_INFO, &mut key[..])
         .map_err(|e| anyhow::anyhow!("HKDF expand failed: {e}"))?;
@@ -32,18 +33,18 @@ pub fn hkdf_derive_key(
 
 pub fn encrypt_payload(
     plaintext: &[u8],
-    signing_seed: &[u8; 32],
+    encryption_key: &[u8; 32],
 ) -> anyhow::Result<(Vec<u8>, EncryptMetadata)> {
     // Generate a random salt per encryption operation to ensure unique key derivation
     let mut salt = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut salt);
+    OsRng.fill_bytes(&mut salt);
 
-    let key = hkdf_derive_key(signing_seed, &salt)?;
+    let key = hkdf_derive_key(encryption_key, &salt)?;
     let cipher =
         Aes256Gcm::new_from_slice(&key[..]).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
 
     let mut nonce_bytes = [0u8; NONCE_LEN];
-    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from(nonce_bytes);
     let ciphertext = cipher
         .encrypt(&nonce, plaintext)
@@ -62,11 +63,11 @@ pub fn encrypt_payload(
 
 pub fn decrypt_payload(
     ciphertext: &[u8],
-    signing_seed: &[u8; 32],
+    encryption_key: &[u8; 32],
     nonce: &[u8; NONCE_LEN],
     salt: &[u8; 32],
 ) -> anyhow::Result<Vec<u8>> {
-    let key = hkdf_derive_key(signing_seed, salt)?;
+    let key = hkdf_derive_key(encryption_key, salt)?;
     let cipher =
         Aes256Gcm::new_from_slice(&key[..]).map_err(|e| anyhow::anyhow!("aes key init: {e}"))?;
     let nonce = Nonce::from(*nonce);
@@ -80,30 +81,39 @@ pub fn decrypt_payload(
 /// Generate a random 32-byte encryption salt.
 pub fn generate_salt() -> [u8; 32] {
     let mut salt = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut salt);
+    OsRng.fill_bytes(&mut salt);
     salt
+}
+
+/// Generate a random 32-byte encryption key for AES-256-GCM.
+///
+/// This key is independent of the Ed25519 signing seed and is used only
+/// for HKDF key derivation + AES encryption.  It is safe to embed in the
+/// binary metadata; compromising it does not reveal the signing seed.
+pub fn generate_encryption_key() -> [u8; 32] {
+    generate_salt()
 }
 
 /// Generate a random 12-byte AES-GCM nonce.
 pub fn generate_nonce() -> [u8; NONCE_LEN] {
     let mut nonce = [0u8; NONCE_LEN];
-    rand::thread_rng().fill_bytes(&mut nonce);
+    OsRng.fill_bytes(&mut nonce);
     nonce
 }
 
-/// Derive a per-chunk AES-256-GCM key from the signing seed, salt, and chunk index.
+/// Derive a per-chunk AES-256-GCM key from the encryption key, salt, and chunk index.
 ///
 /// Uses HKDF-SHA256 with `HKDF_INFO` and chunk index encoded as big-endian u64
 /// as the info field, ensuring each chunk gets an independent key.
 fn derive_chunk_key(
-    signing_seed: &[u8; 32],
+    encryption_key: &[u8; 32],
     salt: &[u8; 32],
     chunk_index: u64,
 ) -> Zeroizing<[u8; 32]> {
     let mut info = Vec::with_capacity(HKDF_INFO.len() + 8);
     info.extend_from_slice(HKDF_INFO);
     info.extend_from_slice(&chunk_index.to_be_bytes());
-    let hkdf = Hkdf::<Sha256>::new(Some(salt), signing_seed);
+    let hkdf = Hkdf::<Sha256>::new(Some(salt), encryption_key);
     let mut key = Zeroizing::new([0u8; 32]);
     hkdf.expand(&info, &mut key[..])
         .expect("HKDF expand must never fail for 32-byte output");
@@ -125,7 +135,7 @@ fn chunk_nonce(base_nonce: &[u8; NONCE_LEN], chunk_index: u64) -> [u8; NONCE_LEN
 
 /// Encrypt plaintext in content-defined chunks using per-chunk AES-256-GCM keys.
 ///
-/// Each chunk gets an independent key derived via HKDF-SHA256(signing_seed, salt,
+/// Each chunk gets an independent key derived via HKDF-SHA256(encryption_key, salt,
 /// chunk `chunk_index`). The ciphertext for each chunk is the plaintext encrypted with
 /// its key, with the 16-byte GCM tag appended. The returned `Vec` is the
 /// concatenation of all ciphertext+tag blocks, ready to be sliced by SISR
@@ -135,7 +145,7 @@ fn chunk_nonce(base_nonce: &[u8; NONCE_LEN], chunk_index: u64) -> [u8; NONCE_LEN
 /// sum must equal `plaintext.len()`.
 pub fn encrypt_chunks(
     plaintext: &[u8],
-    signing_seed: &[u8; 32],
+    encryption_key: &[u8; 32],
     salt: &[u8; 32],
     base_nonce: &[u8; NONCE_LEN],
     chunk_sizes: &[usize],
@@ -150,7 +160,7 @@ pub fn encrypt_chunks(
             ));
         }
         let chunk_plaintext = &plaintext[offset..offset + size];
-        let key = derive_chunk_key(signing_seed, salt, i as u64);
+        let key = derive_chunk_key(encryption_key, salt, i as u64);
         let cipher = Aes256Gcm::new_from_slice(&key[..])
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("aes init: {e}")))?;
         let nonce = Nonce::from(chunk_nonce(base_nonce, i as u64));
@@ -180,7 +190,7 @@ pub fn encrypt_chunks(
 /// ciphertext, or wrong chunk index).
 pub fn decrypt_chunks(
     ciphertext: &[u8],
-    signing_seed: &[u8; 32],
+    encryption_key: &[u8; 32],
     salt: &[u8; 32],
     base_nonce: &[u8; NONCE_LEN],
     chunk_sizes: &[usize],
@@ -196,7 +206,7 @@ pub fn decrypt_chunks(
             ));
         }
         let chunk_ct = &ciphertext[offset..offset + ct_len];
-        let key = derive_chunk_key(signing_seed, salt, i as u64);
+        let key = derive_chunk_key(encryption_key, salt, i as u64);
         let cipher = Aes256Gcm::new_from_slice(&key[..])
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("aes init: {e}")))?;
         let nonce = Nonce::from(chunk_nonce(base_nonce, i as u64));

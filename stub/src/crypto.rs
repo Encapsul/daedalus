@@ -136,12 +136,30 @@ pub fn slice_layers<'a>(
 ///
 /// Uses an XOR-fold accumulation instead of early-exit comparison to prevent
 /// timing side-channels on the integrity digest.
+#[allow(dead_code)]
 pub fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> {
     let mut h = Sha256::new();
     h.update(data);
+    ct_eq_sha256(&h.finalize(), expected)
+}
+
+/// Verify SHA-256 over two non-contiguous slices without cloning.
+///
+/// Same integrity check as `verify_sha256` but streams `part1` and `part2`
+/// into the hasher separately, avoiding a heap allocation that would
+/// duplicate the payload in memory.
+pub fn verify_sha256_parts(part1: &[u8], part2: &[u8], expected: &[u8; 32]) -> io::Result<()> {
+    let mut h = Sha256::new();
+    h.update(part1);
+    h.update(part2);
     let got = h.finalize();
+    ct_eq_sha256(&got, expected)
+}
+
+/// Constant-time comparison of a digest against the expected value.
+fn ct_eq_sha256(got: &sha2::digest::Output<sha2::Sha256>, expected: &[u8; 32]) -> io::Result<()> {
     let mut acc = 0u8;
-    for (a, b) in got.as_slice().iter().zip(expected) {
+    for (a, b) in got.iter().zip(expected) {
         acc |= a ^ b;
     }
     if acc != 0 {
@@ -157,27 +175,30 @@ pub fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> {
 // AES-256-GCM decryption
 // ---------------------------------------------------------------------------
 
-/// Derive a 32-byte AES key from an Ed25519 signing seed via HKDF-SHA256.
-pub fn hkdf_derive_key(signing_seed: &[u8], salt: &[u8; 32]) -> io::Result<[u8; 32]> {
-    let seed: &[u8; 32] = signing_seed
+/// Derive a 32-byte AES key from the encryption key via HKDF-SHA256.
+pub fn hkdf_derive_key(encryption_key: &[u8], salt: &[u8; 32]) -> io::Result<[u8; 32]> {
+    let key: &[u8; 32] = encryption_key
         .try_into()
-        .map_err(|_| crate::err("signing seed must be exactly 32 bytes"))?;
-    core_hkdf_derive_key(seed, salt)
+        .map_err(|_| crate::err("encryption key must be exactly 32 bytes"))?;
+    core_hkdf_derive_key(key, salt)
         .map_err(|e| crate::err(&format!("HKDF key derivation failed: {e}")))
         .map(|key| *key)
 }
 
 /// Decrypt an AES-256-GCM payload.
 ///
-/// The signing seed is stored in metadata (protected by Ed25519 signature).
-/// We derive the AES key from it via HKDF, then decrypt.
+/// The encryption key is stored in metadata. We derive the AES key from it
+/// via HKDF, then decrypt. The encryption key is separate from the Ed25519
+/// signing seed — it does not protect authenticity (that is the signing
+/// key's job), so callers must verify the signature before trusting the
+/// decrypted payload.
 ///
 /// Ciphertext layout: [plaintext bytes][16-byte GCM tag]
 pub fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec<u8>> {
-    let signing_seed = hex_decode(&crypto.signing_seed_hex)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad signing seed hex"))?;
-    if signing_seed.len() != 32 {
-        return Err(crate::err("signing seed must be 32 bytes"));
+    let encryption_key = hex_decode(&crypto.encryption_key_hex)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption key hex"))?;
+    if encryption_key.len() != 32 {
+        return Err(crate::err("encryption key must be 32 bytes"));
     }
 
     // Decode the encryption salt from metadata
@@ -187,7 +208,7 @@ pub fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec
         .try_into()
         .map_err(|_| crate::err("encryption salt must be exactly 32 bytes"))?;
 
-    let aes_key = hkdf_derive_key(&signing_seed, &salt)?;
+    let aes_key = hkdf_derive_key(&encryption_key, &salt)?;
     let cipher = Aes256Gcm::new_from_slice(&aes_key)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("AES init: {e}")))?;
 
@@ -204,7 +225,7 @@ pub fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec
 /// (`encrypt_chunks` in `xbin-core/src/encrypt.rs`).
 ///
 /// Each chunk was encrypted with an independent key derived via HKDF from the
-/// signing seed, salt, and chunk index. The ciphertext layout is
+/// encryption key, salt, and chunk index. The ciphertext layout is
 /// `[ct_chunk_0 || tag_0][ct_chunk_1 || tag_1]...`. `chunk_sizes` gives the
 /// plaintext length of each chunk in order.
 pub fn chunked_decrypt_aes_gcm(
@@ -212,11 +233,11 @@ pub fn chunked_decrypt_aes_gcm(
     crypto: &CryptoMeta,
     chunk_sizes: &[usize],
 ) -> io::Result<Vec<u8>> {
-    let signing_seed = hex_decode(&crypto.signing_seed_hex)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad signing seed hex"))?;
-    let signing_seed: [u8; 32] = signing_seed
+    let encryption_key = hex_decode(&crypto.encryption_key_hex)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption key hex"))?;
+    let encryption_key: [u8; 32] = encryption_key
         .try_into()
-        .map_err(|_| crate::err("signing seed must be 32 bytes"))?;
+        .map_err(|_| crate::err("encryption key must be 32 bytes"))?;
 
     let salt_bytes = hex_decode(&crypto.encryption_salt_hex)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption salt hex"))?;
@@ -229,7 +250,7 @@ pub fn chunked_decrypt_aes_gcm(
     let mut base_nonce = [0u8; NONCE_LEN];
     base_nonce.copy_from_slice(&nonce_bytes);
 
-    decrypt_chunks(ciphertext, &signing_seed, &salt, &base_nonce, chunk_sizes)
+    decrypt_chunks(ciphertext, &encryption_key, &salt, &base_nonce, chunk_sizes)
 }
 
 fn hex_decode(s: &str) -> Option<Vec<u8>> {

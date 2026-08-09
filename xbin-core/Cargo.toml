@@ -50,6 +50,9 @@ toml = "0.8"
 # Secret detection in .env files
 regex = "1"
 
+# Timestamp formatting
+time = { version = "0.3", features = ["formatting"] }
+
 # Temporary files for extension downloads
 tempfile = "3"
 

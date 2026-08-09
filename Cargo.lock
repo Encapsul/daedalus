@@ -2426,6 +2426,7 @@ dependencies = [
  "powerfmt",
  "serde_core",
  "time-core",
+ "time-macros",
 ]
 
 [[package]]
@@ -2433,6 +2434,16 @@ name = "time-core"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
+
+[[package]]
+name = "time-macros"
+version = "0.2.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e689342a48d2ea927c87ea50cabf8594854bf940e9310208848d680d668ed85"
+dependencies = [
+ "num-conv",
+ "time-core",
+]
 
 [[package]]
 name = "tinystr"
@@ -3287,7 +3298,7 @@ dependencies = [
  "walkdir",
  "which",
  "xbin-core",
- "xz",
+ "xz2",
  "zeroize",
  "zip",
 ]
@@ -3313,6 +3324,7 @@ dependencies = [
  "sha2",
  "tar",
  "tempfile",
+ "time",
  "toml 0.8.23",
  "which",
  "zeroize",
@@ -3349,26 +3361,6 @@ name = "xxhash-rust"
 version = "0.8.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985eec839aaf2a1270af8f4ebcf63cf9401cfd90f0902f97c28d9f104ffbde72"
-
-[[package]]
-name = "xz"
-version = "0.4.6-rc.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7af8851c229f574c5e4f4e9b6d90ca06c43974a563f7f42de4b88d651bf8f19c"
-dependencies = [
- "xz-core",
-]
-
-[[package]]
-name = "xz-core"
-version = "0.1.0-rc.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef4d12cf9c122b2523cce22d6ab3083f4eb56d1221e5d30ddcc70fbaac553589"
-dependencies = [
- "libc",
- "memchr",
- "windows-sys 0.61.2",
-]
 
 [[package]]
 name = "xz2"

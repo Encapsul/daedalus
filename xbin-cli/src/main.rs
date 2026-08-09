@@ -266,7 +266,7 @@ HISTORY
        Python CLI in 2026.
 
 BUGS
-       Report bugs at: https://github.com/anthropics/x.bin/issues
+        Report bugs at: https://github.com/Tednoob17/x.bin/issues
 "
     );
     buffer.extend_from_slice(extra.as_bytes());

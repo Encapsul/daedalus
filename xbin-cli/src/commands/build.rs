@@ -922,32 +922,32 @@ fn build_single_target(
     }
 
     // ── Encryption (v4) ──────────────────────────────────────────────────
-    // AES-256-GCM, key derived from the Ed25519 signing seed via HKDF-SHA256
-    // (same key the stub derives at runtime). `--encrypt` therefore requires
-    // `--key`; the seed is embedded in meta `crypto` (seed-hex + nonce-hex).
+    // AES-256-GCM, key derived from a random 32-byte encryption key via
+    // HKDF-SHA256 (same key the stub derives at runtime).
+    //
+    // SECURITY: The encryption key is **separate** from the Ed25519 signing
+    // seed.  `--key` is only used for SISR manifest signing (when
+    // `--enable-sisr` is also set) and/or binary signing (`--sign`).
+    // The encryption key itself is generated randomly at build time and
+    // stored in meta `crypto` as `encryption_key_hex`.  The signing seed is
+    // NEVER embedded in the binary — this prevents a key compromise from
+    // breaking both confidentiality and authenticity.
+    //
     // The ciphertext replaces the payload before assembly so the footer's
     // integrity hash and signature both cover the *encrypted* bytes.
     //
     // When combined with `--enable-sisr`, the payload is encrypted in
     // per-chunk mode: each SISR plaintext chunk gets an independent AES key
-    // derived via HKDF(seed, salt, chunk_index), and the manifest tracks the
-    // ciphertext hashes. The stub decrypts each chunk independently at
-    // runtime before SISR extraction.
+    // derived via HKDF(encryption_key, salt, chunk_index), and the manifest
+    // tracks the ciphertext hashes.  The stub decrypts each chunk
+    // independently at runtime before SISR extraction.
     let mut crypto_meta: Option<serde_json::Value> = None;
     let mut sisr_artifacts_opt: Option<xbin_core::sisr_stage::SisrArtifacts> = None;
 
     if encrypt {
-        let key_path = args.key.as_ref().ok_or_else(|| {
-            anyhow::anyhow!(
-                "--encrypt requires --key to derive the AES-256-GCM key from the signing seed"
-            )
-        })?;
-        let seed_bytes = std::fs::read(key_path)
-            .with_context(|| format!("failed to read signing key at {}", key_path.display()))?;
-        let seed: [u8; 32] = seed_bytes
-            .as_slice()
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("signing key must be 32 bytes"))?;
+        // Generate a fresh random encryption key — never reuse the signing seed.
+        let mut encryption_key = [0u8; 32];
+        encryption_key.copy_from_slice(&xbin_core::encrypt::generate_encryption_key());
 
         if args.enable_sisr {
             let sisr_config = build_sisr_config(&args.key)?;
@@ -961,13 +961,18 @@ fn build_single_target(
                 .collect();
             let salt = xbin_core::encrypt::generate_salt();
             let nonce = xbin_core::encrypt::generate_nonce();
-            let ciphertext =
-                xbin_core::encrypt::encrypt_chunks(&payload, &seed, &salt, &nonce, &chunk_sizes)
-                    .context("chunked AES-256-GCM payload encryption failed")?;
+            let ciphertext = xbin_core::encrypt::encrypt_chunks(
+                &payload,
+                &encryption_key,
+                &salt,
+                &nonce,
+                &chunk_sizes,
+            )
+            .context("chunked AES-256-GCM payload encryption failed")?;
             payload = ciphertext;
             crypto_meta = Some(serde_json::json!({
                 "nonce_hex": hex::encode(nonce),
-                "signing_seed_hex": hex::encode(seed),
+                "encryption_key_hex": hex::encode(encryption_key),
                 "encryption_salt_hex": hex::encode(salt),
                 "chunked": true,
             }));
@@ -981,13 +986,13 @@ fn build_single_target(
                 );
             }
         } else {
-            let (ciphertext, em) = xbin_core::encrypt::encrypt_payload(&payload, &seed)
+            let (ciphertext, em) = xbin_core::encrypt::encrypt_payload(&payload, &encryption_key)
                 .context("AES-256-GCM payload encryption failed")?;
             payload = ciphertext;
             crypto_meta = Some(serde_json::json!({
                 "nonce_hex": hex::encode(em.nonce),
                 "tag_offset": em.tag_offset,
-                "signing_seed_hex": hex::encode(seed),
+                "encryption_key_hex": hex::encode(encryption_key),
                 "encryption_salt_hex": hex::encode(em.salt),
             }));
             if verbose {
@@ -1644,7 +1649,7 @@ fn ensure_node_download(
         let decoder: Box<dyn std::io::Read> = if node_os == "darwin" {
             Box::new(flate2::read::GzDecoder::new(reader))
         } else {
-            Box::new(xz::read::XzDecoder::new(reader))
+            Box::new(xz2::read::XzDecoder::new(reader))
         };
         let mut archive = tar::Archive::new(decoder);
 

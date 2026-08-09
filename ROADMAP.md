@@ -144,8 +144,8 @@ worked.
 
 ## Phase 5 — Benchmark-driven performance (see "Comparative benchmark")
 
-- [ ] **Cold start < 500 ms** — current 2091 ms is single-threaded zstd
-  extraction of the node runtime (warm start is 95 ms → launcher is fast).
+- [ ] **Cold start < 500 ms** — current ~2142 ms is single-threaded zstd
+   extraction of the node runtime (warm start is 96 ms → launcher is fast).
   The `zstd` crate's `zstdmt` feature only enables multithreaded *compression*;
   the streaming `Decoder` has no multithreaded decompression API in 0.13.
   Options: (a) use `zstd-safe` raw API with `ZSTD_DCtx_setParameter` +
@@ -279,18 +279,18 @@ results: `benchmarks/comparison/comparison.md`.
 
 | Packager | Artifact | On-disk | Cold start | Warm start | Idle RSS | Host deps |
 |----------|----------|---------|------------|------------|----------|-----------|
-| **x.bin** | **44.0 MiB** | 122.6 MiB | 2091 ms | **95 ms** | 48.6 MiB | **none** |
-| docker | 76.7 MiB | 76.7 MiB | 6823 ms | — | 49.9 MiB | docker-daemon |
-| pkg | 70.2 MiB | 70.2 MiB | 99 ms | — | 55.0 MiB | none |
-| appimage | 24.4 MiB | 24.4 MiB | 439 ms | — | 55.0 MiB | fuse-or-extract |
+| **x.bin** | **44.0 MiB** | 122.6 MiB | 2142 ms | **96 ms** | 48.6 MiB | **none** |
+| docker | 76.7 MiB | 76.7 MiB | 6147 ms | — | 50.0 MiB | docker-daemon |
+| pkg | 70.2 MiB | 70.2 MiB | 109 ms | — | 55.0 MiB | none |
+| appimage | 24.4 MiB | 24.4 MiB | 29 ms | — | 55.6 MiB | fuse-or-extract |
 | flatpak | — | — | — | — | — | flatpak |
 
 (Machine: Codespace 4 vCPU EPYC, 15 Gi RAM, overlayfs in a container.)
 
 ### Items to implement (by gain priority)
 
-- [ ] **Cold start 2.1 s = single-threaded zstd extraction of the node runtime**
-      (warm 95 ms proves the launcher is fast; the gap is extraction).
+- [ ] **Cold start ~2.1 s = single-threaded zstd extraction of the node runtime**
+      (warm 96 ms proves the launcher is fast; the gap is extraction).
       → multithreaded decompression in the stub (crate `zstd`/zstdmt instead
       of single-thread `ruzstd`), or a lower build compression level.
       Goal: cold < 500 ms.
@@ -1297,3 +1297,102 @@ objectifs. Mets-le en évidence dès le premier paragraphe du README.
 - `cargo clippy -p xbin-stub --all-targets -- -D warnings` ✅
 - `cargo clippy -p xbin-cli --all-targets -- -D warnings` ✅
 - `cargo test --workspace` ✅ (352 passed, 0 failed, 1 ignored)
+
+---
+
+## Audit externe 2026-08-09 — Relevé d'issues (état vérifié)
+
+Audit complet de la codebase (3 crates, stub, SISR, CLI), **re-vérifié ligne
+par ligne contre l'arbre de travail courant**. Build + `fmt` + clippy + tests
+(~352, 1 ignored) sont verts. De nombreux items ci-dessous étaient **déjà
+corrigés avant l'audit** (working tree) ; ils sont donc marqués ✅ sans
+attribution. Les items restants (`- [ ]`) sont les vrais correctifs à faire.
+
+> Nota: plusieurs items marqués ✅ portent une ⚠️ pour un risque résiduel
+> (manque de test, limitation inhérente au modèle).
+
+### ✅ Corrigés (vérifiés dans l'arbre de travail)
+
+1. - [x] **Fuite de la seed Ed25519 dans les binaires `--encrypt`** → résolu.
+   La clé AES est désormais une `encryption_key` aléatoire distincte ; la seed
+   de *signature* n'est plus embarquée
+   (`xbin-core/src/encrypt.rs:23`, `xbin-cli/src/commands/build.rs:947-951`).
+   ⚠️ **Résiduel** : la clé de chiffrement elle-même (`encryption_key_hex`)
+   l'est toujours → voir item 3 plus bas.
+2. - [x] **Filtre seccomp deny-all** → résolu : `jf=1` sur le dernier
+   `jmp_eq` + `libc::SECCOMP_RET_KILL_PROCESS` (valeur kernel correcte)
+   (`stub/src/seccomp.rs:4,63,105`).
+   ⚠️ **Résiduel** : aucune couverture test — le chemin `--seccomp` n'est
+   jamais exercé par `cargo test`. Risque de régression → voir item 4.
+3. - [x] **Bombe zstd+tar** → résolu : `MAX_DECOMPRESSED_BYTES`/`MAX_FILES`
+   avec itération manuelle des entrées (`stub/src/extraction.rs:14-17,30-55`).
+   ⚠️ **Résiduel** : la protection n'existe PAS sur le format squashfs, qui est
+   le **format par défaut** (v5) → voir item 5.
+4. - [x] **`atomic_extract` avait masqué les erreurs** → résolu : un échec de
+   `rename` n'est accepté que si le `.ready` marker existe déjà
+   (`stub/src/extraction.rs:91-108`).
+5. - [x] **`xz 0.4.6-rc.0`** → remplacé par `xz2 = "0.1"` (stable).
+6. - [x] **Double RAM au cold start** → résolu : le hash s'appuie sur
+   `verify_sha256_parts` (streaming, sans `payload.clone()`)
+   (`stub/src/crypto.rs:148-168`, `stub/src/main.rs:254`).
+7. - [x] **`ureq` sans timeout** → résolu : `timeout_connect(10s)` +
+   `timeout_recv_body(30s)` (`stub/src/main.rs:868-880`).
+8. - [x] **`rand::thread_rng()` pour matériel crypto** → remplacé par
+   `rand::rngs::OsRng` (`xbin-core/src/encrypt.rs:6,40,47`).
+9. - [x] **URL morte man pages** → `github.com/Tednoob17/x.bin/issues`
+   (`xbin-cli/src/main.rs:269`).
+10. - [x] **`chrono_now` réimplémenté à la main** → `time::OffsetDateTime` +
+    `Iso8601::DEFAULT` ; `unix_days_to_date()` supprimé
+    (`xbin-core/src/assembly.rs:322-332`).
+11. - [x] **Embed-interpréteur par défaut** → les runtimes interprétés
+    (python/node/php/ruby/deno) sont embarqués par défaut, plus besoin de
+    `--embed-interpreter` pour eux (`xbin-cli/src/commands/build.rs:1168-1176`).
+    ⚠️ **Résiduel** : Go/Binary/Java/Wasm n'ont pas de runtime hôte à embarquer
+    (binaire natif) → la promesse « run without host runtime » tient pour tout
+    sauf les binaires compilés, mais c'est correct.
+
+### ❌ Restant — vrais correctifs à faire
+
+3. - [ ] **Clé de chiffrement embarquée → obfuscation, pas confidentialité**
+   (`stub/src/main.rs:141-143 CryptoMeta`, `xbin-cli/src/commands/build.rs:990,1003`).
+   La seed de signature n'est plus embarquée (✅ #1), mais
+   `encryption_key_hex` l'est, dans le fichier même. Quiconque possède le
+   `.xbin` peut déchiffrer → `--encrypt` ne protège qu' contre l'inspecteur
+   curieux, pas contre un attaquant qui tient le fichier.
+   **Fix** : modèle de menace explicite dans la doc, ou passphrase/runtime-key
+   non stockée dans le binaire.
+4. - [ ] **Test d'intégration pour `--seccomp`** (le #2 est corrigé mais non
+   testé → risque de régression). Un test qui build une app `--seccomp` et
+   vérifie qu'elle démarre et sert (sinon le filtre deny-all reviendra en
+   silence).
+5. - [ ] **Bombe squashfs non protégée — et c'est le format par défaut**
+   (`stub/src/squashfs_extract.rs:23-37`). Le #3 ne couvre que le zstd+tar.
+   `extract_squashfs_blob` fait `reader.read_to_end(&mut buf)` par fichier
+   sans limite de taille totale ni de nombre de fichiers → disk-fill.
+   **Fix** : bornes similaires à `extract_atomic` (taille totale + compteur de
+   fichiers) autour de la boucle `backhand` ; ou alimenter `payload_usize` du
+   footer dans une vérification de decompression.
+6. - [ ] **Traversal de chemins dans l'extraction squashfs**
+   (`stub/src/squashfs_extract.rs:24-25`). `dest.join(node.fullpath.strip_prefix("/"))`
+   ne rejette pas les segments `..`. Le chemin `tar` est protégé par le crate
+   `tar`, mais `backhand` (v0.25) n'est pas explicitement contrôlé ici → un
+   squashfs malicieux pourrait écrire en dehors de `rootfs`.
+   **Fix** : normaliser `rel` et `dest.join(rel)` puis vérifier que le résultat
+   reste sous `dest` (comme le fait `tar::unpack_in`), ou asserter
+   `!rel.matches("..")`.
+7. - [ ] **Feature creep CLI** : `--wasm`, `--cross-compile`, `--health-port`
+   sont « metadata only, not functional yet » (README 121-127) mais exposés
+   comme fonctionnels dans `--help`. **Fix** : `#[arg(long, hide = true)]` jusqu'à
+   implémentation, ou lever la couverture.
+
+### Optionnel — nettoyage / dette
+
+- [ ] `reqwest` (~300 crates transitives, runtime `blocking`) pour de simples
+  GET/PUT dans `remote_cache.rs`/`upgrade.rs`/`publish.rs`/`build.rs`. Configuré
+  avec `rustls-tls` (AGENTS.md §112 : « no OpenSSL dependency » — correct). Le
+  stub utilise déjà `ureq`. Unifier sur `ureq` → retire `tokio`/`hyper`,
+  build plus léger. Non-bloquant.
+- [ ] **Documenter le modèle de confiance signé** : un `.xbin` signé ne s'exécute
+  pas sans la pubkey installée via `xbin trust` chez l'utilisateur final. Qui
+  installe les `trusted-keys` ? (CI ? distributeur ? utilisateur ?)
+    Documenter le modèle de confiance (qui installe les trusted-keys ?).

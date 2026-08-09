@@ -210,15 +210,15 @@ fn test_inspect_reports_encrypted_v4() {
     let seed = [0xABu8; 32];
     let plaintext = b"SECRET_PAYLOAD_THAT_MUST_BE_ENCRYPTED";
 
-    // 1. Encrypt the payload (AES-256-GCM, HKDF from the signing seed).
+    // 1. Encrypt the payload (AES-256-GCM, HKDF from a random encryption key).
     let (ciphertext, em) = encrypt_payload(plaintext, &seed).unwrap();
     assert_ne!(&ciphertext[..], plaintext);
 
-    // 2. Build meta JSON with the `crypto` field (nonce + signing seed).
+    // 2. Build meta JSON with the `crypto` field (nonce + encryption key).
     let crypto_value = serde_json::json!({
         "nonce_hex": hex::encode(em.nonce),
         "tag_offset": em.tag_offset,
-        "signing_seed_hex": hex::encode(seed),
+        "encryption_key_hex": hex::encode(seed),
     });
     let meta = build_meta_json(
         "enc",
