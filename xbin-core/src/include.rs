@@ -2,7 +2,7 @@
 //! respecting `.xbinignore`, `.gitignore`, and built-in skip directories.
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
@@ -25,17 +25,43 @@ const SKIP_DIRS: &[&str] = &[
 ///
 /// Each source path is copied recursively. Directories are copied in full.
 /// Skips `.git`, `node_modules`, etc.
-pub fn copy_include_paths(sources: &[PathBuf], dest: &Path) -> io::Result<usize> {
+/// Validates that source paths are within the provided base directory (`app_dir`).
+pub fn copy_include_paths(sources: &[PathBuf], dest: &Path, base_dir: &Path) -> io::Result<usize> {
+    let canonical_base = base_dir.canonicalize().map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid base directory {}: {}", base_dir.display(), e),
+        )
+    })?;
     let mut count = 0;
     for src in sources {
-        if !src.exists() {
+        let canonical_src = src.canonicalize().map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("invalid include path {}: {}", src.display(), e),
+            )
+        })?;
+
+        // Ensure the source path is within the base directory
+        if !canonical_src.starts_with(&canonical_base) {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!(
+                    "include path {} escapes base directory {}",
+                    src.display(),
+                    base_dir.display()
+                ),
+            ));
+        }
+
+        if !canonical_src.exists() {
             continue;
         }
-        if src.is_dir() {
-            copy_dir_recursive(src, dest)?;
+        if canonical_src.is_dir() {
+            copy_dir_recursive(&canonical_src, dest)?;
         } else {
-            let file_name = src.file_name().unwrap_or_default();
-            fs::copy(src, dest.join(file_name))?;
+            let file_name = canonical_src.file_name().unwrap_or_default();
+            fs::copy(&canonical_src, dest.join(file_name))?;
         }
         count += 1;
     }
@@ -136,8 +162,6 @@ fn walk_dir_sorted(dir: &Path) -> Vec<PathBuf> {
     result
 }
 
-use std::path::PathBuf;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,14 +192,18 @@ mod tests {
 
     #[test]
     fn test_copy_include_paths() {
-        let src = TempDir::new().unwrap();
-        let dst = TempDir::new().unwrap();
-        fs::write(src.path().join("data.json"), "{}").unwrap();
-        fs::create_dir_all(src.path().join("templates")).unwrap();
-        fs::write(src.path().join("templates/a.html"), "<h1>hi</h1>").unwrap();
+        let dir = TempDir::new().unwrap();
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("data.json"), "{}").unwrap();
+        fs::create_dir_all(src.join("templates")).unwrap();
+        fs::write(src.join("templates/a.html"), "<h1>hi</h1>").unwrap();
 
-        let count = copy_include_paths(&[src.path().to_path_buf()], dst.path()).unwrap();
+        use std::slice;
+
+        let count = copy_include_paths(slice::from_ref(&src), &dst, &src).unwrap();
         assert_eq!(count, 1);
-        assert!(dst.path().join("data.json").is_file());
+        assert!(dst.join("data.json").is_file());
     }
 }
