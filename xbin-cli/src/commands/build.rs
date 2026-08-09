@@ -1603,6 +1603,8 @@ fn ensure_node_download(
     let node_bin = tools_dir
         .join("bin")
         .join(if node_os == "win" { "node.exe" } else { "node" });
+
+    #[cfg(unix)]
     let npm_bin = tools_dir
         .join("bin")
         .join(if node_os == "win" { "npm.cmd" } else { "npm" });
