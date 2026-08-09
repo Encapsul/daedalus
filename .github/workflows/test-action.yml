@@ -11,14 +11,27 @@ jobs:
   test-action:
     name: Test xbin-build action
     runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_DIR: /tmp/xbin-stub-target
     steps:
       - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools zstd pkg-config libssl-dev python3
+
+      - name: Build stub (musl static ELF)
+        run: make stub
 
       # Build and install xbin so the action can find it
       - name: Build xbin from source
         run: |
           cargo build --release -p xbin-cli
-          ./target/release/xbin --version
+          /tmp/xbin-stub-target/release/xbin --version
 
       # Create a minimal test app
       - name: Create test app
