@@ -101,9 +101,9 @@ fn serve(stream: &mut TcpStream, routes: &Arc<Mutex<HashMap<String, Vec<u8>>>>) 
         "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
     );
-    if stream.write_all(head.as_bytes()).is_err() || stream.write_all(&body).is_err() {
-        return;
-    }
+    // Write response; ignore errors (client may disconnect)
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(&body);
     let _ = stream.flush();
 }
 
