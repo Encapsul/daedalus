@@ -4,6 +4,7 @@
 //! resolution, environment setup, and platform-specific process spawning.
 
 use std::collections::BTreeMap;
+#[cfg(unix)]
 use std::ffi::CString;
 use std::io;
 #[cfg(unix)]
