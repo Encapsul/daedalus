@@ -134,12 +134,26 @@ fn default_health_endpoint() -> String {
     "/health".to_string()
 }
 
+/// Metadata describing an AES-256-GCM encrypted payload (`--encrypt`, v4+).
+///
+/// SECURITY / THREAT MODEL: the encryption key (`encryption_key_hex`) and salt
+/// are stored **in the clear** in the `.xbin` metadata — i.e. in the same file
+/// as the ciphertext. The AES key is **not** the Ed25519 *signing* seed (that is
+/// never embedded; `@see` `xbin-cli/src/commands/build.rs`), so a leaked file
+/// cannot be used to forge signatures. However, because the decryption key
+/// lives inside the file, *possession of the file suffices to decrypt the
+/// payload*. `--encrypt` therefore provides **obfuscation against casual
+/// inspection**, not confidentiality against an attacker who holds the binary.
+/// Real confidentiality requires a key that is *not* stored in the file —
+/// e.g. an environment variable / passphrase derived at runtime — which is not
+/// supported today. Authenticity of the bytes (signed vs unsigned) is governed
+/// solely by `FLAG_SIGNED` + the trusted-keys directory.
 #[derive(Deserialize)]
 pub struct CryptoMeta {
     nonce_hex: String,
     #[allow(dead_code)]
     tag_offset: usize,
-    signing_seed_hex: String,
+    encryption_key_hex: String,
     encryption_salt_hex: String,
 }
 
@@ -249,9 +263,9 @@ fn run() -> io::Result<()> {
     }
 
     // Verify SHA-256 integrity (hash = SHA-256(payload || meta_bytes)).
-    let mut buf = payload.clone();
-    buf.extend_from_slice(&meta_bytes);
-    crypto::verify_sha256(&buf, &footer.payload_sha256)?;
+    // Stream the two slices into the hasher instead of cloning payload,
+    // avoiding a 2× memory spike at cold start.
+    crypto::verify_sha256_parts(&payload, &meta_bytes, &footer.payload_sha256)?;
 
     // Decrypt payload (v4+ with AES-256-GCM).
     // Happens AFTER signature + integrity verification — we only decrypt
@@ -867,6 +881,11 @@ impl xbin_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
 /// chunks), so the transport is a convenience — never a trust anchor.
 fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
     let resp = ureq::get(url)
+        .config()
+        .timeout_connect(Some(std::time::Duration::from_secs(10)))
+        .timeout_recv_response(Some(std::time::Duration::from_secs(30)))
+        .timeout_recv_body(Some(std::time::Duration::from_secs(30)))
+        .build()
         .call()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))?;
     resp.into_body()

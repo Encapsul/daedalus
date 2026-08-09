@@ -109,7 +109,7 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 - Unit tests: `#[cfg(test)] mod tests` in each module.
 - Integration tests: `xbin-cli/tests/` use `assert_cmd`.
 - `cargo test --workspace` for all Rust tests.
-- `xbin-cli` depends on `openssl` via `reqwest`/`native-tls` — may not build without `libssl-dev`.
+- `xbin-cli` depends on `reqwest` (blocking, `rustls-tls` feature) — no OpenSSL dependency.
 
 ## Git conventions
 

@@ -146,7 +146,7 @@ pub struct MetaOptions {
     pub rt_deps_hash: Option<String>,
     /// Base URL of the SISR update channel (`{url}/manifest`, `{url}/chunks/<hex>`).
     pub update_url: Option<String>,
-    /// AES-256-GCM crypto metadata (nonce, tag offset, signing seed) emitted into
+    /// AES-256-GCM crypto metadata (nonce, tag offset, encryption key) emitted into
     /// the `crypto` meta field when `--encrypt` is enabled. `None` for plaintext
     /// builds so the field is omitted entirely.
     pub crypto: Option<serde_json::Value>,
@@ -320,69 +320,16 @@ fn sha2_hash(payload: &[u8], meta: &[u8]) -> [u8; 32] {
 
 /// ISO 8601 timestamp (UTC).
 fn chrono_now() -> String {
-    let secs = std::time::SystemTime::now()
+    let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    let datetime = time::OffsetDateTime::from_unix_timestamp(secs as i64)
+        .unwrap_or(time::OffsetDateTime::UNIX_EPOCH)
+        .to_offset(time::UtcOffset::UTC);
+    datetime
+        .format(&time::format_description::well_known::Iso8601::DEFAULT)
         .unwrap_or_default()
-        .as_secs();
-    let days = secs / 86400;
-    let rem = secs % 86400;
-    let h = rem / 3600;
-    let m = (rem % 3600) / 60;
-    let s = rem % 60;
-    let (year, month, day) = unix_days_to_date(days);
-    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
-}
-
-fn unix_days_to_date(mut days: u64) -> (u32, u32, u32) {
-    let mut year = 1970u32;
-    let mut month = 1u32;
-    let mut day = 1u32;
-
-    fn is_leap(y: u32) -> bool {
-        y.is_multiple_of(4) && !y.is_multiple_of(100) || y.is_multiple_of(400)
-    }
-    fn days_in_year(y: u32) -> u64 {
-        if is_leap(y) {
-            366
-        } else {
-            365
-        }
-    }
-    fn days_in_month(y: u32, m: u32) -> u64 {
-        match m {
-            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-            4 | 6 | 9 | 11 => 30,
-            2 => {
-                if is_leap(y) {
-                    29
-                } else {
-                    28
-                }
-            }
-            _ => 0,
-        }
-    }
-
-    while days > 0 {
-        let diy = days_in_year(year);
-        if days >= diy {
-            days -= diy;
-            year += 1;
-        } else {
-            while days > 0 {
-                let dim = days_in_month(year, month);
-                if days >= dim {
-                    days -= dim;
-                    month += 1;
-                } else {
-                    day = day.saturating_add(days as u32);
-                    break;
-                }
-            }
-            break;
-        }
-    }
-    (year, month, day)
 }
 
 fn env_map(env: &[(String, String)]) -> serde_json::Value {
@@ -508,23 +455,13 @@ mod tests {
     }
 
     #[test]
-    fn unix_days_to_date_epoch_is_1970_01_01() {
-        let (y, m, d) = unix_days_to_date(0);
-        assert_eq!((y, m, d), (1970, 1, 1));
-    }
-
-    #[test]
-    fn unix_days_to_date_one_year_later() {
-        let (y, m, d) = unix_days_to_date(365);
-        assert_eq!((y, m, d), (1971, 1, 1));
-    }
-
-    #[test]
-    fn unix_days_to_date_leap_day_1972() {
-        let (y, m, d) = unix_days_to_date(365 + 365);
-        assert_eq!((y, m, d), (1972, 1, 1));
-        let (y2, m2, d2) = unix_days_to_date(365 + 365 + 366);
-        assert_eq!((y2, m2, d2), (1973, 1, 1));
+    fn chrono_now_produces_iso8601() {
+        let ts = chrono_now();
+        assert!(ts.ends_with('Z'), "timestamp should end with Z: {ts}");
+        assert!(
+            ts.len() >= 20,
+            "expected at least YYYY-MM-DDTHH:MM:SSZ format"
+        );
     }
 
     #[test]
