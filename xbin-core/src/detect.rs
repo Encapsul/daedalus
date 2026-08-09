@@ -764,6 +764,7 @@ fn find_node_entry(dir: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     #[test]
@@ -1095,7 +1096,11 @@ start = "uvicorn main:app"
         )
         .unwrap();
         let ep = resolve_entrypoint(dir.path(), Runtime::Dotnet);
-        assert_eq!(ep, Some(vec!["/app/bin/Release/myapp".into()]));
+        let expected = PathBuf::from("/app")
+            .join("bin")
+            .join("Release")
+            .join("myapp");
+        assert_eq!(ep, Some(vec![expected.to_string_lossy().into_owned()]));
     }
 
     #[test]

@@ -78,10 +78,13 @@ mod tests {
         let prev = env::var("XDG_DATA_HOME").ok();
         env::set_var("XDG_DATA_HOME", "/custom/xdg");
 
+        use std::path::PathBuf;
+
         let env_map = get_persist_env("myapp");
+        let expected = PathBuf::from("/custom/xdg").join("xbin").join("myapp");
         assert_eq!(
-            env_map.get("XBIN_PERSIST_DIR").unwrap(),
-            "/custom/xdg/xbin/myapp"
+            env_map.get("XBIN_PERSIST_DIR").unwrap().as_str(),
+            expected.to_string_lossy().as_ref()
         );
 
         match prev {
