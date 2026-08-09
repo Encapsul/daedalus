@@ -181,6 +181,7 @@ fn detect_platform() -> Result<String> {
     let os_str = match os {
         "linux" => "linux",
         "macos" => "macos",
+        "windows" => "win",
         _ => anyhow::bail!("unsupported OS: {os}"),
     };
 
