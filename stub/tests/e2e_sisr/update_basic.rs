@@ -1,12 +1,14 @@
 //! E2E happy-path tests: remote update, local staging, and the delta
 //! bandwidth property (only the modified blocks + metadata overhead).
 
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 use super::{env, footer_sha, parse_stats, payload_sha, run_app, run_update, BODY_V1, BODY_V2};
 
 /// The full prompt-9 architecture loop: build v1, serve the delta over a mock
 /// HTTP server, `--xbin-update`, then assert the binary became v2.
+#[cfg(unix)]
 #[test]
 fn remote_update_swaps_in_v2_and_reports_reuse() {
     let e = env(BODY_V1, BODY_V2);
