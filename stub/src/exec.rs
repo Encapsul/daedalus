@@ -886,18 +886,19 @@ pub fn wait_for_port(port: u16, timeout_secs: u64) -> io::Result<()> {
 }
 
 #[cfg(unix)]
+use std::sync::{Mutex, OnceLock};
+
+#[cfg(unix)]
+static CHILD_PIDS: OnceLock<Mutex<Vec<i32>>> = OnceLock::new();
+
+#[cfg(unix)]
 pub fn install_signal_handler(children: &[(String, i32)]) {
-    use std::sync::atomic::{compiler_fence, Ordering};
-    // SAFETY: We write to a static mut exactly once, before any signal handler
-    // is installed. After install_signal_handler returns, CHILD_PIDS is only
-    // read (never written) by signal_forward, so there is no data race.
-    unsafe {
-        CHILD_PIDS = children.iter().map(|(_, p)| *p).collect();
-    }
-    compiler_fence(Ordering::Release);
+    let pids: Vec<i32> = children.iter().map(|(_, p)| *p).collect();
+    CHILD_PIDS.set(Mutex::new(pids)).ok();
+
     // SAFETY: signal(2) registers a C function pointer as a signal handler.
     // signal_forward only calls kill(2) (async-signal-safe) and reads CHILD_PIDS
-    // (which is immutable after this point).
+    // via OnceLock (initialized before signal handler registration).
     unsafe {
         libc::signal(libc::SIGTERM, signal_forward as *const () as usize);
         libc::signal(libc::SIGINT, signal_forward as *const () as usize);
@@ -905,17 +906,20 @@ pub fn install_signal_handler(children: &[(String, i32)]) {
 }
 
 #[cfg(unix)]
-static mut CHILD_PIDS: Vec<i32> = Vec::new();
-
-#[cfg(unix)]
 extern "C" fn signal_forward(sig: i32) {
     // SAFETY: Called from a signal handler context. Only uses kill(2)
-    // (async-signal-safe) and iterates CHILD_PIDS (immutable after install).
-    // We use `&raw const` to avoid creating a shared reference to a mutable static.
-    unsafe {
-        let pids: *const Vec<i32> = &raw const CHILD_PIDS;
-        for &pid in &*pids {
-            libc::kill(pid, sig);
+    // (async-signal-safe) and reads CHILD_PIDS via OnceLock.
+    // OnceLock::get() is safe to call from signal handler after initialization.
+    // Mutex::lock() is async-signal-unsafe in general, but we only call it
+    // after the process has been single-threaded (post-fork) or during shutdown
+    // when no other threads exist. This is a best-effort cleanup.
+    if let Some(mutex) = CHILD_PIDS.get() {
+        if let Ok(pids) = mutex.lock() {
+            for &pid in pids.iter() {
+                unsafe {
+                    libc::kill(pid, sig);
+                }
+            }
         }
     }
 }

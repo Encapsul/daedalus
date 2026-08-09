@@ -186,7 +186,11 @@ fn read_line_masked() -> io::Result<String> {
         let stdin = io::stdin();
         let mut handle = stdin.lock();
 
-        // SAFETY: We're just modifying terminal settings temporarily
+        // SAFETY: tcgetattr/tcsetattr on stdin (fd 0) is safe when:
+        // - We only modify the ECHO flag in c_lflag
+        // - We restore the original termios on all paths (success, error, early return)
+        // - No other thread is modifying termios concurrently (stdin is single-threaded in this context)
+        // - The termios struct is properly initialized with zeroed memory
         unsafe {
             let mut termios: libc::termios = std::mem::zeroed();
             if libc::tcgetattr(0, &mut termios) == 0 {

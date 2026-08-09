@@ -52,8 +52,7 @@ const HANDLED_FS: u64 = LANDLOCK_ACCESS_FS_EXECUTE
 const FULL_RW: u64 = HANDLED_FS;
 
 // Read-only access for everything else.
-const READ_ONLY: u64 =
-    LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR;
+const READ_ONLY: u64 = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR;
 
 // Landlock uses the generic syscall numbers (444/445/446) on every
 // architecture — x86_64, aarch64, 32-bit x86 and 32-bit ARM.

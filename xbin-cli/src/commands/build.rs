@@ -811,7 +811,7 @@ fn build_single_target(
     // ── Include extra files ───────────────────────────────────────────
     if !args.include.is_empty() {
         let app_dest = rootfs.join("app");
-        let count = xbin_core::include::copy_include_paths(&args.include, &app_dest)
+        let count = xbin_core::include::copy_include_paths(&args.include, &app_dest, app_dir)
             .context("failed to copy include paths")?;
         if verbose {
             eprintln!("  include: copied {count} path(s) into rootfs");
