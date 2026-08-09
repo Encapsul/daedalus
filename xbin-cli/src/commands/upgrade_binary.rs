@@ -117,4 +117,8 @@ fn warn_if_insecure_key_permissions(path: &Path) {
             }
         }
     }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
 }
