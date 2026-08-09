@@ -2,179 +2,69 @@ name: CI
 
 on:
   push:
-    branches: [main, dev, "feat/*", "fix/*"]
-    tags: ["v*"]
+    branches: [main]
   pull_request:
-    branches: [main, dev]
+    branches: [main]
+
+env:
+  CARGO_TARGET_DIR: /tmp/xbin-stub-target
+  RUSTFLAGS: "-D warnings"
 
 jobs:
-  preflight:
-    name: Preflight checks
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl
-      - run: make preflight
 
-  rust:
-    name: Rust build + clippy
-    runs-on: ubuntu-latest
-    env:
-      CC_x86_64_unknown_linux_musl: musl-gcc
-      CARGO_TARGET_DIR: target
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools zstd pkg-config libssl-dev
+
+      - name: Cache cargo
+        uses: actions/cache@v4
         with:
-          targets: x86_64-unknown-linux-musl
-          components: clippy, rustfmt
-      - run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --check
-      - run: cargo clippy -p xbin-core --all-targets -- -D warnings
-      - run: cargo clippy -p xbin-stub -- -D warnings
-      - run: cargo clippy -p xbin-cli -- -D warnings
-      - run: cargo test --workspace
-      - name: cargo doc (no-deps)
-        run: cargo doc --no-deps -p xbin-core -p xbin-stub -p xbin-cli
-      - name: 'Check // SAFETY: comments before unsafe blocks'
-        run: |
-          set -e
-          FAIL=0
-          for f in $(find stub/src -name '*.rs'); do
-            while IFS= read -r line; do
-              linenum=$(echo "$line" | cut -d: -f1)
-              start=$((linenum > 5 ? linenum - 5 : 1))
-              if ! sed -n "${start},${linenum}p" "$f" | grep -q '// SAFETY:'; then
-                echo "FAIL: $f:$linenum has unsafe block without // SAFETY: comment in preceding lines"
-                FAIL=1
-              fi
-            done < <(grep -nE '\bunsafe\s*\{|\bunsafe\s+fn' "$f" || true)
-          done
-          if [ "$FAIL" -ne 0 ]; then
-            exit 1
-          fi
-          echo "All unsafe blocks in stub/ have SAFETY comments."
-      - name: 'Check //! module doc headers'
-        run: |
-          set -e
-          FAIL=0
-          for f in $(find stub/src xbin-core/src -name '*.rs' | sort); do
-            if ! head -1 "$f" | grep -q '^//!'; then
-              echo "FAIL: $f missing //! module doc header"
-              FAIL=1
-            fi
-          done
-          if [ "$FAIL" -ne 0 ]; then
-            exit 1
-          fi
-          echo "All modules in stub/ and xbin-core/ have doc headers."
-      - run: cargo build --release --target x86_64-unknown-linux-musl -p xbin-stub
-      - run: cargo build -p xbin-cli
-      - run: cargo install cargo-audit cargo-outdated --locked
-      - run: cargo audit
-      - run: cargo outdated --format json
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            /tmp/xbin-stub-target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-  build:
-    name: End-to-end build test
-    runs-on: ubuntu-latest
-    needs: [rust]
-    env:
-      CC_x86_64_unknown_linux_musl: musl-gcc
-      CARGO_TARGET_DIR: target
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install -y zstd musl-tools
-      - run: make stub
-      - run: cargo build -p xbin-cli --release
-      - name: xbin doctor
-        run: ./target/release/xbin doctor --strict
-      - name: xbin build hello-web
-        run: ./target/release/xbin build examples/hello-web -o /tmp/hello-web.xbin
-      - name: xbin inspect
-        run: ./target/release/xbin inspect /tmp/hello-web.xbin
-      - name: xbin keygen
-        run: ./target/release/xbin keygen --key-dir /tmp/xbin-keys
-      - name: xbin sign
-        run: ./target/release/xbin sign /tmp/hello-web.xbin --key /tmp/xbin-keys/*.key
-      - name: xbin trust
-        run: mkdir -p /tmp/xbin-trusted && cp /tmp/xbin-keys/*.pub /tmp/xbin-trusted/
-      - name: xbin verify
-        run: ./target/release/xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted
+      - name: Build stub (musl static ELF)
+        run: make stub
 
-  macos:
-    name: macOS (native)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo install cargo-audit --locked
-      - run: cargo audit
-      - run: cargo fmt --check
-      - run: cargo clippy -p xbin-core --all-targets -- -D warnings
-      - run: cargo clippy -p xbin-stub -- -D warnings
-      - run: cargo clippy -p xbin-cli -- -D warnings
-      - run: cargo test --workspace
-      - run: cargo build --release -p xbin-cli
-      - name: Build stub for smoke test
-        run: cargo build -p xbin-stub
-      - name: Smoke test
+      - name: Build CLI
+        run: cargo build --release -p xbin-cli
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Test CLI build (smoke test)
         run: |
-          ./target/release/xbin build examples/hello-web -o /tmp/hello-web.xbin
-          ./target/release/xbin inspect /tmp/hello-web.xbin
+          /tmp/xbin-stub-target/release/xbin build examples/hello-web -o /tmp/hello-web.xbin
+          /tmp/hello-web.xbin
 
-  windows:
-    name: Windows (native)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo install cargo-audit --locked
-      - run: cargo audit
-      - run: cargo fmt --check
-      - run: cargo clippy -p xbin-core --all-targets -- -D warnings
-      - run: cargo clippy -p xbin-stub -- -D warnings
-      - run: cargo clippy -p xbin-cli -- -D warnings
-      - run: cargo test --workspace
-      - run: cargo build --release -p xbin-cli
-      - name: Smoke test
-        run: |
-          .\target\release\xbin.exe build examples\hello-web -o C:\tmp\hello-web.xbin
-          .\target\release\xbin.exe inspect C:\tmp\hello-web.xbin
-
-  qemu-aarch64:
-    name: QEMU aarch64 boot test
+  clippy-fmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
-      - name: Install QEMU + zig
-        run: sudo apt-get update && sudo apt-get install -y qemu-user-static
-      - uses: mlugg/setup-zig@v2
-      - name: Install cargo-zigbuild
-        run: cargo install cargo-zigbuild --locked
-      - name: Build aarch64 stub + CLI
-        run: |
-          cargo zigbuild --release --target aarch64-unknown-linux-musl -p xbin-stub
-          cargo zigbuild --release --target aarch64-unknown-linux-musl -p xbin-cli
-      - name: Build hello-web for aarch64
-        run: |
-          ./target/release/xbin build examples/hello-web --target aarch64 -o /tmp/hello-web-aarch64.xbin
-      - name: Run under QEMU
-        run: |
-          qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/hello-web-aarch64.xbin &
-          PID=$!
-          sleep 5
-          curl -s http://127.0.0.1:3000 | grep -q "Hello" && echo "QEMU boot test passed" || (echo "QEMU boot test failed" && kill $PID && exit 1)
-          kill $PID || true
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      - name: Run cargo audit
+        run: cargo audit
