@@ -320,24 +320,24 @@ pub struct BuildArgs {
     #[arg(long)]
     pub interpreter_path: Option<String>,
 
-    /// Enable WASM support with wasmtime
-    #[arg(long)]
+    /// Enable WASM support with wasmtime (NOT YET IMPLEMENTED IN STUB)
+    #[arg(long, hide = true)]
     pub wasm: bool,
 
-    /// Path to wasmtime binary
-    #[arg(long)]
+    /// Path to wasmtime binary (NOT YET IMPLEMENTED IN STUB)
+    #[arg(long, hide = true)]
     pub wasmtime_path: Option<PathBuf>,
 
-    /// Enable WASI for WASM modules (WebAssembly System Interface)
-    #[arg(long)]
+    /// Enable WASI for WASM modules (WebAssembly System Interface) (NOT YET IMPLEMENTED IN STUB)
+    #[arg(long, hide = true)]
     pub wasi: bool,
 
-    /// Enable WASM component model support
-    #[arg(long)]
+    /// Enable WASM component model support (NOT YET IMPLEMENTED IN STUB)
+    #[arg(long, hide = true)]
     pub component_model: bool,
 
-    /// Cross-compile for target architectures (comma-separated, e.g., aarch64,arm64)
-    #[arg(long)]
+    /// Cross-compile for target architectures (comma-separated, e.g., aarch64,arm64) (NOT YET IMPLEMENTED IN STUB)
+    #[arg(long, hide = true)]
     pub cross_compile: Option<String>,
 
     /// Use intelligent build cache (skip extraction if hash matches)
@@ -411,7 +411,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         seccomp: args.seccomp || config.build.seccomp.unwrap_or(false),
         landlock: args.landlock || config.build.landlock.unwrap_or(false),
         encrypt: args.encrypt || config.build.encrypt.unwrap_or(false),
-        squashfs: args.squashfs || config.build.squashfs.unwrap_or(true),
+        squashfs: args.squashfs || config.build.squashfs.unwrap_or(false),
         version_info: args.version_info.clone().or(config.package.version),
         author: args.author.clone().or(config.package.author),
         description: args.description.clone().or(config.package.description),
@@ -1194,6 +1194,7 @@ fn build_single_target(
     }
 
     if args.wasm {
+        eprintln!("[xbin] warning: --wasm is not yet implemented in the stub; metadata will be written but ignored at runtime");
         bun_features.wasm.enabled = true;
         if let Some(ref path) = args.wasmtime_path {
             bun_features.wasm.wasmtime_path = Some(path.display().to_string());
@@ -1220,6 +1221,7 @@ fn build_single_target(
     }
 
     if let Some(ref cross) = args.cross_compile {
+        eprintln!("[xbin] warning: --cross-compile is not yet implemented in the stub; metadata will be written but ignored at runtime");
         let targets: Vec<String> = cross.split(',').map(|s| s.trim().to_string()).collect();
         bun_features.cross_compile_targets = targets;
         if verbose {
