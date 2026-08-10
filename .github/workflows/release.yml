@@ -6,23 +6,24 @@ name: Release
 # checksums.txt, then create the GitHub release with all assets.
 #
 #   xbin_<version>_<os>_<arch>.<ext>
-#   xbin_0.5.0_linux_amd64.tar.gz     (xbin + xbin-stub)
-#   xbin_0.5.0_linux_arm64.tar.gz     (xbin + xbin-stub)
-#   xbin_0.5.0_darwin_amd64.tar.gz    (xbin only — the stub launcher is Linux-only)
-#   xbin_0.5.0_darwin_arm64.tar.gz    (xbin only)
+#   xbin_0.5.0_linux_amd64.tar.gz     (xbin + xbin-stub + xbin-crypto)
+#   xbin_0.5.0_linux_arm64.tar.gz     (xbin + xbin-stub + xbin-crypto)
+#   xbin_0.5.0_darwin_amd64.tar.gz    (xbin + xbin-stub + xbin-crypto)
+#   xbin_0.5.0_darwin_arm64.tar.gz    (xbin + xbin-stub + xbin-crypto)
+#   xbin_0.5.0_windows_amd64.tar.gz   (xbin + xbin-stub + xbin-crypto)
 #   checksums.txt
 #
 # Strategy:
-#   - Linux: cross-built via cargo-zigbuild on ubuntu for every musl/gnu
-#     target. amd64 + arm64 musl are the release-critical pair; the other
-#     architectures are marked `experimental` so a failure never blocks the
-#     release (fail-open expansion, not a gate). The stub (seccomp/landlock)
-#     builds only on x86_64/aarch64/i686/armv7/arm — other targets are
-#     CLI-only (see ROADMAP.md).
-#   - macOS: built on NATIVE runners. amd64 uses `macos-15-intel` (macos-13
-#     was retired Dec 2025), arm64 uses `macos-latest`.
-#   - Windows: CLI only (the stub is Linux-only). Builds on native runners,
-#     artifacts not published yet.
+#   - All targets cross-compiled from ubuntu with cargo-zigbuild (zig C
+#     cross-compiler). Windows via zig's mingw; macOS via zig + a downloaded
+#     macOS SDK (SDKROOT) for the Apple frameworks pulled in by ring/sysinfo.
+#   - Linux: musl/gnu matrix. amd64 + arm64 musl are the release-critical
+#     pair; the other architectures are marked `experimental` so a failure
+#     never blocks the release (fail-open expansion, not a gate). The stub
+#     (seccomp/landlock) builds only on x86_64/aarch64/i686/armv7/arm — other
+#     targets are CLI-only (see ROADMAP.md).
+#   - macOS amd64/arm64: CLI + stub (stub has a macos_sandbox Seatbelt port).
+#   - Windows amd64: CLI + stub (stub has a win.rs FFI layer).
 
 on:
   push:
@@ -101,22 +102,40 @@ jobs:
           if-no-files-found: error
 
   # ── Darwin amd64 (macOS Intel) ──────────────────────────────────────
-  # macos-13 (the old Intel image) was retired Dec 2025. The official
-  # replacement for x86_64 builds is `macos-15-intel`.
+  # Cross-compiled on ubuntu via cargo-zigbuild + downloaded macOS SDK.
+  # (Native macOS runners were flaky: macos-13 retired Dec 2025, and the
+  # jobs failed from day one. The ubuntu zigbuild path is verified green.)
   darwin-amd64:
     name: darwin amd64
-    runs-on: macos-15-intel
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_DIR: /tmp/xbin-stub-target
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+        with:
+          targets: x86_64-apple-darwin
+      - uses: mlugg/setup-zig@v2
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+      - name: Download macOS SDK
+        run: |
+          mkdir -p /tmp/macos-sdk
+          curl -sL -o /tmp/macos-sdk/sdk.tar.xz \
+            https://github.com/roblabla/MacOSX-SDKs/releases/download/13.1/MacOSX13.1.sdk.tar.xz
+          tar xf /tmp/macos-sdk/sdk.tar.xz -C /tmp/macos-sdk
+          echo "SDKROOT=/tmp/macos-sdk/MacOSX13.1.sdk" >> "$GITHUB_ENV"
 
-      # The stub is Linux-only (unshare/pivot_root/seccomp) — build the CLI only.
+      - name: Build stub
+        run: cargo zigbuild --release -p xbin-stub --target x86_64-apple-darwin
+
       - name: Build CLI
-        run: cargo build --release -p xbin-cli
+        run: cargo zigbuild --release -p xbin-cli --target x86_64-apple-darwin
 
       - name: Verify
-        run: file target/release/xbin | grep -q "Mach-O"
+        run: |
+          file /tmp/xbin-stub-target/x86_64-apple-darwin/release/xbin | grep -q "Mach-O"
+          file /tmp/xbin-stub-target/x86_64-apple-darwin/release/xbin-stub | grep -q "Mach-O"
 
       - name: Package
         run: |
@@ -124,8 +143,10 @@ jobs:
           V="${GITHUB_REF_NAME#v}"
           D="xbin_${V}_darwin_amd64"
           mkdir -p "${D}"
-          cp target/release/xbin "${D}/xbin"
-          chmod +x "${D}/xbin"
+          cp /tmp/xbin-stub-target/x86_64-apple-darwin/release/xbin "${D}/xbin"
+          cp /tmp/xbin-stub-target/x86_64-apple-darwin/release/xbin-stub "${D}/xbin-stub"
+          cp /tmp/xbin-stub-target/x86_64-apple-darwin/release/xbin-crypto "${D}/xbin-crypto"
+          chmod +x "${D}/xbin" "${D}/xbin-stub" "${D}/xbin-crypto"
           tar -czf "${D}.tar.gz" "${D}"
       - uses: actions/upload-artifact@v6
         with:
@@ -135,19 +156,37 @@ jobs:
   # ── Darwin arm64 (macOS Apple Silicon) ──────────────────────────────
   darwin-arm64:
     name: darwin arm64
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_DIR: /tmp/xbin-stub-target
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+        with:
+          targets: aarch64-apple-darwin
+      - uses: mlugg/setup-zig@v2
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+      - name: Download macOS SDK
+        run: |
+          mkdir -p /tmp/macos-sdk
+          curl -sL -o /tmp/macos-sdk/sdk.tar.xz \
+            https://github.com/roblabla/MacOSX-SDKs/releases/download/13.1/MacOSX13.1.sdk.tar.xz
+          tar xf /tmp/macos-sdk/sdk.tar.xz -C /tmp/macos-sdk
+          echo "SDKROOT=/tmp/macos-sdk/MacOSX13.1.sdk" >> "$GITHUB_ENV"
+
+      - name: Build stub
+        run: cargo zigbuild --release -p xbin-stub --target aarch64-apple-darwin
 
       - name: Build CLI
-        run: cargo build --release -p xbin-cli
+        run: cargo zigbuild --release -p xbin-cli --target aarch64-apple-darwin
 
       - name: Verify
         run: |
-          file target/release/xbin | grep -q "Mach-O"
-          file target/release/xbin | grep -q "arm64"
+          file /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin | grep -q "Mach-O"
+          file /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin | grep -q "arm64"
+          file /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin-stub | grep -q "Mach-O"
+          file /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin-stub | grep -q "arm64"
 
       - name: Package
         run: |
@@ -155,29 +194,44 @@ jobs:
           V="${GITHUB_REF_NAME#v}"
           D="xbin_${V}_darwin_arm64"
           mkdir -p "${D}"
-          cp target/release/xbin "${D}/xbin"
-          chmod +x "${D}/xbin"
+          cp /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin "${D}/xbin"
+          cp /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin-stub "${D}/xbin-stub"
+          cp /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin-crypto "${D}/xbin-crypto"
+          chmod +x "${D}/xbin" "${D}/xbin-stub" "${D}/xbin-crypto"
           tar -czf "${D}.tar.gz" "${D}"
       - uses: actions/upload-artifact@v6
         with:
           name: darwin-arm64
           path: xbin_*.tar.gz
 
-  # ── Windows amd64 (work-in-progress port) ───────────────────────────
-  # xbin-core uses std::os::unix::fs::PermissionsExt unconditionally, so
-  # this job is EXPECTED to fail until the Windows port lands. It only
-  # tracks the build status; it never blocks the release.
+  # ── Windows amd64 ───────────────────────────────────────────────────
+  # Cross-compiled on ubuntu via cargo-zigbuild (zig provides the mingw C
+  # toolchain; no mingw-w64 install needed). Verified green — xbin-core and
+  # xbin-cli are Windows-portable and the stub has a win.rs FFI layer.
   windows-amd64:
-    name: windows amd64 (wip)
-    runs-on: windows-latest
-    continue-on-error: true
+    name: windows amd64
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_DIR: /tmp/xbin-stub-target
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+        with:
+          targets: x86_64-pc-windows-gnu
+      - uses: mlugg/setup-zig@v2
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Build stub
+        run: cargo zigbuild --release -p xbin-stub --target x86_64-pc-windows-gnu
 
       - name: Build CLI
-        run: cargo build --release -p xbin-cli
+        run: cargo zigbuild --release -p xbin-cli --target x86_64-pc-windows-gnu
+
+      - name: Verify
+        run: |
+          file /tmp/xbin-stub-target/x86_64-pc-windows-gnu/release/xbin.exe | grep -q "PE32+"
+          file /tmp/xbin-stub-target/x86_64-pc-windows-gnu/release/xbin-stub.exe | grep -q "PE32+"
 
       - name: Package
         shell: bash
@@ -186,17 +240,19 @@ jobs:
           V="${GITHUB_REF_NAME#v}"
           D="xbin_${V}_windows_amd64"
           mkdir -p "${D}"
-          cp target/release/xbin.exe "${D}/xbin.exe"
-          powershell -Command "Compress-Archive -Path '${D}' -DestinationPath '${D}.zip'"
+          cp /tmp/xbin-stub-target/x86_64-pc-windows-gnu/release/xbin.exe "${D}/xbin.exe"
+          cp /tmp/xbin-stub-target/x86_64-pc-windows-gnu/release/xbin-stub.exe "${D}/xbin-stub.exe"
+          cp /tmp/xbin-stub-target/x86_64-pc-windows-gnu/release/xbin-crypto.exe "${D}/xbin-crypto.exe"
+          tar -czf "${D}.tar.gz" "${D}"
       - uses: actions/upload-artifact@v6
         with:
           name: windows-amd64
-          path: xbin_*.zip
+          path: xbin_*.tar.gz
 
   # ── Publish the release with all assets + checksums ─────────────────
   publish:
     name: Publish GitHub release
-    needs: [linux, darwin-amd64, darwin-arm64]
+    needs: [linux, darwin-amd64, darwin-arm64, windows-amd64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -204,7 +260,7 @@ jobs:
       - uses: actions/download-artifact@v7
         with:
           path: dist
-          pattern: xbin_*.tar.gz
+          pattern: "*"
           merge-multiple: true
 
       - name: Generate checksums

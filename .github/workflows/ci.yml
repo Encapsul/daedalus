@@ -73,3 +73,61 @@ jobs:
         run: cargo install cargo-audit
       - name: Run cargo audit
         run: cargo audit
+
+  # Cross-compile the stub + CLI for Windows and macOS on every push.
+  # zigbuild (zig C cross-compiler) supplies the mingw toolchain for Windows
+  # and the linker for Darwin; macOS needs a downloaded SDK for the Apple
+  # frameworks pulled in by ring/sysinfo (see SDKROOT below).
+  cross-platform:
+    name: cross ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-pc-windows-gnu
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+    env:
+      CARGO_TARGET_DIR: /tmp/xbin-stub-target
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install zig + cargo-zigbuild
+        uses: mlugg/setup-zig@v2
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Download macOS SDK
+        if: contains(matrix.target, 'apple-darwin')
+        run: |
+          mkdir -p /tmp/macos-sdk
+          curl -sL -o /tmp/macos-sdk/sdk.tar.xz \
+            https://github.com/roblabla/MacOSX-SDKs/releases/download/13.1/MacOSX13.1.sdk.tar.xz
+          tar xf /tmp/macos-sdk/sdk.tar.xz -C /tmp/macos-sdk
+          echo "SDKROOT=/tmp/macos-sdk/MacOSX13.1.sdk" >> "$GITHUB_ENV"
+
+      - name: Build stub (cross)
+        run: cargo zigbuild --release -p xbin-stub --target ${{ matrix.target }}
+
+      - name: Build CLI (cross)
+        run: cargo zigbuild --release -p xbin-cli --target ${{ matrix.target }}
+
+      - name: Verify artifact format
+        shell: bash
+        run: |
+          set -euxo pipefail
+          T="${{ matrix.target }}"
+          if [[ "$T" == *pc-windows-gnu ]]; then
+            file "$CARGO_TARGET_DIR/$T/release/xbin.exe" | grep -q "PE32+"
+            file "$CARGO_TARGET_DIR/$T/release/xbin-stub.exe" | grep -q "PE32+"
+          else
+            file "$CARGO_TARGET_DIR/$T/release/xbin" | grep -q "Mach-O"
+            file "$CARGO_TARGET_DIR/$T/release/xbin-stub" | grep -q "Mach-O"
+          fi
+          echo "artifact OK: $T"
