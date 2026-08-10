@@ -2,6 +2,8 @@
 
 Generated from security audit and code review. All tests pass, clippy passes, fmt passes — these are issues beyond the verification loop.
 
+> **Second review pass (2026-08-10):** items #23–#42 added after a full codebase re-read. Note: #2 (static mut signal handler) and #18 (v2/v3 footer) are already resolved in the current code (`OnceLock<Mutex<Vec<i32>>>`, version-gated footer parse) — kept above for historical context.
+
 ---
 
 ## 🔴 Critical (Fix Immediately)
@@ -29,6 +31,27 @@ static mut CHILD_PIDS: Vec<i32> = Vec::new();
 **Location:** `stub/src/crypto.rs:160-172` has `ct_eq_sha256` but verify all uses
 - SHA-256 integrity check uses constant-time — good
 - **Action:** Audit all secret comparisons (keys, nonces, signatures) use constant-time.
+
+### 23. `--squashfs` Builds Are Broken (Payload Is Always zstd+tar)
+**Location:** `xbin-cli/src/commands/build.rs:914, 1249`, `stub/src/main.rs:302-305`, `stub/src/squashfs_extract.rs`
+- The CLI always creates the payload with `create_tar_zstd_with_level` (zstd+tar); `--squashfs` only sets `meta.payload_format = "squashfs"` + format version 5
+- At runtime the stub sees `payload_format == "squashfs"` and tries to parse the zstd+tar bytes as a squashfs image with `backhand::v4::FilesystemReader` → parse error, extraction fails on first run
+- **No `mksquashfs` invocation exists anywhere in the CLI** (doctor.rs checks for it; nothing uses it)
+- **Action:** Either implement real squashfs creation (shell out to `mksquashfs`), or make `--squashfs` fail loudly at build time with "not implemented". Also fix the asymmetry: zstd+tar extraction limit is 1GB/50k files, squashfs path has different bounds.
+
+### 24. `--encrypt --enable-sisr` Produces Undecryptable Binaries
+**Location:** `xbin-cli/src/commands/build.rs:957-985`, `stub/src/main.rs:280-291`, `xbin-core/src/encrypt.rs:146-232`
+- Build encrypts per-chunk (`encrypt_chunks`) and tags crypto meta with `"chunked": true`
+- The stub only takes the chunked decrypt path when `meta.layers` is non-empty — but the CLI always writes `layers: []` (`build.rs:1254`) → stub falls back to full-payload `decrypt_aes_gcm` → GCM tag authentication fails → binary unusable
+- The SISR manifest chunk table describes *plaintext* offsets/lengths, so the update engine slices ciphertext incorrectly even if decryption were fixed
+- **Action:** Populate `meta.layers` from the SISR chunk table (with ciphertext-aware offsets), or reject the `--encrypt --enable-sisr` combination at build time until the chunk boundaries match the encrypted bytes.
+
+### 25. `--tree-shake` / `--minify` Destroy the User's Source Tree In Place
+**Location:** `xbin-cli/src/commands/build.rs:571-585`, `xbin-core/src/treeshake.rs:178`, `xbin-core/src/minify.rs:70`
+- `prune_node_modules(app_dir)` and `minify_app_dir(app_dir)` operate directly on `plan.app_dir` (the user's project), *before* the copy into the rootfs happens (`build.rs:808`)
+- Unused node_modules packages are permanently deleted and JS/CSS rewritten in the user's source tree; irreversible without `npm install` again
+- Runs once per target on multi-arch builds (second run is a no-op only by luck)
+- **Action:** Copy the app to a staging dir first, then tree-shake/minify the staging copy. Never mutate the source directory.
 
 ---
 
@@ -73,6 +96,26 @@ const READ_ONLY: u64 = EXECUTE | READ_FILE | READ_DIR; // allows execution outsi
 - `assembly.rs:assemble_xbin_with_sisr_artifacts` (8 params)
 - **Action:** Create `BuildMetaConfig`, `AssembleConfig` structs.
 
+### 26. Embedded Interpreters Fail on Hosts Without the Runtime
+**Location:** `stub/src/exec.rs:452, 458-465`
+- For interpreted runtimes, the pre-flight `is_executable(interpreter_name)` searches the **host** PATH (env not yet overridden — `setup_env`/`set_var` run later at `exec.rs:467-475`)
+- With `--embed-interpreter` on a host lacking python3/node, execution fails with "interpreter 'python3' not found" even though the rootfs copy exists and `execvp` would have found it via the rootfs-first PATH
+- This breaks the exact use case embedding was built for (run on machines without the runtime)
+- **Action:** Use the rootfs PATH for the pre-flight check, and/or set argv[0] to the absolute rootfs path (also removes PATH ambiguity).
+
+### 27. `xbin upgrade` Installs Unverified Binaries (With Sudo)
+**Location:** `xbin-cli/src/commands/upgrade.rs:81-86, 124-171, 285-293`
+- Checksum fetch failure is a **warning only** — the download proceeds unverified and is installed via `sudo cp`
+- No signature verification (TOFU) of release tarballs; self-update + sudo = supply chain risk
+- `is_writable()` only checks the POSIX readonly bit, which does not reflect actual writability
+- **Action:** Fail closed when the checksum cannot be verified; verify the release signature; attempt a real write probe for writability.
+
+### 28. `xbin sign` on a SISR-Enabled File Corrupts It
+**Location:** `xbin-cli/src/commands/sign.rs:98`, `xbin-cli/src/commands/build.rs:1350`
+- `sign.rs` only checks `is_signed()`, not `FLAG_SISR`; build.rs guards the combination, but the standalone `xbin sign <file>` does not
+- Inserting the sig block between meta and footer shifts the SISR manifest/SisrFooterExt offsets → unbootable binary
+- **Action:** Bail in `sign_file` when `footer.has_sisr()` (or support signature-insertion in the SISR layout properly).
+
 ---
 
 ## 🟡 Medium (Track for Next Release)
@@ -110,6 +153,56 @@ const READ_ONLY: u64 = EXECUTE | READ_FILE | READ_DIR; // allows execution outsi
 **Location:** `stub/src/main.rs:943-967` (`gc_extraction_cache`)
 - Reads dir, sorts by mtime, removes oldest — concurrent extraction can race
 - **Action:** Use lock file or atomic rename marker for GC coordination.
+
+### 29. Build Cache Key Ignores Build Configuration
+**Location:** `xbin-cli/src/commands/build.rs:595`, `xbin-core/src/paths.rs` (`BuildCache`)
+- `BuildCache::find(&new_app_hash, target)` keys only on app hash (+ target) — not on encrypt/sign/isolation/seccomp/landlock/env/squashfs flags
+- Two builds of the same app with different options reuse the same cached artifact → stale/wrong binary copied to output
+- The hash is also computed *after* the destructive tree-shake/minify mutation (see #25)
+- **Action:** Include a config-hash (canonicalized build options) in the cache key.
+
+### 30. Stub Config Precedence Inverted (Global Overrides Local)
+**Location:** `stub/src/config.rs:38-54, 98-107`
+- `AppConfig::load()` merges local `xbin.toml` first, then global `~/.xbin/config.toml`; `merge()` *replaces* `database`/`secrets` wholesale
+- Result: global config overrides local config — the opposite of the documented layering (local > env > global)
+- **Action:** Swap merge order or make `merge()` fill-in (local wins), and add a precedence test.
+
+### 31. Local Config Next to the Binary Is Silently Trusted
+**Location:** `stub/src/config.rs:62-78, 101-116`
+- The stub reads `xbin.toml` / `config.toml` from the *binary's directory* and injects `[secrets]` as `XBIN_SECRET_*` + `DATABASE_URL` into the app
+- For a shared install dir (e.g. `/usr/local/bin`), anyone able to write that directory hijacks secrets for every user who runs the binary; the generic `config.toml` fallback name can also pick up unrelated files
+- **Action:** Document the threat model; consider requiring `xbin.toml` only (not the generic `config.toml`), validating ownership/permissions, and warning when the file is world-writable.
+
+### 32. Warm Start Skips Signature + Integrity Verification
+**Location:** `stub/src/main.rs:225-228`
+- On extraction-cache hit, `exec_app` runs without signature/Ed25519 or SHA-256 verification (verified only on the cold path)
+- Cache poisoning at `~/.cache/xbin/<hash>/rootfs` = arbitrary code execution as the invoking user
+- **Action:** Same-user only today (acceptable), but document the trust model, verify cache ownership/perms, and optionally re-verify the hash cheaply.
+
+### 33. `--seccomp` / `--landlock` Are Silent No-Ops Without `--isolation 2`
+**Location:** `stub/src/exec.rs:394-417, 642-660`
+- Both sandbox features are gated behind `use_pivot` (isolation ≥ 2); a user passing `--seccomp` alone gets an unsandboxed build with no warning
+- **Action:** Warn at build time and/or runtime when the flags cannot take effect.
+
+### 34. `--xbin-update` Arg-Swallowing Heuristic
+**Location:** `stub/src/update_url.rs:23-28`
+- "Next non-dash argv is the update URL" consumes the app's first positional argument (e.g. `app.xbin --xbin-update serve` eats `serve`)
+- **Action:** Require `--xbin-update=<URL>` or a dedicated separator; never guess from positionals.
+
+### 35. App-Bundled `.env` Overrides Explicit Configuration
+**Location:** `stub/src/exec.rs:113-116`
+- `load_dotenv(rootfs, ...)` is applied last and overwrites `meta.env` (`--env` flags) and `DATABASE_URL` from config on key collisions
+- **Action:** Decide and document precedence; `--env`/config should win over the app's own `.env`.
+
+### 36. Unconditional `remove_dir_all("/tmp/xbin-build-tools")`
+**Location:** `xbin-cli/src/commands/build.rs:907`
+- Legacy hardcoded deletion of a shared `/tmp` path (potentially created by another user/process), plus the cache build-tools dir
+- **Action:** Remove the `/tmp` branch; only clean the tool's own `cache_dir()/build-tools`.
+
+### 37. Unverified Build-Time Tool Downloads
+**Location:** `xbin-cli/src/commands/build.rs:1660` (node tarball), `build.rs:1693` (composer.phar via `php -r copy(...)`)
+- Downloaded over HTTPS with no checksum pinning; composer runs without script suppression
+- **Action:** Pin checksums, use `--no-scripts` / `--ignore-scripts` everywhere, or require a user-provided tool path.
 
 ---
 
@@ -156,6 +249,31 @@ Despite clippy allows:
 - Check for `mem::forget` / `.leak()`
 - **Action:** Audit and fix incrementally.
 
+### 38. SISR Footer Extension Fields Not Bounded at Parse Time
+**Location:** `xbin-core/src/sisr_header.rs`, `stub/src/main.rs` (SisrFooterExt read)
+- `chunk_table_len` is trusted from the footer ext without a sanity bound check before slicing
+- **Action:** Bound `chunk_table_len` against the file size / max manifest size at read.
+
+### 39. Signal Handler Uses `Mutex::lock()` + `signal()` Instead of `sigaction`
+**Location:** `stub/src/exec.rs:895-927`
+- `signal_forward` calls `Mutex::lock()` inside a signal handler (async-signal-unsafe; low risk today because only the main thread locks it) and `signal(2)` is legacy
+- **Action:** Switch to `sigaction`, use a lock-free/atomic structure, or a self-pipe to defer work to the main loop.
+
+### 40. Unknown Runtime Silently Maps to `bash`
+**Location:** `stub/src/exec.rs:510-519`
+- `resolve_entrypoint` maps any unrecognized runtime to `bash`; a typo'd runtime name launches via bash (or errors misleadingly)
+- **Action:** Reject unknown runtimes at build time; stub should error with a clear message.
+
+### 41. Dead Code: `meta.layers` Always Empty → Layered Cache Dormant
+**Location:** `xbin-cli/src/commands/build.rs:1254` (`layers: &[]`), `stub/src/main.rs:229-233` (`cache_key_v2`, `slice_layers`)
+- The layered extraction/cache path and `cache_key_v2` can never trigger with CLI-built binaries
+- **Action:** Either wire layers up (see #24) or delete the dormant paths to reduce review surface.
+
+### 42. `sign.rs` Hardcodes `sig_size = 64`
+**Location:** `xbin-cli/src/commands/sign.rs:117`
+- Works for Ed25519 today, but the sig block layout is duplicated with `SIG_BLOCK_SIZE`/`SIG_BLOCK_SIZE_FIELD` constants
+- **Action:** Use the shared format constants instead of literals.
+
 ---
 
 ## ✅ Positive Findings (Maintain)
@@ -186,6 +304,12 @@ Despite clippy allows:
 8. **PR 8:** Remove hardcoded constants (#17) + error sanitization (#20)
 9. **PR 9:** ANSSI compliance cleanup in xbin-core (#22)
 10. **PR 10:** Interpreter integrity + cross-version tests (#14, #19)
+11. **PR 11:** Stage the app copy before tree-shake/minify (#25) + cache key includes config (#29)
+12. **PR 12:** Fix `--squashfs` (real mksquashfs or loud failure) + `--encrypt --enable-sisr` (#23, #24)
+13. **PR 13:** Embedded interpreter exec fix (#26) + `xbin sign` SISR guard (#28)
+14. **PR 14:** `xbin upgrade` fail-closed checksum + release signature verification (#27)
+15. **PR 15:** Stub config precedence + trust model (#30, #31) + warm-start verification note (#32)
+16. **PR 16:** Sandbox no-op warnings (#33) + update URL parsing (#34) + env precedence (#35) + cleanup (#36, #37, #38, #39, #40, #41, #42)
 
 ---
 
@@ -193,15 +317,17 @@ Despite clippy allows:
 
 | Label | Issues |
 |-------|--------|
-| `security` | #1, #2, #3, #4, #5, #6 |
-| `unsafe-audit` | #2, #7 |
-| `refactor` | #8, #9, #16 |
+| `security` | #1, #2, #3, #4, #5, #6, #27, #31, #32, #37 |
+| `unsafe-audit` | #2, #7, #39 |
+| `refactor` | #8, #9, #16, #41, #42 |
 | `testing` | #10, #21 |
 | `windows` | #11 |
 | `configurable` | #12, #17 |
-| `sandbox` | #6, #13 |
+| `sandbox` | #6, #13, #33 |
 | `docs` | #1, #18 |
-| `tech-debt` | #16, #17, #20, #22 |
+| `tech-debt` | #16, #17, #20, #22, #36, #40 |
+| `broken-feature` | #23, #24, #25, #26, #28, #34, #35 |
+| `cache-correctness` | #29, #30 |
 
 ---
 
