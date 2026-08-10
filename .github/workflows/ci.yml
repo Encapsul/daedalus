@@ -47,9 +47,14 @@ jobs:
         run: cargo test --workspace
 
       - name: Test CLI build (smoke test)
+        timeout-minutes: 10
         run: |
           /tmp/xbin-stub-target/release/xbin build examples/hello-web --isolation none -o /tmp/hello-web.xbin
-          /tmp/hello-web.xbin
+          /tmp/hello-web.xbin &
+          PID=$!
+          sleep 5
+          curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "smoke test passed" || { echo "smoke test failed"; kill $PID; exit 1; }
+          kill $PID || true
 
   clippy-fmt:
     runs-on: ubuntu-latest

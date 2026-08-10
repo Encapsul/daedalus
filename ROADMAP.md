@@ -202,3 +202,32 @@ Despite clippy allows:
 | `sandbox` | #6, #13 |
 | `docs` | #1, #18 |
 | `tech-debt` | #16, #17, #20, #22 |
+
+---
+
+## 🧭 Product Direction: Composable Execution Artifact
+
+### The XKCD 927 trap (we are aware of it)
+
+> *"There are 14 competing standards." → "14?! Ridiculous! We need one universal standard that covers all use cases." → "There are 15 competing standards."*
+
+x.bin is a packaging format standing next to AppImage, Snap, Flatpak, deb, Docker, OCI, Nix, Wasm, pkg, PyInstaller. **Positioning x.bin as "a better AppImage", "a Docker killer", or "a universal format" guarantees we become the 15th standard.** The reframe is deliberately *not* a marketing slogan — it is a **feature-prioritization tool**: "compose existing formats instead of reinventing them", then prioritize by **architectural fit** (how directly a feature plugs into the existing CAS + layers + manifest + sandbox pipeline).
+
+> Positioning statement: **x.bin is a portable execution artifact that composes existing software artifacts into a single verifiable, updateable, sandboxed unit.**
+
+### Feature backlog, prioritized by architectural fit
+
+| # | Feature | Fit | Priority | Why |
+|---|---------|-----|----------|-----|
+| F1 | **OCI import** (`xbin import docker://...`) | 🔴 high | **Now** | x.bin packages a rootfs; an OCI image *is* a layered rootfs. Reuses detection → layers → CAS → sign → sandbox → update unchanged. Widest app-catalog expansion with zero new infrastructure. |
+| F2 | **Large payloads / mmap (AI model case)** | 🔴 high | **Now** | The flagship "local AI" use case (llama.cpp + multi-GB model + web UI) needs no GGUF support — a model is just a data file (`--include`). The real gap is streaming + mmap for multi-GB payloads without disk extraction. Already Phase 3 in docs. |
+| F3 | **Wasm runtime embedding** | 🟡 medium | Later | Requires embedding a runtime (wasmtime) in the stub + a new isolation model = literally a 12th runtime. Competes with wasmer. Build only on demonstrated demand. |
+| F4 | **Nix closure support** | 🟢 low | Later | `nix-store -qR` presupposes Nix installed. A build *input*, not a distribution format users consume as a single file. Only if users are already Nix users. |
+
+### Design rules (anti-XKCD)
+
+1. **Never invent a new on-disk standard.** ELF, tar, zstd, SquashFS, Ed25519, POSIX rootfs — all standard. Novelty is the pipeline, not a new container/archive format.
+2. **One evolving format, not many.** New features extend `.xbin` backward-compatibly (v2→v3→v4→v5). Never fork the format or introduce a parallel one.
+3. **Encapsulate, don't absorb.** OCI/Nix/Wasm are *referenced or embedded as blobs*, never rewritten into a new proprietary representation.
+4. **Interop over lock-in.** A `.xbin` is unpackable with standard tools (`tar`, `unsquashfs`, `zstd`); no proprietary reader needed to access the payload.
+5. **Narrow scope.** Headless web/server headless only. Desktop integration, orchestration, and package-registry are explicitly out — that is what keeps us off the 15th-standard slide.

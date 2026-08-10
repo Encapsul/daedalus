@@ -42,8 +42,9 @@ prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
 | `meta_size`      | 80     | u64   | 8    | metadata size in bytes                       |
 | `footer_magic`   | 88     | u32   | 4    | `0xBEEFCAFE` end sentinel                    |
 
-The spec is implemented in `xbin-core/src/format.rs` (read/write) and
-`stub/src/format.rs` (read). Both must stay synchronized.
+The spec is implemented in `xbin-core/src/format.rs` — the single source of
+truth, shared by the launcher (stub) and the CLI. There is no separate
+`stub/src/format.rs`.
 
 ### Design decision: footer at end, not header at start
 

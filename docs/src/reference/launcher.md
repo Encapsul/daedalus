@@ -4,7 +4,7 @@ The launcher ("stub") is the small program embedded at the head of every
 `.xbin`. It's the ELF the kernel runs when the user executes
 `./my_app.xbin`.
 
-- **Code**: `stub/src/main.rs` + `stub/src/format.rs`
+- **Code**: `stub/src/main.rs` + `xbin-core/src/format.rs` (shared format parser)
 - **Language**: Rust, statically compiled for `x86_64-unknown-linux-musl` →
   zero dynamic dependencies, runs everywhere.
 - **Size**: ~600 KB (musl static, opt-level=z, LTO, strip, panic=abort).
