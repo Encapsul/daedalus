@@ -25,7 +25,7 @@ use arch_consts::AUDIT_ARCH;
 ///
 /// Blocks syscalls that have no legitimate use in a packaged web/server app
 /// and represent escalation paths not covered by namespace isolation.
-/// The list is conservative: only ~14 syscalls, all clearly dangerous.
+/// The list is conservative: 18 syscalls, all clearly dangerous.
 /// Apps that work without seccomp continue working with it.
 #[cfg(target_os = "linux")]
 pub fn install_seccomp_denylist() -> io::Result<()> {
@@ -79,6 +79,8 @@ pub(crate) fn build_seccomp_filter() -> Vec<libc::sock_filter> {
     const SYS_KEXEC_FILE_LOAD: u32 = libc::SYS_kexec_load as u32;
 
     const SYS_PTRACE: u32 = libc::SYS_ptrace as u32;
+    const SYS_BPF: u32 = libc::SYS_bpf as u32;
+    const SYS_USERFAULTFD: u32 = libc::SYS_userfaultfd as u32;
     const SYS_MOUNT: u32 = libc::SYS_mount as u32;
     const SYS_UMOUNT2: u32 = libc::SYS_umount2 as u32;
     const SYS_PIVOT_ROOT: u32 = libc::SYS_pivot_root as u32;
@@ -120,26 +122,28 @@ pub(crate) fn build_seccomp_filter() -> Vec<libc::sock_filter> {
     #[allow(clippy::similar_names)]
     let filter: Vec<libc::sock_filter> = vec![
         arch_load(BPF_LD, 0, 0, 4),        //  0: load architecture
-        jmp_eq(AUDIT_ARCH, 0, 18),         //  1: arch mismatch -> idx 20 (ALLOW)
+        jmp_eq(AUDIT_ARCH, 0, 20),         //  1: arch mismatch -> idx 22 (ALLOW)
         arch_load(BPF_LD, 0, 0, 0),        //  2: load syscall number
-        jmp_eq(SYS_PTRACE, 15, 0),         //  3: match -> idx 19 (KILL)
-        jmp_eq(SYS_MOUNT, 14, 0),          //  4
-        jmp_eq(SYS_UMOUNT2, 13, 0),        //  5
-        jmp_eq(SYS_PIVOT_ROOT, 12, 0),     //  6
-        jmp_eq(SYS_REBOOT, 11, 0),         //  7
-        jmp_eq(SYS_SETHOSTNAME, 10, 0),    //  8
-        jmp_eq(SYS_SETDOMAINNAME, 9, 0),   //  9
-        jmp_eq(SYS_SWAPON, 8, 0),          // 10
-        jmp_eq(SYS_SWAPOFF, 7, 0),         // 11
-        jmp_eq(SYS_ACCT, 6, 0),            // 12
-        jmp_eq(SYS_NFSSERVCTL, 5, 0),      // 13
-        jmp_eq(SYS_KEXEC_LOAD, 4, 0),      // 14
-        jmp_eq(SYS_INIT_MODULE, 3, 0),     // 15
-        jmp_eq(SYS_FINIT_MODULE, 2, 0),    // 16
-        jmp_eq(SYS_DELETE_MODULE, 1, 0),   // 17
-        jmp_eq(SYS_KEXEC_FILE_LOAD, 0, 1), // 18: no match -> idx 20 (ALLOW)
-        ret(SECCOMP_RET_KILL_PROCESS),     // 19: deny target
-        ret(SECCOMP_RET_ALLOW),            // 20: allow fallthrough
+        jmp_eq(SYS_PTRACE, 17, 0),         //  3: match -> idx 21 (KILL)
+        jmp_eq(SYS_BPF, 16, 0),            //  4
+        jmp_eq(SYS_USERFAULTFD, 15, 0),    //  5
+        jmp_eq(SYS_MOUNT, 14, 0),          //  6
+        jmp_eq(SYS_UMOUNT2, 13, 0),        //  7
+        jmp_eq(SYS_PIVOT_ROOT, 12, 0),     //  8
+        jmp_eq(SYS_REBOOT, 11, 0),         //  9
+        jmp_eq(SYS_SETHOSTNAME, 10, 0),    // 10
+        jmp_eq(SYS_SETDOMAINNAME, 9, 0),   // 11
+        jmp_eq(SYS_SWAPON, 8, 0),          // 12
+        jmp_eq(SYS_SWAPOFF, 7, 0),         // 13
+        jmp_eq(SYS_ACCT, 6, 0),            // 14
+        jmp_eq(SYS_NFSSERVCTL, 5, 0),      // 15
+        jmp_eq(SYS_KEXEC_LOAD, 4, 0),      // 16
+        jmp_eq(SYS_INIT_MODULE, 3, 0),     // 17
+        jmp_eq(SYS_FINIT_MODULE, 2, 0),    // 18
+        jmp_eq(SYS_DELETE_MODULE, 1, 0),   // 19
+        jmp_eq(SYS_KEXEC_FILE_LOAD, 0, 1), // 20: no match -> idx 22 (ALLOW)
+        ret(SECCOMP_RET_KILL_PROCESS),     // 21: deny target
+        ret(SECCOMP_RET_ALLOW),            // 22: allow fallthrough
     ];
 
     filter
@@ -158,12 +162,12 @@ mod tests {
         let filter = build_seccomp_filter();
 
         // 18 syscall checks + arch load + arch jmp + syscall load + kill + allow.
-        assert_eq!(filter.len(), 21, "filter instruction count changed");
+        assert_eq!(filter.len(), 23, "filter instruction count changed");
 
         // THE critical "not deny-all" invariant: the final fallthrough return
         // must be ALLOW, not KILL_PROCESS. If this ever flips, every syscall
         // is blocked and the launcher can no longer exec anything.
-        let allow = &filter[20];
+        let allow = &filter[22];
         assert_eq!(allow.code, BPF_RET | BPF_K);
         assert_eq!(
             allow.k,
@@ -173,32 +177,51 @@ mod tests {
 
         // The deny target (reached on a matched dangerous syscall) must actually
         // kill: KILL_PROCESS is 0x8000_0000 (non-zero, not a silent no-op).
-        let kill = &filter[19];
+        let kill = &filter[21];
         assert_eq!(kill.code, BPF_RET | BPF_K);
         assert_eq!(kill.k, libc::SECCOMP_RET_KILL_PROCESS);
         assert_ne!(kill.k, 0, "KILL target must be a real kill, not a no-op");
 
-        // Architecture-mismatch path (filter[1], jf=18) must land on ALLOW (idx 20),
+        // Architecture-mismatch path (filter[1], jf=20) must land on ALLOW (idx 22),
         // i.e. cross-arch/mismatched syscalls are permitted rather than killed.
         // On BPF_JEQ: equal -> jt, not-equal -> jf. Mismatch is the not-equal
         // branch, so we use jf.
         let arch_mismatch_land = 1 + 1 + filter[1].jf as usize;
-        assert_eq!(arch_mismatch_land, 20);
+        assert_eq!(arch_mismatch_land, 22);
         assert_eq!(filter[arch_mismatch_land].k, libc::SECCOMP_RET_ALLOW);
 
-        // Each syscall-deny jump must land on the KILL target (idx 19): for
+        // Each syscall-deny jump must land on the KILL target (idx 21): for
         // instruction at index n, jt means "skip jt instructions on match",
         // landing at n + 1 + jt.
-        for (idx, insn) in filter.iter().enumerate().take(19).skip(3) {
+        for (idx, insn) in filter.iter().enumerate().take(21).skip(3) {
             // Only the BPF_JMP instructions carry the syscall comparisons.
             if insn.code & 0x05 != 0x05 {
                 continue;
             }
             let land = idx + 1 + insn.jt as usize;
             assert_eq!(
-                land, 19,
-                "deny jump at idx {idx} must reach KILL (idx 19), not {land}"
+                land, 21,
+                "deny jump at idx {idx} must reach KILL (idx 21), not {land}"
             );
+        }
+
+        // The documented dangerous syscalls are all present.
+        let blocked: Vec<u32> = filter
+            .iter()
+            .enumerate()
+            .take(21)
+            .skip(3)
+            .filter(|(_, i)| i.code & 0x05 == 0x05)
+            .map(|(_, i)| i.k)
+            .collect();
+        for want in [
+            libc::SYS_ptrace as u32,
+            libc::SYS_bpf as u32,
+            libc::SYS_userfaultfd as u32,
+            libc::SYS_mount as u32,
+            libc::SYS_pivot_root as u32,
+        ] {
+            assert!(blocked.contains(&want), "missing denylist entry: {want}");
         }
 
         // BPF program length fits in the u16 `len` field sock_fprog uses.
