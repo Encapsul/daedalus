@@ -408,6 +408,25 @@ pub fn check_executable(path: &str) -> bool {
     })
 }
 
+/// Whether `prog` is runnable: on the host PATH or, for a bare interpreter
+/// name, inside the rootfs bin dirs (embedded-interpreter case). With
+/// `pivot_root` the rootfs PATH takes over before `execvp`, so a rootfs-only
+/// interpreter must pass the pre-flight even when the host lacks the runtime.
+#[cfg(unix)]
+fn entrypoint_is_executable(prog: &[u8], interpreter_name: &str, rootfs: &Path) -> bool {
+    if is_executable(prog) {
+        return true;
+    }
+    // Absolute/relative paths can't fall back to the rootfs search.
+    if prog.contains(&b'/') {
+        return false;
+    }
+    crate::BIN_PATHS.iter().any(|dir| {
+        let candidate = rootfs.join(dir).join(interpreter_name);
+        check_executable(&candidate.to_string_lossy())
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Single-service exec
 // ---------------------------------------------------------------------------
@@ -489,7 +508,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
         let prog_c = cstr(prog.as_os_str().as_bytes())?;
         let prog_path_bytes = prog.as_os_str().as_bytes();
 
-        if !is_executable(prog_path_bytes) {
+        if !entrypoint_is_executable(prog_path_bytes, &interpreter_name, rootfs) {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 format!(
@@ -514,7 +533,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
                 }
             }
         } else {
-            if !is_executable(interpreter_name.as_bytes()) {
+            if !entrypoint_is_executable(interpreter_name.as_bytes(), &interpreter_name, rootfs) {
                 return Err(io::Error::new(
                     io::ErrorKind::NotFound,
                     format!("[xbin] error: interpreter '{}' not found", interpreter_name),
@@ -998,6 +1017,8 @@ extern "C" fn signal_forward(sig: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     /// Serializes fork-based tests (see `wait_for_children` docs).
     static FORK_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -1022,6 +1043,34 @@ mod tests {
     #[test]
     fn check_executable_returns_false_for_missing_path() {
         assert!(!check_executable("/nonexistent/binary"));
+    }
+
+    #[test]
+    fn entrypoint_executable_falls_back_to_rootfs_interpreter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rootfs = tmp.path();
+        std::fs::create_dir_all(rootfs.join("usr/bin")).unwrap();
+        let interp = rootfs.join("usr/bin/python3");
+        std::fs::write(&interp, b"#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&interp, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        // Embedded interpreter exists only in the rootfs: the pre-flight must
+        // still pass when the host PATH has no `python3`.
+        assert!(entrypoint_is_executable(b"python3", "python3", rootfs));
+    }
+
+    #[test]
+    fn entrypoint_executable_rejects_absolute_missing_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rootfs = tmp.path();
+        std::fs::create_dir_all(rootfs.join("usr/bin")).unwrap();
+        std::fs::write(rootfs.join("usr/bin/python3"), b"x").unwrap();
+        // An absolute prog path cannot fall back to the rootfs search.
+        assert!(!entrypoint_is_executable(
+            b"/app/python3",
+            "python3",
+            rootfs
+        ));
     }
 
     #[test]
