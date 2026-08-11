@@ -567,25 +567,10 @@ fn build_single_target(
     let license = plan.license.clone();
     let env_file = plan.env_file.clone();
 
-    // ── Tree-shaking: remove unused node_modules packages ──────────────
-    if args.tree_shake {
-        let removed = xbin_core::treeshake::prune_node_modules(app_dir, verbose)
-            .context("tree-shaking failed")?;
-        if verbose {
-            eprintln!("  tree-shake: removed {removed} unused package(s)");
-        }
-    }
-
-    // ── Minification: shrink JS/TS/CSS ────────────────────────────────
-    if args.minify {
-        let minified =
-            xbin_core::minify::minify_app_dir(app_dir, verbose).context("minification failed")?;
-        if verbose {
-            eprintln!("  minify: minified {minified} file(s)");
-        }
-    }
-
     // ── Compute hashes for incremental update ──────────────────────────
+    // Hashed BEFORE tree-shake/minify run: those mutate a staging copy
+    // below, and the cache/`--update` keys must reflect the pristine
+    // source, not its by-products, or a rebuild would never match.
     let new_app_hash = xbin_core::include::hash_app_files(app_dir);
     let new_rt_hash = xbin_core::include::hash_lock_file(app_dir);
 
@@ -807,6 +792,26 @@ fn build_single_target(
     let include_node_modules = true;
     copy_dir_recursive_with(app_dir, &rootfs.join("app"), include_node_modules)
         .context("failed to copy app files")?;
+
+    // ── Tree-shake / minify on the STAGING COPY ───────────────────────
+    // Never mutate the source directory: a build must leave `app_dir`
+    // byte-identical so repeat builds and `--update` hash comparisons see
+    // the real input.
+    if args.tree_shake {
+        let removed = xbin_core::treeshake::prune_node_modules(&rootfs.join("app"), verbose)
+            .context("tree-shaking failed")?;
+        if verbose {
+            eprintln!("  tree-shake: removed {removed} unused package(s)");
+        }
+    }
+
+    if args.minify {
+        let minified = xbin_core::minify::minify_app_dir(&rootfs.join("app"), verbose)
+            .context("minification failed")?;
+        if verbose {
+            eprintln!("  minify: minified {minified} file(s)");
+        }
+    }
 
     // ── Include extra files ───────────────────────────────────────────
     if !args.include.is_empty() {
