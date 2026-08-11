@@ -2,6 +2,7 @@ use crate::remote_cache::remote_cache_from_args;
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use ed25519_dalek::SigningKey;
+use sha2::Digest;
 use std::path::{Path, PathBuf};
 use xbin_core::detect;
 use xbin_core::embed;
@@ -172,6 +173,95 @@ fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<PathBuf> {
             dir.join(format!("{name}-{slug}.{ext}"))
         })
         .collect()
+}
+
+/// Canonical fingerprint of every build option that changes the output
+/// artifact. The build cache keys on this *alongside* the app-source hash,
+/// so two builds of the same app with different flags never share a cache
+/// entry — previously a `--squashfs` build could be served from a zstd
+/// entry, or a signed build from an unsigned one.
+fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
+    let mut canonical: Vec<String> = Vec::new();
+    canonical.push(format!("isolation={}", plan.isolation));
+    canonical.push(format!("no_install={}", plan.no_install));
+    canonical.push(format!("seccomp={}", plan.seccomp));
+    canonical.push(format!("landlock={}", plan.landlock));
+    canonical.push(format!("encrypt={}", plan.encrypt));
+    canonical.push(format!("squashfs={}", plan.squashfs));
+    canonical.push(format!("compress={}", args.compression_level));
+    canonical.push(format!("sisr={}", args.enable_sisr));
+    canonical.push(format!("redetect={}", args.redetect));
+    if let Some(url) = &args.update_url {
+        canonical.push(format!("update_url={url}"));
+    }
+    canonical.push(format!("persist={}", args.persist));
+    canonical.push(format!("health_port={:?}", args.health_port));
+    if let Some(ep) = &args.health_endpoint {
+        canonical.push(format!("health_endpoint={ep}"));
+    }
+    if let Some(v) = &plan.version_info {
+        canonical.push(format!("version={v}"));
+    }
+    if let Some(v) = &plan.author {
+        canonical.push(format!("author={v}"));
+    }
+    if let Some(v) = &plan.description {
+        canonical.push(format!("description={v}"));
+    }
+    if let Some(v) = &plan.license {
+        canonical.push(format!("license={v}"));
+    }
+    if let Some(v) = &plan.env_file {
+        let content = std::fs::read(v)
+            .map(|b| hex::encode(sha2::Sha256::digest(&b)))
+            .unwrap_or_else(|_| "unreadable".to_string());
+        canonical.push(format!("env_file={}:{content}", v.display()));
+    }
+    let mut env: Vec<&String> = args.env.iter().collect();
+    env.sort();
+    for e in env {
+        canonical.push(format!("env={e}"));
+    }
+    let mut define: Vec<&String> = args.define.iter().collect();
+    define.sort();
+    for d in define {
+        canonical.push(format!("define={d}"));
+    }
+    if let Some(interp) = &args.embed_interpreter {
+        canonical.push(format!("embed={interp}"));
+    }
+    if let Some(p) = &args.interpreter_path {
+        canonical.push(format!("interpreter_path={p}"));
+    }
+    canonical.push(format!("tree_shake={}", args.tree_shake));
+    canonical.push(format!("minify={}", args.minify));
+    if let Some(ep) = &args.otel_endpoint {
+        canonical.push(format!("otel={ep}/{}", args.otel_protocol));
+    }
+    let mut cron: Vec<&String> = args.cron.iter().collect();
+    cron.sort();
+    for c in cron {
+        canonical.push(format!("cron={c}"));
+    }
+    let mut include: Vec<&PathBuf> = args.include.iter().collect();
+    include.sort();
+    for p in include {
+        let rel = p.strip_prefix(&plan.app_dir).unwrap_or(p);
+        canonical.push(format!("include={}", rel.display()));
+    }
+    if let Some(key) = &args.key {
+        let content = std::fs::read(key)
+            .map(|b| hex::encode(sha2::Sha256::digest(&b)))
+            .unwrap_or_else(|_| "unreadable".to_string());
+        canonical.push(format!("key={content}"));
+    }
+
+    let mut hasher = sha2::Sha256::new();
+    for line in canonical {
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    hex::encode(hasher.finalize())[..16].to_string()
 }
 
 #[derive(Args)]
@@ -634,9 +724,10 @@ fn build_single_target(
     let new_rt_hash = xbin_core::include::hash_lock_file(app_dir);
 
     // ── Intelligent build cache: skip rebuild if hash matches ──────────
+    let cfg_hash = config_fingerprint(args, plan);
     if args.use_cache {
         let cache = xbin_core::paths::BuildCache::new(app_dir, 50);
-        if let Some(cached) = cache.find(&new_app_hash, target.as_deref()) {
+        if let Some(cached) = cache.find(&new_app_hash, &cfg_hash, target.as_deref()) {
             if verbose {
                 eprintln!("[xbin] cache hit — reusing cached build");
             }
@@ -1399,11 +1490,27 @@ fn build_single_target(
         eprintln!("SISR manifest written: {}", manifest.display());
     }
 
+    // Binary signature is mutually exclusive with SISR in a single build:
+    // `sign_file` rebuilds the file as `[..meta_end][sig][footer]`, which would
+    // truncate the SISR section. With `--enable-sisr`, `--key` instead signs
+    // the manifest (see `build_sisr_config`).
+    //
+    // Signing happens BEFORE the cache store so the cached artifact is the
+    // complete, signed binary — a cache hit must not serve an unsigned copy.
+    if !args.enable_sisr {
+        if let Some(key_path) = &args.key {
+            if verbose {
+                eprintln!("Signing...");
+            }
+            super::sign::sign_file(output, key_path, !verbose)?;
+        }
+    }
+
     // ── Store in build cache ──────────────────────────────────────────
     if args.use_cache {
         let cache = xbin_core::paths::BuildCache::new(app_dir, 50);
         if cache
-            .store(&new_app_hash, target.as_deref(), output)
+            .store(&new_app_hash, &cfg_hash, target.as_deref(), output)
             .is_ok()
             && verbose
         {
@@ -1414,24 +1521,11 @@ fn build_single_target(
     // ── Store in remote cache (Depot-style) ───────────────────────────
     if let Some(remote) = remote_cache_from_args(args, app_dir) {
         if remote
-            .store(&new_app_hash, target.as_deref(), output)
+            .store(&new_app_hash, &cfg_hash, target.as_deref(), output)
             .is_ok()
             && verbose
         {
             eprintln!("  remote cache: stored build");
-        }
-    }
-
-    // Binary signature is mutually exclusive with SISR in a single build:
-    // `sign_file` rebuilds the file as `[..meta_end][sig][footer]`, which would
-    // truncate the SISR section. With `--enable-sisr`, `--key` instead signs
-    // the manifest (see `build_sisr_config`).
-    if !args.enable_sisr {
-        if let Some(key_path) = &args.key {
-            if verbose {
-                eprintln!("Signing...");
-            }
-            super::sign::sign_file(output, key_path, !verbose)?;
         }
     }
 
@@ -2612,6 +2706,63 @@ mod tests {
             json: false,
             quiet: false,
         }
+    }
+
+    #[test]
+    fn config_fingerprint_changes_with_build_options() {
+        let app_dir = PathBuf::from("/tmp/fake-app");
+        let plan = |encrypt: bool, squashfs: bool| BuildPlan {
+            verbose: false,
+            app_dir: app_dir.clone(),
+            runtime: detect::Runtime::Python, // fixture only; not inspected here
+            runtime_name: "python".into(),
+            isolation: "sandbox".into(),
+            isolation_num: 2,
+            no_install: false,
+            seccomp: false,
+            landlock: false,
+            encrypt,
+            squashfs,
+            version_info: None,
+            author: None,
+            description: None,
+            license: None,
+            env_file: None,
+            targets: vec![None],
+            outputs: vec![PathBuf::from("app.xbin")],
+        };
+        let base = config_fingerprint(&default_build_args(), &plan(false, false));
+
+        let signed = default_build_args();
+        let dir = tempfile::tempdir().unwrap();
+        let key = dir.path().join("test.key");
+        std::fs::write(&key, [7u8; 32]).unwrap();
+        let signed = BuildArgs {
+            key: Some(key),
+            ..signed
+        };
+        assert_ne!(
+            config_fingerprint(&signed, &plan(false, false)),
+            base,
+            "--key must change the cache key"
+        );
+
+        assert_ne!(
+            config_fingerprint(&default_build_args(), &plan(true, false)),
+            base,
+            "--encrypt must change the cache key"
+        );
+        assert_ne!(
+            config_fingerprint(&default_build_args(), &plan(false, true)),
+            base,
+            "--squashfs must change the cache key"
+        );
+
+        assert_eq!(
+            config_fingerprint(&default_build_args(), &plan(false, false)),
+            config_fingerprint(&default_build_args(), &plan(false, false)),
+            "fingerprint must be deterministic"
+        );
     }
 
     #[test]
