@@ -11,8 +11,8 @@ use ed25519_dalek::{Signature, Verifier};
 use sha2::{Digest, Sha256};
 
 use crate::{CryptoMeta, Footer};
-use xbin_core::encrypt::hkdf_derive_key as core_hkdf_derive_key;
-use xbin_core::format::{SIG_BLOCK_SIZE, SIG_LEN};
+use erebus_core::encrypt::hkdf_derive_key as core_hkdf_derive_key;
+use erebus_core::format::{SIG_BLOCK_SIZE, SIG_LEN};
 
 /// Verify Ed25519 signature: `Ed25519_verify(SHA256(payload‖meta‖footer), sig, public_key)`.
 ///
@@ -92,7 +92,7 @@ pub fn load_trusted_keys() -> io::Result<Vec<ed25519_dalek::VerifyingKey>> {
 /// Return the directory where trusted Ed25519 public keys are stored.
 /// Override via `$XBIN_TRUSTED_DIR`; default `~/.xbin/trusted-keys/`.
 pub fn trusted_keys_dir() -> PathBuf {
-    xbin_core::paths::trusted_keys_dir()
+    erebus_core::paths::trusted_keys_dir()
 }
 
 // ---------------------------------------------------------------------------

@@ -41,7 +41,7 @@ pub fn run(args: DoctorArgs) -> Result<()> {
         check_musl_target(false),
         check_command("cc", &["--version"], false),
         check_command("zstd", &["--version"], false),
-        check_xbin_stub(false),
+        check_erebus_stub(false),
         // Optional checks
         check_command("node", &["--version"], true),
         check_command("deno", &["--version"], true),
@@ -182,16 +182,16 @@ fn check_musl_target(optional: bool) -> Check {
     }
 }
 
-fn check_xbin_stub(optional: bool) -> Check {
-    match which::which("xbin-stub") {
+fn check_erebus_stub(optional: bool) -> Check {
+    match which::which("erebus-stub") {
         Ok(path) => Check {
-            name: "xbin-stub".to_string(),
+            name: "erebus-stub".to_string(),
             ok: true,
             detail: path.display().to_string(),
             optional,
         },
         Err(_) => Check {
-            name: "xbin-stub".to_string(),
+            name: "erebus-stub".to_string(),
             ok: false,
             detail: "not found (optional)".to_string(),
             optional: true, // always optional

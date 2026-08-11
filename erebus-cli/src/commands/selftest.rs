@@ -3,7 +3,7 @@ use clap::Args;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
-use xbin_core::format::Footer;
+use erebus_core::format::Footer;
 
 #[derive(Args)]
 pub struct SelftestArgs {
@@ -42,7 +42,7 @@ pub fn run(args: SelftestArgs) -> Result<()> {
         std::fs::File::open(&path).with_context(|| format!("failed to open {}", path.display()))?;
     let footer = Footer::read_from(&mut f).context("invalid .xbin file")?;
     let meta_bytes =
-        xbin_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)
+        erebus_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)
             .context("failed to read metadata")?;
     let meta: serde_json::Value =
         serde_json::from_slice(&meta_bytes).context("failed to parse metadata JSON")?;

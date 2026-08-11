@@ -1,4 +1,4 @@
-//! `xbin-core` — core library for the x.bin build tool.
+//! `erebus-core` — core library for the x.bin build tool.
 //!
 //! Provides format parsing, compression, runtime detection, and package manager
 //! detection. Used by both the Python CLI (via `PyO3` or subprocess) and the

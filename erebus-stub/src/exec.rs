@@ -16,7 +16,7 @@ use crate::config::AppConfig;
 use crate::Metadata;
 #[cfg(unix)]
 use crate::{cstr, to_ptr_vec};
-use xbin_core::detect;
+use erebus_core::detect;
 
 /// Enter user + mount namespace if isolation >= 2; no-op otherwise.
 /// No-op on non-Linux platforms (no namespaces available).
@@ -97,7 +97,7 @@ pub fn setup_env(
     // App-bundled `.env` is the LOWEST-priority source: every explicit
     // override below (meta.env, config secrets, DATABASE_URL) wins on
     // collision, so a packaged `.env` can't silently shadow operator config.
-    for (k, v) in xbin_core::dotenv::load_dotenv(rootfs, None, false) {
+    for (k, v) in erebus_core::dotenv::load_dotenv(rootfs, None, false) {
         env.entry(k).or_insert(v);
     }
 

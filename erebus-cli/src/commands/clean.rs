@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use xbin_core::paths::{cache_dir, format_size, BuildCache};
+use erebus_core::paths::{cache_dir, format_size, BuildCache};
 
 #[derive(Args)]
 pub struct CleanArgs {

@@ -3,8 +3,8 @@ use clap::Args;
 use ed25519_dalek::{Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use xbin_core::format::{Footer, SIG_BLOCK_SIZE, SIG_LEN};
-use xbin_core::paths::trusted_keys_dir;
+use erebus_core::format::{Footer, SIG_BLOCK_SIZE, SIG_LEN};
+use erebus_core::paths::trusted_keys_dir;
 
 fn write_json_output(value: &serde_json::Value, output: Option<&std::path::Path>) -> Result<()> {
     let json_str = serde_json::to_string_pretty(value)?;
@@ -65,7 +65,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     }
 
     // Read sig block: [sig_size:u32le][64-byte ed25519 signature]
-    let sig_data = xbin_core::format::read_at(&mut f, footer.sig_offset, SIG_BLOCK_SIZE)?;
+    let sig_data = erebus_core::format::read_at(&mut f, footer.sig_offset, SIG_BLOCK_SIZE)?;
     let sig_size = u32::from_le_bytes([sig_data[0], sig_data[1], sig_data[2], sig_data[3]]);
     if sig_size != SIG_LEN as u32 {
         anyhow::bail!(
@@ -77,8 +77,8 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 
     // Read payload and metadata for hash
     let payload =
-        xbin_core::format::read_at(&mut f, footer.payload_offset, footer.payload_csize as usize)?;
-    let meta = xbin_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)?;
+        erebus_core::format::read_at(&mut f, footer.payload_offset, footer.payload_csize as usize)?;
+    let meta = erebus_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)?;
 
     // SHA-256(payload || meta || footer) — the footer is hashed so a downgrade
     // of format_version/FLAG_SIGNED invalidates the signature instead of

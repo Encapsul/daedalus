@@ -403,7 +403,7 @@ fn py_assemble_xbin(
 // ─── module ──────────────────────────────────────────────────────────────
 
 #[pymodule]
-fn xbin_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn erebus_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // format
     m.add("MAGIC", format::MAGIC)?;
     m.add("FOOTER_MAGIC", format::FOOTER_MAGIC)?;
