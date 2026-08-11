@@ -696,12 +696,17 @@ fn resolve_php_entrypoint(app_dir: &Path) -> Option<Vec<String>> {
     None
 }
 
-/// Build `php -S 0.0.0.0:8080 -t <doc_root>` command args.
+/// Build `php -S 0.0.0.0:<port> -t <doc_root>` command args.
+///
+/// The listen port defaults to 8080 and can be overridden with `XBIN_PHP_PORT`
+/// so several xbin PHP apps can share a host without colliding on the same
+/// port at runtime.
 fn server_cmd(doc_root: &str) -> Vec<String> {
+    let port = std::env::var("XBIN_PHP_PORT").unwrap_or_else(|_| "8080".to_string());
     vec![
         "php".into(),
         "-S".into(),
-        "0.0.0.0:8080".into(),
+        format!("0.0.0.0:{port}"),
         "-t".into(),
         doc_root.into(),
     ]
@@ -1107,6 +1112,26 @@ start = "uvicorn main:app"
             ep,
             Some(vec!["/app/frankenphp".into(), "php-server".into()])
         );
+    }
+
+    #[test]
+    fn detect_php_listen_port_is_env_overridable() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("index.php"), "<?php").unwrap();
+
+        let prev = std::env::var("XBIN_PHP_PORT").ok();
+        std::env::set_var("XBIN_PHP_PORT", "9090");
+        let ep = resolve_entrypoint(dir.path(), Runtime::Php);
+        match &prev {
+            Some(v) => std::env::set_var("XBIN_PHP_PORT", v),
+            None => std::env::remove_var("XBIN_PHP_PORT"),
+        }
+
+        let ep = ep.unwrap();
+        assert_eq!(ep[0], "php");
+        assert_eq!(ep[1], "-S");
+        // `php -S addr -t doc_root`: the listen address carries the override.
+        assert_eq!(ep[2], "0.0.0.0:9090");
     }
 
     #[test]

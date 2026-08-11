@@ -11,10 +11,41 @@ use std::path::Path;
 
 use crate::nanos;
 
-/// Maximum total decompressed bytes across all tar entries (1 GB).
-const MAX_DECOMPRESSED_BYTES: u64 = 1024 * 1024 * 1024;
-/// Maximum number of files in a single tar archive.
-const MAX_FILES: usize = 50_000;
+/// Default maximum total decompressed bytes across all tar entries (1 GB).
+const DEFAULT_MAX_DECOMPRESSED_BYTES: u64 = 1024 * 1024 * 1024;
+/// Default maximum number of files in a single tar archive.
+const DEFAULT_MAX_FILES: usize = 50_000;
+
+/// Decompression-bomb limits for `extract_atomic`. Both are configurable at
+/// runtime via env vars so operators can tighten (or relax) them per workload
+/// without rebuilding the stub:
+/// - `XBIN_MAX_EXTRACT_SIZE`  — total decompressed bytes (default 1 GiB)
+/// - `XBIN_MAX_EXTRACT_FILES` — entry/file count (default 50,000)
+///
+/// The env vars are read once per extraction and only from the launcher's own
+/// process environment — they are NOT parsed from the (untrusted) payload, so
+/// an attacker cannot weaken the limits by smuggling values into the xbin.
+struct ExtractLimits {
+    max_bytes: u64,
+    max_files: usize,
+}
+
+impl ExtractLimits {
+    fn from_env() -> Self {
+        let max_bytes = std::env::var("XBIN_MAX_EXTRACT_SIZE")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_MAX_DECOMPRESSED_BYTES);
+        let max_files = std::env::var("XBIN_MAX_EXTRACT_FILES")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(DEFAULT_MAX_FILES);
+        Self {
+            max_bytes,
+            max_files,
+        }
+    }
+}
 
 /// Whether a cached extraction can be trusted as-is.
 ///
@@ -50,6 +81,7 @@ pub fn cache_root_trustworthy(_cache_root: &Path) -> bool {
 /// Extract zstd-compressed tar blobs atomically into `cache_root/rootfs`.
 pub fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
     atomic_extract(cache_root, |tmp_rootfs| {
+        let limits = ExtractLimits::from_env();
         let mut total_bytes: u64 = 0;
         let mut file_count: usize = 0;
         for blob in blobs {
@@ -64,24 +96,30 @@ pub fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
             for entry in archive.entries()? {
                 let mut entry = entry?;
                 let size = entry.size();
-                if size > MAX_DECOMPRESSED_BYTES {
+                if size > limits.max_bytes {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("tar entry exceeds max size: {size} > {MAX_DECOMPRESSED_BYTES}"),
+                        format!("tar entry exceeds max size: {size} > {}", limits.max_bytes),
                     ));
                 }
                 total_bytes = total_bytes.saturating_add(size);
-                if total_bytes > MAX_DECOMPRESSED_BYTES {
+                if total_bytes > limits.max_bytes {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("total decompressed size {total_bytes} exceeds {MAX_DECOMPRESSED_BYTES}"),
+                        format!(
+                            "total decompressed size {total_bytes} exceeds {}",
+                            limits.max_bytes
+                        ),
                     ));
                 }
                 file_count = file_count.saturating_add(1);
-                if file_count > MAX_FILES {
+                if file_count > limits.max_files {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("file count exceeds max: {file_count} > {MAX_FILES}"),
+                        format!(
+                            "file count exceeds max: {file_count} > {}",
+                            limits.max_files
+                        ),
                     ));
                 }
                 entry.unpack_in(tmp_rootfs)?;
