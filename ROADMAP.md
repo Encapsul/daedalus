@@ -7,6 +7,8 @@ Generated from security audit and code review. All tests pass, clippy passes, fm
 > **Third review pass (2026-08-10):** items #43–#50 added after a follow-up review. Note: #6 (Landlock READ_ONLY allows EXECUTE) is resolved in the current code (`landlock.rs:55` = `READ_FILE | READ_DIR` only) — the remaining Landlock problems are covered by #44.
 >
 > **Work session 2026-08-11:** resolved #23, #24, #25, #28, #42, #43, #44 (commits `6843409`, `e1bd2ac`, `89d49a3`, `0a29088`, `45ebf22`, `065492a`, `769e479`). Two new defects found and fixed while e2e-testing: `assembly.rs` wrote the 84-byte footer core instead of the 92-byte `pack_full` for v3+ files (every unsigned v3+ binary was rejected by the stub's signature-state check), and `xbin sign` stripped the executable bit.
+>
+> **Work session 2026-08-11 (pm):** resolved #5, #26, #27, #30, #34, #35, #38, #47, #49, #50. Note: #5 and #38 were already fixed in earlier code (canonicalization + starts_with in `include.rs`; bounded `read_sisr` in `sisr_header.rs`) — this session added the missing lock-in tests and, for #38, reordered the size bound before the range check. #27's "verify the release signature" half remains open pending a release-side signing pipeline (pin an Ed25519 public key and verify tarballs against it).
 
 ## ⚠️ Build Environment Notes (2026-08-11)
 
