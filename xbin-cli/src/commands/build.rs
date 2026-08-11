@@ -908,11 +908,18 @@ fn build_single_target(
     let _ = std::fs::remove_dir_all("/tmp/xbin-build-tools");
     let _ = std::fs::remove_dir_all(cache_dir().join("build-tools"));
 
-    // Build deterministic tar (streaming: tar → zstd, no in-memory buffer)
+    // Build the payload: zstd(tar) by default, or a real SquashFS image
+    // when `--squashfs` was requested (v5). Before this fix the flag only
+    // flipped the metadata's payload_format while the payload stayed a
+    // zstd+tar stream — the stub's squashfs extractor would fail on it.
     eprintln!("Creating payload...");
     let t0 = std::time::Instant::now();
-    let mut payload = xbin_core::tar::create_tar_zstd_with_level(&rootfs, args.compression_level)
-        .context("failed to create tar+zstd payload")?;
+    let mut payload = if squashfs {
+        create_squashfs_payload(&rootfs, verbose).context("failed to create squashfs payload")?
+    } else {
+        xbin_core::tar::create_tar_zstd_with_level(&rootfs, args.compression_level)
+            .context("failed to create tar+zstd payload")?
+    };
     let compress_ms = t0.elapsed().as_millis();
     if verbose {
         eprintln!(
@@ -2200,6 +2207,63 @@ fn copy_dir_recursive_with(src: &Path, dst: &Path, include_node_modules: bool) -
         }
     }
     Ok(())
+}
+
+/// Creates a real `SquashFS` image of `rootfs` by shelling out to
+/// `mksquashfs` (the v5 payload requires actual squashfs bytes, not just a
+/// metadata flag). The image is written into a temp dir outside the source
+/// tree so mksquashfs cannot include its own output.
+///
+/// Deterministic: `-noappend` builds a fresh image and `-all-time 0` pins
+/// file timestamps so equal inputs yield equal bytes (matches the SHA-256
+/// integrity model of the format).
+fn create_squashfs_payload(rootfs: &Path, verbose: bool) -> Result<Vec<u8>> {
+    if !is_command_available("mksquashfs") {
+        anyhow::bail!(
+            "mksquashfs not found on PATH — install squashfs-tools to build \
+             --squashfs binaries"
+        );
+    }
+    let tmp = tempfile::tempdir().context("failed to create temp dir for squashfs image")?;
+    let image = tmp.path().join("rootfs.squashfs");
+    let run = |args: &[&str]| -> Result<bool> {
+        let status = std::process::Command::new("mksquashfs")
+            .arg(rootfs)
+            .arg(&image)
+            .args(args)
+            .status()
+            .context("failed to run mksquashfs")?;
+        Ok(status.success())
+    };
+    if verbose {
+        eprintln!("  squashfs: creating image from {}", rootfs.display());
+    }
+    // zstd + pinned timestamps first; fall back to the tool defaults for
+    // older squashfs-tools builds (e.g. without zstd or -all-time).
+    if !run(&[
+        "-noappend",
+        "-no-progress",
+        "-quiet",
+        "-comp",
+        "zstd",
+        "-all-time",
+        "0",
+    ])? && !run(&["-noappend", "-no-progress", "-quiet"])?
+    {
+        anyhow::bail!(
+            "mksquashfs failed to produce an image from {}",
+            rootfs.display()
+        );
+    }
+    if verbose {
+        eprintln!(
+            "  squashfs: {} bytes",
+            std::fs::metadata(&image)
+                .context("failed to stat squashfs image")?
+                .len()
+        );
+    }
+    std::fs::read(&image).context("failed to read squashfs image")
 }
 
 #[cfg(test)]
