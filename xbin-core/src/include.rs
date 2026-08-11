@@ -237,4 +237,40 @@ mod tests {
         assert_eq!(count, 1);
         assert!(dst.join("data.json").is_file());
     }
+
+    #[test]
+    fn test_include_outside_base_is_rejected() {
+        let dir = TempDir::new().unwrap();
+        let app = dir.path().join("app");
+        let outside = dir.path().join("outside");
+        fs::create_dir_all(&app).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), "x").unwrap();
+
+        use std::slice;
+        let err = copy_include_paths(
+            slice::from_ref(&outside.join("secret.txt")),
+            &app.join("dst"),
+            &app,
+        )
+        .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn test_include_with_dotdot_component_is_rejected() {
+        let dir = TempDir::new().unwrap();
+        let app = dir.path().join("app");
+        let outside = dir.path().join("outside");
+        fs::create_dir_all(&app).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), "x").unwrap();
+
+        // `app/../outside/secret.txt` canonicalizes outside the base dir and
+        // must be rejected even though the literal path starts under `app`.
+        use std::slice;
+        let sneaky = app.join("../outside/secret.txt");
+        let err = copy_include_paths(slice::from_ref(&sneaky), &app.join("dst"), &app).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+    }
 }
