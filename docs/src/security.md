@@ -174,7 +174,7 @@ Blocked: ptrace, mount, umount2, pivot_root, reboot, kexec_load,
 
 **Attack:** A `.xbin` file is intercepted at rest (stolen laptop, shared storage, leaked artifact). Without encryption, anyone can extract the embedded application with `tar` after stripping the stub.
 
-**Defense:** Optional AES-256-GCM encryption (v4 format, `--encrypt` flag). The AES key is derived from the Ed25519 signing seed via HKDF-SHA256, so signing key = encryption key.
+**Defense:** Optional AES-256-GCM encryption (v4 format, `--encrypt` flag). A fresh random 32-byte encryption key is generated at build time and stored (hex-encoded) in the binary's metadata next to the ciphertext; the AES key is then derived from it via HKDF-SHA256. The encryption key is deliberately **independent** of the Ed25519 signing seed — the seed is never embedded in the binary, so a key leak does not compromise authenticity.
 
 ```bash
 # Build with encryption
@@ -185,22 +185,24 @@ $ xbin build my_app/ --key $XDG_DATA_HOME/xbin/keys/a1b2c3d4.key --encrypt
 
 **Security model:**
 - Encryption protects the payload at rest against casual extraction.
-- It does not protect against a determined attacker on a machine that must run the decrypted app — the launcher decrypts before exec, and the key is derivable from the signing seed stored in metadata. This is the same fundamental limit as any DRM system.
+- It does not protect against a determined attacker on a machine that must run the decrypted app — the launcher decrypts before exec, and the encryption key is embedded in the metadata for that exact purpose. This is the same fundamental limit as any DRM system.
 
 **Why this is still useful:**
 - Prevents `tar` extraction of the embedded app
 - Protects against opportunistic theft (stolen build artifacts)
 - Adds a layer of defense-in-depth alongside signatures
-- The signing seed in metadata is protected by the Ed25519 signature — tampering with it invalidates the signature before decryption runs
+- The embedded key and ciphertext are both covered by the payload integrity hash and signature — tampering with either breaks the SHA-256/signature check before decryption runs
 
 **Key derivation:**
 ```
 AES_key = HKDF-SHA256(
-    key = ed25519_signing_seed,      # 32 bytes
-    salt = "xbin-encrypt-v1",        # fixed per xbin version
-    info = "aes-256-gcm-key"         # fixed per algorithm
+    key  = random_encryption_key,      # 32 bytes, generated per build
+    salt = random_salt,                # 32 bytes, generated per build
+    info = "aes-256-gcm-key"           # fixed per algorithm
 )
 ```
+
+Both `random_encryption_key` and `random_salt` are stored in the binary metadata (`meta.crypto`) alongside the ciphertext. With SISR chunking, each chunk additionally gets an independent key via `HKDF(key, salt, chunk_index)` and a unique nonce derived from a per-build base nonce.
 
 **Verification order (non-negotiable):**
 ```
