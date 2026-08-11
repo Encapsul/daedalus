@@ -787,9 +787,10 @@ fn exec_again(bin_path: &Path) -> io::Result<()> {
 /// Intercepts the xbin-reserved runtime flags and handles them terminally.
 ///
 /// - `--xbin-version` prints version info on stdout and exits 0.
-/// - `--xbin-update [URL]` fetches the signed remote manifest and the changed
+/// - `--xbin-update=<URL>` fetches the signed remote manifest and the changed
 ///   chunks from the update channel, applies the delta atomically, prints
-///   reuse/fetch statistics on stderr, and exits 0.
+///   reuse/fetch statistics on stderr, and exits 0. A bare `--xbin-update`
+///   falls back to `$XBIN_UPDATE_URL` then the embedded metadata URL.
 ///
 /// Because both paths call `process::exit`, these flags never reach the host
 /// app's `argv`. When neither flag is present this is a no-op.
@@ -804,7 +805,10 @@ fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
         exit(0);
     }
 
-    if let Some(idx) = args.iter().position(|a| a == "--xbin-update") {
+    if let Some(idx) = args.iter().position(|a| {
+        let s = a.to_string_lossy();
+        s == "--xbin-update" || s.starts_with("--xbin-update=")
+    }) {
         let base = resolve_update_url(&args, idx, meta)?;
         remote_update(&base)?;
         exit(0);
@@ -814,7 +818,7 @@ fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
 }
 
 /// Resolves the update channel base URL:
-/// `--xbin-update <URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
+/// `--xbin-update=<URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
 fn resolve_update_url(
     args: &[std::ffi::OsString],
     idx: usize,
