@@ -268,7 +268,10 @@ pub struct BuildArgs {
     #[arg(long)]
     pub update: bool,
 
-    /// Include extra files/directories in the rootfs (repeatable)
+    /// Include extra files/directories in the rootfs (repeatable).
+    ///
+    /// `.env` is excluded by default (secret-leak risk); pass
+    /// `--include <app>/.env` explicitly to bundle it at your own risk.
     #[arg(long = "include", action = clap::ArgAction::Append)]
     pub include: Vec<PathBuf>,
 
@@ -576,6 +579,21 @@ fn build_single_target(
         anyhow::bail!(
             "--encrypt and --enable-sisr cannot be combined: chunk-encrypted SISR \
              binaries are not decryptable by the current stub — use one or the other"
+        );
+    }
+
+    // ── Reject a bundled `.env` unless it is included explicitly ───────
+    // `.env` is excluded from the payload by default (secrets would be
+    // extractable from the redistributable); silently dropping it could
+    // break an app that relied on it, so make the builder decide.
+    if app_dir.join(".env").is_file() && !include_points_to_env(app_dir, &args.include) {
+        anyhow::bail!(
+            "{} contains a .env file, which is excluded from the payload by default \
+             (its secrets would be extractable from the binary). Bundle it explicitly \
+             with `--include {}` to accept that risk, or provide configuration via \
+             `--env-file` / `--env` instead.",
+            app_dir.display(),
+            app_dir.join(".env").display()
         );
     }
 
@@ -2212,6 +2230,7 @@ fn copy_dir_recursive_with(src: &Path, dst: &Path, include_node_modules: bool) -
             || name == "venv"
             || name == ".xbin"
             || name == ".pnpm"
+            || name == ".env"
             || (name == "node_modules" && !include_node_modules)
         {
             continue;
@@ -2224,6 +2243,19 @@ fn copy_dir_recursive_with(src: &Path, dst: &Path, include_node_modules: bool) -
         }
     }
     Ok(())
+}
+
+/// Whether any `--include` path resolves to `app_dir/.env`.
+///
+/// Canonicalization mirrors `copy_include_paths` so relative paths and `..`
+/// components are resolved before comparison.
+fn include_points_to_env(app_dir: &Path, includes: &[PathBuf]) -> bool {
+    let target = app_dir.join(".env");
+    let target = std::fs::canonicalize(&target).unwrap_or(target);
+    includes.iter().any(|inc| {
+        let canonical = std::fs::canonicalize(inc).unwrap_or_else(|_| inc.clone());
+        canonical == target
+    })
 }
 
 /// Creates a real `SquashFS` image of `rootfs` by shelling out to

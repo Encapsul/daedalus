@@ -21,6 +21,18 @@ const SKIP_DIRS: &[&str] = &[
     "coverage",
 ];
 
+/// Files excluded from the payload regardless of `.gitignore` (secret leak risk).
+///
+/// `.env` holds real secrets; bundling it would leak them to anyone holding
+/// the redistributable. Users who want it in the binary must pass
+/// `--include .env` explicitly (build.rs hard-errors otherwise).
+const SKIP_FILES: &[&str] = &[".env"];
+
+/// Whether a file name is excluded from the payload.
+fn is_skipped_file(name: &std::ffi::OsStr) -> bool {
+    SKIP_FILES.contains(&name.to_string_lossy().as_ref())
+}
+
 /// Copy extra files/directories into a destination directory.
 ///
 /// Each source path is copied recursively. Directories are copied in full.
@@ -74,7 +86,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         let entry = entry?;
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if SKIP_DIRS.contains(&name_str.as_ref()) {
+        if SKIP_DIRS.contains(&name_str.as_ref()) || is_skipped_file(&name) {
             continue;
         }
         let src_path = entry.path();
@@ -104,7 +116,9 @@ pub fn hash_app_files(app_dir: &Path) -> String {
             .components()
             .map(|c| c.as_os_str().to_string_lossy().into_owned())
             .collect();
-        !parts.iter().any(|p| SKIP_DIRS.contains(&p.as_str()))
+        !parts
+            .iter()
+            .any(|part| SKIP_DIRS.contains(&part.as_str()) || is_skipped_file(part.as_ref()))
     });
     for p in &paths {
         if let Ok(bytes) = fs::read(p) {
@@ -154,6 +168,8 @@ fn walk_dir_sorted(dir: &Path) -> Vec<PathBuf> {
                         continue;
                     }
                     stack.push(path.clone());
+                } else if is_skipped_file(path.file_name().unwrap_or_default()) {
+                    continue;
                 }
                 result.push(path);
             }
@@ -174,6 +190,21 @@ mod tests {
         let h1 = hash_app_files(dir.path());
         let h2 = hash_app_files(dir.path());
         assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_hash_app_files_ignores_env() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("app.py"), "print('hello')").unwrap();
+        fs::write(dir.path().join(".env"), "API_KEY=secret").unwrap();
+        fs::create_dir(dir.path().join("sub")).unwrap();
+        fs::write(dir.path().join("sub/.env"), "TOKEN=leak").unwrap();
+
+        let with_env = hash_app_files(dir.path());
+        fs::remove_file(dir.path().join(".env")).unwrap();
+        fs::remove_file(dir.path().join("sub/.env")).unwrap();
+        let without_env = hash_app_files(dir.path());
+        assert_eq!(with_env, without_env);
     }
 
     #[test]

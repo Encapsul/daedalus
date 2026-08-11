@@ -37,6 +37,14 @@ interpreter with `--embed-interpreter` (for example `python3`, `node`,
 | `--json` | Emit a JSON build result on stdout |
 | `-v/--quiet` | Verbose / quiet output |
 
+> **`.env` and secrets:** an app directory containing a `.env` file is
+> **rejected** unless you pass `--include <app>/.env` explicitly. The file is
+> excluded from the payload by default because its secrets would be
+> extractable from the redistributable binary by anyone who holds it. Prefer
+> `--env-file` / `--env` to bake configuration into the binary metadata, and
+> reserve `--include .env` for cases where bundling the file is the app's
+> intended deployment model.
+
 ## SISR options (incremental self-updates)
 
 | Flag | Description |
