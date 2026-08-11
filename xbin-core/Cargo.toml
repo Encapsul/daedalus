@@ -41,8 +41,9 @@ which = "7"
 # Hex encoding
 hex = "0.4"
 
-# SISR manifest signing (Ed25519, zeroize on drop)
-ed25519-dalek = "2"
+# SISR manifest signing (Ed25519, zeroize on drop).
+# Pinned >= 2.1.0 for CVE-2023-48022 (Ed25519 bit must be set).
+ed25519-dalek = "2.1"
 
 # TOML parsing for pyproject.toml
 toml = "0.8"
