@@ -452,6 +452,22 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     Ok(())
 }
 
+/// Warn when `--seccomp`/`--landlock` are requested but the stub will not
+/// enforce them (they only apply at isolation >= 2, on the `pivot_root` path).
+fn warn_sandbox_noops(isolation_num: u32, seccomp: bool, landlock: bool) {
+    if isolation_num < 2 && (seccomp || landlock) {
+        let flags = [("seccomp", seccomp), ("landlock", landlock)]
+            .iter()
+            .filter_map(|(name, on)| on.then_some(*name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        eprintln!(
+            "[xbin] warning: {flags} require --isolation sandbox (2) to take effect — \
+             ignored at isolation level {isolation_num}"
+        );
+    }
+}
+
 /// Print the dry-run plan for one target (or the host when `target` is None).
 fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, output: &Path) {
     eprintln!("Dry run — would build:");
@@ -461,6 +477,7 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
     eprintln!("  Isolation: {}", plan.isolation);
     eprintln!("  Seccomp:   {}", plan.seccomp);
     eprintln!("  Landlock:  {}", plan.landlock);
+    warn_sandbox_noops(plan.isolation_num, plan.seccomp, plan.landlock);
     eprintln!("  Encrypt:   {}", plan.encrypt);
     eprintln!("  SquashFS:  {}", plan.squashfs);
     if args.enable_sisr {
@@ -569,6 +586,12 @@ fn build_single_target(
     let description = plan.description.clone();
     let license = plan.license.clone();
     let env_file = plan.env_file.clone();
+
+    // ── Sandbox flags without isolation are silent no-ops ──────────────
+    // seccomp/landlock are only enforced in the stub when isolation >= 2
+    // (pivot_root + namespace path). Warn so the user isn't lulled into
+    // believing the sandbox is active.
+    warn_sandbox_noops(isolation_num, seccomp, landlock);
 
     // ── Reject the broken encrypt+SISR combination ─────────────────────
     // The stub's chunked-decrypt path requires per-layer sizes from

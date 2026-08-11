@@ -493,6 +493,22 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
 
     crate::health_gate::maybe_start_health(meta);
 
+    // Sandbox flags only take effect on the pivot_root path (isolation >= 2).
+    // Warn on the non-pivot path instead of silently ignoring the request —
+    // metadata can be authored by any builder, not just the CLI. (macOS
+    // applies its own sandbox profile for `landlock`, so this is Linux-only.)
+    #[cfg(target_os = "linux")]
+    if !use_pivot && (meta.seccomp || meta.landlock) {
+        let flags = ["seccomp", "landlock"]
+            .into_iter()
+            .filter(|name| {
+                (*name == "seccomp" && meta.seccomp) || (*name == "landlock" && meta.landlock)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        eprintln!("[xbin] warning: {flags} requested but isolation < 2 — sandbox not applied");
+    }
+
     #[cfg(target_os = "linux")]
     if use_pivot && crate::namespace::running_in_container() {
         eprintln!("[xbin] warning: running inside a container — namespace isolation may be restricted by the host");
