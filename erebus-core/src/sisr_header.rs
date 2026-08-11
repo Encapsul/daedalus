@@ -24,7 +24,7 @@ pub const SISR_VERSION: u16 = 1;
 
 /// Fixed access block between the app metadata and the standard footer.
 ///
-/// Not `#[repr(C, packed)]`: `xbin-core` is `unsafe`-free, so fields are
+/// Not `#[repr(C, packed)]`: `erebus-core` is `unsafe`-free, so fields are
 /// moved through explicit little-endian serialization instead of transmutes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SisrFooterExt {

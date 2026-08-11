@@ -411,7 +411,7 @@ mod tests {
         assert!(RemoteManifest::from_bytes(&bytes[..REMOTE_HEADER_SIZE - 1]).is_err());
     }
 
-    /// Perf probe (run manually in release: `cargo test -p xbin-core --release
+    /// Perf probe (run manually in release: `cargo test -p erebus-core --release
     /// perf_sisr -- --ignored`). Prints the full SISR stage cost on a 100 MiB
     /// payload so the < 5 % build-overhead budget can be verified.
     #[test]

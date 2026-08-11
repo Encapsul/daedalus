@@ -1,4 +1,4 @@
-use xbin_core::paths::{RemoteBuildCache, RemoteCacheBackend};
+use erebus_core::paths::{RemoteBuildCache, RemoteCacheBackend};
 
 use crate::commands::build::BuildArgs;
 

@@ -10,7 +10,7 @@ pub struct EnvArgs {
 }
 
 pub fn run(args: EnvArgs) -> Result<()> {
-    let stub = find_binary("xbin-stub", "XBIN_STUB_PATH");
+    let stub = find_binary("erebus-stub", "XBIN_STUB_PATH");
     let crypto = find_binary("xbin-crypto", "XBIN_CRYPTO_PATH");
 
     if args.json {

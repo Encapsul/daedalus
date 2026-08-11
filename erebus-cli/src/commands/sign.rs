@@ -3,8 +3,8 @@ use clap::Args;
 use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use xbin_core::format::{Footer, FLAG_SIGNED, SIG_BLOCK_SIZE, SIG_LEN};
-use xbin_core::paths::default_key_dir;
+use erebus_core::format::{Footer, FLAG_SIGNED, SIG_BLOCK_SIZE, SIG_LEN};
+use erebus_core::paths::default_key_dir;
 use zeroize::Zeroizing;
 
 #[derive(Args)]

@@ -3,7 +3,7 @@ use clap::Args;
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use std::path::PathBuf;
-use xbin_core::paths::default_key_dir;
+use erebus_core::paths::default_key_dir;
 use zeroize::Zeroize;
 
 #[derive(Args)]

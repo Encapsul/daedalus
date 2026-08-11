@@ -37,10 +37,10 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use xbin_core::detect;
-use xbin_core::format::{self as format, read_at, Footer};
-use xbin_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
-use xbin_core::sisr::resilience::{backup_path_for, create_backup, discard_backup, restore_backup};
+use erebus_core::detect;
+use erebus_core::format::{self as format, read_at, Footer};
+use erebus_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
+use erebus_core::sisr::resilience::{backup_path_for, create_backup, discard_backup, restore_backup};
 
 /// Standard library search paths for `LD_LIBRARY_PATH`.
 /// Kept in sync with cli/xbin/build.py `LD_LIBRARY_PATH` construction.
@@ -140,7 +140,7 @@ fn default_health_endpoint() -> String {
 /// SECURITY / THREAT MODEL: the encryption key (`encryption_key_hex`) and salt
 /// are stored **in the clear** in the `.xbin` metadata — i.e. in the same file
 /// as the ciphertext. The AES key is **not** the Ed25519 *signing* seed (that is
-/// never embedded; `@see` `xbin-cli/src/commands/build.rs`), so a leaked file
+/// never embedded; `@see` `erebus-cli/src/commands/build.rs`), so a leaked file
 /// cannot be used to forge signatures. However, because the decryption key
 /// lives inside the file, *possession of the file suffices to decrypt the
 /// payload*. `--encrypt` therefore provides **obfuscation against casual
@@ -408,7 +408,7 @@ fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
     };
     let manifest_path = PathBuf::from(manifest_path);
     let remote_bytes = fs::read(&manifest_path)?;
-    let remote = xbin_core::sisr_stage::RemoteManifest::from_bytes(&remote_bytes)?;
+    let remote = erebus_core::sisr_stage::RemoteManifest::from_bytes(&remote_bytes)?;
 
     let keys = crypto::load_trusted_keys()?;
     if !remote.verify_any(&keys) {
@@ -424,14 +424,14 @@ fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
         .parent()
         .unwrap_or_else(|| Path::new(""))
         .join("chunks");
-    let fetcher = xbin_core::sisr::engine::DirectoryChunkFetcher::new(&chunks_root);
+    let fetcher = erebus_core::sisr::engine::DirectoryChunkFetcher::new(&chunks_root);
 
     let current = self_exe()?;
     let store = HealthStore::new(&health_store_dir()?);
     refuse_quarantined_target(&store, &current, &remote.manifest, &fetcher)?;
 
     let updated = apply_with_rollback_snapshot(&current, &store, |path| {
-        xbin_core::sisr::engine::SisrEngine.apply_update(path, &remote.manifest, &fetcher)
+        erebus_core::sisr::engine::SisrEngine.apply_update(path, &remote.manifest, &fetcher)
     })?;
     Ok(Some(updated))
 }
@@ -472,14 +472,14 @@ fn health_policy() -> HealthCheckPolicy {
 fn refuse_quarantined_target(
     store: &HealthStore,
     current: &Path,
-    manifest: &xbin_core::manifest::DeltaManifest,
-    fetcher: &dyn xbin_core::sisr::engine::ChunkFetcher,
+    manifest: &erebus_core::manifest::DeltaManifest,
+    fetcher: &dyn erebus_core::sisr::engine::ChunkFetcher,
 ) -> io::Result<()> {
     if !store.has_quarantined()? {
         return Ok(());
     }
     let target =
-        xbin_core::sisr::engine::SisrEngine.target_payload_sha256(current, manifest, fetcher)?;
+        erebus_core::sisr::engine::SisrEngine.target_payload_sha256(current, manifest, fetcher)?;
     if store.is_quarantined(&hex::encode(target))? {
         return Err(err(
             "update refused: target version failed its health check and is quarantined",
@@ -825,7 +825,7 @@ fn resolve_update_url(
 fn remote_update(base: &str) -> io::Result<()> {
     eprintln!("[xbin] update: fetching manifest from {base}/manifest");
     let manifest_bytes = http_get_bytes(&format!("{base}/manifest"))?;
-    let remote = xbin_core::sisr_stage::RemoteManifest::from_bytes(&manifest_bytes)?;
+    let remote = erebus_core::sisr_stage::RemoteManifest::from_bytes(&manifest_bytes)?;
 
     let keys = crypto::load_trusted_keys()?;
     if !remote.verify_any(&keys) {
@@ -846,7 +846,7 @@ fn remote_update(base: &str) -> io::Result<()> {
     refuse_quarantined_target(&store, &current, &remote.manifest, &fetcher)?;
 
     let updated = apply_with_rollback_snapshot(&current, &store, |path| {
-        let (updated, stats) = xbin_core::sisr::engine::SisrEngine.apply_update_with_stats(
+        let (updated, stats) = erebus_core::sisr::engine::SisrEngine.apply_update_with_stats(
             path,
             &remote.manifest,
             &fetcher,
@@ -887,7 +887,7 @@ impl HttpChunkFetcher {
     }
 }
 
-impl xbin_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
+impl erebus_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
     fn fetch(&self, hash: &[u8; 32], length: usize) -> io::Result<Vec<u8>> {
         let url = format!("{}/{}", self.base, hex::encode(hash));
         let bytes = http_get_bytes(&url)?;

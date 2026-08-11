@@ -4,12 +4,12 @@ use clap::Args;
 use ed25519_dalek::SigningKey;
 use sha2::Digest;
 use std::path::{Path, PathBuf};
-use xbin_core::detect;
-use xbin_core::embed;
-use xbin_core::metadata::{BunFeatures, EmbeddedInterpreter};
-use xbin_core::paths::cache_dir;
-use xbin_core::pkgmgr;
-use xbin_core::sisr_stage::SisrBuildConfig;
+use erebus_core::detect;
+use erebus_core::embed;
+use erebus_core::metadata::{BunFeatures, EmbeddedInterpreter};
+use erebus_core::paths::cache_dir;
+use erebus_core::pkgmgr;
+use erebus_core::sisr_stage::SisrBuildConfig;
 
 /// Map an isolation spec to the numeric level stored in metadata.
 ///
@@ -720,13 +720,13 @@ fn build_single_target(
     // Hashed BEFORE tree-shake/minify run: those mutate a staging copy
     // below, and the cache/`--update` keys must reflect the pristine
     // source, not its by-products, or a rebuild would never match.
-    let new_app_hash = xbin_core::include::hash_app_files(app_dir);
-    let new_rt_hash = xbin_core::include::hash_lock_file(app_dir);
+    let new_app_hash = erebus_core::include::hash_app_files(app_dir);
+    let new_rt_hash = erebus_core::include::hash_lock_file(app_dir);
 
     // ── Intelligent build cache: skip rebuild if hash matches ──────────
     let cfg_hash = config_fingerprint(args, plan);
     if args.use_cache {
-        let cache = xbin_core::paths::BuildCache::new(app_dir, 50);
+        let cache = erebus_core::paths::BuildCache::new(app_dir, 50);
         if let Some(cached) = cache.find(&new_app_hash, &cfg_hash, target.as_deref()) {
             if verbose {
                 eprintln!("[xbin] cache hit — reusing cached build");
@@ -747,7 +747,7 @@ fn build_single_target(
     }
 
     if args.clear_cache {
-        let cache = xbin_core::paths::BuildCache::new(app_dir, 50);
+        let cache = erebus_core::paths::BuildCache::new(app_dir, 50);
         cache.clear().ok();
         if verbose {
             eprintln!("  cache: cleared");
@@ -948,7 +948,7 @@ fn build_single_target(
     // byte-identical so repeat builds and `--update` hash comparisons see
     // the real input.
     if args.tree_shake {
-        let removed = xbin_core::treeshake::prune_node_modules(&rootfs.join("app"), verbose)
+        let removed = erebus_core::treeshake::prune_node_modules(&rootfs.join("app"), verbose)
             .context("tree-shaking failed")?;
         if verbose {
             eprintln!("  tree-shake: removed {removed} unused package(s)");
@@ -956,7 +956,7 @@ fn build_single_target(
     }
 
     if args.minify {
-        let minified = xbin_core::minify::minify_app_dir(&rootfs.join("app"), verbose)
+        let minified = erebus_core::minify::minify_app_dir(&rootfs.join("app"), verbose)
             .context("minification failed")?;
         if verbose {
             eprintln!("  minify: minified {minified} file(s)");
@@ -966,7 +966,7 @@ fn build_single_target(
     // ── Include extra files ───────────────────────────────────────────
     if !args.include.is_empty() {
         let app_dest = rootfs.join("app");
-        let count = xbin_core::include::copy_include_paths(&args.include, &app_dest, app_dir)
+        let count = erebus_core::include::copy_include_paths(&args.include, &app_dest, app_dir)
             .context("failed to copy include paths")?;
         if verbose {
             eprintln!("  include: copied {count} path(s) into rootfs");
@@ -1072,7 +1072,7 @@ fn build_single_target(
     let mut payload = if squashfs {
         create_squashfs_payload(&rootfs, verbose).context("failed to create squashfs payload")?
     } else {
-        xbin_core::tar::create_tar_zstd_with_level(&rootfs, args.compression_level)
+        erebus_core::tar::create_tar_zstd_with_level(&rootfs, args.compression_level)
             .context("failed to create tar+zstd payload")?
     };
     let compress_ms = t0.elapsed().as_millis();
@@ -1104,16 +1104,16 @@ fn build_single_target(
     // tracks the ciphertext hashes.  The stub decrypts each chunk
     // independently at runtime before SISR extraction.
     let mut crypto_meta: Option<serde_json::Value> = None;
-    let mut sisr_artifacts_opt: Option<xbin_core::sisr_stage::SisrArtifacts> = None;
+    let mut sisr_artifacts_opt: Option<erebus_core::sisr_stage::SisrArtifacts> = None;
 
     if encrypt {
         // Generate a fresh random encryption key — never reuse the signing seed.
         let mut encryption_key = [0u8; 32];
-        encryption_key.copy_from_slice(&xbin_core::encrypt::generate_encryption_key());
+        encryption_key.copy_from_slice(&erebus_core::encrypt::generate_encryption_key());
 
         if args.enable_sisr {
             let sisr_config = build_sisr_config(&args.key)?;
-            let artifacts = xbin_core::sisr_stage::build_artifacts(&payload, &sisr_config)
+            let artifacts = erebus_core::sisr_stage::build_artifacts(&payload, &sisr_config)
                 .context("SISR stage failed during encrypt+SISR build")?;
             let chunk_sizes: Vec<usize> = artifacts
                 .manifest
@@ -1121,9 +1121,9 @@ fn build_single_target(
                 .iter()
                 .map(|c| c.length as usize)
                 .collect();
-            let salt = xbin_core::encrypt::generate_salt();
-            let nonce = xbin_core::encrypt::generate_nonce();
-            let ciphertext = xbin_core::encrypt::encrypt_chunks(
+            let salt = erebus_core::encrypt::generate_salt();
+            let nonce = erebus_core::encrypt::generate_nonce();
+            let ciphertext = erebus_core::encrypt::encrypt_chunks(
                 &payload,
                 &encryption_key,
                 &salt,
@@ -1148,7 +1148,7 @@ fn build_single_target(
                 );
             }
         } else {
-            let (ciphertext, em) = xbin_core::encrypt::encrypt_payload(&payload, &encryption_key)
+            let (ciphertext, em) = erebus_core::encrypt::encrypt_payload(&payload, &encryption_key)
                 .context("AES-256-GCM payload encryption failed")?;
             payload = ciphertext;
             crypto_meta = Some(serde_json::json!({
@@ -1219,8 +1219,8 @@ fn build_single_target(
 
     // ── Persistent storage ────────────────────────────────────────────
     if args.persist {
-        let persist_dir = xbin_core::persistent::get_persist_dir(&app_name);
-        let _ = xbin_core::persistent::ensure_persist_dir(&app_name);
+        let persist_dir = erebus_core::persistent::get_persist_dir(&app_name);
+        let _ = erebus_core::persistent::ensure_persist_dir(&app_name);
         env_map.insert(
             "XBIN_PERSIST_DIR".into(),
             serde_json::Value::String(persist_dir.to_string_lossy().into()),
@@ -1244,7 +1244,7 @@ fn build_single_target(
     // ── OpenTelemetry ─────────────────────────────────────────────────
     if let Some(ref endpoint) = args.otel_endpoint {
         let version = version_info.as_deref().unwrap_or("");
-        let otel_env = xbin_core::otel::build_otel_env(
+        let otel_env = erebus_core::otel::build_otel_env(
             &app_name,
             version,
             endpoint,
@@ -1269,7 +1269,7 @@ fn build_single_target(
         let mut tasks_json: Vec<serde_json::Value> = Vec::new();
         for ct in &args.cron {
             if let Some((name, schedule)) = ct.split_once(':') {
-                let interval = xbin_core::cron::parse_schedule(schedule);
+                let interval = erebus_core::cron::parse_schedule(schedule);
                 tasks_json.push(serde_json::json!({
                     "name": name,
                     "schedule": schedule,
@@ -1397,13 +1397,13 @@ fn build_single_target(
         .validate()
         .map_err(|e| anyhow::anyhow!("Invalid build options: {}", e))?;
 
-    let meta = xbin_core::assembly::build_meta_json(
+    let meta = erebus_core::assembly::build_meta_json(
         &app_name,
         runtime_name,
         isolation_num,
         &entrypoint,
         &env_pairs,
-        &xbin_core::assembly::MetaOptions {
+        &erebus_core::assembly::MetaOptions {
             version: version_info,
             author,
             description,
@@ -1426,10 +1426,10 @@ fn build_single_target(
         let sisr_config = build_sisr_config(&args.key)?;
         let artifacts = match sisr_artifacts_opt {
             Some(a) => a,
-            None => xbin_core::sisr_stage::build_artifacts(&payload, &sisr_config)
+            None => erebus_core::sisr_stage::build_artifacts(&payload, &sisr_config)
                 .context("SISR stage failed during build")?,
         };
-        let input = xbin_core::assembly::AssemblyInput {
+        let input = erebus_core::assembly::AssemblyInput {
             stub_bytes: &stub_bytes,
             payload: &payload,
             meta_bytes: &meta,
@@ -1438,10 +1438,10 @@ fn build_single_target(
             target_arch: target.as_deref(),
             sisr: Some(artifacts),
         };
-        xbin_core::assembly::assemble_xbin(output, &input)
+        erebus_core::assembly::assemble_xbin(output, &input)
             .context("failed to assemble xbin (SISR)")?
     } else {
-        let input = xbin_core::assembly::AssemblyInput {
+        let input = erebus_core::assembly::AssemblyInput {
             stub_bytes: &stub_bytes,
             payload: &payload,
             meta_bytes: &meta,
@@ -1450,7 +1450,7 @@ fn build_single_target(
             target_arch: target.as_deref(),
             sisr: None,
         };
-        xbin_core::assembly::assemble_xbin(output, &input).context("failed to assemble xbin")?
+        erebus_core::assembly::assemble_xbin(output, &input).context("failed to assemble xbin")?
     };
 
     eprintln!(
@@ -1499,7 +1499,7 @@ fn build_single_target(
 
     // ── Store in build cache ──────────────────────────────────────────
     if args.use_cache {
-        let cache = xbin_core::paths::BuildCache::new(app_dir, 50);
+        let cache = erebus_core::paths::BuildCache::new(app_dir, 50);
         if cache
             .store(&new_app_hash, &cfg_hash, target.as_deref(), output)
             .is_ok()
@@ -2219,7 +2219,7 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
     // legacy short forms (`linux-x64`, `aarch64`, `x64`) resolve to the real
     // musl/PE/Mach-O triple on disk. The previous matching on
     // `t.contains("linux")` left short forms as-is (`linux-x64`) and silently
-    // fell through to a stale `/usr/local/bin/xbin-stub`, because no matching
+    // fell through to a stale `/usr/local/bin/erebus-stub`, because no matching
     // stub directory existed.
     let arch_suffix = match target.as_deref().map(parse_target) {
         Some((arch, os)) if os == "linux" => format!("{arch}-unknown-linux-musl"),
@@ -2231,16 +2231,16 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
     };
 
     let stub_name = if is_windows {
-        "xbin-stub.exe"
+        "erebus-stub.exe"
     } else {
-        "xbin-stub"
+        "erebus-stub"
     };
     let candidates = [
         PathBuf::from(&target_dir)
             .join(&arch_suffix)
             .join("release")
             .join(stub_name),
-        PathBuf::from("/tmp/xbin-stub-target")
+        PathBuf::from("/tmp/erebus-stub-target")
             .join(&arch_suffix)
             .join("release")
             .join(stub_name),
@@ -2256,28 +2256,28 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
         }
     }
 
-    // Removed stale fallback `/usr/local/bin/xbin-stub` to prevent embedding
+    // Removed stale fallback `/usr/local/bin/erebus-stub` to prevent embedding
     // an obsolete stub with unknown bugs. Users must build a fresh stub via
     // `make stub` or set `XBIN_STUB_PATH` explicitly.
-    if let Ok(p) = which::which("xbin-stub") {
+    if let Ok(p) = which::which("erebus-stub") {
         eprintln!(
-            "[xbin] warning: found xbin-stub on PATH at {}; prefer 'make stub' for reproducible builds",
+            "[xbin] warning: found erebus-stub on PATH at {}; prefer 'make stub' for reproducible builds",
             p.display()
         );
         return Ok(p);
     }
 
-    anyhow::bail!("xbin-stub not found — run: make stub")
+    anyhow::bail!("erebus-stub not found — run: make stub")
 }
 
 /// Read `app_hash` and `rt_deps_hash` from an existing `.xbin` file's metadata.
 fn read_existing_hashes(xbin_path: &Path) -> Option<(String, String)> {
-    use xbin_core::format::Footer;
+    use erebus_core::format::Footer;
 
     let mut f = std::fs::File::open(xbin_path).ok()?;
     let footer = Footer::read_from(&mut f).ok()?;
     let meta_size = footer.meta_size.try_into().ok()?;
-    let meta_bytes = xbin_core::format::read_at(&mut f, footer.meta_offset, meta_size).ok()?;
+    let meta_bytes = erebus_core::format::read_at(&mut f, footer.meta_offset, meta_size).ok()?;
     let meta: serde_json::Value = serde_json::from_slice(&meta_bytes).ok()?;
     let app_hash = meta.get("app_hash")?.as_str()?.to_string();
     let rt_hash = meta.get("rt_deps_hash")?.as_str()?.to_string();

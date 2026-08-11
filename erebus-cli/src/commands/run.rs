@@ -25,7 +25,7 @@ pub fn run(args: RunArgs) -> Result<()> {
 
     // Verify it's a valid xbin file before executing
     {
-        use xbin_core::format::Footer;
+        use erebus_core::format::Footer;
         let mut f = std::fs::File::open(&file)
             .with_context(|| format!("failed to open {}", file.display()))?;
         Footer::read_from(&mut f).context("invalid .xbin file — bad footer")?;

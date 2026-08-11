@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use clap::Args;
 use ed25519_dalek::SigningKey;
 use std::path::{Path, PathBuf};
-use xbin_core::legacy::upgrade_binary;
-use xbin_core::sisr_stage::SisrBuildConfig;
+use erebus_core::legacy::upgrade_binary;
+use erebus_core::sisr_stage::SisrBuildConfig;
 
 #[derive(Args)]
 pub struct UpgradeBinaryArgs {

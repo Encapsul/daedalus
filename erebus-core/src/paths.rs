@@ -229,7 +229,7 @@ pub fn default_trusted_dir() -> PathBuf {
 
 /// Directory the stub launcher reads trusted Ed25519 public keys from.
 ///
-/// Mirrors `xbin-stub`'s `trusted_keys_dir()` exactly so that
+/// Mirrors `erebus-stub`'s `trusted_keys_dir()` exactly so that
 /// `xbin trust` / `xbin verify` write to and read from the *same* location
 /// the launcher checks. Honors `$XBIN_TRUSTED_DIR`; otherwise defaults to
 /// `~/.xbin/trusted-keys/` (home-relative). The home-relative default — not
@@ -253,7 +253,7 @@ pub fn trusted_keys_dir() -> PathBuf {
 /// `get(hash)` and `put(hash, bytes)`.
 ///
 /// Backends:
-/// - `HttpRemoteCache` — GET/PUT against a configurable base URL (in `xbin-cli`)
+/// - `HttpRemoteCache` — GET/PUT against a configurable base URL (in `erebus-cli`)
 /// - `FsRemoteCache` — local directory mirror (useful for testing/proxying)
 ///
 /// URLs encode the hash directly: `{base}/{hash}`. No JSON metadata is needed

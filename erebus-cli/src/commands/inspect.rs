@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
-use xbin_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64, FLAG_ENCRYPTED};
-use xbin_core::paths::format_size;
+use erebus_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64, FLAG_ENCRYPTED};
+use erebus_core::paths::format_size;
 
 #[derive(Args)]
 pub struct InspectArgs {
@@ -38,7 +38,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
         _ => "unknown",
     };
 
-    let payload = xbin_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)
+    let payload = erebus_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)
         .context("failed to read metadata payload")?;
     let meta: serde_json::Value =
         serde_json::from_slice(&payload).context("failed to parse metadata JSON")?;

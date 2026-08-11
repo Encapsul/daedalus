@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use std::path::{Path, PathBuf};
-use xbin_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64};
-use xbin_core::paths::{cache_dir, format_size};
+use erebus_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64};
+use erebus_core::paths::{cache_dir, format_size};
 
 #[derive(Args)]
 pub struct ScanArgs {
@@ -168,7 +168,7 @@ fn inspect_file(path: &Path) -> Option<serde_json::Value> {
     };
 
     let meta_bytes =
-        xbin_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize).ok()?;
+        erebus_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize).ok()?;
     let meta: serde_json::Value = serde_json::from_slice(&meta_bytes).ok()?;
 
     // Get file creation time
