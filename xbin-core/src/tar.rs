@@ -6,7 +6,7 @@
 use std::io::{self};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use flate2::read::GzDecoder;
 
@@ -16,8 +16,8 @@ use flate2::read::GzDecoder;
 /// - mtime is set to 0 (Unix epoch)
 /// - uid/gid are set to 0
 /// - uname/gname are empty
-/// - Only regular files and directories are included
-/// - Symlinks are followed (files only)
+/// - Symlinks are stored as symlink entries with targets guarded to stay
+///   inside the root (see [`guarded_symlink_target`])
 pub fn create_deterministic_tar(root: &Path) -> io::Result<Vec<u8>> {
     let mut buf = io::Cursor::new(Vec::new());
     {
@@ -35,8 +35,8 @@ pub fn create_deterministic_tar(root: &Path) -> io::Result<Vec<u8>> {
 /// Create a deterministic tar + compress (zstd level 3, streaming).
 ///
 /// Streams tar entries directly to the zstd encoder — never buffers the
-/// full uncompressed tar in memory. Uses multithreaded zstd for speed.
-/// This is the BLAZING FAST path: level 3 + streaming + parallel.
+/// full uncompressed tar in memory. Single-threaded zstd keeps the output
+/// byte-identical across machines so the payload hash is reproducible.
 pub fn create_tar_zstd(root: &Path) -> io::Result<Vec<u8>> {
     create_tar_zstd_with_level(root, crate::compress::DEFAULT_LEVEL)
 }
@@ -51,7 +51,6 @@ pub fn create_tar_zstd_with_level(root: &Path, level: i32) -> io::Result<Vec<u8>
     let entries = collect_entries(root)?;
     let mut encoder = zstd::Encoder::new(Vec::new(), level)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    let _ = encoder.multithread(num_cpus());
     {
         let mut builder = tar::Builder::new(&mut encoder);
         append_entries(&mut builder, root, &entries)?;
@@ -100,26 +99,29 @@ fn collect_recursive(base: &Path, current: &Path, entries: &mut Vec<String>) -> 
         let entry = entry.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         let path = entry.path();
 
-        // Skip symlinks — they'll be followed by the tar builder
-        let file_type = entry
-            .file_type()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        if file_type.is_symlink() {
-            continue;
-        }
-
         let rel = path
             .strip_prefix(base)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         let rel_str = rel.to_string_lossy().to_string();
 
-        // Skip __pycache__ and .git
-        if rel_str.contains("__pycache__") || rel_str.contains(".git") {
+        // Exclude version-control and bytecode-cache trees by exact component
+        // name so files like `.gitignore` / `.gitattributes` stay packaged.
+        if rel.components().any(|c| {
+            matches!(
+                c,
+                Component::Normal(n) if n == ".git" || n == "__pycache__"
+            )
+        }) {
             continue;
         }
 
+        let file_type = entry
+            .file_type()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
         entries.push(rel_str);
 
+        // Symlinked dirs are stored as links, never recursed into (cycle risk).
         if file_type.is_dir() {
             collect_recursive(base, &path, entries)?;
         }
@@ -146,21 +148,30 @@ fn append_entries<W: io::Write>(
             .set_groupname("")
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-        if path.is_dir() {
+        let meta = std::fs::symlink_metadata(&path)?;
+        if meta.file_type().is_symlink() {
+            if let Some(target) = guarded_symlink_target(root, &path) {
+                header.set_entry_type(tar::EntryType::Symlink);
+                header.set_mode(0o777);
+                header.set_size(0);
+                builder
+                    .append_link(&mut header, entry, &target)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            }
+        } else if path.is_dir() {
             header.set_entry_type(tar::EntryType::Directory);
             header.set_mode(0o755);
             header.set_size(0);
             builder
                 .append_data(&mut header, entry, &mut io::empty())
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        } else if path.is_file() {
-            let meta = std::fs::metadata(&path)?;
-            header.set_entry_type(tar::EntryType::Regular);
+        } else {
             let mode = if is_executable_file(&path) {
                 0o755
             } else {
                 0o644
             };
+            header.set_entry_type(tar::EntryType::Regular);
             header.set_mode(mode);
             header.set_size(meta.len());
             let mut f = std::fs::File::open(&path)?;
@@ -170,6 +181,35 @@ fn append_entries<W: io::Write>(
         }
     }
     Ok(())
+}
+
+/// Resolve a symlink target lexically and return it only if it stays within
+/// `root`. Absolute or root-escaping links are dropped: inside the packaged
+/// rootfs they would be broken, or reach outside the sandbox at runtime.
+fn guarded_symlink_target(root: &Path, link: &Path) -> Option<String> {
+    let target = std::fs::read_link(link).ok()?;
+    if target.is_absolute() {
+        return None;
+    }
+    let resolved = lexically_normalize(&link.parent()?.join(&target));
+    resolved
+        .starts_with(root)
+        .then(|| target.to_string_lossy().into_owned())
+}
+
+/// Collapse `.` and `..` components without touching the filesystem.
+fn lexically_normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
 
 /// Check if a file path has an extension that typically requires executable
@@ -195,11 +235,6 @@ fn is_executable_file(path: &Path) -> bool {
         }
     }
     is_executable_extension(path)
-}
-
-/// Number of CPU cores available (returns 1 if detection fails).
-fn num_cpus() -> u32 {
-    std::thread::available_parallelism().map_or(1, |n| n.get() as u32)
 }
 
 #[cfg(test)]
@@ -264,6 +299,92 @@ mod tests {
         let tar1 = create_deterministic_tar(root).unwrap();
         let tar2 = create_deterministic_tar(root).unwrap();
         assert_eq!(tar1, tar2);
+    }
+
+    #[test]
+    fn symlink_preserved_as_symlink_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("real.js"), b"module").unwrap();
+        std::os::unix::fs::symlink("real.js", root.join("alias.js")).unwrap();
+
+        let tar = create_deterministic_tar(root).unwrap();
+        let mut archive = tar::Archive::new(&tar[..]);
+        let entry = archive
+            .entries()
+            .unwrap()
+            .find(|e| {
+                e.as_ref()
+                    .map(|e| e.path().unwrap().to_string_lossy() == "alias.js")
+                    .unwrap_or(false)
+            })
+            .unwrap()
+            .unwrap();
+        assert!(entry.header().entry_type().is_symlink());
+        assert_eq!(
+            entry.link_name().unwrap().unwrap().to_string_lossy(),
+            "real.js"
+        );
+    }
+
+    #[test]
+    fn escaping_symlink_target_is_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("real.txt"), b"data").unwrap();
+        // Escapes the packaged root via `..`
+        std::os::unix::fs::symlink("../../etc/passwd", root.join("evil.txt")).unwrap();
+        std::os::unix::fs::symlink("/etc/passwd", root.join("abs.txt")).unwrap();
+
+        let tar = create_deterministic_tar(root).unwrap();
+        let mut archive = tar::Archive::new(&tar[..]);
+        let paths: Vec<_> = archive
+            .entries()
+            .unwrap()
+            .map(|e| e.unwrap().path().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert!(paths.contains(&"real.txt".to_string()));
+        assert!(!paths.contains(&"evil.txt".to_string()));
+        assert!(!paths.contains(&"abs.txt".to_string()));
+    }
+
+    #[test]
+    fn git_dir_excluded_but_gitignore_kept() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join(".git/config"), b"repo").unwrap();
+        fs::write(root.join(".gitignore"), b"*.log").unwrap();
+        fs::write(root.join(".gitattributes"), b"* text=auto").unwrap();
+        fs::create_dir(root.join("__pycache__")).unwrap();
+        fs::write(root.join("__pycache__/mod.cpython-311.pyc"), b"x").unwrap();
+
+        let tar = create_deterministic_tar(root).unwrap();
+        let mut archive = tar::Archive::new(&tar[..]);
+        let paths: Vec<_> = archive
+            .entries()
+            .unwrap()
+            .map(|e| e.unwrap().path().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert!(paths.contains(&".gitignore".to_string()));
+        assert!(paths.contains(&".gitattributes".to_string()));
+        assert!(!paths.contains(&".git".to_string()));
+        assert!(!paths.contains(&".git/config".to_string()));
+        assert!(!paths.contains(&"__pycache__".to_string()));
+    }
+
+    #[test]
+    fn tar_zstd_is_byte_deterministic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join("app.py"), b"print('hello')").unwrap();
+        fs::create_dir(root.join("static")).unwrap();
+        fs::write(root.join("static/site.css"), b"body{}").unwrap();
+
+        assert_eq!(
+            create_tar_zstd(root).unwrap(),
+            create_tar_zstd(root).unwrap()
+        );
     }
 
     #[test]
