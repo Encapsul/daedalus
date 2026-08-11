@@ -316,6 +316,46 @@ pub fn make_resolve<'a>(rootfs: &'a Path, use_pivot: bool) -> impl Fn(&str) -> P
     }
 }
 
+/// Expand `$VAR` / `${VAR}` placeholders in an argv argument from the child env.
+///
+/// Returns `None` when a referenced variable is unset so the caller can drop
+/// the argument (e.g. `-Dserver.port=$PORT` for a Java app with no web port).
+pub fn expand_env_arg(arg: &str, env: &BTreeMap<String, String>) -> Option<String> {
+    if !arg.contains('$') {
+        return Some(arg.to_string());
+    }
+    let mut out = String::with_capacity(arg.len());
+    let mut rest = arg;
+    while let Some(idx) = rest.find('$') {
+        out.push_str(&rest[..idx]);
+        rest = &rest[idx + 1..];
+        if rest.starts_with('{') {
+            let Some(end) = rest.find('}') else {
+                // Unbalanced `${` — keep the literal as-is.
+                out.push_str(rest);
+                rest = "";
+                break;
+            };
+            out.push_str(env.get(&rest[1..end])?);
+            rest = &rest[end + 1..];
+        } else {
+            let end = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(rest.len());
+            let name = &rest[..end];
+            if name.is_empty() {
+                // Trailing `$` — keep it literal.
+                out.push('$');
+            } else {
+                out.push_str(env.get(name)?);
+            }
+            rest = &rest[end..];
+        }
+    }
+    out.push_str(rest);
+    Some(out)
+}
+
 // ---------------------------------------------------------------------------
 // Unix exec helpers
 // ---------------------------------------------------------------------------
@@ -460,11 +500,18 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             ));
         }
 
+        // Compute the child environment before building argv: entrypoint args
+        // may carry `$PORT`/`${VAR}` placeholders that must expand to run-time
+        // values (e.g. Java's `-Dserver.port=$PORT`).
+        let env = setup_env(meta, rootfs, use_pivot, orig_cwd.as_deref(), app_config)?;
+
         let mut argv: Vec<CString> = Vec::new();
         if direct_exec {
             argv.push(prog_c.clone());
             for a in &meta.entrypoint[1..] {
-                argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
+                if let Some(expanded) = expand_env_arg(a, &env) {
+                    argv.push(cstr(resolve(&expanded).as_os_str().as_bytes())?);
+                }
             }
         } else {
             if !is_executable(interpreter_name.as_bytes()) {
@@ -475,14 +522,14 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             }
             argv.push(cstr(interpreter_name.as_bytes())?);
             for a in &meta.entrypoint[1..] {
-                argv.push(cstr(resolve(a).as_os_str().as_bytes())?);
+                if let Some(expanded) = expand_env_arg(a, &env) {
+                    argv.push(cstr(resolve(&expanded).as_os_str().as_bytes())?);
+                }
             }
         }
         for a in std::env::args_os().skip(1) {
             argv.push(cstr(a.as_bytes())?);
         }
-
-        let env = setup_env(meta, rootfs, use_pivot, orig_cwd.as_deref(), app_config)?;
 
         if let Some(cwd) = &meta.cwd {
             let dir = resolve(cwd);
@@ -595,7 +642,9 @@ pub fn spawn_app_windows(
         argv.push(std::ffi::OsString::from(interpreter_name));
     }
     for a in &meta.entrypoint[1..] {
-        argv.push(resolve(a).into_os_string());
+        if let Some(expanded) = expand_env_arg(a, &env) {
+            argv.push(resolve(&expanded).into_os_string());
+        }
     }
     for a in std::env::args_os().skip(1) {
         argv.push(a);
@@ -950,6 +999,9 @@ extern "C" fn signal_forward(sig: i32) {
 mod tests {
     use super::*;
 
+    /// Serializes fork-based tests (see `wait_for_children` docs).
+    static FORK_TEST_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn make_resolve_returns_absolute_when_pivot() {
         let rootfs = PathBuf::from("/app");
@@ -1014,6 +1066,10 @@ mod tests {
 
     #[test]
     fn wait_for_children_ignores_spurious_and_waits_for_tracked() {
+        // Serialized: waitpid(-1, ...) reaps ANY child of the process, so
+        // fork-based tests must not run concurrently or they steal each
+        // other's children.
+        let _guard = FORK_TEST_LOCK.lock().unwrap();
         // SAFETY: fork(2) duplicates the test process; the children only call
         // _exit(0), which is async-signal-safe and safe after forking a
         // multithreaded process.
@@ -1043,6 +1099,8 @@ mod tests {
 
     #[test]
     fn wait_for_children_ok_when_tracked_exits_zero() {
+        // Serialized: see wait_for_children_ignores_spurious_and_waits_for_tracked.
+        let _guard = FORK_TEST_LOCK.lock().unwrap();
         // SAFETY: fork(2) duplicates the test process; the child only calls
         // _exit(0), which is async-signal-safe and safe after forking a
         // multithreaded process.
@@ -1053,5 +1111,50 @@ mod tests {
         }
 
         wait_for_children(&[("ok".to_string(), pid)], false).unwrap();
+    }
+
+    fn env_map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn expand_env_arg_expands_port() {
+        let env = env_map(&[("PORT", "8080")]);
+        assert_eq!(
+            expand_env_arg("-Dserver.port=$PORT", &env),
+            Some("-Dserver.port=8080".to_string())
+        );
+    }
+
+    #[test]
+    fn expand_env_arg_supports_braces() {
+        let env = env_map(&[("XBIN_PORT", "9000")]);
+        assert_eq!(
+            expand_env_arg("-Dserver.port=${XBIN_PORT}", &env),
+            Some("-Dserver.port=9000".to_string())
+        );
+    }
+
+    #[test]
+    fn expand_env_arg_drops_arg_when_var_unset() {
+        assert_eq!(expand_env_arg("-Dserver.port=$PORT", &env_map(&[])), None);
+    }
+
+    #[test]
+    fn expand_env_arg_passes_through_without_dollar() {
+        let env = env_map(&[("PORT", "8080")]);
+        assert_eq!(
+            expand_env_arg("/app/app.jar", &env),
+            Some("/app/app.jar".to_string())
+        );
+    }
+
+    #[test]
+    fn expand_env_arg_handles_trailing_dollar() {
+        let env = env_map(&[("PORT", "8080")]);
+        assert_eq!(expand_env_arg("cost$", &env), Some("cost$".to_string()));
     }
 }

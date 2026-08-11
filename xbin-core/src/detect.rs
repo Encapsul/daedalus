@@ -388,9 +388,11 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
                     cmd.insert(1 + i, opt.clone());
                 }
             }
-            if std::env::var("PORT").is_ok() {
-                cmd.push("-Dserver.port=$PORT".into());
-            }
+            // Pass the runtime PORT to the JVM as an explicit server.port
+            // property. The stub expands `$PORT` from the app environment at
+            // launch and drops the flag when PORT is unset (non-web app), so
+            // the placeholder must not be resolved at build time.
+            cmd.push("-Dserver.port=$PORT".into());
             Some(cmd)
         }
         Runtime::Ruby => {
@@ -1117,9 +1119,20 @@ start = "uvicorn main:app"
                 "-XX:+UseG1GC".to_string(),
                 "-jar".to_string(),
                 "/app/app.jar".to_string(),
+                "-Dserver.port=$PORT".to_string(),
             ]
         );
         std::env::remove_var("JAVA_OPTS");
+    }
+
+    #[test]
+    fn java_entrypoint_emits_port_placeholder() {
+        // The `$PORT` placeholder must stay unexpanded at build time — the stub
+        // substitutes the run-time PORT value when the app launches.
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("app.jar"), b"\x50\x4b\x03\x04").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Java).unwrap();
+        assert_eq!(ep.last().map(String::as_str), Some("-Dserver.port=$PORT"));
     }
 
     #[test]
