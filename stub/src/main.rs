@@ -299,7 +299,11 @@ fn run() -> io::Result<()> {
     flock_exclusive(&lock)?;
 
     if !ready_marker.exists() {
-        let _ = gc_extraction_cache(16);
+        let gc_limit = std::env::var("XBIN_CACHE_MAX_ENTRIES")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(16);
+        let _ = gc_extraction_cache(gc_limit);
         let is_squashfs = meta.payload_format == format::PAYLOAD_FORMAT_SQUASHFS;
         if is_squashfs {
             extract_squashfs_atomic(&[payload.as_slice()], &cache_root)?;
