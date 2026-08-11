@@ -35,6 +35,7 @@ use std::io::{self, Read, Seek};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::exit;
+use xbin_core::detect;
 use xbin_core::format::{self as format, read_at, Footer};
 use xbin_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
 use xbin_core::sisr::resilience::{backup_path_for, create_backup, discard_backup, restore_backup};
@@ -196,6 +197,19 @@ fn run() -> io::Result<()> {
     let app_config = config::AppConfig::load();
 
     let (mut exe, mut footer, mut meta_bytes, mut meta) = read_from(&self_exe()?)?;
+
+    // Reject crafted metadata with an unknown runtime before doing any
+    // extraction/update work (roadmap #40 — unknown runtime used to silently
+    // map to bash).
+    if detect::Runtime::from_name(&meta.runtime).is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "unsupported runtime '{}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, go, php, perl, hugo, wasm, binary",
+                meta.runtime
+            ),
+        ));
+    }
 
     // Intercept xbin-reserved runtime flags (`--xbin-update`, `--xbin-version`)
     // before they could reach the host app. Handled modes are terminal: the

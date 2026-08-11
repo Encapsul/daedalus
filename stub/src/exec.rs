@@ -16,6 +16,7 @@ use crate::config::AppConfig;
 use crate::Metadata;
 #[cfg(unix)]
 use crate::{cstr, to_ptr_vec};
+use xbin_core::detect;
 
 /// Enter user + mount namespace if isolation >= 2; no-op otherwise.
 /// No-op on non-Linux platforms (no namespaces available).
@@ -513,7 +514,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
     // ── Platform-specific argv build + process launch ─────────────────────
     #[cfg(unix)]
     {
-        let (prog, direct_exec, interpreter_name) = resolve_entrypoint(meta, rootfs, use_pivot);
+        let (prog, direct_exec, interpreter_name) = resolve_entrypoint(meta, rootfs, use_pivot)?;
         let resolve = make_resolve(rootfs, use_pivot);
         let prog_c = cstr(prog.as_os_str().as_bytes())?;
         let prog_path_bytes = prog.as_os_str().as_bytes();
@@ -590,27 +591,58 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
 
 /// Resolve the entrypoint program + interpreter details shared by the
 /// single-app and service-supervisor launch paths.
+/// Canonical interpreter binary name for each interpreted runtime. Compiled
+/// runtimes (`go`, `binary`) return `None` — their entrypoint is the program.
+fn runtime_interpreter(runtime: &str) -> Option<&'static str> {
+    match runtime {
+        "python" => Some("python3"),
+        "node" => Some("node"),
+        "electron" => Some("electron"),
+        "deno" => Some("deno"),
+        "java" => Some("java"),
+        "ruby" => Some("ruby"),
+        "dotnet" => Some("dotnet"),
+        "php" => Some("php"),
+        "perl" => Some("perl"),
+        "hugo" => Some("hugo"),
+        "wasm" => Some("wasmtime"),
+        _ => None,
+    }
+}
+
+/// Resolve the entrypoint program and interpreter for `meta`, validated against
+/// the supported runtime list. `None` from `Runtime::from_name` means the
+/// metadata carries a runtime the stub never heard of — fail loudly instead of
+/// silently launching under bash (upstream fix for roadmap #40).
 pub fn resolve_entrypoint(
     meta: &Metadata,
     rootfs: &Path,
     use_pivot: bool,
-) -> (PathBuf, bool, String) {
+) -> io::Result<(PathBuf, bool, String)> {
+    if detect::Runtime::from_name(&meta.runtime).is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "unsupported runtime '{}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, go, php, perl, hugo, wasm, binary",
+                meta.runtime
+            ),
+        ));
+    }
     let resolve = make_resolve(rootfs, use_pivot);
     let mut prog = resolve(&meta.entrypoint[0]);
 
     // Compiled binaries (go/binary) exec `entrypoint[0]` directly; interpreted
     // runtimes get their interpreter prepended to argv.
     let direct_exec = matches!(meta.runtime.as_str(), "go" | "binary");
-    let interpreter_name = match meta.runtime.as_str() {
-        "php" => "php",
-        "python" => "python3",
-        "node" => "node",
-        "ruby" => "ruby",
-        "perl" => "perl",
-        "java" => "java",
-        "deno" => "deno",
-        _ => "bash",
-    };
+    let interpreter_name = runtime_interpreter(&meta.runtime)
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            meta.entrypoint[0]
+                .rsplit('/')
+                .next()
+                .unwrap_or(&meta.entrypoint[0])
+                .to_string()
+        });
 
     // For bare interpreter names without pivot_root, search rootfs bin dirs
     // so embedded interpreters are found before namespace/pivot setup.
@@ -630,7 +662,7 @@ pub fn resolve_entrypoint(
         }
     }
 
-    (prog, direct_exec, interpreter_name.to_string())
+    Ok((prog, direct_exec, interpreter_name))
 }
 
 // ---------------------------------------------------------------------------
@@ -645,7 +677,7 @@ pub fn spawn_app_windows(
     rootfs: &Path,
     app_config: &AppConfig,
 ) -> io::Result<crate::win::Child> {
-    let (prog, direct_exec, interpreter_name) = resolve_entrypoint(meta, rootfs, false);
+    let (prog, direct_exec, interpreter_name) = resolve_entrypoint(meta, rootfs, false)?;
     let env = setup_env(meta, rootfs, false, None, app_config)?;
     let cwd = meta.cwd.as_ref().map(|c| make_resolve(rootfs, false)(c));
     let resolve = make_resolve(rootfs, false);
@@ -1269,5 +1301,43 @@ mod tests {
     fn expand_env_arg_handles_trailing_dollar() {
         let env = env_map(&[("PORT", "8080")]);
         assert_eq!(expand_env_arg("cost$", &env), Some("cost$".to_string()));
+    }
+
+    #[test]
+    fn resolve_entrypoint_rejects_unknown_runtime() {
+        let tmp = tempfile::tempdir().unwrap();
+        let meta = Metadata {
+            name: "crafted".into(),
+            version: None,
+            runtime: "cobol".into(),
+            entrypoint: vec!["/app/app".into()],
+            env: BTreeMap::new(),
+            cwd: None,
+            layers: Vec::new(),
+            isolation: 0,
+            seccomp: false,
+            landlock: false,
+            services: Vec::new(),
+            crypto: None,
+            payload_format: String::new(),
+            health_check: None,
+            update_url: None,
+        };
+        let err = resolve_entrypoint(&meta, tmp.path(), false).unwrap_err();
+        assert!(err.to_string().contains("unsupported runtime 'cobol'"));
+    }
+
+    #[test]
+    fn runtime_interpreter_covers_all_interpreted_runtimes() {
+        for name in [
+            "python", "node", "electron", "deno", "java", "ruby", "dotnet", "php", "perl", "hugo",
+            "wasm",
+        ] {
+            assert!(runtime_interpreter(name).is_some(), "runtime: {name}");
+        }
+        for name in ["go", "binary"] {
+            assert!(runtime_interpreter(name).is_none(), "runtime: {name}");
+        }
+        assert!(runtime_interpreter("cobol").is_none());
     }
 }

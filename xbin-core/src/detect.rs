@@ -42,6 +42,28 @@ impl Runtime {
             Self::Binary => "binary",
         }
     }
+
+    /// Parse a runtime name as written in the binary metadata. Returns `None`
+    /// for unknown names so callers can reject crafted metadata instead of
+    /// silently falling back to a default interpreter.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "python" => Some(Self::Python),
+            "deno" => Some(Self::Deno),
+            "node" => Some(Self::Node),
+            "electron" => Some(Self::Electron),
+            "java" => Some(Self::Java),
+            "ruby" => Some(Self::Ruby),
+            "dotnet" => Some(Self::Dotnet),
+            "go" => Some(Self::Go),
+            "php" => Some(Self::Php),
+            "perl" => Some(Self::Perl),
+            "hugo" => Some(Self::Hugo),
+            "wasm" => Some(Self::Wasm),
+            "binary" => Some(Self::Binary),
+            _ => None,
+        }
+    }
 }
 
 /// Detect the runtime for an app directory by checking marker files.
@@ -1146,5 +1168,29 @@ start = "uvicorn main:app"
         std::fs::write(dir.path().join("index.js"), "console.log('hi')").unwrap();
         let ep = resolve_entrypoint(dir.path(), Runtime::Node);
         assert_eq!(ep, Some(vec!["node".into(), "/app/index.js".into()]));
+    }
+
+    #[test]
+    fn from_name_roundtrips_all_runtimes() {
+        for runtime in [
+            Runtime::Python,
+            Runtime::Deno,
+            Runtime::Node,
+            Runtime::Electron,
+            Runtime::Java,
+            Runtime::Ruby,
+            Runtime::Dotnet,
+            Runtime::Go,
+            Runtime::Php,
+            Runtime::Perl,
+            Runtime::Hugo,
+            Runtime::Wasm,
+            Runtime::Binary,
+        ] {
+            let name = runtime.name();
+            assert_eq!(Runtime::from_name(name), Some(runtime), "name: {name}");
+        }
+        assert_eq!(Runtime::from_name("cobol"), None);
+        assert_eq!(Runtime::from_name(""), None);
     }
 }
