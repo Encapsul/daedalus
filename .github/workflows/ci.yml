@@ -73,6 +73,15 @@ jobs:
         run: cargo install cargo-audit
       - name: Run cargo audit
         run: cargo audit
+      # CVE-2023-48022: ed25519-dalek < 2.1.0 signs with the Ed25519 bit
+      # possibly unset. The Cargo.toml requirements are pinned to "2.1", but
+      # this guards the lockfile so a downgrade fails CI, not production.
+      - name: Verify ed25519-dalek >= 2.1.0
+        run: |
+          ver=$(awk '/name = "ed25519-dalek"/{f=1} f && /^version =/{print; exit}' Cargo.lock | sed 's/.*"\(.*\)"/\1/')
+          printf '2.1.0\n%s\n' "$ver" | sort -V | head -1 | grep -qx 2.1.0 \
+            && echo "ed25519-dalek $ver >= 2.1.0 OK" \
+            || { echo "ed25519-dalek $ver < 2.1.0 (CVE-2023-48022)"; exit 1; }
 
   # Cross-compile the stub + CLI for Windows and macOS on every push.
   # zigbuild (zig C cross-compiler) supplies the mingw toolchain for Windows
