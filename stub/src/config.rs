@@ -1,11 +1,14 @@
 //! Configuration management for xbin launcher.
 //!
-//! Multi-layered configuration system:
-//! 1. CLI arguments (highest priority)
-//! 2. Local config file (xbin.toml in same directory as binary)
-//! 3. Environment variables
+//! Multi-layered configuration system (lowest priority last):
+//! 1. CLI arguments
+//! 2. Environment variables (12-factor overrides)
+//! 3. Local config file (xbin.toml in same directory as binary)
 //! 4. Global config (~/.xbin/config.toml on Unix)
 //! 5. Interactive prompt (when TTY available)
+//!
+//! `merge` fills gaps only, so an earlier layer never loses a key it already
+//! set to a later layer's value.
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -96,11 +99,38 @@ impl AppConfig {
     }
 
     fn merge(&mut self, other: Self) {
-        if other.database.is_some() {
-            self.database = other.database;
+        // Fill-in semantics: fields already present in `self` (higher
+        // precedence) win; `other` only fills the gaps. `load()` merges local
+        // first then global, so local beats global.
+        match (&mut self.database, other.database) {
+            (Some(cur), Some(o)) => {
+                if cur.url.is_none() {
+                    cur.url = o.url;
+                }
+                if cur.host.is_none() {
+                    cur.host = o.host;
+                }
+                if cur.port.is_none() {
+                    cur.port = o.port;
+                }
+                if cur.name.is_none() {
+                    cur.name = o.name;
+                }
+                if cur.user.is_none() {
+                    cur.user = o.user;
+                }
+                if cur.password.is_none() {
+                    cur.password = o.password;
+                }
+            }
+            (None, Some(o)) => self.database = Some(o),
+            _ => {}
         }
-        if other.secrets.is_some() {
-            self.secrets = other.secrets;
+        if let Some(o) = other.secrets {
+            let map = self.secrets.get_or_insert_with(HashMap::new);
+            for (k, v) in o {
+                map.entry(k).or_insert(v);
+            }
         }
         for (k, v) in other.extra {
             self.extra.entry(k).or_insert(v);
@@ -299,6 +329,53 @@ mod tests {
         config.set_secret("key", "value".to_string());
         assert!(config.secrets.is_some());
         assert_eq!(config.get_secret("key"), Some(&"value".to_string()));
+    }
+
+    #[test]
+    fn test_merge_local_wins_over_global() {
+        let mut local = AppConfig {
+            database: Some(DatabaseConfig {
+                url: Some("postgres://local/db".to_string()),
+                host: None,
+                ..Default::default()
+            }),
+            secrets: {
+                let mut m = HashMap::new();
+                m.insert("api_key".to_string(), "local-key".to_string());
+                Some(m)
+            },
+            extra: HashMap::new(),
+        };
+
+        let global = AppConfig {
+            database: Some(DatabaseConfig {
+                url: Some("postgres://global/db".to_string()),
+                host: Some("db.example.com".to_string()),
+                ..Default::default()
+            }),
+            secrets: {
+                let mut m = HashMap::new();
+                m.insert("api_key".to_string(), "global-key".to_string());
+                m.insert("other".to_string(), "global-other".to_string());
+                Some(m)
+            },
+            extra: HashMap::new(),
+        };
+
+        local.merge(global);
+
+        // Local value wins on collision.
+        assert_eq!(
+            local.get_database_url(),
+            Some("postgres://local/db".to_string())
+        );
+        assert_eq!(local.get_secret("api_key"), Some(&"local-key".to_string()));
+        // Global fills only the gaps.
+        assert_eq!(
+            local.database.as_ref().unwrap().host.as_deref(),
+            Some("db.example.com")
+        );
+        assert_eq!(local.get_secret("other"), Some(&"global-other".to_string()));
     }
 
     #[test]
