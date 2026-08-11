@@ -150,6 +150,7 @@ const READ_ONLY: u64 = EXECUTE | READ_FILE | READ_DIR; // allows execution outsi
 - With `--enable-sisr`, `--key` signs only the manifest (`build.rs:1367-1370`, `manifest_signed`), never the binary; signed binaries cannot be upgraded at all (`legacy.rs:59-63`)
 - Result: SISR binaries have no authenticity at rest — only the manifest signature, verified during the update flow, protects them
 - **Action:** resign after update (key available at update site) or build a signature chain — sign `SHA256(new_footer_hash ‖ parent_footer_hash)` so the stub verifies updates offline; at minimum document that SISR files are authenticated only during the update.
+- **Status (2026-08-11):** PARTIAL — limitation documented: `engine.rs::apply_update_with_stats` doc block explains the at-rest gap and the signature-chain path; the CLI now warns after every `--enable-sisr` build. The signature chain itself is deferred (requires format + stub + engine changes and a new build flag).
 
 ---
 

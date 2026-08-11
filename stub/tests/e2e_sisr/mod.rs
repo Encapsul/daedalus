@@ -33,16 +33,17 @@ pub const KEY_SEED: [u8; 32] = [7u8; 32];
 pub const CHUNK_TARGET: usize = 64 << 10;
 
 /// The app script markers, same length so the tar layout only differs by the
-/// payload bytes and chunk reuse is maximal.
-pub const BODY_V1: &str = "echo v1-ok; exit 0";
-pub const BODY_V2: &str = "echo v2-ok; exit 0";
+/// payload bytes and chunk reuse is maximal. The shebang makes the script a
+/// valid `binary`-runtime entrypoint (exec'd directly).
+pub const BODY_V1: &str = "#!/bin/sh\necho v1-ok; exit 0";
+pub const BODY_V2: &str = "#!/bin/sh\necho v2-ok; exit 0";
 
 pub fn key() -> SigningKey {
     SigningKey::from_bytes(&KEY_SEED)
 }
 
 pub fn meta() -> &'static [u8] {
-    br#"{"name":"e2e-sisr","runtime":"bash","entrypoint":["/app/app.sh"],"payload_format":"zstd-tar","layers":[]}"#
+    br#"{"name":"e2e-sisr","runtime":"binary","entrypoint":["/app/app.sh"],"payload_format":"zstd-tar","layers":[]}"#
 }
 
 /// Deterministic pseudo-random bytes shared by v1 and v2 (incompressible, so

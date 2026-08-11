@@ -32,7 +32,7 @@ fn key() -> SigningKey {
 }
 
 fn meta() -> &'static [u8] {
-    br#"{"name":"rollback-e2e","runtime":"bash","entrypoint":["/app/app.sh"],"payload_format":"zstd-tar","layers":[]}"#
+    br#"{"name":"rollback-e2e","runtime":"binary","entrypoint":["/app/app.sh"],"payload_format":"zstd-tar","layers":[]}"#
 }
 
 /// Rootfs tar containing an executable `/app/app.sh` running `body`.
@@ -172,9 +172,13 @@ fn crashing_update_is_rolled_back_and_old_version_runs() {
     setup_trusted_keys(&work);
     let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
 
-    build_xbin(&work, &stub, "echo v1-ok; exit 0");
+    build_xbin(&work, &stub, "#!/bin/sh\necho v1-ok; exit 0");
     let v1_sha = footer_sha(&work.join("app.xbin"));
-    let (manifest, v2_sha) = stage_update(&work, &work.join("app.xbin"), "echo v2-crash; exit 1");
+    let (manifest, v2_sha) = stage_update(
+        &work,
+        &work.join("app.xbin"),
+        "#!/bin/sh\necho v2-crash; exit 1",
+    );
 
     let out = run_xbin(&work, &work.join("app.xbin"), &manifest);
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
@@ -212,8 +216,12 @@ fn healthy_update_is_confirmed_and_kept() {
     setup_trusted_keys(&work);
     let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
 
-    build_xbin(&work, &stub, "echo v1; exit 0");
-    let (manifest, v2_sha) = stage_update(&work, &work.join("app.xbin"), "echo v2-ok; exit 0");
+    build_xbin(&work, &stub, "#!/bin/sh\necho v1; exit 0");
+    let (manifest, v2_sha) = stage_update(
+        &work,
+        &work.join("app.xbin"),
+        "#!/bin/sh\necho v2-ok; exit 0",
+    );
 
     let out = run_xbin(&work, &work.join("app.xbin"), &manifest);
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
@@ -246,9 +254,13 @@ fn quarantined_version_is_refused_on_reinstall() {
     setup_trusted_keys(&work);
     let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
 
-    build_xbin(&work, &stub, "echo v1-stable; exit 0");
+    build_xbin(&work, &stub, "#!/bin/sh\necho v1-stable; exit 0");
     let v1_sha = footer_sha(&work.join("app.xbin"));
-    let (manifest, v2_sha) = stage_update(&work, &work.join("app.xbin"), "echo v2-crash; exit 1");
+    let (manifest, v2_sha) = stage_update(
+        &work,
+        &work.join("app.xbin"),
+        "#!/bin/sh\necho v2-crash; exit 1",
+    );
 
     // First attempt: crashes, rolls back, quarantines v2.
     let first = run_xbin(&work, &work.join("app.xbin"), &manifest);
