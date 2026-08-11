@@ -934,16 +934,28 @@ impl xbin_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
     }
 }
 
-/// Minimal HTTPS GET returning the raw response body.
+/// Integer duration in milliseconds from the env, falling back to `default_ms`
+/// when unset or unparsable.
+fn env_timeout_ms(name: &str, default_ms: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(default_ms)
+}
+
+/// Minimal HTTPS GET returning the raw response body. Timeouts are tunable via
+/// `XBIN_HTTP_TIMEOUT_CONNECT`, `XBIN_HTTP_TIMEOUT_RESPONSE`, and
+/// `XBIN_HTTP_TIMEOUT_BODY` (milliseconds; defaults 10s / 30s / 30s).
 ///
 /// Only caller-verified content is consumed (signed manifest, hash-checked
 /// chunks), so the transport is a convenience — never a trust anchor.
 fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
+    let ms = |name, default| std::time::Duration::from_millis(env_timeout_ms(name, default));
     let resp = ureq::get(url)
         .config()
-        .timeout_connect(Some(std::time::Duration::from_secs(10)))
-        .timeout_recv_response(Some(std::time::Duration::from_secs(30)))
-        .timeout_recv_body(Some(std::time::Duration::from_secs(30)))
+        .timeout_connect(Some(ms("XBIN_HTTP_TIMEOUT_CONNECT", 10_000)))
+        .timeout_recv_response(Some(ms("XBIN_HTTP_TIMEOUT_RESPONSE", 30_000)))
+        .timeout_recv_body(Some(ms("XBIN_HTTP_TIMEOUT_BODY", 30_000)))
         .build()
         .call()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))?;
@@ -1158,6 +1170,17 @@ mod tests {
         assert_eq!(human_bytes(1536), "1.5 KiB");
         assert_eq!(human_bytes(1024 * 1024), "1.0 MiB");
         assert_eq!(human_bytes((1024 * 1024) + (512 * 1024)), "1.5 MiB");
+    }
+
+    #[test]
+    fn env_timeout_ms_reads_int_and_falls_back() {
+        std::env::set_var("XBIN_HTTP_TIMEOUT_TEST", "2500");
+        assert_eq!(env_timeout_ms("XBIN_HTTP_TIMEOUT_TEST", 10_000), 2500);
+        std::env::remove_var("XBIN_HTTP_TIMEOUT_TEST");
+        assert_eq!(env_timeout_ms("XBIN_HTTP_TIMEOUT_TEST", 10_000), 10_000);
+        std::env::set_var("XBIN_HTTP_TIMEOUT_TEST", "garbage");
+        assert_eq!(env_timeout_ms("XBIN_HTTP_TIMEOUT_TEST", 10_000), 10_000);
+        std::env::remove_var("XBIN_HTTP_TIMEOUT_TEST");
     }
 
     /// Builds a v2 layout `[stub][payload][meta][tail][84-byte footer]` for
