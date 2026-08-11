@@ -8,8 +8,8 @@ use std::process::Command;
 
 use tempfile::tempdir;
 
-use tar::Builder;
 use erebus_core::assembly::{assemble_erebus, AssemblyInput};
+use tar::Builder;
 
 fn meta(seccomp: bool) -> Vec<u8> {
     let mut meta = serde_json::json!({

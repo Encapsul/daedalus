@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use clap::Args;
+use erebus_core::paths::trusted_keys_dir;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use erebus_core::paths::trusted_keys_dir;
 
 #[derive(Args)]
 pub struct TrustArgs {

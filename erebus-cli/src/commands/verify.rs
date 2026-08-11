@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use ed25519_dalek::{Verifier, VerifyingKey};
-use sha2::{Digest, Sha256};
-use std::path::PathBuf;
 use erebus_core::format::{Footer, SIG_BLOCK_SIZE, SIG_LEN};
 use erebus_core::paths::trusted_keys_dir;
+use sha2::{Digest, Sha256};
+use std::path::PathBuf;
 
 fn write_json_output(value: &serde_json::Value, output: Option<&std::path::Path>) -> Result<()> {
     let json_str = serde_json::to_string_pretty(value)?;

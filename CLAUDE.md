@@ -8,9 +8,9 @@ x.bin packages any application into a single self-extracting ELF binary. Detects
 
 ## Architecture
 
-- `xbin-core/` — Core library (format, detect, compress, encrypt, integrity, verify, assembly)
-- `xbin-cli/` — CLI tool (clap-based, 12 commands)
-- `xbin-stub/` — ELF launcher (unsafe FFI, mmap, fork, exec)
+- `erebus-core/` — Core library (format, detect, compress, encrypt, integrity, verify, assembly)
+- `erebus-cli/` — CLI tool (clap-based, 12 commands)
+- `erebus-stub/` — ELF launcher (unsafe FFI, mmap, fork, exec)
 - `cli/` — Legacy Python CLI (being replaced by Rust)
 
 ## Build Commands
@@ -30,8 +30,8 @@ Before finishing any code change, run:
 1. `cargo fmt --check`
 2. `cargo clippy --all-targets -- -D warnings`
 3. `cargo test --workspace`
-4. `cd cli && ruff check xbin/ && black --check xbin/ && python3 -m pytest tests/ -q`
-5. `xbin build examples/hello-web -o /tmp/test.xbin && xbin inspect /tmp/test.xbin`
+4. `cd cli && ruff check erebus/ && black --check erebus/ && python3 -m pytest tests/ -q`
+5. `erebus build examples/hello-web -o /tmp/test.ere && erebus inspect /tmp/test.ere`
 
 ## Claude Code Architecture (Command → Agent → Skill)
 
@@ -40,22 +40,22 @@ This project uses the **Command → Agent → Skill** orchestration pattern from
 ### Commands (Entry Points)
 | Command | Purpose |
 |---------|---------|
-| `/xbin-build` | Build a .xbin binary |
-| `/xbin-verify` | Verify integrity |
-| `/xbin-new-runtime` | Add new runtime |
-| `/xbin-new-command` | Add new CLI command |
-| `/xbin-security-audit` | Security audit |
-| `/xbin-benchmark` | Performance benchmark |
-| `/xbin-full-build` | Full build orchestration (Command → Agent → Skill) |
-| `/xbin-test-app` | Test app from GitHub |
-| `/xbin-new-runtime-full` | Add runtime with full orchestration |
+| `/erebus-build` | Build a .ere binary |
+| `/erebus-verify` | Verify integrity |
+| `/erebus-new-runtime` | Add new runtime |
+| `/erebus-new-command` | Add new CLI command |
+| `/erebus-security-audit` | Security audit |
+| `/erebus-benchmark` | Performance benchmark |
+| `/erebus-full-build` | Full build orchestration (Command → Agent → Skill) |
+| `/erebus-test-app` | Test app from GitHub |
+| `/erebus-new-runtime-full` | Add runtime with full orchestration |
 
 ### Agents (Specialized Workers)
 | Agent | Purpose | Skills | Memory |
 |-------|---------|--------|--------|
 | `security-auditor` | ANSSI-Rust compliance | anssi-rust, security-audit | project |
 | `runtime-detector` | Runtime detection logic | runtime-detection | project |
-| `build-pipeline` | Build pipeline | xbin-format, verification-loop | project |
+| `build-pipeline` | Build pipeline | erebus-format, verification-loop | project |
 | `cli-command` | CLI command design | clig-conventions | project |
 | `test-runner` | Verification loop | verification-loop | project |
 
@@ -63,7 +63,7 @@ This project uses the **Command → Agent → Skill** orchestration pattern from
 | Skill | Purpose |
 |-------|---------|
 | `anssi-rust` | 41 ANSSI rules |
-| `xbin-format` | Binary format specification |
+| `erebus-format` | Binary format specification |
 | `runtime-detection` | Runtime detection rules |
 | `verification-loop` | Verification checklist |
 | `security-audit` | Security audit checklist |
@@ -90,7 +90,7 @@ Use `context: fork` for isolated subagent contexts when running parallel tasks.
 
 ## Security Rules
 
-- No `unsafe` in `xbin-core/` (only `stub/src/main.rs`)
+- No `unsafe` in `erebus-core/` (only `stub/src/main.rs`)
 - All `unsafe` blocks must have `SAFETY` comments
 - Ed25519 keys must have the Ed25519 bit set (CVE-2023-48022)
 - No hardcoded secrets anywhere in the codebase
@@ -104,8 +104,8 @@ Use `context: fork` for isolated subagent contexts when running parallel tasks.
 - Edition 2021, `opt-level = "z"`, LTO, strip, `panic = "abort"`
 
 ### Python (legacy CLI)
-- `ruff check xbin/` — linting (E/W/F/I/UP/B/SIM/RUF)
-- `black --check xbin/` — formatting (88-char line length)
+- `ruff check erebus/` — linting (E/W/F/I/UP/B/SIM/RUF)
+- `black --check erebus/` — formatting (88-char line length)
 - Type hints mandatory on all functions
 - Function length ≤ 40 lines
 
@@ -121,7 +121,7 @@ Benchmarks in `benchmarks/` measure:
 - Output size (MB)
 - Peak RSS (MB)
 - Cold/warm start time
-- Native vs xbin comparison
+- Native vs erebus comparison
 
 Run: `bash benchmarks/run.sh`
 

@@ -235,10 +235,10 @@ EXIT STATUS
        5      Not found (file, directory, or dependency missing).
 
 ENVIRONMENT
-       XBIN_CACHE_DIR
+       ERE_CACHE_DIR
               Override the cache directory (default: ~/.cache/erebus).
 
-       XBIN_VERBOSE
+       ERE_VERBOSE
               If set, enable verbose output (equivalent to -v).
 
        XDG_DATA_HOME
@@ -276,7 +276,7 @@ BUGS
 
     // ── Subcommand man pages ──────────────────────────────────────────
     let sub_extras: &[(&str, &str)] = &[
-        ("build", "ENVIRONMENT\n       XBIN_CACHE_DIR\n              Override the cache directory.\n"),
+        ("build", "ENVIRONMENT\n       ERE_CACHE_DIR\n              Override the cache directory.\n"),
         ("run", ""),
         ("sign", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for key lookup.\n"),
         ("verify", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for trusted key lookup.\n"),

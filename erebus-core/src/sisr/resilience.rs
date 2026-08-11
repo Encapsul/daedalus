@@ -95,7 +95,10 @@ mod tests {
     #[test]
     fn backup_path_is_co_located() {
         let bin = Path::new("/home/u/app.erebus");
-        assert_eq!(backup_path_for(bin), PathBuf::from("/home/u/app.erebus.bak"));
+        assert_eq!(
+            backup_path_for(bin),
+            PathBuf::from("/home/u/app.erebus.bak")
+        );
         let nested = Path::new("/opt/tools/bin/tool");
         assert_eq!(
             backup_path_for(nested),

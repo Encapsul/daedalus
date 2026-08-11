@@ -30,7 +30,7 @@ pub fn enter_namespace_if_needed(isolation: u8) -> io::Result<()> {
 }
 
 /// Build the process environment: host env + `LD_LIBRARY_PATH` + meta.env + `ROOTFS` substitution.
-/// When `orig_cwd` is Some, inserts `XBIN_ORIG_CWD` (used by single-service exec).
+/// When `orig_cwd` is Some, inserts `ERE_ORIG_CWD` (used by single-service exec).
 pub fn setup_env(
     meta: &Metadata,
     rootfs: &Path,
@@ -91,7 +91,7 @@ pub fn setup_env(
     }
 
     if let Some(cwd) = orig_cwd {
-        env.insert("XBIN_ORIG_CWD".into(), cwd.to_string_lossy().into_owned());
+        env.insert("ERE_ORIG_CWD".into(), cwd.to_string_lossy().into_owned());
     }
 
     // App-bundled `.env` is the LOWEST-priority source: every explicit
@@ -109,7 +109,7 @@ pub fn setup_env(
     // Merge secrets from config file
     if let Some(secrets) = &app_config.secrets {
         for (k, v) in secrets {
-            env.insert(format!("XBIN_SECRET_{}", k.to_uppercase()), v.clone());
+            env.insert(format!("ERE_SECRET_{}", k.to_uppercase()), v.clone());
         }
     }
 
@@ -460,7 +460,9 @@ fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
     crate::pivot_root_into(rootfs)?;
     if meta.seccomp {
         if let Err(e) = crate::seccomp::install_seccomp_denylist() {
-            eprintln!("[erebus] warning: seccomp not available, running without syscall filter: {e}");
+            eprintln!(
+                "[erebus] warning: seccomp not available, running without syscall filter: {e}"
+            );
         }
     }
     if let Some(root) = root_guard {
@@ -563,7 +565,10 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             if !entrypoint_is_executable(interpreter_name.as_bytes(), &interpreter_name, rootfs) {
                 return Err(io::Error::new(
                     io::ErrorKind::NotFound,
-                    format!("[erebus] error: interpreter '{}' not found", interpreter_name),
+                    format!(
+                        "[erebus] error: interpreter '{}' not found",
+                        interpreter_name
+                    ),
                 ));
             }
             argv.push(cstr(interpreter_name.as_bytes())?);
@@ -775,7 +780,7 @@ pub fn supervise_services(
     rootfs: &Path,
     app_config: &AppConfig,
 ) -> io::Result<()> {
-    let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
+    let verbose = std::env::var_os("ERE_VERBOSE").is_some();
     #[cfg(target_os = "linux")]
     let use_pivot = meta.isolation >= 2;
     #[cfg(not(target_os = "linux"))]
@@ -813,7 +818,7 @@ pub fn supervise_services(
     rootfs: &Path,
     app_config: &AppConfig,
 ) -> io::Result<()> {
-    let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
+    let verbose = std::env::var_os("ERE_VERBOSE").is_some();
 
     crate::health_gate::maybe_start_health(meta);
 
@@ -841,7 +846,10 @@ pub fn supervise_services(
         }
         let child = crate::win::spawn(&prog, &argv, &env, None, false)?;
         if verbose {
-            eprintln!("[erebus] service '{}' started (pid {})", svc.name, child.pid);
+            eprintln!(
+                "[erebus] service '{}' started (pid {})",
+                svc.name, child.pid
+            );
         }
         children.push((svc.name.clone(), child));
     }
@@ -1291,9 +1299,9 @@ mod tests {
 
     #[test]
     fn expand_env_arg_supports_braces() {
-        let env = env_map(&[("XBIN_PORT", "9000")]);
+        let env = env_map(&[("ERE_PORT", "9000")]);
         assert_eq!(
-            expand_env_arg("-Dserver.port=${XBIN_PORT}", &env),
+            expand_env_arg("-Dserver.port=${ERE_PORT}", &env),
             Some("-Dserver.port=9000".to_string())
         );
     }

@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use clap::Args;
+use erebus_core::format::Footer;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
-use erebus_core::format::Footer;
 
 #[derive(Args)]
 pub struct SelftestArgs {

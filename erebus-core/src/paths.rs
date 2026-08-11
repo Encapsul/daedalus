@@ -231,13 +231,13 @@ pub fn default_trusted_dir() -> PathBuf {
 ///
 /// Mirrors `erebus-stub`'s `trusted_keys_dir()` exactly so that
 /// `erebus trust` / `erebus verify` write to and read from the *same* location
-/// the launcher checks. Honors `$XBIN_TRUSTED_DIR`; otherwise defaults to
+/// the launcher checks. Honors `$ERE_TRUSTED_DIR`; otherwise defaults to
 /// `~/.erebus/trusted-keys/` (home-relative). The home-relative default — not
 /// `XDG_DATA_HOME` — is intentional: the stub resolves trust anchors without
 /// consulting environment variables that could be spoofed in sandboxed or
 /// elevated (`sudo`/setuid) contexts.
 pub fn trusted_keys_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("XBIN_TRUSTED_DIR") {
+    if let Some(d) = std::env::var_os("ERE_TRUSTED_DIR") {
         PathBuf::from(d)
     } else if let Some(home) = std::env::var_os("HOME") {
         PathBuf::from(home).join(".erebus").join("trusted-keys")
@@ -527,9 +527,9 @@ mod tests {
 
     #[test]
     fn trusted_keys_dir_matches_stub_default() {
-        // $XBIN_TRUSTED_DIR wins; else ~/.erebus/trusted-keys (home-relative),
+        // $ERE_TRUSTED_DIR wins; else ~/.erebus/trusted-keys (home-relative),
         // matching the stub launcher exactly (no XDG resolution).
-        let erebus = EnvGuard::new("XBIN_TRUSTED_DIR");
+        let erebus = EnvGuard::new("ERE_TRUSTED_DIR");
         let home = EnvGuard::new("HOME");
         erebus.clear();
         home.set("/fake/home");

@@ -9,11 +9,11 @@ pub struct PublishArgs {
     pub file: PathBuf,
 
     /// Registry URL to upload to (required, cannot use placeholder)
-    #[arg(long, env = "XBIN_REGISTRY")]
+    #[arg(long, env = "ERE_REGISTRY")]
     pub registry: Option<String>,
 
     /// Authentication token for the registry
-    #[arg(long, env = "XBIN_TOKEN")]
+    #[arg(long, env = "ERE_TOKEN")]
     pub token: Option<String>,
 
     /// Skip upload, just validate the file and print info
@@ -46,14 +46,14 @@ pub fn run(args: PublishArgs) -> Result<()> {
     let registry = match &args.registry {
         Some(url) => url.clone(),
         None => {
-            anyhow::bail!("registry URL is required (use --registry or XBIN_REGISTRY env var)")
+            anyhow::bail!("registry URL is required (use --registry or ERE_REGISTRY env var)")
         }
     };
 
     // Reject placeholder URLs that would result in a non-functional upload
     if registry.contains(DEFAULT_REGISTRY_PLACEHOLDER) {
         anyhow::bail!(
-            "cannot use placeholder registry URL '{}'; please provide a valid registry endpoint with --registry or XBIN_REGISTRY",
+            "cannot use placeholder registry URL '{}'; please provide a valid registry endpoint with --registry or ERE_REGISTRY",
             DEFAULT_REGISTRY_PLACEHOLDER
         );
     }
@@ -69,7 +69,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
         return Ok(());
     }
 
-    let token = args.token.or_else(|| std::env::var("XBIN_TOKEN").ok());
+    let token = args.token.or_else(|| std::env::var("ERE_TOKEN").ok());
 
     eprintln!(
         "Publishing {}...",

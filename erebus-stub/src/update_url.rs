@@ -10,7 +10,7 @@ use std::io;
 use crate::Metadata;
 
 /// Resolves the update channel base URL:
-/// `--erebus-update=<URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
+/// `--erebus-update=<URL>` argument > `$ERE_UPDATE_URL` > embedded `meta.update_url`.
 ///
 /// Only the `=` form is accepted as a CLI override — the next positional argv
 /// is never guessed as the URL, so the app's first argument can't be swallowed.
@@ -22,7 +22,7 @@ pub fn resolve_update_url(args: &[OsString], idx: usize, meta: &Metadata) -> io:
             }
         }
     }
-    if let Some(url) = std::env::var_os("XBIN_UPDATE_URL") {
+    if let Some(url) = std::env::var_os("ERE_UPDATE_URL") {
         return normalize_base_url(&url.to_string_lossy());
     }
     if let Some(ref url) = meta.update_url {
@@ -30,7 +30,7 @@ pub fn resolve_update_url(args: &[OsString], idx: usize, meta: &Metadata) -> io:
     }
     Err(io::Error::new(
         io::ErrorKind::InvalidData,
-        "no update URL — pass --erebus-update=<URL>, set $XBIN_UPDATE_URL, \
+        "no update URL — pass --erebus-update=<URL>, set $ERE_UPDATE_URL, \
          or rebuild with erebus build --update-url",
     ))
 }

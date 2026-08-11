@@ -1,18 +1,18 @@
 HOST_ARCH ?= $(shell uname -m)
 HOST_OS  ?= linux
 TARGET   ?= $(HOST_ARCH)-unknown-linux-musl
-TOOLS    := /tmp/xbin-stub-target
-VERSION  ?= $(shell cargo pkgid -p xbin-core 2>/dev/null | awk -F'#' '{print $$2}' || echo "0.5.0")
+TOOLS    := /tmp/erebus-stub-target
+VERSION  ?= $(shell cargo pkgid -p erebus-core 2>/dev/null | awk -F'#' '{print $$2}' || echo "0.5.0")
 DIST_DIR := dist
 # Cargo target dir — override to keep builds off a full root fs, e.g.
-#   make dist CARGO_TARGET_DIR=/tmp/xbin-release-target
+#   make dist CARGO_TARGET_DIR=/tmp/erebus-release-target
 export CARGO_TARGET_DIR := $(or $(CARGO_TARGET_DIR),$(CURDIR)/target)
 
-STUB    := $(TOOLS)/$(TARGET)/release/xbin-stub
-CRYPTO  := $(TOOLS)/$(TARGET)/release/xbin-crypto
-CLI     := target/release/xbin
-STUB_ALT := target/$(TARGET)/release/xbin-stub
-CRYPTO_ALT := target/$(TARGET)/release/xbin-crypto
+STUB    := $(TOOLS)/$(TARGET)/release/erebus-stub
+CRYPTO  := $(TOOLS)/$(TARGET)/release/erebus-crypto
+CLI     := target/release/erebus
+STUB_ALT := target/$(TARGET)/release/erebus-stub
+CRYPTO_ALT := target/$(TARGET)/release/erebus-crypto
 
 # Architectures to build for in `dist` target
 ARCHS := x86_64 aarch64
@@ -32,7 +32,7 @@ preflight:
 
 # Build the Rust stub (statically linked musl ELF).
 stub:
-	cargo build --release -p xbin-stub --target $(TARGET)
+	cargo build --release -p erebus-stub --target $(TARGET)
 	@if [ -f $(STUB) ]; then \
 		echo "stub:   $$(ls -la $(STUB) | awk '{print $$5}') bytes"; \
 	elif [ -f $(STUB_ALT) ]; then \
@@ -50,7 +50,7 @@ stub:
 
 # Build the Rust CLI.
 cli:
-	cargo build --release -p xbin-cli
+	cargo build --release -p erebus-cli
 	@if [ -f $(CLI) ]; then \
 		echo "cli:    $$(ls -la $(CLI) | awk '{print $$5}') bytes"; \
 	else \
@@ -60,38 +60,38 @@ cli:
 # Hybrid install: tries system-wide, falls back to user-level
 install:
 	@printf "\nBuilding x.bin (this may take a minute)...\n"
-	cargo build --release -p xbin-cli
+	cargo build --release -p erebus-cli
 	@if sudo test -w /usr/local/bin 2>/dev/null; then \
 		printf "\nInstalling to /usr/local/bin...\n"; \
-		sudo cp target/release/xbin /usr/local/bin/xbin; \
-		sudo chmod +x /usr/local/bin/xbin; \
-		printf "\n✅ Installed to /usr/local/bin/xbin\n"; \
-		printf "   Verify: xbin --version\n"; \
+		sudo cp target/release/erebus /usr/local/bin/erebus; \
+		sudo chmod +x /usr/local/bin/erebus; \
+		printf "\n✅ Installed to /usr/local/bin/erebus\n"; \
+		printf "   Verify: erebus --version\n"; \
 		printf "   You can now remove the x.bin repo!\n"; \
 	else \
 		printf "\nInstalling to ~/.local/bin (no admin required)...\n"; \
 		mkdir -p ~/.local/bin; \
-		cp target/release/xbin ~/.local/bin/xbin; \
-		chmod +x ~/.local/bin/xbin; \
-		printf "\n✅ Installed to ~/.local/bin/xbin\n"; \
+		cp target/release/erebus ~/.local/bin/erebus; \
+		chmod +x ~/.local/bin/erebus; \
+		printf "\n✅ Installed to ~/.local/bin/erebus\n"; \
 		printf "   Add ~/.local/bin to your PATH:\n"; \
 		printf "   echo 'export PATH=\"\$$HOME/.local/bin:\$$PATH\"' >> \$$HOME/.bashrc\n"; \
 		printf "   source \$$HOME/.bashrc\n"; \
-		printf "   Then verify: xbin --version\n"; \
+		printf "   Then verify: erebus --version\n"; \
 		printf "   You can remove the x.bin repo when done.\n"; \
 	fi
 
-# Build the hello-web example .xbin (requires stub + cli).
+# Build the hello-web example .ere (requires stub + cli).
 example: stub cli
-	$(CLI) build examples/hello-web -o hello-web.xbin
+	$(CLI) build examples/hello-web -o hello-web.ere
 
-# Run the hello-web .xbin.
+# Run the hello-web .ere.
 run:
-	./hello-web.xbin
+	./hello-web.ere
 
-# Inspect the hello-web .xbin.
+# Inspect the hello-web .ere.
 inspect:
-	$(CLI) inspect hello-web.xbin
+	$(CLI) inspect hello-web.ere
 
 # Build mdbook documentation.
 docs:
@@ -101,9 +101,9 @@ docs-serve:
 	cd docs && mdbook serve --open
 
 lint:
-	cargo clippy -p xbin-core --all-targets -- -D warnings
-	cargo clippy -p xbin-stub -- -D warnings
-	cargo clippy -p xbin-cli -- -D warnings
+	cargo clippy -p erebus-core --all-targets -- -D warnings
+	cargo clippy -p erebus-stub -- -D warnings
+	cargo clippy -p erebus-cli -- -D warnings
 
 fmt:
 	cargo fmt --all
@@ -112,30 +112,30 @@ clean:
 	cargo clean
 	cd stub && cargo clean
 	rm -rf docs/book
-	rm -f *.xbin
-	rm -rf ~/.cache/xbin $(DIST_DIR)
+	rm -f *.ere
+	rm -rf ~/.cache/erebus $(DIST_DIR)
 
 # ═══════════════════════════════════════════════════════════════════
 # Release / Distribution Targets
 # ═══════════════════════════════════════════════════════════════════
 #
 # Naming convention for release assets (glow-style):
-#   xbin_<version>_<os>_<arch>.<ext>
+#   erebus_<version>_<os>_<arch>.<ext>
 #
 # Each Linux archive bundles the three binaries produced by this
 # workspace for that platform:
-#   xbin          — the CLI tool
-#   xbin-stub     — the statically linked launcher (musl ELF)
-#   xbin-crypto   — the signing/inspection utility (musl ELF)
+#   erebus          — the CLI tool
+#   erebus-stub     — the statically linked launcher (musl ELF)
+#   erebus-crypto   — the signing/inspection utility (musl ELF)
 #
 # Components are Linux-only today (the stub launcher is Linux-only and
-# xbin-core uses std::os::unix APIs), so this release ships Linux
+# erebus-core uses std::os::unix APIs), so this release ships Linux
 # amd64 and arm64. macOS and Windows can be added once the workspace
 # builds without those Unix dependencies and a macOS SDK is available.
 #
 # Examples:
-#   xbin_0.5.0_linux_amd64.tar.gz   (xbin + xbin-stub + xbin-crypto)
-#   xbin_0.5.0_linux_arm64.tar.gz
+#   erebus_0.5.0_linux_amd64.tar.gz   (erebus + erebus-stub + erebus-crypto)
+#   erebus_0.5.0_linux_arm64.tar.gz
 #   checksums.txt
 #
 # `dist` uses cargo-zigbuild so the musl artifacts are produced via the
@@ -154,21 +154,21 @@ dist: preflight
 		target="$$arch-unknown-linux-musl"; \
 		case "$$arch" in x86_64) glowarch=amd64;; aarch64) glowarch=arm64;; *) glowarch=$$arch;; esac; \
 		printf "\n── $$arch (musl, static) ──\n"; \
-		$(ZIGBUILD) --release -p xbin-stub --target "$$target"; \
-		$(ZIGBUILD) --release -p xbin-cli --target "$$target"; \
-		dir="xbin_$(VERSION)_linux_$$glowarch"; \
+		$(ZIGBUILD) --release -p erebus-stub --target "$$target"; \
+		$(ZIGBUILD) --release -p erebus-cli --target "$$target"; \
+		dir="erebus_$(VERSION)_linux_$$glowarch"; \
 		rm -rf "$(DIST_DIR)/$$dir"; \
 		mkdir -p "$(DIST_DIR)/$$dir"; \
-		cp -f "$(CARGO_TARGET_DIR)/$$target/release/xbin" "$(DIST_DIR)/$$dir/xbin"; \
-		cp -f "$(CARGO_TARGET_DIR)/$$target/release/xbin-stub" "$(DIST_DIR)/$$dir/xbin-stub"; \
-		cp -f "$(CARGO_TARGET_DIR)/$$target/release/xbin-crypto" "$(DIST_DIR)/$$dir/xbin-crypto"; \
+		cp -f "$(CARGO_TARGET_DIR)/$$target/release/erebus" "$(DIST_DIR)/$$dir/erebus"; \
+		cp -f "$(CARGO_TARGET_DIR)/$$target/release/erebus-stub" "$(DIST_DIR)/$$dir/erebus-stub"; \
+		cp -f "$(CARGO_TARGET_DIR)/$$target/release/erebus-crypto" "$(DIST_DIR)/$$dir/erebus-crypto"; \
 		chmod +x "$(DIST_DIR)/$$dir"/*; \
-		tar -czf "$(DIST_DIR)/xbin_$(VERSION)_linux_$$glowarch.tar.gz" -C "$(DIST_DIR)" "$$dir"; \
+		tar -czf "$(DIST_DIR)/erebus_$(VERSION)_linux_$$glowarch.tar.gz" -C "$(DIST_DIR)" "$$dir"; \
 		rm -rf "$(DIST_DIR)/$$dir"; \
-		echo "  xbin_$(VERSION)_linux_$$glowarch.tar.gz"; \
+		echo "  erebus_$(VERSION)_linux_$$glowarch.tar.gz"; \
 	done
 	@printf "\n── Checksums ──\n"
-	@cd $(DIST_DIR) && sha256sum xbin_*.tar.gz > checksums.txt && cat checksums.txt
+	@cd $(DIST_DIR) && sha256sum erebus_*.tar.gz > checksums.txt && cat checksums.txt
 
 # Create a GitHub release and upload all dist artifacts.
 # Usage: make release VERSION=0.5.0   (tag becomes v0.5.0)
@@ -192,7 +192,7 @@ help:
 	@echo "  make install     Build + install CLI to /usr/local/bin or ~/.local/bin"
 	@echo "  make stub        Build musl stub for host"
 	@echo "  make cli         Build CLI"
-	@echo "  make example     Build hello-web.xbin"
+	@echo "  make example     Build hello-web.ere"
 	@echo "  make dist        Build all release artifacts (multi-arch)"
 	@echo "  make release     Build dist + create GitHub release (VERSION required)"
 	@echo "  make lint        Run clippy on all crates"
@@ -201,10 +201,10 @@ help:
 	@echo "  make clean       Clean build artifacts"
 	@echo ""
 	@echo "Naming convention for release assets:"
-	@echo "  xbin_<version>_<os>_<arch>.<ext>"
+	@echo "  erebus_<version>_<os>_<arch>.<ext>"
 	@echo ""
-	@echo "  linux amd64: xbin_0.5.0_linux_amd64.tar.gz"
-	@echo "  linux arm64: xbin_0.5.0_linux_arm64.tar.gz"
+	@echo "  linux amd64: erebus_0.5.0_linux_amd64.tar.gz"
+	@echo "  linux arm64: erebus_0.5.0_linux_arm64.tar.gz"
 	@echo "  checksums:   checksums.txt"
 	@echo ""
 	@echo "Example: make release VERSION=0.5.0"

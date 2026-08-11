@@ -19,8 +19,8 @@ const DEFAULT_MAX_FILES: usize = 50_000;
 /// Decompression-bomb limits for `extract_atomic`. Both are configurable at
 /// runtime via env vars so operators can tighten (or relax) them per workload
 /// without rebuilding the stub:
-/// - `XBIN_MAX_EXTRACT_SIZE`  — total decompressed bytes (default 1 GiB)
-/// - `XBIN_MAX_EXTRACT_FILES` — entry/file count (default 50,000)
+/// - `ERE_MAX_EXTRACT_SIZE`  — total decompressed bytes (default 1 GiB)
+/// - `ERE_MAX_EXTRACT_FILES` — entry/file count (default 50,000)
 ///
 /// The env vars are read once per extraction and only from the launcher's own
 /// process environment — they are NOT parsed from the (untrusted) payload, so
@@ -32,11 +32,11 @@ struct ExtractLimits {
 
 impl ExtractLimits {
     fn from_env() -> Self {
-        let max_bytes = std::env::var("XBIN_MAX_EXTRACT_SIZE")
+        let max_bytes = std::env::var("ERE_MAX_EXTRACT_SIZE")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(DEFAULT_MAX_DECOMPRESSED_BYTES);
-        let max_files = std::env::var("XBIN_MAX_EXTRACT_FILES")
+        let max_files = std::env::var("ERE_MAX_EXTRACT_FILES")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(DEFAULT_MAX_FILES);

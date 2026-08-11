@@ -61,7 +61,10 @@ fn test_man_output() {
         .args(["man", man_dir.to_str().unwrap()])
         .assert()
         .success();
-    assert!(man_dir.join("erebus.1").exists(), "erebus.1 should be created");
+    assert!(
+        man_dir.join("erebus.1").exists(),
+        "erebus.1 should be created"
+    );
 }
 
 #[test]
@@ -146,10 +149,10 @@ fn test_build_dry_run_does_not_enable_sisr_by_default() {
 /// preserves the original payload bytes.
 #[test]
 fn test_upgrade_binary_converts_legacy_file() {
-    use std::io::Cursor;
     use erebus_core::assembly::{assemble_erebus, AssemblyInput};
     use erebus_core::format::Footer;
     use erebus_core::sisr_header::read_sisr;
+    use std::io::Cursor;
 
     let dir = tempdir().unwrap();
     let input = dir.path().join("legacy.erebus");
@@ -201,11 +204,11 @@ fn test_upgrade_binary_converts_legacy_file() {
 
 #[test]
 fn test_inspect_reports_encrypted_v4() {
-    use std::io::Cursor;
     use erebus_core::assembly::{assemble_erebus, build_meta_json, MetaOptions};
     use erebus_core::encrypt::encrypt_payload;
     use erebus_core::format::{Footer, CRYPTO_AES_256_GCM, FLAG_ENCRYPTED, FLAG_SIGNED};
     use erebus_core::metadata::BunFeatures;
+    use std::io::Cursor;
 
     let dir = tempdir().unwrap();
     let out = dir.path().join("enc.erebus");

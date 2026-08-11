@@ -729,6 +729,91 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "erebus-cli"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "clap",
+ "clap_complete",
+ "clap_mangen",
+ "ed25519-dalek",
+ "erebus-core",
+ "flate2",
+ "hex",
+ "human-panic",
+ "libc",
+ "predicates",
+ "rand 0.8.7",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tempfile",
+ "toml 0.8.23",
+ "walkdir",
+ "which",
+ "xz2",
+ "zeroize",
+ "zip",
+]
+
+[[package]]
+name = "erebus-core"
+version = "0.5.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "ed25519-dalek",
+ "flate2",
+ "hex",
+ "hkdf",
+ "pathdiff",
+ "proptest",
+ "pyo3",
+ "rand 0.8.7",
+ "regex",
+ "ruzstd",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tar",
+ "tempfile",
+ "time",
+ "toml 0.8.23",
+ "which",
+ "zeroize",
+ "zstd",
+]
+
+[[package]]
+name = "erebus-stub"
+version = "0.5.0"
+dependencies = [
+ "aes-gcm",
+ "backhand",
+ "dirs",
+ "ed25519-dalek",
+ "erebus-core",
+ "hex",
+ "hkdf",
+ "libc",
+ "rand 0.8.7",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tempfile",
+ "toml 0.8.23",
+ "ureq",
+ "walkdir",
+ "zstd",
+ "zstd-sys",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3270,91 +3355,6 @@ checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
 dependencies = [
  "libc",
  "rustix",
-]
-
-[[package]]
-name = "xbin-cli"
-version = "0.5.0"
-dependencies = [
- "anyhow",
- "assert_cmd",
- "clap",
- "clap_complete",
- "clap_mangen",
- "ed25519-dalek",
- "flate2",
- "hex",
- "human-panic",
- "libc",
- "predicates",
- "rand 0.8.7",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tempfile",
- "toml 0.8.23",
- "walkdir",
- "which",
- "xbin-core",
- "xz2",
- "zeroize",
- "zip",
-]
-
-[[package]]
-name = "xbin-core"
-version = "0.5.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "ed25519-dalek",
- "flate2",
- "hex",
- "hkdf",
- "pathdiff",
- "proptest",
- "pyo3",
- "rand 0.8.7",
- "regex",
- "ruzstd",
- "serde",
- "serde_json",
- "sha2",
- "subtle",
- "tar",
- "tempfile",
- "time",
- "toml 0.8.23",
- "which",
- "zeroize",
- "zstd",
-]
-
-[[package]]
-name = "xbin-stub"
-version = "0.5.0"
-dependencies = [
- "aes-gcm",
- "backhand",
- "dirs",
- "ed25519-dalek",
- "hex",
- "hkdf",
- "libc",
- "rand 0.8.7",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tempfile",
- "toml 0.8.23",
- "ureq",
- "walkdir",
- "xbin-core",
- "zstd",
- "zstd-sys",
 ]
 
 [[package]]
