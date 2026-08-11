@@ -3,13 +3,13 @@
 //! delta over the mock HTTP channel.
 
 use ed25519_dalek::SigningKey;
-use xbin_core::sisr_stage::sign;
+use erebus_core::sisr_stage::sign;
 
 use super::{env, footer_sha, run_update, BODY_V1, BODY_V2};
 
 /// A manifest whose signature is valid but whose chunk table no longer commits
 /// to the signed Merkle root (simulates a signer/editor bug).
-fn staged_remote_with_tampered_chunk(e: &super::TestEnv) -> xbin_core::sisr_stage::RemoteManifest {
+fn staged_remote_with_tampered_chunk(e: &super::TestEnv) -> erebus_core::sisr_stage::RemoteManifest {
     let mut manifest = e.staged.remote.manifest.clone();
     manifest.chunks[0].hash[0] ^= 0xFF;
     let signature = sign(
@@ -17,7 +17,7 @@ fn staged_remote_with_tampered_chunk(e: &super::TestEnv) -> xbin_core::sisr_stag
         &e.staged.remote.merkle_root,
         &super::key(),
     );
-    xbin_core::sisr_stage::RemoteManifest {
+    erebus_core::sisr_stage::RemoteManifest {
         merkle_root: e.staged.remote.merkle_root,
         signature,
         manifest,

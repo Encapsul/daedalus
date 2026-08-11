@@ -1,4 +1,4 @@
-//! Health check HTTP server for the xbin launcher stub.
+//! Health check HTTP server for the erebus launcher stub.
 //!
 //! Provides `spawn_health_server` (daemon TCP thread) and
 //! `maybe_start_health` (start if configured in metadata).
@@ -15,7 +15,7 @@ pub fn spawn_health_server(port: u16, endpoint: String) {
     let listener = match TcpListener::bind(format!("127.0.0.1:{port}")) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[xbin] warning: health check server failed to bind on port {port}: {e}");
+            eprintln!("[erebus] warning: health check server failed to bind on port {port}: {e}");
             return;
         }
     };

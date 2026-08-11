@@ -75,7 +75,7 @@ pub struct HealthStore {
 }
 
 impl HealthStore {
-    /// Creates a store rooted at `dir` (typically `~/.cache/xbin/health`).
+    /// Creates a store rooted at `dir` (typically `~/.cache/erebus/health`).
     pub fn new(dir: &Path) -> Self {
         Self {
             dir: dir.to_path_buf(),

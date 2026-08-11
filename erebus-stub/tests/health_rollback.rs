@@ -1,7 +1,7 @@
 //! End-to-end health-gate and automatic-rollback tests for the launcher.
 //!
-//! These drive the real `xbin-stub` binary (embedded into a freshly built
-//! `.xbin`) through the full SISR update flow and exercise the mission 8
+//! These drive the real `erebus-stub` binary (embedded into a freshly built
+//! `.erebus`) through the full SISR update flow and exercise the mission 8
 //! guarantees:
 //!
 //! - a newly-updated version that crashes at startup is rolled back
@@ -17,12 +17,12 @@ use std::process::{Command, Output};
 
 use ed25519_dalek::SigningKey;
 use sha2::{Digest, Sha256};
-use xbin_core::assembly::{assemble_xbin, AssemblyInput};
-use xbin_core::format::Footer;
-use xbin_core::manifest::DeltaManifest;
-use xbin_core::sisr::health::{HealthState, HealthStore};
-use xbin_core::sisr_header::read_sisr;
-use xbin_core::sisr_stage::{build_artifacts, RemoteManifest, SisrBuildConfig};
+use erebus_core::assembly::{assemble_erebus, AssemblyInput};
+use erebus_core::format::Footer;
+use erebus_core::manifest::DeltaManifest;
+use erebus_core::sisr::health::{HealthState, HealthStore};
+use erebus_core::sisr_header::read_sisr;
+use erebus_core::sisr_stage::{build_artifacts, RemoteManifest, SisrBuildConfig};
 
 const KEY_SEED: [u8; 32] = [7u8; 32];
 const CHUNK_TARGET: usize = 64 << 10;
@@ -75,7 +75,7 @@ fn setup_trusted_keys(work: &Path) {
     fs::write(dir.join("update.key"), key().verifying_key().to_bytes()).unwrap();
 }
 
-fn build_xbin(work: &Path, stub: &Path, body: &str) {
+fn build_erebus(work: &Path, stub: &Path, body: &str) {
     let config = SisrBuildConfig {
         enabled: true,
         chunk_target_size: CHUNK_TARGET,
@@ -84,8 +84,8 @@ fn build_xbin(work: &Path, stub: &Path, body: &str) {
     let stub_bytes = fs::read(stub).unwrap();
     let body_bytes = payload(body);
     let artifacts = build_artifacts(&body_bytes, &config).unwrap();
-    let out = work.join("app.xbin");
-    assemble_xbin(
+    let out = work.join("app.erebus");
+    assemble_erebus(
         &out,
         &AssemblyInput {
             stub_bytes: &stub_bytes,
@@ -153,8 +153,8 @@ fn stage_update(work: &Path, current: &Path, body: &str) -> (PathBuf, String) {
     (manifest_path, payload_sha(body))
 }
 
-/// Runs the `.xbin` with the SISR manifest staged, in an isolated cache.
-fn run_xbin(work: &Path, app: &Path, manifest: &Path) -> Output {
+/// Runs the `.erebus` with the SISR manifest staged, in an isolated cache.
+fn run_erebus(work: &Path, app: &Path, manifest: &Path) -> Output {
     Command::new(app)
         .env("XBIN_SISR_MANIFEST", manifest)
         .env("XBIN_TRUSTED_DIR", work.join("trusted"))
@@ -163,11 +163,11 @@ fn run_xbin(work: &Path, app: &Path, manifest: &Path) -> Output {
         .env("XBIN_HEALTH_MAX_ATTEMPTS", "1")
         .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
         .output()
-        .expect("failed to spawn the xbin launcher")
+        .expect("failed to spawn the erebus launcher")
 }
 
 fn health_store(work: &Path) -> HealthStore {
-    HealthStore::new(&work.join("cache").join("xbin").join("health"))
+    HealthStore::new(&work.join("cache").join("erebus").join("health"))
 }
 
 #[test]
@@ -175,17 +175,17 @@ fn crashing_update_is_rolled_back_and_old_version_runs() {
     let tmp = tempfile::tempdir().unwrap();
     let work = tmp.path().to_path_buf();
     setup_trusted_keys(&work);
-    let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
+    let stub = PathBuf::from(env!("CARGO_BIN_EXE_erebus-stub"));
 
-    build_xbin(&work, &stub, "#!/bin/sh\necho v1-ok; exit 0");
-    let v1_sha = footer_sha(&work.join("app.xbin"));
+    build_erebus(&work, &stub, "#!/bin/sh\necho v1-ok; exit 0");
+    let v1_sha = footer_sha(&work.join("app.erebus"));
     let (manifest, v2_sha) = stage_update(
         &work,
-        &work.join("app.xbin"),
+        &work.join("app.erebus"),
         "#!/bin/sh\necho v2-crash; exit 1",
     );
 
-    let out = run_xbin(&work, &work.join("app.xbin"), &manifest);
+    let out = run_erebus(&work, &work.join("app.erebus"), &manifest);
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
 
@@ -199,12 +199,12 @@ fn crashing_update_is_rolled_back_and_old_version_runs() {
     );
     assert!(stderr.contains("health gate"), "gate must run: {stderr}");
     assert_eq!(
-        footer_sha(&work.join("app.xbin")),
+        footer_sha(&work.join("app.erebus")),
         v1_sha,
         "on-disk binary must be restored to the previous version"
     );
     assert!(
-        !work.join("app.xbin.bak").exists(),
+        !work.join("app.erebus.bak").exists(),
         "snapshot must be discarded after restore"
     );
     assert_eq!(
@@ -219,16 +219,16 @@ fn healthy_update_is_confirmed_and_kept() {
     let tmp = tempfile::tempdir().unwrap();
     let work = tmp.path().to_path_buf();
     setup_trusted_keys(&work);
-    let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
+    let stub = PathBuf::from(env!("CARGO_BIN_EXE_erebus-stub"));
 
-    build_xbin(&work, &stub, "#!/bin/sh\necho v1; exit 0");
+    build_erebus(&work, &stub, "#!/bin/sh\necho v1; exit 0");
     let (manifest, v2_sha) = stage_update(
         &work,
-        &work.join("app.xbin"),
+        &work.join("app.erebus"),
         "#!/bin/sh\necho v2-ok; exit 0",
     );
 
-    let out = run_xbin(&work, &work.join("app.xbin"), &manifest);
+    let out = run_erebus(&work, &work.join("app.erebus"), &manifest);
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
 
@@ -238,12 +238,12 @@ fn healthy_update_is_confirmed_and_kept() {
     );
     assert!(stdout.contains("v2-ok"), "new version must run: {stdout}");
     assert_eq!(
-        footer_sha(&work.join("app.xbin")),
+        footer_sha(&work.join("app.erebus")),
         v2_sha,
         "healthy update must stay installed"
     );
     assert!(
-        !work.join("app.xbin.bak").exists(),
+        !work.join("app.erebus.bak").exists(),
         "snapshot must be discarded after confirmation"
     );
     assert_eq!(
@@ -257,18 +257,18 @@ fn quarantined_version_is_refused_on_reinstall() {
     let tmp = tempfile::tempdir().unwrap();
     let work = tmp.path().to_path_buf();
     setup_trusted_keys(&work);
-    let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
+    let stub = PathBuf::from(env!("CARGO_BIN_EXE_erebus-stub"));
 
-    build_xbin(&work, &stub, "#!/bin/sh\necho v1-stable; exit 0");
-    let v1_sha = footer_sha(&work.join("app.xbin"));
+    build_erebus(&work, &stub, "#!/bin/sh\necho v1-stable; exit 0");
+    let v1_sha = footer_sha(&work.join("app.erebus"));
     let (manifest, v2_sha) = stage_update(
         &work,
-        &work.join("app.xbin"),
+        &work.join("app.erebus"),
         "#!/bin/sh\necho v2-crash; exit 1",
     );
 
     // First attempt: crashes, rolls back, quarantines v2.
-    let first = run_xbin(&work, &work.join("app.xbin"), &manifest);
+    let first = run_erebus(&work, &work.join("app.erebus"), &manifest);
     assert!(
         first.status.success(),
         "first attempt must roll back cleanly: {}",
@@ -280,7 +280,7 @@ fn quarantined_version_is_refused_on_reinstall() {
     );
 
     // Re-attempt: the update engine must refuse the quarantined target.
-    let second = run_xbin(&work, &work.join("app.xbin"), &manifest);
+    let second = run_erebus(&work, &work.join("app.erebus"), &manifest);
     let stderr = String::from_utf8_lossy(&second.stderr).into_owned();
     assert!(
         !second.status.success(),
@@ -291,7 +291,7 @@ fn quarantined_version_is_refused_on_reinstall() {
         "refusal must mention the quarantine: {stderr}"
     );
     assert_eq!(
-        footer_sha(&work.join("app.xbin")),
+        footer_sha(&work.join("app.erebus")),
         v1_sha,
         "binary must stay on the known-good version"
     );

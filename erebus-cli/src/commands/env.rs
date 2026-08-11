@@ -11,7 +11,7 @@ pub struct EnvArgs {
 
 pub fn run(args: EnvArgs) -> Result<()> {
     let stub = find_binary("erebus-stub", "XBIN_STUB_PATH");
-    let crypto = find_binary("xbin-crypto", "XBIN_CRYPTO_PATH");
+    let crypto = find_binary("erebus-crypto", "XBIN_CRYPTO_PATH");
 
     if args.json {
         let info = serde_json::json!({
@@ -24,7 +24,7 @@ pub fn run(args: EnvArgs) -> Result<()> {
         });
         println!("{}", serde_json::to_string_pretty(&info)?);
     } else {
-        eprintln!("xbin {}", env!("CARGO_PKG_VERSION"));
+        eprintln!("erebus {}", env!("CARGO_PKG_VERSION"));
         eprintln!("  arch:   {}", std::env::consts::ARCH);
         eprintln!("  os:     {}", std::env::consts::OS);
         eprintln!(

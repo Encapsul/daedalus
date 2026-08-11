@@ -133,7 +133,7 @@ fn target_slug(target: Option<&str>) -> Option<String> {
 }
 
 /// One output path per target. A single target keeps the historical naming
-/// (`-o app.xbin` stays `app.xbin`); multiple targets get a `<name>-<target>`
+/// (`-o app.erebus` stays `app.erebus`); multiple targets get a `<name>-<target>`
 /// suffix so linux and windows artifacts never overwrite each other.
 fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<PathBuf> {
     if targets.len() == 1 {
@@ -142,14 +142,14 @@ fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<PathBuf> {
         let out = if args
             .output
             .extension()
-            .is_some_and(|e| e == "xbin" || e == "exe")
+            .is_some_and(|e| e == "erebus" || e == "exe")
         {
             args.output.clone()
         } else {
             args.output.join(if is_windows_target {
                 "app.exe"
             } else {
-                "app.xbin"
+                "app.erebus"
             })
         };
         return vec![out];
@@ -165,7 +165,7 @@ fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<PathBuf> {
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "app".to_string());
             let is_windows = t.as_deref().is_some_and(|t| parse_target(t).1 == "windows");
-            let ext = if is_windows { "exe" } else { "xbin" };
+            let ext = if is_windows { "exe" } else { "erebus" };
             let dir = args
                 .output
                 .parent()
@@ -267,19 +267,19 @@ fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
 #[derive(Args)]
 #[command(after_help = "\
 Examples:
-  xbin build ./myapp                         Build for the host (default output: app.xbin)
-  xbin build ./myapp -o myapp.xbin           Build for the host, custom output name
-  xbin build ./myapp --target linux-arm64 -o myapp.xbin     Single cross-target artifact
-  xbin build ./myapp --target linux-x64,linux-arm64 -o out/app.xbin  Multi-arch: emits app-linux-x64.xbin + app-linux-arm64.xbin
-  xbin build ./myapp --target win-x64 -o out/app.xbin       Cross-OS: Windows PE stub (.exe)
-  xbin build ./myapp --dry-run                              Preview the multi-target plan without building")]
+  erebus build ./myapp                         Build for the host (default output: app.erebus)
+  erebus build ./myapp -o myapp.erebus           Build for the host, custom output name
+  erebus build ./myapp --target linux-arm64 -o myapp.erebus     Single cross-target artifact
+  erebus build ./myapp --target linux-x64,linux-arm64 -o out/app.erebus  Multi-arch: emits app-linux-x64.erebus + app-linux-arm64.erebus
+  erebus build ./myapp --target win-x64 -o out/app.erebus       Cross-OS: Windows PE stub (.exe)
+  erebus build ./myapp --dry-run                              Preview the multi-target plan without building")]
 pub struct BuildArgs {
     /// Path to the app directory
     #[arg(default_value = ".")]
     pub app: PathBuf,
 
     /// Output file path
-    #[arg(short, long, default_value = "app.xbin")]
+    #[arg(short, long, default_value = "app.erebus")]
     pub output: PathBuf,
 
     /// Signing key path
@@ -302,7 +302,7 @@ pub struct BuildArgs {
     ///
     /// WARNING: this provides obfuscation against casual inspection only, NOT
     /// confidentiality. The AES key is stored in the binary's metadata next to
-    /// the ciphertext, so anyone holding the `.xbin` can decrypt it. Real
+    /// the ciphertext, so anyone holding the `.erebus` can decrypt it. Real
     /// confidentiality requires a key that is never stored in the file
     /// (env var, passphrase, HSM).
     #[arg(long)]
@@ -360,7 +360,7 @@ pub struct BuildArgs {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Incremental rebuild — reuse unchanged layers from existing .xbin
+    /// Incremental rebuild — reuse unchanged layers from existing .erebus
     #[arg(long)]
     pub update: bool,
 
@@ -399,7 +399,7 @@ pub struct BuildArgs {
     #[arg(long = "cron", action = clap::ArgAction::Append)]
     pub cron: Vec<String>,
 
-    /// Force re-detection of dependencies (overwrite `xbin.lock`)
+    /// Force re-detection of dependencies (overwrite `erebus.lock`)
     #[arg(long)]
     pub redetect: bool,
 
@@ -476,7 +476,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         anyhow::bail!("{} is not a directory", app_dir.display());
     }
 
-    // Load .xbin.toml config if present
+    // Load .erebus.toml config if present
     let config = load_config(&app_dir);
 
     // Apply config defaults (CLI flags override). Clone the args fields so
@@ -558,7 +558,7 @@ fn warn_sandbox_noops(isolation_num: u32, seccomp: bool, landlock: bool) {
             .collect::<Vec<_>>()
             .join(", ");
         eprintln!(
-            "[xbin] warning: {flags} require --isolation sandbox (2) to take effect — \
+            "[erebus] warning: {flags} require --isolation sandbox (2) to take effect — \
              ignored at isolation level {isolation_num}"
         );
     }
@@ -657,7 +657,7 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
     }
 }
 
-/// Build a single `.xbin`/`.exe` artifact for `target` (host when `None`).
+/// Build a single `.erebus`/`.exe` artifact for `target` (host when `None`).
 ///
 /// Returns a JSON result object when `--json` was requested, which the caller
 /// collects and prints (one object per target, or an array for multi-arch).
@@ -729,9 +729,9 @@ fn build_single_target(
         let cache = erebus_core::paths::BuildCache::new(app_dir, 50);
         if let Some(cached) = cache.find(&new_app_hash, &cfg_hash, target.as_deref()) {
             if verbose {
-                eprintln!("[xbin] cache hit — reusing cached build");
+                eprintln!("[erebus] cache hit — reusing cached build");
             }
-            std::fs::copy(&cached, &output).context("failed to copy cached .xbin to output")?;
+            std::fs::copy(&cached, &output).context("failed to copy cached .erebus to output")?;
             if args.json {
                 return Ok(Some(serde_json::json!({
                     "output": output.to_string_lossy(),
@@ -742,7 +742,7 @@ fn build_single_target(
             return Ok(None);
         }
         if verbose {
-            eprintln!("[xbin] cache miss — building from scratch");
+            eprintln!("[erebus] cache miss — building from scratch");
         }
     }
 
@@ -759,15 +759,15 @@ fn build_single_target(
         if let Some((old_app_hash, old_rt_hash)) = read_existing_hashes(output) {
             if old_app_hash == new_app_hash && old_rt_hash == new_rt_hash {
                 if verbose {
-                    eprintln!("[xbin] everything up to date, nothing to rebuild");
+                    eprintln!("[erebus] everything up to date, nothing to rebuild");
                 }
                 return Ok(None);
             } else if old_rt_hash == new_rt_hash && old_app_hash != new_app_hash {
                 if verbose {
-                    eprintln!("[xbin] app changed, reusing runtime layer (full layer reuse not yet supported in Rust CLI — doing full rebuild)");
+                    eprintln!("[erebus] app changed, reusing runtime layer (full layer reuse not yet supported in Rust CLI — doing full rebuild)");
                 }
             } else if verbose {
-                eprintln!("[xbin] runtime deps changed, full rebuild");
+                eprintln!("[erebus] runtime deps changed, full rebuild");
             }
         }
     }
@@ -781,7 +781,7 @@ fn build_single_target(
     if pkgmgr::detect_node_pkgmgr(app_dir) == Some(pkgmgr::PkgMgr::Npm)
         && has_workspace_protocol(app_dir)
     {
-        eprintln!("[xbin] warning: package.json uses `workspace:*` protocol (pnpm-specific)");
+        eprintln!("[erebus] warning: package.json uses `workspace:*` protocol (pnpm-specific)");
         eprintln!("  but pnpm is not detected. Create `pnpm-workspace.yaml` or add a lockfile.");
     }
 
@@ -820,7 +820,7 @@ fn build_single_target(
                     node_bin_dir = Some(bin_dir);
                 } else {
                     eprintln!(
-                        "[xbin] skipping {} — `{}` not found on PATH",
+                        "[erebus] skipping {} — `{}` not found on PATH",
                         mgr.name(),
                         cmd[0]
                     );
@@ -916,7 +916,7 @@ fn build_single_target(
                 .context(format!("failed to run `{}` — is it installed?", prog))?;
             if !status.success() {
                 eprintln!(
-                    "[xbin] warning: {} installation failed (exit code {})",
+                    "[erebus] warning: {} installation failed (exit code {})",
                     mgr.name(),
                     status.code().unwrap_or(-1)
                 );
@@ -1005,7 +1005,7 @@ fn build_single_target(
                 interpreter_embedded = true;
             }
             Err(e) => {
-                eprintln!("[xbin] warning: failed to embed interpreter: {}", e);
+                eprintln!("[erebus] warning: failed to embed interpreter: {}", e);
             }
         }
     }
@@ -1035,7 +1035,7 @@ fn build_single_target(
                 }
             }
             Err(e) => {
-                eprintln!("[xbin] warning: N-API addon embedding failed: {e}");
+                eprintln!("[erebus] warning: N-API addon embedding failed: {e}");
             }
         }
     }
@@ -1047,10 +1047,10 @@ fn build_single_target(
                 eprintln!("Embedding RoadRunner...");
             }
             if let Err(e) = embed::embed_interpreter("rr", &rootfs, None, verbose) {
-                eprintln!("[xbin] warning: failed to embed RoadRunner: {}", e);
+                eprintln!("[erebus] warning: failed to embed RoadRunner: {}", e);
             }
         } else if verbose {
-            eprintln!("[xbin] warning: rr binary not found on PATH; RoadRunner won't be available at runtime");
+            eprintln!("[erebus] warning: rr binary not found on PATH; RoadRunner won't be available at runtime");
         }
     }
 
@@ -1356,7 +1356,7 @@ fn build_single_target(
     }
 
     if args.wasm {
-        eprintln!("[xbin] warning: --wasm is not yet implemented in the stub; metadata will be written but ignored at runtime");
+        eprintln!("[erebus] warning: --wasm is not yet implemented in the stub; metadata will be written but ignored at runtime");
         bun_features.wasm.enabled = true;
         if let Some(ref path) = args.wasmtime_path {
             bun_features.wasm.wasmtime_path = Some(path.display().to_string());
@@ -1383,7 +1383,7 @@ fn build_single_target(
     }
 
     if let Some(ref cross) = args.cross_compile {
-        eprintln!("[xbin] warning: --cross-compile is not yet implemented in the stub; metadata will be written but ignored at runtime");
+        eprintln!("[erebus] warning: --cross-compile is not yet implemented in the stub; metadata will be written but ignored at runtime");
         let targets: Vec<String> = cross.split(',').map(|s| s.trim().to_string()).collect();
         bun_features.cross_compile_targets = targets;
         if verbose {
@@ -1438,8 +1438,8 @@ fn build_single_target(
             target_arch: target.as_deref(),
             sisr: Some(artifacts),
         };
-        erebus_core::assembly::assemble_xbin(output, &input)
-            .context("failed to assemble xbin (SISR)")?
+        erebus_core::assembly::assemble_erebus(output, &input)
+            .context("failed to assemble erebus (SISR)")?
     } else {
         let input = erebus_core::assembly::AssemblyInput {
             stub_bytes: &stub_bytes,
@@ -1450,7 +1450,7 @@ fn build_single_target(
             target_arch: target.as_deref(),
             sisr: None,
         };
-        erebus_core::assembly::assemble_xbin(output, &input).context("failed to assemble xbin")?
+        erebus_core::assembly::assemble_erebus(output, &input).context("failed to assemble erebus")?
     };
 
     eprintln!(
@@ -1477,7 +1477,7 @@ fn build_single_target(
 
     if args.enable_sisr {
         let mut manifest = output.clone();
-        manifest.set_extension("xbin.manifest");
+        manifest.set_extension("erebus.manifest");
         eprintln!("SISR manifest written: {}", manifest.display());
     }
 
@@ -1538,7 +1538,7 @@ fn build_single_target(
 /// Re-sign a macOS Mach-O binary using `codesign` after assembly.
 ///
 /// Appending payload + metadata invalidates any existing code signature,
-/// so we must re-sign the final `.xbin` (Mach-O stub + appended data).
+/// so we must re-sign the final `.erebus` (Mach-O stub + appended data).
 ///
 /// On non-macOS hosts this is a no-op. On macOS without a signing identity
 /// the binary is left unsigned with a warning.
@@ -1612,7 +1612,7 @@ fn warn_if_insecure_key_permissions(path: &Path) {
             let mode = meta.permissions().mode() & 0o777;
             if mode != 0o600 {
                 eprintln!(
-                    "[xbin] warning: private key {} has mode {mode:o}, expected 0600",
+                    "[erebus] warning: private key {} has mode {mode:o}, expected 0600",
                     path.display()
                 );
             }
@@ -1651,13 +1651,13 @@ struct PackageConfig {
 }
 
 fn load_config(app_dir: &Path) -> XbinConfig {
-    let config_path = app_dir.join(".xbin.toml");
+    let config_path = app_dir.join(".erebus.toml");
     if !config_path.exists() {
         return XbinConfig::default();
     }
     match std::fs::read_to_string(&config_path) {
         Ok(content) => toml::from_str(&content).unwrap_or_else(|e| {
-            eprintln!("[xbin] warning: invalid .xbin.toml: {e}");
+            eprintln!("[erebus] warning: invalid .erebus.toml: {e}");
             XbinConfig::default()
         }),
         Err(_) => XbinConfig::default(),
@@ -1676,7 +1676,7 @@ fn is_command_available(name: &str) -> bool {
 }
 
 /// Ensure node + npm are available for the build.
-/// Downloads a static node to `~/.cache/xbin/build-tools/node/` (or a
+/// Downloads a static node to `~/.cache/erebus/build-tools/node/` (or a
 /// per-target subdir when `--target` requests a non-host platform) if not on
 /// PATH. The user-writable cache dir (0700) avoids the symlink attacks a
 /// predictable world-writable `/tmp` path would allow. Does NOT pollute the
@@ -1943,12 +1943,12 @@ fn check_php_platform_reqs(app_dir: &Path, verbose: bool) -> Result<()> {
         if let Some(ref cur) = current_version {
             if !version_satisfies(cur, php_req) && verbose {
                 eprintln!(
-                    "[xbin] warning: composer.json requires PHP {}, but php {} is on PATH",
+                    "[erebus] warning: composer.json requires PHP {}, but php {} is on PATH",
                     php_req, cur
                 );
                 if let Some(alt) = find_php_binary(php_req) {
                     eprintln!(
-                        "[xbin]   consider using --embed-interpreter {} or set PATH to use {}",
+                        "[erebus]   consider using --embed-interpreter {} or set PATH to use {}",
                         alt, alt
                     );
                 }
@@ -1987,7 +1987,7 @@ fn check_php_platform_reqs(app_dir: &Path, verbose: bool) -> Result<()> {
     }
 
     if !missing.is_empty() {
-        eprintln!("[xbin] warning: PHP extensions required by composer but not installed:");
+        eprintln!("[erebus] warning: PHP extensions required by composer but not installed:");
         for ext in &missing {
             eprintln!("  ext-{ext}");
         }
@@ -2261,7 +2261,7 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
     // `make stub` or set `XBIN_STUB_PATH` explicitly.
     if let Ok(p) = which::which("erebus-stub") {
         eprintln!(
-            "[xbin] warning: found erebus-stub on PATH at {}; prefer 'make stub' for reproducible builds",
+            "[erebus] warning: found erebus-stub on PATH at {}; prefer 'make stub' for reproducible builds",
             p.display()
         );
         return Ok(p);
@@ -2270,11 +2270,11 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
     anyhow::bail!("erebus-stub not found — run: make stub")
 }
 
-/// Read `app_hash` and `rt_deps_hash` from an existing `.xbin` file's metadata.
-fn read_existing_hashes(xbin_path: &Path) -> Option<(String, String)> {
+/// Read `app_hash` and `rt_deps_hash` from an existing `.erebus` file's metadata.
+fn read_existing_hashes(erebus_path: &Path) -> Option<(String, String)> {
     use erebus_core::format::Footer;
 
-    let mut f = std::fs::File::open(xbin_path).ok()?;
+    let mut f = std::fs::File::open(erebus_path).ok()?;
     let footer = Footer::read_from(&mut f).ok()?;
     let meta_size = footer.meta_size.try_into().ok()?;
     let meta_bytes = erebus_core::format::read_at(&mut f, footer.meta_offset, meta_size).ok()?;
@@ -2295,7 +2295,7 @@ fn count_files(dir: &Path) -> usize {
                 || name_str == "__pycache__"
                 || name_str == ".venv"
                 || name_str == "venv"
-                || name_str == ".xbin"
+                || name_str == ".erebus"
             {
                 continue;
             }
@@ -2322,7 +2322,7 @@ fn print_tree(dir: &Path, indent: usize) {
                 || name_str == "__pycache__"
                 || name_str == ".venv"
                 || name_str == "venv"
-                || name_str == ".xbin"
+                || name_str == ".erebus"
             {
                 continue;
             }
@@ -2348,7 +2348,7 @@ fn copy_dir_recursive_with(src: &Path, dst: &Path, include_node_modules: bool) -
             || name == "__pycache__"
             || name == ".venv"
             || name == "venv"
-            || name == ".xbin"
+            || name == ".erebus"
             || name == ".pnpm"
             || name == ".env"
             || (name == "node_modules" && !include_node_modules)
@@ -2480,7 +2480,7 @@ mod tests {
         ));
         assert!(!include_points_to_env(
             dir.path(),
-            &[dir.path().join("sub").join("xbin.toml")]
+            &[dir.path().join("sub").join("erebus.toml")]
         ));
     }
 
@@ -2599,7 +2599,7 @@ mod tests {
         let targets = resolve_targets(&args, None);
         let outputs = output_paths(&args, &targets);
         assert_eq!(outputs.len(), 1);
-        assert_eq!(outputs[0].file_name().unwrap(), "app.xbin");
+        assert_eq!(outputs[0].file_name().unwrap(), "app.erebus");
     }
 
     #[test]
@@ -2642,8 +2642,8 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "app-linux-x64.xbin",
-                "app-linux-arm64.xbin",
+                "app-linux-x64.erebus",
+                "app-linux-arm64.erebus",
                 "app-win-x64.exe"
             ]
         );
@@ -2652,7 +2652,7 @@ mod tests {
     fn default_build_args() -> BuildArgs {
         BuildArgs {
             app: PathBuf::from("."),
-            output: PathBuf::from("app.xbin"),
+            output: PathBuf::from("app.erebus"),
             target: None,
             isolation: "sandbox".into(),
             seccomp: false,
@@ -2720,7 +2720,7 @@ mod tests {
             license: None,
             env_file: None,
             targets: vec![None],
-            outputs: vec![PathBuf::from("app.xbin")],
+            outputs: vec![PathBuf::from("app.erebus")],
         };
         let base = config_fingerprint(&default_build_args(), &plan(false, false));
 

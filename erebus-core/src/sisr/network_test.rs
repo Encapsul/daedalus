@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use crate::assembly::assemble_xbin;
+use crate::assembly::assemble_erebus;
 use crate::format::Footer;
 use crate::manifest::DeltaManifest;
 use crate::sisr::engine::{ChunkFetcher, SisrEngine};
@@ -144,14 +144,14 @@ fn random_buf(len: usize, seed: u64) -> Vec<u8> {
 }
 
 fn build_current(dir: &Path, payload: &[u8], chunk: usize) -> PathBuf {
-    let out = dir.join("app.xbin");
+    let out = dir.join("app.erebus");
     let config = SisrBuildConfig {
         enabled: true,
         chunk_target_size: chunk,
         signing_key: None,
     };
     let artifacts = crate::sisr_stage::build_artifacts(payload, &config).unwrap();
-    assemble_xbin(
+    assemble_erebus(
         &out,
         &crate::assembly::AssemblyInput {
             stub_bytes: b"STUB_DATA_HERE",

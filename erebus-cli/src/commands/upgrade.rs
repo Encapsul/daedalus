@@ -27,27 +27,27 @@ pub struct UpgradeArgs {
 pub fn run(args: UpgradeArgs) -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     if args.verbose {
-        eprintln!("[xbin] current version: {current}");
+        eprintln!("[erebus] current version: {current}");
     }
 
     let latest = fetch_latest_version().context("failed to fetch latest version")?;
 
     if args.verbose {
-        eprintln!("[xbin] latest version:  {latest}");
+        eprintln!("[erebus] latest version:  {latest}");
     }
 
     if current == latest {
-        eprintln!("[xbin] already up to date");
+        eprintln!("[erebus] already up to date");
         return Ok(());
     }
 
     let platform = detect_platform()?;
     if args.verbose {
-        eprintln!("[xbin] platform: {platform}");
+        eprintln!("[erebus] platform: {platform}");
     }
 
     let tag = format!("v{latest}");
-    let asset = format!("xbin-{latest}-{platform}.tar.gz");
+    let asset = format!("erebus-{latest}-{platform}.tar.gz");
     let url = format!("https://github.com/Tednoob17/x.bin/releases/download/{tag}/{asset}");
 
     if args.dry_run {
@@ -66,12 +66,12 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     let expected = fetch_checksum(&checksum_url)
         .context("failed to fetch release checksum; refusing an unverified upgrade")?;
     if args.verbose {
-        eprintln!("[xbin] expected checksum {expected}");
+        eprintln!("[erebus] expected checksum {expected}");
     }
 
     // Download
     if args.verbose {
-        eprintln!("[xbin] downloading {asset}...");
+        eprintln!("[erebus] downloading {asset}...");
     }
     download_file(&url, &tarball).context("download failed")?;
 
@@ -81,7 +81,7 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
         anyhow::bail!("checksum mismatch: expected {expected}, got {got}");
     }
     if args.verbose {
-        eprintln!("[xbin] checksum verified");
+        eprintln!("[erebus] checksum verified");
     }
 
     // Extract
@@ -102,7 +102,7 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     let extracted = std::fs::read_dir(tmp.path())
         .context("failed to read temp dir")?
         .flatten()
-        .find(|e| e.path().is_dir() && e.file_name().to_string_lossy().starts_with("xbin-"))
+        .find(|e| e.path().is_dir() && e.file_name().to_string_lossy().starts_with("erebus-"))
         .context("unexpected archive structure")?;
 
     let bin_dir = extracted.path().join("bin");
@@ -111,13 +111,13 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     }
 
     // Find install location
-    let xbin_path = find_xbin_binary()?;
-    let install_dir = xbin_path
+    let erebus_path = find_erebus_binary()?;
+    let install_dir = erebus_path
         .parent()
         .context("cannot determine install directory")?;
 
     if args.verbose {
-        eprintln!("[xbin] installing to {}...", install_dir.display());
+        eprintln!("[erebus] installing to {}...", install_dir.display());
     }
 
     let needs_sudo = !is_writable(install_dir);
@@ -135,7 +135,7 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
             );
         }
         eprint!(
-            "[xbin] install to {} requires sudo. Continue? [y/N] ",
+            "[erebus] install to {} requires sudo. Continue? [y/N] ",
             install_dir.display()
         );
         let mut input = String::new();
@@ -169,7 +169,7 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
         }
     }
 
-    eprintln!("[xbin] upgraded to {latest}");
+    eprintln!("[erebus] upgraded to {latest}");
     Ok(())
 }
 
@@ -265,7 +265,7 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
     Ok(hex::encode(result))
 }
 
-fn find_xbin_binary() -> Result<PathBuf> {
+fn find_erebus_binary() -> Result<PathBuf> {
     // Try /proc/self/exe (Linux)
     let proc = PathBuf::from("/proc/self/exe");
     if proc.exists() {
@@ -274,11 +274,11 @@ fn find_xbin_binary() -> Result<PathBuf> {
     }
 
     // Try which
-    if let Ok(p) = which::which("xbin") {
+    if let Ok(p) = which::which("erebus") {
         return Ok(p);
     }
 
-    anyhow::bail!("cannot locate xbin binary for self-update")
+    anyhow::bail!("cannot locate erebus binary for self-update")
 }
 
 /// Whether a path is actually writable, probed rather than inferred.
@@ -296,7 +296,7 @@ fn is_writable(path: &Path) -> bool {
     } else {
         path.parent().unwrap_or(path)
     };
-    let probe = dir.join(format!(".xbin-probe-{}", std::process::id()));
+    let probe = dir.join(format!(".erebus-probe-{}", std::process::id()));
     let created = std::fs::File::create(&probe).is_ok();
     if created {
         let _ = std::fs::remove_file(&probe);

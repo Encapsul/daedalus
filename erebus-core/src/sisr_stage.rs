@@ -3,7 +3,7 @@
 //!
 //! Pure computation over the payload bytes: no filesystem writes here. The
 //! packager (`assembly`) consumes [`SisrArtifacts`] and injects the section
-//! into the `.xbin`, then emits the remote manifest next to the binary.
+//! into the `.erebus`, then emits the remote manifest next to the binary.
 
 use std::io;
 
@@ -19,7 +19,7 @@ use crate::manifest::{self, ChunkEntry, DeltaManifest};
 /// bytes on drop (the `zeroize` feature is enabled by default).
 pub type Ed25519PrivateKey = SigningKey;
 
-/// Magic of the standalone remote manifest file (`.xbin.manifest`).
+/// Magic of the standalone remote manifest file (`.erebus.manifest`).
 pub const REMOTE_MAGIC: &[u8; 4] = b"XBMR";
 /// Version of the remote manifest schema understood by this crate.
 pub const REMOTE_VERSION: u8 = 1;
@@ -30,7 +30,7 @@ pub const REMOTE_HEADER_SIZE: usize = 104;
 /// Build options for the `SISR` stage.
 #[derive(Debug, Clone)]
 pub struct SisrBuildConfig {
-    /// Set to inject a `SISR` section; clear keeps the classic `.xbin`.
+    /// Set to inject a `SISR` section; clear keeps the classic `.erebus`.
     pub enabled: bool,
     /// Average content-defined chunk size (e.g. 64 KiB).
     pub chunk_target_size: usize,
@@ -38,7 +38,7 @@ pub struct SisrBuildConfig {
     pub signing_key: Option<Ed25519PrivateKey>,
 }
 
-/// Result of the `SISR` stage, ready for injection into a `.xbin`.
+/// Result of the `SISR` stage, ready for injection into a `.erebus`.
 pub struct SisrArtifacts {
     pub manifest: DeltaManifest,
     pub manifest_bytes: Vec<u8>,
@@ -46,7 +46,7 @@ pub struct SisrArtifacts {
     pub signature: [u8; 64],
 }
 
-/// Self-contained, signed remote manifest (the `.xbin.manifest` file).
+/// Self-contained, signed remote manifest (the `.erebus.manifest` file).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteManifest {
     pub merkle_root: [u8; 32],
@@ -55,7 +55,7 @@ pub struct RemoteManifest {
 }
 
 impl SisrBuildConfig {
-    /// A disabled `SISR` config — the packager produces a classic `.xbin`.
+    /// A disabled `SISR` config — the packager produces a classic `.erebus`.
     pub fn disabled() -> Self {
         Self {
             enabled: false,

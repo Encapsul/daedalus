@@ -1,4 +1,4 @@
-//! `.env` file parsing and secret detection for xbin.
+//! `.env` file parsing and secret detection for erebus.
 //!
 //! Provides `parse_dotenv` (KEY=value parsing with `export` prefix, quote
 //! stripping, and comment handling) and `load_dotenv` (resolved against an

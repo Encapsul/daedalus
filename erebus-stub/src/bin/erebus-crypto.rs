@@ -10,7 +10,7 @@ use std::path::PathBuf;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: xbin-crypto <keygen|sign|verify> ...");
+        eprintln!("Usage: erebus-crypto <keygen|sign|verify> ...");
         std::process::exit(1);
     }
     let rc = match args[1].as_str() {
@@ -29,7 +29,7 @@ fn cmd_keygen(args: &[String]) -> i32 {
     let key_dir = if args.len() == 2 && args[0] == "--key-dir" {
         PathBuf::from(&args[1])
     } else {
-        eprintln!("Usage: xbin-crypto keygen --key-dir <dir>");
+        eprintln!("Usage: erebus-crypto keygen --key-dir <dir>");
         return 1;
     };
 
@@ -67,7 +67,7 @@ fn cmd_keygen(args: &[String]) -> i32 {
 
 fn cmd_sign(args: &[String]) -> i32 {
     if args.len() != 1 {
-        eprintln!("Usage: xbin-crypto sign <keyfile>");
+        eprintln!("Usage: erebus-crypto sign <keyfile>");
         return 1;
     }
     let key_path = PathBuf::from(&args[0]);
@@ -107,7 +107,7 @@ fn cmd_sign(args: &[String]) -> i32 {
 
 fn cmd_verify(args: &[String]) -> i32 {
     if args.len() != 1 {
-        eprintln!("Usage: xbin-crypto verify <pubkey>");
+        eprintln!("Usage: erebus-crypto verify <pubkey>");
         return 2;
     }
     let pubkey_path = PathBuf::from(&args[0]);

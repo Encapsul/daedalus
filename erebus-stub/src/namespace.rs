@@ -1,4 +1,4 @@
-//! Namespace setup for the xbin launcher stub.
+//! Namespace setup for the erebus launcher stub.
 //!
 //! Provides Linux user + mount namespace isolation (`enter_userns`,
 //! `pivot_root_into`) and container detection (`running_in_container`).

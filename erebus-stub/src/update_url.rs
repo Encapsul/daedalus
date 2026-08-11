@@ -1,6 +1,6 @@
-//! Update URL resolution for the xbin launcher stub.
+//! Update URL resolution for the erebus launcher stub.
 //!
-//! Provides `resolve_update_url` (precedence: `--xbin-update=<URL>` CLI arg >
+//! Provides `resolve_update_url` (precedence: `--erebus-update=<URL>` CLI arg >
 //! env > embedded meta) and `normalize_base_url` (strip trailing slashes,
 //! reject non-http(s)).
 
@@ -10,13 +10,13 @@ use std::io;
 use crate::Metadata;
 
 /// Resolves the update channel base URL:
-/// `--xbin-update=<URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
+/// `--erebus-update=<URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
 ///
 /// Only the `=` form is accepted as a CLI override — the next positional argv
 /// is never guessed as the URL, so the app's first argument can't be swallowed.
 pub fn resolve_update_url(args: &[OsString], idx: usize, meta: &Metadata) -> io::Result<String> {
     if let Some(arg) = args.get(idx) {
-        if let Some(url) = arg.to_string_lossy().strip_prefix("--xbin-update=") {
+        if let Some(url) = arg.to_string_lossy().strip_prefix("--erebus-update=") {
             if !url.is_empty() {
                 return normalize_base_url(url);
             }
@@ -30,8 +30,8 @@ pub fn resolve_update_url(args: &[OsString], idx: usize, meta: &Metadata) -> io:
     }
     Err(io::Error::new(
         io::ErrorKind::InvalidData,
-        "no update URL — pass --xbin-update=<URL>, set $XBIN_UPDATE_URL, \
-         or rebuild with xbin build --update-url",
+        "no update URL — pass --erebus-update=<URL>, set $XBIN_UPDATE_URL, \
+         or rebuild with erebus build --update-url",
     ))
 }
 
@@ -78,7 +78,7 @@ mod tests {
     #[test]
     fn resolve_update_url_prefers_the_equals_argument() {
         let args = vec![
-            OsString::from("--xbin-update=https://arg.example/app"),
+            OsString::from("--erebus-update=https://arg.example/app"),
             OsString::from("--flag-for-app"),
         ];
         let meta = Metadata {
@@ -106,9 +106,9 @@ mod tests {
 
     #[test]
     fn resolve_update_url_does_not_swallow_app_positional_arg() {
-        // `--xbin-update serve` must NOT treat `serve` as the URL — the next
+        // `--erebus-update serve` must NOT treat `serve` as the URL — the next
         // positional argv belongs to the app and is never consumed.
-        let args = vec![OsString::from("--xbin-update"), OsString::from("serve")];
+        let args = vec![OsString::from("--erebus-update"), OsString::from("serve")];
         let meta = Metadata {
             update_url: Some("https://meta.example/app/".into()),
             ..Metadata {
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn resolve_update_url_falls_back_to_embedded_metadata() {
-        let args = vec![OsString::from("--xbin-update")];
+        let args = vec![OsString::from("--erebus-update")];
         let meta = Metadata {
             update_url: Some("https://meta.example/app/".into()),
             ..Metadata {
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn resolve_update_url_errors_without_any_source() {
-        let args = vec![OsString::from("--xbin-update")];
+        let args = vec![OsString::from("--erebus-update")];
         let meta = Metadata {
             update_url: None,
             ..Metadata {
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn resolve_update_url_handles_equals_syntax() {
-        let args = vec![OsString::from("--xbin-update=https://arg.example/app")];
+        let args = vec![OsString::from("--erebus-update=https://arg.example/app")];
         let meta = Metadata {
             update_url: None,
             ..Metadata {

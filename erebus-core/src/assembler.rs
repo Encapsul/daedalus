@@ -1,7 +1,7 @@
 //! Binary stitching — reassembles a complete executable from a base and
 //! payload blocks.
 //!
-//! The `.xbin` layout is `[stub][payload][metadata][footer]`. SISR
+//! The `.erebus` layout is `[stub][payload][metadata][footer]`. SISR
 //! reconstructs the *payload* blocks (e.g. a `SquashFS` image) and stitches
 //! them into a base executable. This module provides the trait and a
 //! stitcher that glues base + payload blocks into one byte stream, with no
@@ -9,7 +9,7 @@
 
 use std::io::{self, Write};
 
-/// The payload of a `.xbin` lies between the launcher stub and the metadata.
+/// The payload of a `.erebus` lies between the launcher stub and the metadata.
 /// A stitcher that only appends blocks would place them after the footer,
 /// breaking the format — so the trait leaves the exact splice point to the
 /// implementation.
@@ -24,9 +24,9 @@ pub trait BinaryAssembler {
     ) -> io::Result<()>;
 }
 
-/// Stitches base and blocks into the exact `.xbin` layout.
+/// Stitches base and blocks into the exact `.erebus` layout.
 ///
-/// The base executable is the whole previous `.xbin` file. The payload
+/// The base executable is the whole previous `.erebus` file. The payload
 /// region runs from `payload_offset` to `meta_offset` (per the footer). This
 /// stitcher re-emits everything before the payload, then the new payload
 /// blocks, then everything after (metadata + footer), preserving the format.
@@ -49,7 +49,7 @@ impl BinaryAssembler for XbinStitcher {
     }
 }
 
-/// Locates the payload region boundaries using the `.xbin` footer.
+/// Locates the payload region boundaries using the `.erebus` footer.
 ///
 /// The footer is the last 92 bytes (v3+) and stores absolute offsets; reading
 /// it requires a seekable reader, so we parse the offsets from the raw bytes
@@ -67,7 +67,7 @@ fn locate_splice(base: &[u8]) -> io::Result<(usize, usize)> {
     if footer_magic != crate::format::FOOTER_MAGIC {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "base executable has no valid .xbin footer",
+            "base executable has no valid .erebus footer",
         ));
     }
     let payload_offset = u64::from_le_bytes(footer[16..24].try_into().unwrap()) as usize;
@@ -85,7 +85,7 @@ fn locate_splice(base: &[u8]) -> io::Result<(usize, usize)> {
 mod tests {
     use super::*;
 
-    /// Builds a minimal in-memory `.xbin` layout with the given payload.
+    /// Builds a minimal in-memory `.erebus` layout with the given payload.
     fn build_base(stub: &[u8], payload: &[u8], meta: &[u8]) -> Vec<u8> {
         let payload_offset = stub.len();
         let meta_offset = payload_offset + payload.len();
@@ -107,7 +107,7 @@ mod tests {
     }
 
     #[test]
-    fn xbin_stitcher_replaces_payload_region() {
+    fn erebus_stitcher_replaces_payload_region() {
         let stub = b"ELF-stub-here";
         let old_payload = b"old-squashfs";
         let meta = b"{\"runtime\":\"python\"}";
@@ -127,15 +127,15 @@ mod tests {
     }
 
     #[test]
-    fn xbin_stitcher_rejects_invalid_base() {
+    fn erebus_stitcher_rejects_invalid_base() {
         let mut output = Vec::new();
         assert!(XbinStitcher
-            .assemble(b"not a xbin", &[], &mut output)
+            .assemble(b"not a erebus", &[], &mut output)
             .is_err());
     }
 
     #[test]
-    fn xbin_stitcher_rejects_truncated_base() {
+    fn erebus_stitcher_rejects_truncated_base() {
         let base = build_base(b"stub", b"payload", b"meta");
         let mut output = Vec::new();
         assert!(XbinStitcher
@@ -144,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn xbin_stitcher_rejects_out_of_bounds_offsets() {
+    fn erebus_stitcher_rejects_out_of_bounds_offsets() {
         let base = build_base(b"stub", b"payload", b"meta");
         let mut corrupted = base.clone();
         let footer_len = 92;

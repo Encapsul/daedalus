@@ -1,6 +1,6 @@
 //! Legacy (v1) → SISR (v2) migration.
 //!
-//! [`upgrade_binary`] converts a classic `.xbin` (no `FLAG_SISR`) into a
+//! [`upgrade_binary`] converts a classic `.erebus` (no `FLAG_SISR`) into a
 //! SISR-enabled binary without touching the payload. The stub, payload, and
 //! metadata segments are copied through byte-for-byte; a delta manifest and a
 //! [`SisrFooterExt`] are inserted between the metadata and the footer.
@@ -35,12 +35,12 @@ pub struct UpgradeReport {
     pub signed: bool,
 }
 
-/// Converts a classic (SISR-less) `.xbin` into a SISR-enabled one.
+/// Converts a classic (SISR-less) `.erebus` into a SISR-enabled one.
 ///
 /// The payload is chunked exactly as it is stored on disk — never
 /// decompressed and recompressed — so the stored bytes (and therefore any
-/// payload-internal checksums) are unchanged. Also writes `<output>.xbin.manifest`
-/// next to the binary, matching [`crate::assembly::assemble_xbin`].
+/// payload-internal checksums) are unchanged. Also writes `<output>.erebus.manifest`
+/// next to the binary, matching [`crate::assembly::assemble_erebus`].
 pub fn upgrade_binary(
     input: &Path,
     output: &Path,
@@ -58,7 +58,7 @@ pub fn upgrade_binary(
     }
     if footer.format_version >= 3 || footer.flags & format::FLAG_SIGNED != 0 {
         return Err(err(
-            "signed binaries are not upgradeable — rebuild with `xbin build --enable-sisr` instead",
+            "signed binaries are not upgradeable — rebuild with `erebus build --enable-sisr` instead",
         ));
     }
 
@@ -79,7 +79,7 @@ pub fn upgrade_binary(
         .ok_or_else(|| err("file too small"))?;
     if payload_end > meta_start || meta_end > tail {
         return Err(err(
-            "malformed .xbin: overlapping or out-of-bounds segments",
+            "malformed .erebus: overlapping or out-of-bounds segments",
         ));
     }
 
@@ -119,7 +119,7 @@ pub fn upgrade_binary(
         manifest: artifacts.manifest,
     };
     let mut manifest_path = output.to_path_buf();
-    manifest_path.set_extension("xbin.manifest");
+    manifest_path.set_extension("erebus.manifest");
     fs::write(manifest_path, remote.to_bytes())?;
 
     Ok(UpgradeReport {
@@ -149,14 +149,14 @@ fn err(msg: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::assembly::{assemble_xbin, AssemblyInput};
+    use crate::assembly::{assemble_erebus, AssemblyInput};
     use crate::sisr_header::read_sisr;
     use ed25519_dalek::SigningKey;
     use std::io::Cursor;
 
     fn fixture_v1(dir: &Path) -> std::path::PathBuf {
-        let out = dir.join("legacy.xbin");
-        assemble_xbin(
+        let out = dir.join("legacy.erebus");
+        assemble_erebus(
             &out,
             &AssemblyInput {
                 stub_bytes: b"STUB_DATA",
@@ -187,7 +187,7 @@ mod tests {
         let before = fs::read(&input).unwrap();
         let in_footer = Footer::read_from(&mut Cursor::new(&before)).unwrap();
 
-        let out = tmp.path().join("upgraded.xbin");
+        let out = tmp.path().join("upgraded.erebus");
         let report = upgrade_binary(&input, &out, &config()).unwrap();
 
         let after = fs::read(&out).unwrap();
@@ -219,7 +219,7 @@ mod tests {
         assert!(report.signed);
 
         // The remote manifest was written next to the binary.
-        let remote_path = tmp.path().join("upgraded.xbin.manifest");
+        let remote_path = tmp.path().join("upgraded.erebus.manifest");
         let remote = RemoteManifest::from_bytes(&fs::read(remote_path).unwrap()).unwrap();
         assert!(remote.verify_merkle());
         assert!(report.output_size > report.input_size);
@@ -228,10 +228,10 @@ mod tests {
     #[test]
     fn upgrade_rejects_already_sisr() {
         let tmp = tempfile::tempdir().unwrap();
-        let input = tmp.path().join("sisr.xbin");
+        let input = tmp.path().join("sisr.erebus");
         let artifacts =
             crate::sisr_stage::build_artifacts(b"PAYLOAD_PAYLOAD_PAYLOAD", &config()).unwrap();
-        assemble_xbin(
+        assemble_erebus(
             &input,
             &AssemblyInput {
                 stub_bytes: b"STUB_DATA",
@@ -244,7 +244,7 @@ mod tests {
             },
         )
         .unwrap();
-        let err = upgrade_binary(&input, &tmp.path().join("out.xbin"), &config()).unwrap_err();
+        let err = upgrade_binary(&input, &tmp.path().join("out.erebus"), &config()).unwrap_err();
         assert!(err.to_string().contains("already SISR"));
     }
 
@@ -256,17 +256,17 @@ mod tests {
         let mut data = fs::read(&input).unwrap();
         let last = data.len() - 84;
         data[last + 5] = 3;
-        let signed = tmp.path().join("signed.xbin");
+        let signed = tmp.path().join("signed.erebus");
         fs::write(&signed, &data).unwrap();
-        let err = upgrade_binary(&signed, &tmp.path().join("out.xbin"), &config()).unwrap_err();
+        let err = upgrade_binary(&signed, &tmp.path().join("out.erebus"), &config()).unwrap_err();
         assert!(err.to_string().contains("not upgradeable"));
     }
 
     #[test]
-    fn upgrade_rejects_non_xbin() {
+    fn upgrade_rejects_non_erebus() {
         let tmp = tempfile::tempdir().unwrap();
         let input = tmp.path().join("junk.bin");
-        fs::write(&input, b"this is not an xbin file at all").unwrap();
-        assert!(upgrade_binary(&input, &tmp.path().join("out.xbin"), &config()).is_err());
+        fs::write(&input, b"this is not an erebus file at all").unwrap();
+        assert!(upgrade_binary(&input, &tmp.path().join("out.erebus"), &config()).is_err());
     }
 }

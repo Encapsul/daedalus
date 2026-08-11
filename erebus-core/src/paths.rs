@@ -16,24 +16,24 @@ pub fn cache_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
         if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-            return PathBuf::from(local_app_data).join("xbin");
+            return PathBuf::from(local_app_data).join("erebus");
         }
     }
     #[cfg(not(target_os = "windows"))]
     {
         if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
-            return PathBuf::from(xdg).join("xbin");
+            return PathBuf::from(xdg).join("erebus");
         }
         if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(".cache").join("xbin");
+            return PathBuf::from(home).join(".cache").join("erebus");
         }
     }
-    PathBuf::from(".xbin").join("cache")
+    PathBuf::from(".erebus").join("cache")
 }
 
 /// Simple hash-based build cache.
 ///
-/// Stores `.xbin` files in `~/.cache/xbin/builds/` keyed by the SHA-256
+/// Stores `.erebus` files in `~/.cache/erebus/builds/` keyed by the SHA-256
 /// hex digest of the app source contents **plus** a canonical hash of the
 /// build configuration (flags like `--encrypt`/`--squashfs`/`--key` change
 /// the output bytes, so they must be part of the key or a cache hit serves
@@ -43,9 +43,9 @@ pub fn cache_dir() -> PathBuf {
 ///
 /// Cache layout:
 /// ```text
-/// ~/.cache/xbin/builds/<app_sha256>-<cfg_sha256>/output.xbin
-/// ~/.cache/xbin/builds/<app_sha256>-<cfg_sha256>/.meta
-/// ~/.cache/xbin/builds/<app_sha256>-<cfg_sha256>-<target>/output.xbin   (cross-target)
+/// ~/.cache/erebus/builds/<app_sha256>-<cfg_sha256>/output.erebus
+/// ~/.cache/erebus/builds/<app_sha256>-<cfg_sha256>/.meta
+/// ~/.cache/erebus/builds/<app_sha256>-<cfg_sha256>-<target>/output.erebus   (cross-target)
 /// ```
 pub struct BuildCache {
     base_dir: PathBuf,
@@ -70,7 +70,7 @@ fn cache_key(app_hash: &str, config_hash: &str, target: Option<&str>) -> String 
 }
 
 impl BuildCache {
-    /// Create a build cache rooted at `~/.cache/xbin/builds/`.
+    /// Create a build cache rooted at `~/.cache/erebus/builds/`.
     ///
     /// `max_entries` caps the number of cached builds; oldest entries are
     /// evicted first when the limit is exceeded.
@@ -82,21 +82,21 @@ impl BuildCache {
         }
     }
 
-    /// Look up a cached `.xbin` whose app-hash, config-hash (and target,
+    /// Look up a cached `.erebus` whose app-hash, config-hash (and target,
     /// for cross builds) match.
     ///
     /// Returns `Some(path)` if a valid cached build exists, `None` otherwise.
     pub fn find(&self, app_hash: &str, config_hash: &str, target: Option<&str>) -> Option<PathBuf> {
         let entry_dir = self.base_dir.join(cache_key(app_hash, config_hash, target));
-        let xbin = entry_dir.join("output.xbin");
-        if xbin.is_file() {
-            Some(xbin)
+        let erebus = entry_dir.join("output.erebus");
+        if erebus.is_file() {
+            Some(erebus)
         } else {
             None
         }
     }
 
-    /// Store a built `.xbin` into the cache under the given app hash.
+    /// Store a built `.erebus` into the cache under the given app hash.
     ///
     /// Cross-target builds pass the target string so a linux and a windows
     /// artifact of the same app never collide under one hash key.
@@ -105,12 +105,12 @@ impl BuildCache {
         app_hash: &str,
         config_hash: &str,
         target: Option<&str>,
-        xbin_path: &Path,
+        erebus_path: &Path,
     ) -> std::io::Result<()> {
         let entry_dir = self.base_dir.join(cache_key(app_hash, config_hash, target));
         std::fs::create_dir_all(&entry_dir)?;
 
-        std::fs::copy(xbin_path, entry_dir.join("output.xbin"))?;
+        std::fs::copy(erebus_path, entry_dir.join("output.erebus"))?;
 
         let meta = CacheMeta {
             app_hash: app_hash.to_string(),
@@ -201,38 +201,38 @@ impl BuildCache {
 
 pub fn default_key_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        PathBuf::from(xdg).join("xbin").join("keys")
+        PathBuf::from(xdg).join("erebus").join("keys")
     } else if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home)
             .join(".local")
             .join("share")
-            .join("xbin")
+            .join("erebus")
             .join("keys")
     } else {
-        PathBuf::from(".xbin").join("keys")
+        PathBuf::from(".erebus").join("keys")
     }
 }
 
 pub fn default_trusted_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        PathBuf::from(xdg).join("xbin").join("trusted-keys")
+        PathBuf::from(xdg).join("erebus").join("trusted-keys")
     } else if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home)
             .join(".local")
             .join("share")
-            .join("xbin")
+            .join("erebus")
             .join("trusted-keys")
     } else {
-        PathBuf::from(".xbin").join("trusted-keys")
+        PathBuf::from(".erebus").join("trusted-keys")
     }
 }
 
 /// Directory the stub launcher reads trusted Ed25519 public keys from.
 ///
 /// Mirrors `erebus-stub`'s `trusted_keys_dir()` exactly so that
-/// `xbin trust` / `xbin verify` write to and read from the *same* location
+/// `erebus trust` / `erebus verify` write to and read from the *same* location
 /// the launcher checks. Honors `$XBIN_TRUSTED_DIR`; otherwise defaults to
-/// `~/.xbin/trusted-keys/` (home-relative). The home-relative default — not
+/// `~/.erebus/trusted-keys/` (home-relative). The home-relative default — not
 /// `XDG_DATA_HOME` — is intentional: the stub resolves trust anchors without
 /// consulting environment variables that could be spoofed in sandboxed or
 /// elevated (`sudo`/setuid) contexts.
@@ -240,9 +240,9 @@ pub fn trusted_keys_dir() -> PathBuf {
     if let Some(d) = std::env::var_os("XBIN_TRUSTED_DIR") {
         PathBuf::from(d)
     } else if let Some(home) = std::env::var_os("HOME") {
-        PathBuf::from(home).join(".xbin").join("trusted-keys")
+        PathBuf::from(home).join(".erebus").join("trusted-keys")
     } else {
-        PathBuf::from(".xbin").join("trusted-keys")
+        PathBuf::from(".erebus").join("trusted-keys")
     }
 }
 
@@ -324,7 +324,7 @@ impl RemoteBuildCache {
         if let Ok(Some(data)) = self.backend.get(&key) {
             let entry_dir = self.local.base_dir.join(&key);
             if std::fs::create_dir_all(&entry_dir).is_ok() {
-                let _ = std::fs::write(entry_dir.join("output.xbin"), data);
+                let _ = std::fs::write(entry_dir.join("output.erebus"), data);
             }
         }
         self.local.find(app_hash, config_hash, target)
@@ -336,12 +336,12 @@ impl RemoteBuildCache {
         app_hash: &str,
         config_hash: &str,
         target: Option<&str>,
-        xbin_path: &Path,
+        erebus_path: &Path,
     ) -> std::io::Result<()> {
         let key = cache_key(app_hash, config_hash, target);
-        let data = std::fs::read(xbin_path)?;
+        let data = std::fs::read(erebus_path)?;
         let _ = self.backend.put(&key, &data);
-        self.local.store(app_hash, config_hash, target, xbin_path)
+        self.local.store(app_hash, config_hash, target, erebus_path)
     }
 }
 
@@ -417,13 +417,13 @@ mod tests {
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 10);
 
-        let fake_xbin = tmp.path().join("fake.xbin");
-        std::fs::write(&fake_xbin, b"fake xbin").unwrap();
+        let fake_erebus = tmp.path().join("fake.erebus");
+        std::fs::write(&fake_erebus, b"fake erebus").unwrap();
 
-        cache.store("aaa", "cfg1", None, &fake_xbin).unwrap();
+        cache.store("aaa", "cfg1", None, &fake_erebus).unwrap();
         let found = cache.find("aaa", "cfg1", None);
         assert!(found.is_some());
-        assert_eq!(found.unwrap().file_name().unwrap(), "output.xbin");
+        assert_eq!(found.unwrap().file_name().unwrap(), "output.erebus");
     }
 
     #[test]
@@ -435,7 +435,7 @@ mod tests {
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 10);
 
-        let fake_linux = tmp.path().join("linux.xbin");
+        let fake_linux = tmp.path().join("linux.erebus");
         std::fs::write(&fake_linux, b"linux").unwrap();
         let fake_win = tmp.path().join("win.exe");
         std::fs::write(&fake_win, b"windows").unwrap();
@@ -460,9 +460,9 @@ mod tests {
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 10);
 
-        let plain = tmp.path().join("plain.xbin");
+        let plain = tmp.path().join("plain.erebus");
         std::fs::write(&plain, b"plain").unwrap();
-        let encrypted = tmp.path().join("encrypted.xbin");
+        let encrypted = tmp.path().join("encrypted.erebus");
         std::fs::write(&encrypted, b"encrypted").unwrap();
 
         cache.store("aaa", "cfg-plain", None, &plain).unwrap();
@@ -495,9 +495,9 @@ mod tests {
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 10);
 
-        let fake_xbin = tmp.path().join("fake.xbin");
-        std::fs::write(&fake_xbin, b"fake xbin").unwrap();
-        cache.store("aaa", "cfg1", None, &fake_xbin).unwrap();
+        let fake_erebus = tmp.path().join("fake.erebus");
+        std::fs::write(&fake_erebus, b"fake erebus").unwrap();
+        cache.store("aaa", "cfg1", None, &fake_erebus).unwrap();
 
         cache.clear().unwrap();
         assert!(cache.find("aaa", "cfg1", None).is_none());
@@ -512,14 +512,14 @@ mod tests {
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 2);
 
-        let fake_xbin = tmp.path().join("fake.xbin");
-        std::fs::write(&fake_xbin, b"fake xbin").unwrap();
+        let fake_erebus = tmp.path().join("fake.erebus");
+        std::fs::write(&fake_erebus, b"fake erebus").unwrap();
 
-        cache.store("a1", "cfg1", None, &fake_xbin).unwrap();
+        cache.store("a1", "cfg1", None, &fake_erebus).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        cache.store("a2", "cfg1", None, &fake_xbin).unwrap();
+        cache.store("a2", "cfg1", None, &fake_erebus).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        cache.store("a3", "cfg1", None, &fake_xbin).unwrap();
+        cache.store("a3", "cfg1", None, &fake_erebus).unwrap();
 
         let entries = cache.list_entries().unwrap();
         assert!(entries.len() <= 2);
@@ -527,22 +527,22 @@ mod tests {
 
     #[test]
     fn trusted_keys_dir_matches_stub_default() {
-        // $XBIN_TRUSTED_DIR wins; else ~/.xbin/trusted-keys (home-relative),
+        // $XBIN_TRUSTED_DIR wins; else ~/.erebus/trusted-keys (home-relative),
         // matching the stub launcher exactly (no XDG resolution).
-        let xbin = EnvGuard::new("XBIN_TRUSTED_DIR");
+        let erebus = EnvGuard::new("XBIN_TRUSTED_DIR");
         let home = EnvGuard::new("HOME");
-        xbin.clear();
+        erebus.clear();
         home.set("/fake/home");
         assert_eq!(
             trusted_keys_dir(),
-            PathBuf::from("/fake/home/.xbin/trusted-keys")
+            PathBuf::from("/fake/home/.erebus/trusted-keys")
         );
-        xbin.set("/custom/keys");
+        erebus.set("/custom/keys");
         assert_eq!(trusted_keys_dir(), PathBuf::from("/custom/keys"));
-        xbin.clear();
+        erebus.clear();
         assert_eq!(
             trusted_keys_dir(),
-            PathBuf::from("/fake/home/.xbin/trusted-keys")
+            PathBuf::from("/fake/home/.erebus/trusted-keys")
         );
     }
 
@@ -556,7 +556,7 @@ mod tests {
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = RemoteBuildCache::new(backend, &app_dir, 10);
 
-        let fake = tmp.path().join("artifact.xbin");
+        let fake = tmp.path().join("artifact.erebus");
         std::fs::write(&fake, b"remote bytes").unwrap();
         cache.store("h1", "cfg1", None, &fake).unwrap();
 

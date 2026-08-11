@@ -1,8 +1,8 @@
-//! xbin launcher stub.
+//! erebus launcher stub.
 //!
-//! Embedded at the head of every .xbin file — this is the ELF the kernel runs.
+//! Embedded at the head of every .erebus file — this is the ELF the kernel runs.
 //! Flow: open /proc/self/exe → read footer → verify integrity (sig → SHA-256) →
-//! extract rootfs to ~/.cache/xbin/{sha256}/ (atomic) → exec the app.
+//! extract rootfs to ~/.cache/erebus/{sha256}/ (atomic) → exec the app.
 //!
 //! Isolation: level 0 = `LD_LIBRARY_PATH` (no sandbox), level 2 = user +
 //! mount namespaces with `pivot_root` into the extracted rootfs and
@@ -43,7 +43,7 @@ use erebus_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
 use erebus_core::sisr::resilience::{backup_path_for, create_backup, discard_backup, restore_backup};
 
 /// Standard library search paths for `LD_LIBRARY_PATH`.
-/// Kept in sync with cli/xbin/build.py `LD_LIBRARY_PATH` construction.
+/// Kept in sync with cli/erebus/build.py `LD_LIBRARY_PATH` construction.
 /// Linux-only: Windows loads DLLs from the exe dir / PATH / System32.
 #[cfg(all(unix, target_arch = "x86_64"))]
 const LD_PATHS: &[&str] = &[
@@ -138,7 +138,7 @@ fn default_health_endpoint() -> String {
 /// Metadata describing an AES-256-GCM encrypted payload (`--encrypt`, v4+).
 ///
 /// SECURITY / THREAT MODEL: the encryption key (`encryption_key_hex`) and salt
-/// are stored **in the clear** in the `.xbin` metadata — i.e. in the same file
+/// are stored **in the clear** in the `.erebus` metadata — i.e. in the same file
 /// as the ciphertext. The AES key is **not** the Ed25519 *signing* seed (that is
 /// never embedded; `@see` `erebus-cli/src/commands/build.rs`), so a leaked file
 /// cannot be used to forge signatures. However, because the decryption key
@@ -172,7 +172,7 @@ pub struct Service {
 
 fn main() {
     if let Err(e) = run() {
-        eprintln!("[xbin] error: {e}");
+        eprintln!("[erebus] error: {e}");
         exit(1);
     }
 }
@@ -198,7 +198,7 @@ fn run() -> io::Result<()> {
         ));
     }
 
-    // Intercept xbin-reserved runtime flags (`--xbin-update`, `--xbin-version`)
+    // Intercept erebus-reserved runtime flags (`--erebus-update`, `--erebus-version`)
     // before they could reach the host app. Handled modes are terminal: the
     // process exits here without ever exec'ing the app, so the flags are never
     // forwarded.
@@ -213,7 +213,7 @@ fn run() -> io::Result<()> {
     // reading the payload, so this run executes the new version.
     if let Some(updated) = maybe_apply_sisr_update()? {
         if verbose {
-            eprintln!("[xbin] SISR update applied: {}", updated.display());
+            eprintln!("[erebus] SISR update applied: {}", updated.display());
         }
         // Re-open the *canonical real path*, not /proc/self/exe: the kernel can
         // pin the running image's inode, so /proc/self/exe may still resolve to
@@ -237,14 +237,14 @@ fn run() -> io::Result<()> {
         // perms) — a foreign/writable cache falls through to a fresh
         // extraction instead of executing unverified bytes.
         if verbose {
-            eprintln!("[xbin] warm start: cache hit {}", hash);
+            eprintln!("[erebus] warm start: cache hit {}", hash);
         }
         return exec::exec_app(&meta, &rootfs, &app_config);
     }
 
     // 3. Cold path: read payload + verify + extract.
     if verbose {
-        eprintln!("[xbin] cold start: extracting {}", meta.name);
+        eprintln!("[erebus] cold start: extracting {}", meta.name);
     }
 
     let payload = read_at(
@@ -267,7 +267,7 @@ fn run() -> io::Result<()> {
     if has_sig_block {
         crypto::verify_ed25519(&footer, &mut exe, &payload, &meta_bytes)?;
         if verbose {
-            eprintln!("[xbin] Ed25519 signature verified");
+            eprintln!("[erebus] Ed25519 signature verified");
         }
     } else if footer.format_version < 3 && !footer.has_sisr() {
         reject_downgraded_sig_block(&mut exe, &footer)?;
@@ -284,7 +284,7 @@ fn run() -> io::Result<()> {
     let payload = if footer.crypto_suite() == format::CRYPTO_AES_256_GCM {
         if let Some(ref crypto) = meta.crypto {
             if verbose {
-                eprintln!("[xbin] decrypting AES-256-GCM payload");
+                eprintln!("[erebus] decrypting AES-256-GCM payload");
             }
             crypto::decrypt_aes_gcm(&payload, crypto)?
         } else {
@@ -330,7 +330,7 @@ fn run() -> io::Result<()> {
         .is_some_and(|s| s.state == HealthState::Quarantined)
     {
         eprintln!(
-            "[xbin] version {version} is quarantined after a failed health check; rolling back"
+            "[erebus] version {version} is quarantined after a failed health check; rolling back"
         );
         return rollback_to_previous(&bin_path, verbose);
     }
@@ -381,7 +381,7 @@ fn reject_downgraded_sig_block<R: Read + Seek>(exe: &mut R, footer: &Footer) -> 
     Ok(())
 }
 
-/// Canonical absolute path of the running executable (the .xbin file itself).
+/// Canonical absolute path of the running executable (the .erebus file itself).
 /// Linux: readlink(/proc/self/exe); macOS: `_NSGetExecutablePath` via
 /// `std::env::current_exe()`. Both are resolved to the on-disk path, which is
 /// the file the update engine swaps in place.
@@ -560,7 +560,7 @@ fn supervised_launch(
             exec::supervise_services(meta, rootfs, app_config)
         };
         if let Err(e) = result {
-            eprintln!("[xbin] health gate: app failed to start: {e}");
+            eprintln!("[erebus] health gate: app failed to start: {e}");
         }
         std::process::exit(127);
     }
@@ -570,7 +570,7 @@ fn supervised_launch(
             store.confirm(version_id)?;
             let _ = discard_backup(&backup_path_for(bin_path));
             if verbose {
-                eprintln!("[xbin] health gate: version {version_id} healthy");
+                eprintln!("[erebus] health gate: version {version_id} healthy");
             }
             exec::install_signal_handler(&[("app".to_string(), pid)]);
             exit(wait_child_exit_code(pid)?);
@@ -579,16 +579,16 @@ fn supervised_launch(
             store.confirm(version_id)?;
             let _ = discard_backup(&backup_path_for(bin_path));
             if verbose {
-                eprintln!("[xbin] health gate: version {version_id} healthy (clean exit)");
+                eprintln!("[erebus] health gate: version {version_id} healthy (clean exit)");
             }
             exit(0);
         }
         ChildStatus::Exited(code) | ChildStatus::Signaled(code) => {
-            eprintln!("[xbin] health gate: version {version_id} failed (exit {code})");
+            eprintln!("[erebus] health gate: version {version_id} failed (exit {code})");
             let quarantined = store.record_failure(version_id, policy.max_attempts)?;
             if quarantined {
                 eprintln!(
-                    "[xbin] version {version_id} quarantined after {} failed launches",
+                    "[erebus] version {version_id} quarantined after {} failed launches",
                     policy.max_attempts
                 );
             }
@@ -638,24 +638,24 @@ fn supervised_launch(
             store.confirm(version_id)?;
             let _ = discard_backup(&backup_path_for(bin_path));
             if verbose {
-                eprintln!("[xbin] health gate: version {version_id} healthy");
+                eprintln!("[erebus] health gate: version {version_id} healthy");
             }
             let code = win::wait(&child)?;
             exit(code);
         }
         ChildStatus::Exited(code) => {
-            eprintln!("[xbin] health gate: version {version_id} failed (exit {code})");
+            eprintln!("[erebus] health gate: version {version_id} failed (exit {code})");
             let quarantined = store.record_failure(version_id, policy.max_attempts)?;
             if quarantined {
                 eprintln!(
-                    "[xbin] version {version_id} quarantined after {} failed launches",
+                    "[erebus] version {version_id} quarantined after {} failed launches",
                     policy.max_attempts
                 );
             }
             rollback_to_previous(bin_path, verbose)
         }
         ChildStatus::Signaled(code) => {
-            eprintln!("[xbin] health gate: version {version_id} failed (exit {code})");
+            eprintln!("[erebus] health gate: version {version_id} failed (exit {code})");
             rollback_to_previous(bin_path, verbose)
         }
     }
@@ -732,7 +732,7 @@ fn rollback_to_previous(bin_path: &Path, verbose: bool) -> io::Result<()> {
     let _ = discard_backup(&bak);
     if verbose {
         eprintln!(
-            "[xbin] rolled back to previous version: {}",
+            "[erebus] rolled back to previous version: {}",
             bin_path.display()
         );
     }
@@ -741,7 +741,7 @@ fn rollback_to_previous(bin_path: &Path, verbose: bool) -> io::Result<()> {
     exec_again(bin_path)
 }
 
-/// Re-execs the current stub binary (a `.xbin` file) with the original argv.
+/// Re-execs the current stub binary (a `.erebus` file) with the original argv.
 #[cfg(unix)]
 fn exec_again(bin_path: &Path) -> io::Result<()> {
     let prog = cstr(bin_path.as_os_str().as_bytes())?;
@@ -772,15 +772,15 @@ fn exec_again(bin_path: &Path) -> io::Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// `--xbin-update` / `--xbin-version` runtime flags
+// `--erebus-update` / `--erebus-version` runtime flags
 // ---------------------------------------------------------------------------
 
-/// Intercepts the xbin-reserved runtime flags and handles them terminally.
+/// Intercepts the erebus-reserved runtime flags and handles them terminally.
 ///
-/// - `--xbin-version` prints version info on stdout and exits 0.
-/// - `--xbin-update=<URL>` fetches the signed remote manifest and the changed
+/// - `--erebus-version` prints version info on stdout and exits 0.
+/// - `--erebus-update=<URL>` fetches the signed remote manifest and the changed
 ///   chunks from the update channel, applies the delta atomically, prints
-///   reuse/fetch statistics on stderr, and exits 0. A bare `--xbin-update`
+///   reuse/fetch statistics on stderr, and exits 0. A bare `--erebus-update`
 ///   falls back to `$XBIN_UPDATE_URL` then the embedded metadata URL.
 ///
 /// Because both paths call `process::exit`, these flags never reach the host
@@ -788,8 +788,8 @@ fn exec_again(bin_path: &Path) -> io::Result<()> {
 fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
 
-    if args.iter().any(|a| a == "--xbin-version") {
-        println!("xbin {} (stub)", env!("CARGO_PKG_VERSION"));
+    if args.iter().any(|a| a == "--erebus-version") {
+        println!("erebus {} (stub)", env!("CARGO_PKG_VERSION"));
         if let Some(v) = &meta.version {
             println!("app version: {v}");
         }
@@ -798,7 +798,7 @@ fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
 
     if let Some(idx) = args.iter().position(|a| {
         let s = a.to_string_lossy();
-        s == "--xbin-update" || s.starts_with("--xbin-update=")
+        s == "--erebus-update" || s.starts_with("--erebus-update=")
     }) {
         let base = resolve_update_url(&args, idx, meta)?;
         remote_update(&base)?;
@@ -809,7 +809,7 @@ fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
 }
 
 /// Resolves the update channel base URL:
-/// `--xbin-update=<URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
+/// `--erebus-update=<URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
 fn resolve_update_url(
     args: &[std::ffi::OsString],
     idx: usize,
@@ -823,7 +823,7 @@ fn resolve_update_url(
 /// through the engine. Progress and reuse/fetch stats go to stderr; the
 /// process exits after the atomic swap.
 fn remote_update(base: &str) -> io::Result<()> {
-    eprintln!("[xbin] update: fetching manifest from {base}/manifest");
+    eprintln!("[erebus] update: fetching manifest from {base}/manifest");
     let manifest_bytes = http_get_bytes(&format!("{base}/manifest"))?;
     let remote = erebus_core::sisr_stage::RemoteManifest::from_bytes(&manifest_bytes)?;
 
@@ -838,7 +838,7 @@ fn remote_update(base: &str) -> io::Result<()> {
     }
 
     let total = remote.manifest.chunks.len();
-    eprintln!("[xbin] update: manifest verified ({total} chunks)");
+    eprintln!("[erebus] update: manifest verified ({total} chunks)");
 
     let current = self_exe()?;
     let store = HealthStore::new(&health_store_dir()?);
@@ -852,7 +852,7 @@ fn remote_update(base: &str) -> io::Result<()> {
             &fetcher,
         )?;
         eprintln!(
-            "[xbin] update applied: {} chunks reused ({}), {} chunks fetched ({}), total {total}",
+            "[erebus] update applied: {} chunks reused ({}), {} chunks fetched ({}), total {total}",
             stats.reused_chunks,
             human_bytes(stats.reused_bytes),
             stats.fetched_chunks,
@@ -860,7 +860,7 @@ fn remote_update(base: &str) -> io::Result<()> {
         );
         Ok(updated)
     })?;
-    eprintln!("[xbin] updated binary: {}", updated.display());
+    eprintln!("[erebus] updated binary: {}", updated.display());
     Ok(())
 }
 
@@ -899,7 +899,7 @@ impl erebus_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
         self.bytes
             .set(self.bytes.get().saturating_add(bytes.len() as u64));
         eprintln!(
-            "[xbin]   fetched chunk {done}/{} ({} bytes)",
+            "[erebus]   fetched chunk {done}/{} ({} bytes)",
             self.total,
             bytes.len()
         );
@@ -958,26 +958,26 @@ fn human_bytes(bytes: u64) -> String {
 }
 
 /// Platform cache root for extracted rootfs trees.
-/// Linux: `$XDG_CACHE_HOME/xbin` or `~/.cache/xbin`.
-/// macOS: `$XDG_CACHE_HOME/xbin` if set, else `~/Library/Caches/xbin`
+/// Linux: `$XDG_CACHE_HOME/erebus` or `~/.cache/erebus`.
+/// macOS: `$XDG_CACHE_HOME/erebus` if set, else `~/Library/Caches/erebus`
 /// (`dirs::cache_dir()`).
-/// Windows: `%LOCALAPPDATA%\xbin`.
+/// Windows: `%LOCALAPPDATA%\erebus`.
 fn cache_dir() -> io::Result<PathBuf> {
     if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
-        return Ok(PathBuf::from(xdg).join("xbin"));
+        return Ok(PathBuf::from(xdg).join("erebus"));
     }
     #[cfg(target_os = "windows")]
     {
         let local = std::env::var_os("LOCALAPPDATA")
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "LOCALAPPDATA not set"))?;
-        Ok(PathBuf::from(local).join("xbin"))
+        Ok(PathBuf::from(local).join("erebus"))
     }
     #[cfg(not(target_os = "windows"))]
     {
         let dir = dirs::cache_dir().ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "no cache directory available")
         })?;
-        Ok(dir.join("xbin"))
+        Ok(dir.join("erebus"))
     }
 }
 
@@ -1201,15 +1201,15 @@ mod tests {
         // Two completed caches (with .ready) and one in-progress extraction
         // (rootfs present, no .ready marker yet).
         for name in ["aaa", "bbb", "ccc"] {
-            let root = tmp.path().join("xbin").join(name);
+            let root = tmp.path().join("erebus").join(name);
             fs::create_dir_all(root.join("rootfs")).unwrap();
         }
-        fs::write(tmp.path().join("xbin/aaa/.ready"), b"").unwrap();
-        fs::write(tmp.path().join("xbin/bbb/.ready"), b"").unwrap();
+        fs::write(tmp.path().join("erebus/aaa/.ready"), b"").unwrap();
+        fs::write(tmp.path().join("erebus/bbb/.ready"), b"").unwrap();
 
         gc_extraction_cache(1).unwrap();
 
-        let survivors: Vec<String> = fs::read_dir(tmp.path().join("xbin"))
+        let survivors: Vec<String> = fs::read_dir(tmp.path().join("erebus"))
             .unwrap()
             .filter_map(Result::ok)
             .map(|e| e.file_name().to_string_lossy().to_string())

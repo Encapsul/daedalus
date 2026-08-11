@@ -2,15 +2,15 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use tempfile::tempdir;
 
-fn xbin() -> Command {
-    let mut cmd = Command::cargo_bin("xbin").unwrap();
+fn erebus() -> Command {
+    let mut cmd = Command::cargo_bin("erebus").unwrap();
     cmd.env("NO_COLOR", "1");
     cmd
 }
 
 #[test]
 fn test_help_output() {
-    xbin()
+    erebus()
         .arg("--help")
         .assert()
         .success()
@@ -19,16 +19,16 @@ fn test_help_output() {
 
 #[test]
 fn test_version_output() {
-    xbin()
+    erebus()
         .arg("--version")
         .assert()
         .success()
-        .stdout(predicate::str::contains("xbin"));
+        .stdout(predicate::str::contains("erebus"));
 }
 
 #[test]
 fn test_completion_bash() {
-    xbin()
+    erebus()
         .args(["completion", "bash"])
         .assert()
         .success()
@@ -37,7 +37,7 @@ fn test_completion_bash() {
 
 #[test]
 fn test_completion_zsh() {
-    xbin()
+    erebus()
         .args(["completion", "zsh"])
         .assert()
         .success()
@@ -46,7 +46,7 @@ fn test_completion_zsh() {
 
 #[test]
 fn test_completion_fish() {
-    xbin()
+    erebus()
         .args(["completion", "fish"])
         .assert()
         .success()
@@ -57,16 +57,16 @@ fn test_completion_fish() {
 fn test_man_output() {
     let dir = tempdir().unwrap();
     let man_dir = dir.path().join("man");
-    xbin()
+    erebus()
         .args(["man", man_dir.to_str().unwrap()])
         .assert()
         .success();
-    assert!(man_dir.join("xbin.1").exists(), "xbin.1 should be created");
+    assert!(man_dir.join("erebus.1").exists(), "erebus.1 should be created");
 }
 
 #[test]
 fn test_doctor_output() {
-    let output = xbin().arg("doctor").output().unwrap();
+    let output = erebus().arg("doctor").output().unwrap();
     assert!(
         output.status.code() == Some(0) || output.status.code() == Some(1),
         "doctor should exit 0 or 1"
@@ -75,7 +75,7 @@ fn test_doctor_output() {
 
 #[test]
 fn test_doctor_strict() {
-    let output = xbin().args(["doctor", "--strict"]).output().unwrap();
+    let output = erebus().args(["doctor", "--strict"]).output().unwrap();
     assert!(
         output.status.code() == Some(0) || output.status.code() == Some(1),
         "doctor --strict should exit 0 or 1"
@@ -84,17 +84,17 @@ fn test_doctor_strict() {
 
 #[test]
 fn test_env_output() {
-    xbin().arg("env").assert().success();
+    erebus().arg("env").assert().success();
 }
 
 #[test]
 fn test_clean_help() {
-    xbin().args(["clean", "--help"]).assert().success();
+    erebus().args(["clean", "--help"]).assert().success();
 }
 
 #[test]
 fn test_build_help_lists_sisr_flags() {
-    xbin()
+    erebus()
         .args(["build", "--help"])
         .assert()
         .success()
@@ -107,7 +107,7 @@ fn test_build_dry_run_shows_sisr_when_enabled() {
     let dir = tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("app")).unwrap();
     std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
-    xbin()
+    erebus()
         .args([
             "build",
             dir.path().join("app").to_str().unwrap(),
@@ -130,7 +130,7 @@ fn test_build_dry_run_does_not_enable_sisr_by_default() {
     let dir = tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("app")).unwrap();
     std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
-    xbin()
+    erebus()
         .args([
             "build",
             dir.path().join("app").to_str().unwrap(),
@@ -147,13 +147,13 @@ fn test_build_dry_run_does_not_enable_sisr_by_default() {
 #[test]
 fn test_upgrade_binary_converts_legacy_file() {
     use std::io::Cursor;
-    use xbin_core::assembly::{assemble_xbin, AssemblyInput};
-    use xbin_core::format::Footer;
-    use xbin_core::sisr_header::read_sisr;
+    use erebus_core::assembly::{assemble_erebus, AssemblyInput};
+    use erebus_core::format::Footer;
+    use erebus_core::sisr_header::read_sisr;
 
     let dir = tempdir().unwrap();
-    let input = dir.path().join("legacy.xbin");
-    assemble_xbin(
+    let input = dir.path().join("legacy.erebus");
+    assemble_erebus(
         &input,
         &AssemblyInput {
             stub_bytes: b"STUB_DATA",
@@ -170,8 +170,8 @@ fn test_upgrade_binary_converts_legacy_file() {
     let before = std::fs::read(&input).unwrap();
     let in_footer = Footer::read_from(&mut Cursor::new(&before)).unwrap();
 
-    let output = dir.path().join("migrated.xbin");
-    xbin()
+    let output = dir.path().join("migrated.erebus");
+    erebus()
         .args([
             "upgrade-binary",
             input.to_str().unwrap(),
@@ -185,7 +185,7 @@ fn test_upgrade_binary_converts_legacy_file() {
 
     let after = std::fs::read(&output).unwrap();
     let out_footer = Footer::read_from(&mut Cursor::new(&after)).unwrap();
-    assert_ne!(out_footer.flags & xbin_core::format::FLAG_SISR, 0);
+    assert_ne!(out_footer.flags & erebus_core::format::FLAG_SISR, 0);
     assert_eq!(out_footer.payload_sha256, in_footer.payload_sha256);
 
     let payload_end = (in_footer.payload_offset + in_footer.payload_csize) as usize;
@@ -196,19 +196,19 @@ fn test_upgrade_binary_converts_legacy_file() {
         .expect("migrated file must embed a SISR manifest");
     assert_eq!(manifest.payload_len, in_footer.payload_csize);
 
-    assert!(dir.path().join("migrated.xbin.manifest").exists());
+    assert!(dir.path().join("migrated.erebus.manifest").exists());
 }
 
 #[test]
 fn test_inspect_reports_encrypted_v4() {
     use std::io::Cursor;
-    use xbin_core::assembly::{assemble_xbin, build_meta_json, MetaOptions};
-    use xbin_core::encrypt::encrypt_payload;
-    use xbin_core::format::{Footer, CRYPTO_AES_256_GCM, FLAG_ENCRYPTED, FLAG_SIGNED};
-    use xbin_core::metadata::BunFeatures;
+    use erebus_core::assembly::{assemble_erebus, build_meta_json, MetaOptions};
+    use erebus_core::encrypt::encrypt_payload;
+    use erebus_core::format::{Footer, CRYPTO_AES_256_GCM, FLAG_ENCRYPTED, FLAG_SIGNED};
+    use erebus_core::metadata::BunFeatures;
 
     let dir = tempdir().unwrap();
-    let out = dir.path().join("enc.xbin");
+    let out = dir.path().join("enc.erebus");
     let stub = b"STUB_DATA";
     let seed = [0xABu8; 32];
     let plaintext = b"SECRET_PAYLOAD_THAT_MUST_BE_ENCRYPTED";
@@ -247,9 +247,9 @@ fn test_inspect_reports_encrypted_v4() {
     .unwrap();
 
     // 3. Assemble as v4 encrypted; integrity hash + footer cover the ciphertext.
-    assemble_xbin(
+    assemble_erebus(
         &out,
-        &xbin_core::assembly::AssemblyInput {
+        &erebus_core::assembly::AssemblyInput {
             stub_bytes: stub,
             payload: &ciphertext,
             meta_bytes: &meta,
@@ -261,8 +261,8 @@ fn test_inspect_reports_encrypted_v4() {
     )
     .unwrap();
 
-    // 4. `xbin inspect` must report encrypted=true + v4, and echo the crypto meta.
-    xbin()
+    // 4. `erebus inspect` must report encrypted=true + v4, and echo the crypto meta.
+    erebus()
         .args(["inspect", "--json", out.to_str().unwrap()])
         .assert()
         .success()

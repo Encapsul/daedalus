@@ -1,4 +1,4 @@
-//! `SISR` runtime engine — incremental, local reconstruction of a `.xbin`.
+//! `SISR` runtime engine — incremental, local reconstruction of a `.erebus`.
 //!
 //! The engine rebuilds the executable on disk from the current binary plus a
 //! delta manifest: unchanged chunks are copied out of the running file
@@ -169,7 +169,7 @@ impl SisrEngine {
         let parent = current
             .parent()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no parent directory"))?;
-        let mut w = AtomicWriter::new(parent, "app.xbin.sisr")?;
+        let mut w = AtomicWriter::new(parent, "app.erebus.sisr")?;
         w.file_mut().write_all(&read_at(&mut exe, 0, stub_len)?)?;
 
         let mut hasher = Sha256::new();
@@ -369,7 +369,7 @@ mod tests {
     use std::collections::HashMap as Map;
     use std::io::Cursor;
 
-    use crate::assembly::assemble_xbin;
+    use crate::assembly::assemble_erebus;
     use crate::sisr_stage::SisrBuildConfig;
 
     fn random_buf(len: usize, seed: u64) -> Vec<u8> {
@@ -420,14 +420,14 @@ mod tests {
     }
 
     fn build_current_bin(dir: &Path, payload: &[u8], meta: &[u8], chunk: usize) -> PathBuf {
-        let out = dir.join("app.xbin");
+        let out = dir.join("app.erebus");
         let config = SisrBuildConfig {
             enabled: true,
             chunk_target_size: chunk,
             signing_key: None,
         };
         let artifacts = crate::sisr_stage::build_artifacts(payload, &config).unwrap();
-        assemble_xbin(
+        assemble_erebus(
             &out,
             &crate::assembly::AssemblyInput {
                 stub_bytes: b"STUB_DATA_HERE",
@@ -593,8 +593,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let payload = random_buf(8_000, 5);
         let meta = br#"{"name":"legacy"}"#;
-        let out = tmp.path().join("legacy.xbin");
-        crate::assembly::assemble_xbin(
+        let out = tmp.path().join("legacy.erebus");
+        crate::assembly::assemble_erebus(
             &out,
             &crate::assembly::AssemblyInput {
                 stub_bytes: b"STUB_DATA_HERE",

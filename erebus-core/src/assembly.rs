@@ -1,4 +1,4 @@
-//! .xbin binary assembly — writes the final executable.
+//! .erebus binary assembly — writes the final executable.
 //!
 //! Classic layout: [stub][payload][metadata][footer]. With the `SISR` stage
 //! enabled the layout becomes
@@ -55,7 +55,7 @@ pub fn build_meta_json(
 ) -> std::io::Result<Vec<u8>> {
     let mut meta = serde_json::json!({
         "name": name,
-        "xbin_version": env!("CARGO_PKG_VERSION"),
+        "erebus_version": env!("CARGO_PKG_VERSION"),
         "created": chrono_now(),
         "runtime": runtime,
         "isolation": isolation,
@@ -153,7 +153,7 @@ pub struct MetaOptions {
     pub crypto: Option<serde_json::Value>,
 }
 
-/// Input to [`assemble_xbin`]: bundles every byte-slice and build flag that
+/// Input to [`assemble_erebus`]: bundles every byte-slice and build flag that
 /// shapes the output layout so the assembly entry point is a single,
 /// self-documenting argument. The SISR section is optional (pre-built
 /// artifacts); an [`SisrBuildConfig`] is only needed by the CLI, which
@@ -168,16 +168,16 @@ pub struct AssemblyInput<'a> {
     pub sisr: Option<sisr_stage::SisrArtifacts>,
 }
 
-/// Assemble a .xbin file from its components (without signing).
+/// Assemble a .erebus file from its components (without signing).
 ///
 /// Writes `[stub][payload][manifest?][metadata][SisrFooterExt?][footer]`
 /// (the manifest + `SisrFooterExt` only when `input.sisr` is `Some`).
 /// Returns the total file size.
 ///
-/// This replaces the prior `assemble_xbin` / `assemble_xbin_with_sisr` /
-/// `assemble_xbin_with_sisr_artifacts` trio: folding the optional SISR stage
+/// This replaces the prior `assemble_erebus` / `assemble_erebus_with_sisr` /
+/// `assemble_erebus_with_sisr_artifacts` trio: folding the optional SISR stage
 /// into `AssemblyInput` removes the duplicated 7-arity parameter list.
-pub fn assemble_xbin(out_path: &Path, input: &AssemblyInput<'_>) -> std::io::Result<u64> {
+pub fn assemble_erebus(out_path: &Path, input: &AssemblyInput<'_>) -> std::io::Result<u64> {
     let fmt_ver = fmt_version(input.squashfs, input.encrypt, false);
     let arch = resolve_arch(input.target_arch);
     let payload_offset = input.stub_bytes.len() as u64;
@@ -204,7 +204,7 @@ pub fn assemble_xbin(out_path: &Path, input: &AssemblyInput<'_>) -> std::io::Res
     let tag = out_path
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("xbin");
+        .unwrap_or("erebus");
     let mut w = AtomicWriter::new(parent, tag)?;
     {
         let f = w.file_mut();
@@ -234,7 +234,7 @@ pub fn assemble_xbin(out_path: &Path, input: &AssemblyInput<'_>) -> std::io::Res
             manifest: artifacts.manifest.clone(),
         };
         let mut manifest_path = out_path.to_path_buf();
-        manifest_path.set_extension("xbin.manifest");
+        manifest_path.set_extension("erebus.manifest");
         fs::write(manifest_path, remote.to_bytes())?;
     }
 
@@ -242,7 +242,7 @@ pub fn assemble_xbin(out_path: &Path, input: &AssemblyInput<'_>) -> std::io::Res
 }
 
 /// Build the `SisrFooterExt` (and return the owning artifacts) when SISR is
-/// enabled. Splitting this out keeps `assemble_xbin` under the 30-line
+/// enabled. Splitting this out keeps `assemble_erebus` under the 30-line
 /// readability ceiling.
 fn sisr_footer_ext<'a>(
     payload_offset: u64,
@@ -383,12 +383,12 @@ mod tests {
     #[test]
     fn assemble_creates_valid_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let out = tmp.path().join("test.xbin");
+        let out = tmp.path().join("test.erebus");
         let stub = b"STUB_DATA_HERE";
         let payload = b"PAYLOAD_DATA";
         let meta = br#"{"name":"test"}"#;
 
-        let size = assemble_xbin(
+        let size = assemble_erebus(
             &out,
             &AssemblyInput {
                 stub_bytes: stub,
@@ -414,12 +414,12 @@ mod tests {
     #[test]
     fn assemble_encrypt_sets_flags_and_integrity() {
         let tmp = tempfile::tempdir().unwrap();
-        let out = tmp.path().join("enc.xbin");
+        let out = tmp.path().join("enc.erebus");
         let stub = b"STUB";
         let payload = b"CIPHERTEXT_PAYLOAD";
         let meta = br#"{"name":"test"}"#;
 
-        let size = assemble_xbin(
+        let size = assemble_erebus(
             &out,
             &AssemblyInput {
                 stub_bytes: stub,
@@ -462,9 +462,9 @@ mod tests {
             [(true, false, 4), (false, true, 5), (true, true, 5)]
         {
             let tmp = tempfile::tempdir().unwrap();
-            let out = tmp.path().join("t.xbin");
+            let out = tmp.path().join("t.erebus");
             let meta = br#"{"name":"test"}"#;
-            assemble_xbin(
+            assemble_erebus(
                 &out,
                 &AssemblyInput {
                     stub_bytes: b"STUB",
@@ -535,8 +535,8 @@ mod tests {
         let payload = b"PAYLOAD_DATA_PAYLOAD_DATA";
         let meta = br#"{"name":"test"}"#;
 
-        let classic = tmp.path().join("classic.xbin");
-        let size = assemble_xbin(
+        let classic = tmp.path().join("classic.erebus");
+        let size = assemble_erebus(
             &classic,
             &AssemblyInput {
                 stub_bytes: stub,
@@ -549,8 +549,8 @@ mod tests {
             },
         )
         .unwrap();
-        let with_sisr = tmp.path().join("with_sisr.xbin");
-        let size2 = assemble_xbin(
+        let with_sisr = tmp.path().join("with_sisr.erebus");
+        let size2 = assemble_erebus(
             &with_sisr,
             &AssemblyInput {
                 stub_bytes: stub,
@@ -581,7 +581,7 @@ mod tests {
         let stub = b"STUB_DATA_HERE";
         let payload = b"PAYLOAD_DATA_PAYLOAD_DATA_PAYLOAD_DATA";
         let meta = br#"{"name":"test"}"#;
-        let out = tmp.path().join("app.xbin");
+        let out = tmp.path().join("app.erebus");
 
         let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
         let config = SisrBuildConfig {
@@ -589,7 +589,7 @@ mod tests {
             chunk_target_size: 8192,
             signing_key: Some(key.clone()),
         };
-        assemble_xbin(
+        assemble_erebus(
             &out,
             &AssemblyInput {
                 stub_bytes: stub,
@@ -623,7 +623,7 @@ mod tests {
             "embedded signature must match key over merkle||manifest"
         );
 
-        let remote_path = tmp.path().join("app.xbin.manifest");
+        let remote_path = tmp.path().join("app.erebus.manifest");
         assert!(remote_path.exists());
         let remote = RemoteManifest::from_bytes(&fs::read(&remote_path).unwrap()).unwrap();
         assert!(remote.verify_signature(&key.verifying_key()));

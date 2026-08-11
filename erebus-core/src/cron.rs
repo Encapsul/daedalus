@@ -1,4 +1,4 @@
-//! Cron-style schedule parsing for xbin update check intervals.
+//! Cron-style schedule parsing for erebus update check intervals.
 //!
 //! Supports `@every <duration>`, `@hourly`, `@daily`, `@weekly`, `@monthly`,
 //! `@yearly`, and standard 5-field cron expressions (currently partial).

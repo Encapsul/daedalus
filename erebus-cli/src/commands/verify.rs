@@ -20,7 +20,7 @@ fn write_json_output(value: &serde_json::Value, output: Option<&std::path::Path>
 
 #[derive(Args)]
 pub struct VerifyArgs {
-    /// Path to the .xbin file
+    /// Path to the .erebus file
     pub file: PathBuf,
 
     /// Directory containing trusted public keys
@@ -45,7 +45,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 
     let mut f = std::fs::File::open(&args.file)
         .with_context(|| format!("failed to open {}", args.file.display()))?;
-    let footer = Footer::read_from(&mut f).context("failed to read xbin footer")?;
+    let footer = Footer::read_from(&mut f).context("failed to read erebus footer")?;
 
     let has_sig_block = footer.format_version >= 3 && footer.sig_offset != 0;
     if has_sig_block != footer.is_signed() {
@@ -93,7 +93,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     let keys = load_trusted_keys(&trusted_dir)?;
     if keys.is_empty() {
         anyhow::bail!(
-            "no trusted keys in {} — add keys with: xbin trust <pubkey_file>",
+            "no trusted keys in {} — add keys with: erebus trust <pubkey_file>",
             trusted_dir.display()
         );
     }

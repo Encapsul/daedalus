@@ -1,4 +1,4 @@
-//! Binary delta manifest — the `SISR` chunk index embedded in a `.xbin`.
+//! Binary delta manifest — the `SISR` chunk index embedded in a `.erebus`.
 //!
 //! Layout is little-endian with no padding:
 //!
