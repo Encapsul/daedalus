@@ -34,15 +34,18 @@ pub fn cache_dir() -> PathBuf {
 /// Simple hash-based build cache.
 ///
 /// Stores `.xbin` files in `~/.cache/xbin/builds/` keyed by the SHA-256
-/// hex digest of the app source contents.  Repeated builds of the same
-/// source skip dependency installation, interpreter embedding, and tar
-/// creation — the cached binary is copied to the output path instead.
+/// hex digest of the app source contents **plus** a canonical hash of the
+/// build configuration (flags like `--encrypt`/`--squashfs`/`--key` change
+/// the output bytes, so they must be part of the key or a cache hit serves
+/// a stale/wrong artifact).  Repeated builds of the same source with the
+/// same options skip dependency installation, interpreter embedding, and
+/// tar creation — the cached binary is copied to the output path instead.
 ///
 /// Cache layout:
 /// ```text
-/// ~/.cache/xbin/builds/<app_sha256>/output.xbin
-/// ~/.cache/xbin/builds/<app_sha256>/.meta
-/// ~/.cache/xbin/builds/<app_sha256>-<target>/output.xbin   (cross-target builds)
+/// ~/.cache/xbin/builds/<app_sha256>-<cfg_sha256>/output.xbin
+/// ~/.cache/xbin/builds/<app_sha256>-<cfg_sha256>/.meta
+/// ~/.cache/xbin/builds/<app_sha256>-<cfg_sha256>-<target>/output.xbin   (cross-target)
 /// ```
 pub struct BuildCache {
     base_dir: PathBuf,
@@ -56,12 +59,13 @@ struct CacheMeta {
     ttl_hours: Option<u64>,
 }
 
-/// Cache key directory: the app hash alone for host builds, `hash-<target>`
+/// Cache key directory: `app_hash-config_hash`, with `-<target>` appended
 /// for cross-target builds so per-arch artifacts never collide.
-fn cache_key(app_hash: &str, target: Option<&str>) -> String {
+fn cache_key(app_hash: &str, config_hash: &str, target: Option<&str>) -> String {
+    let base = format!("{app_hash}-{config_hash}");
     match target {
-        Some(t) => format!("{app_hash}-{t}"),
-        None => app_hash.to_string(),
+        Some(t) => format!("{base}-{t}"),
+        None => base,
     }
 }
 
@@ -78,12 +82,12 @@ impl BuildCache {
         }
     }
 
-    /// Look up a cached `.xbin` whose app-hash (and target, for cross
-    /// builds) matches.
+    /// Look up a cached `.xbin` whose app-hash, config-hash (and target,
+    /// for cross builds) match.
     ///
     /// Returns `Some(path)` if a valid cached build exists, `None` otherwise.
-    pub fn find(&self, app_hash: &str, target: Option<&str>) -> Option<PathBuf> {
-        let entry_dir = self.base_dir.join(cache_key(app_hash, target));
+    pub fn find(&self, app_hash: &str, config_hash: &str, target: Option<&str>) -> Option<PathBuf> {
+        let entry_dir = self.base_dir.join(cache_key(app_hash, config_hash, target));
         let xbin = entry_dir.join("output.xbin");
         if xbin.is_file() {
             Some(xbin)
@@ -99,10 +103,11 @@ impl BuildCache {
     pub fn store(
         &self,
         app_hash: &str,
+        config_hash: &str,
         target: Option<&str>,
         xbin_path: &Path,
     ) -> std::io::Result<()> {
-        let entry_dir = self.base_dir.join(cache_key(app_hash, target));
+        let entry_dir = self.base_dir.join(cache_key(app_hash, config_hash, target));
         std::fs::create_dir_all(&entry_dir)?;
 
         std::fs::copy(xbin_path, entry_dir.join("output.xbin"))?;
@@ -314,28 +319,29 @@ impl RemoteBuildCache {
     ///
     /// On remote hit the artifact is written into the local cache so the
     /// returned path remains valid after this call returns.
-    pub fn find(&self, app_hash: &str, target: Option<&str>) -> Option<PathBuf> {
-        let key = cache_key(app_hash, target);
+    pub fn find(&self, app_hash: &str, config_hash: &str, target: Option<&str>) -> Option<PathBuf> {
+        let key = cache_key(app_hash, config_hash, target);
         if let Ok(Some(data)) = self.backend.get(&key) {
             let entry_dir = self.local.base_dir.join(&key);
             if std::fs::create_dir_all(&entry_dir).is_ok() {
                 let _ = std::fs::write(entry_dir.join("output.xbin"), data);
             }
         }
-        self.local.find(app_hash, target)
+        self.local.find(app_hash, config_hash, target)
     }
 
     /// Store to both local and remote.
     pub fn store(
         &self,
         app_hash: &str,
+        config_hash: &str,
         target: Option<&str>,
         xbin_path: &Path,
     ) -> std::io::Result<()> {
-        let key = cache_key(app_hash, target);
+        let key = cache_key(app_hash, config_hash, target);
         let data = std::fs::read(xbin_path)?;
         let _ = self.backend.put(&key, &data);
-        self.local.store(app_hash, target, xbin_path)
+        self.local.store(app_hash, config_hash, target, xbin_path)
     }
 }
 
@@ -343,12 +349,22 @@ impl RemoteBuildCache {
 mod tests {
     use super::*;
 
-    struct XdgGuard(Option<String>);
+    /// Serializes env-var mutation: parallel tests share the process env, so
+    /// `XDG_CACHE_HOME` writes must not race or tests leak each other's dirs.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct XdgGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        prev: Option<String>,
+    }
 
     impl XdgGuard {
         fn new() -> Self {
+            let guard = ENV_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             let prev = std::env::var("XDG_CACHE_HOME").ok();
-            Self(prev)
+            Self { _lock: guard, prev }
         }
         fn redirect(path: &Path) {
             std::env::set_var("XDG_CACHE_HOME", path);
@@ -357,7 +373,7 @@ mod tests {
 
     impl Drop for XdgGuard {
         fn drop(&mut self) {
-            match &self.0 {
+            match &self.prev {
                 Some(v) => std::env::set_var("XDG_CACHE_HOME", v),
                 None => std::env::remove_var("XDG_CACHE_HOME"),
             }
@@ -404,8 +420,8 @@ mod tests {
         let fake_xbin = tmp.path().join("fake.xbin");
         std::fs::write(&fake_xbin, b"fake xbin").unwrap();
 
-        cache.store("aaa", None, &fake_xbin).unwrap();
-        let found = cache.find("aaa", None);
+        cache.store("aaa", "cfg1", None, &fake_xbin).unwrap();
+        let found = cache.find("aaa", "cfg1", None);
         assert!(found.is_some());
         assert_eq!(found.unwrap().file_name().unwrap(), "output.xbin");
     }
@@ -424,13 +440,39 @@ mod tests {
         let fake_win = tmp.path().join("win.exe");
         std::fs::write(&fake_win, b"windows").unwrap();
 
-        cache.store("aaa", Some("win-x64"), &fake_win).unwrap();
-        cache.store("aaa", None, &fake_linux).unwrap();
+        cache
+            .store("aaa", "cfg1", Some("win-x64"), &fake_win)
+            .unwrap();
+        cache.store("aaa", "cfg1", None, &fake_linux).unwrap();
 
-        assert!(cache.find("aaa", None).is_some());
-        assert!(cache.find("aaa", Some("win-x64")).is_some());
-        let win = cache.find("aaa", Some("win-x64")).unwrap();
+        assert!(cache.find("aaa", "cfg1", None).is_some());
+        assert!(cache.find("aaa", "cfg1", Some("win-x64")).is_some());
+        let win = cache.find("aaa", "cfg1", Some("win-x64")).unwrap();
         assert_eq!(std::fs::read_to_string(win).unwrap(), "windows");
+    }
+
+    #[test]
+    fn build_cache_configs_do_not_collide() {
+        let _guard = XdgGuard::new();
+        let tmp = tempfile::tempdir().unwrap();
+        XdgGuard::redirect(tmp.path());
+        let app_dir = tmp.path().join("myapp");
+        std::fs::create_dir_all(&app_dir).unwrap();
+        let cache = BuildCache::new(&app_dir, 10);
+
+        let plain = tmp.path().join("plain.xbin");
+        std::fs::write(&plain, b"plain").unwrap();
+        let encrypted = tmp.path().join("encrypted.xbin");
+        std::fs::write(&encrypted, b"encrypted").unwrap();
+
+        cache.store("aaa", "cfg-plain", None, &plain).unwrap();
+        cache.store("aaa", "cfg-encrypt", None, &encrypted).unwrap();
+
+        // Same app hash, different config hash → different artifacts.
+        let plain_hit = cache.find("aaa", "cfg-plain", None).unwrap();
+        assert_eq!(std::fs::read_to_string(plain_hit).unwrap(), "plain");
+        let encrypt_hit = cache.find("aaa", "cfg-encrypt", None).unwrap();
+        assert_eq!(std::fs::read_to_string(encrypt_hit).unwrap(), "encrypted");
     }
 
     #[test]
@@ -441,7 +483,7 @@ mod tests {
         let app_dir = tmp.path().join("myapp");
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = BuildCache::new(&app_dir, 10);
-        assert!(cache.find("xxx", None).is_none());
+        assert!(cache.find("xxx", "cfg1", None).is_none());
     }
 
     #[test]
@@ -455,10 +497,10 @@ mod tests {
 
         let fake_xbin = tmp.path().join("fake.xbin");
         std::fs::write(&fake_xbin, b"fake xbin").unwrap();
-        cache.store("aaa", None, &fake_xbin).unwrap();
+        cache.store("aaa", "cfg1", None, &fake_xbin).unwrap();
 
         cache.clear().unwrap();
-        assert!(cache.find("aaa", None).is_none());
+        assert!(cache.find("aaa", "cfg1", None).is_none());
     }
 
     #[test]
@@ -473,11 +515,11 @@ mod tests {
         let fake_xbin = tmp.path().join("fake.xbin");
         std::fs::write(&fake_xbin, b"fake xbin").unwrap();
 
-        cache.store("a1", None, &fake_xbin).unwrap();
+        cache.store("a1", "cfg1", None, &fake_xbin).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        cache.store("a2", None, &fake_xbin).unwrap();
+        cache.store("a2", "cfg1", None, &fake_xbin).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        cache.store("a3", None, &fake_xbin).unwrap();
+        cache.store("a3", "cfg1", None, &fake_xbin).unwrap();
 
         let entries = cache.list_entries().unwrap();
         assert!(entries.len() <= 2);
@@ -506,7 +548,9 @@ mod tests {
 
     #[test]
     fn fs_remote_cache_roundtrip() {
+        let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
+        XdgGuard::redirect(tmp.path());
         let backend = FsRemoteCache::new(tmp.path());
         let app_dir = tmp.path().join("myapp");
         std::fs::create_dir_all(&app_dir).unwrap();
@@ -514,21 +558,23 @@ mod tests {
 
         let fake = tmp.path().join("artifact.xbin");
         std::fs::write(&fake, b"remote bytes").unwrap();
-        cache.store("h1", None, &fake).unwrap();
+        cache.store("h1", "cfg1", None, &fake).unwrap();
 
-        let found = cache.find("h1", None);
+        let found = cache.find("h1", "cfg1", None);
         assert!(found.is_some());
         assert_eq!(std::fs::read(found.unwrap()).unwrap(), b"remote bytes");
     }
 
     #[test]
     fn fs_remote_cache_miss_falls_back_to_local() {
+        let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
+        XdgGuard::redirect(tmp.path());
         let backend = FsRemoteCache::new(tmp.path().join("empty-remote"));
         let app_dir = tmp.path().join("myapp");
         std::fs::create_dir_all(&app_dir).unwrap();
         let cache = RemoteBuildCache::new(backend, &app_dir, 10);
 
-        assert!(cache.find("missing", None).is_none());
+        assert!(cache.find("missing", "cfg1", None).is_none());
     }
 }
