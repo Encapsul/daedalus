@@ -151,6 +151,14 @@ pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> 
     let tmp_path = file.with_extension("xbin.tmp");
     std::fs::write(&tmp_path, &new_content)
         .with_context(|| format!("failed to write temp file {}", tmp_path.display()))?;
+    // `fs::write` creates the temp file with default perms; restore the
+    // executable bit that `assemble` set, or signing would produce a binary
+    // that the shell refuses to run.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o755))?;
+    }
     std::fs::rename(&tmp_path, file)
         .with_context(|| format!("failed to rename temp file to {}", file.display()))?;
 
