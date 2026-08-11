@@ -114,6 +114,12 @@ pub fn read_sisr<R: Read + Seek>(r: &mut R) -> io::Result<Option<(SisrFooterExt,
         .checked_sub(footer_size)
         .and_then(|p| p.checked_sub(SIZE as u64))
         .ok_or_else(|| err("SISR extension out of file bounds"))?;
+    let len = usize::try_from(ext.chunk_table_len)
+        .map_err(|_| err("SISR chunk table length overflow"))?;
+    // Reject oversized manifests before any bounds math or allocation.
+    if len > MAX_MANIFEST_SIZE {
+        return Err(err("SISR manifest exceeds maximum allowed size"));
+    }
     let table_end = u64::from(ext.chunk_table_len)
         .checked_add(ext.chunk_table_offset)
         .ok_or_else(|| err("SISR chunk table offset overflow"))?;
@@ -121,11 +127,6 @@ pub fn read_sisr<R: Read + Seek>(r: &mut R) -> io::Result<Option<(SisrFooterExt,
         return Err(err("SISR chunk table out of file bounds"));
     }
     r.seek(SeekFrom::Start(ext.chunk_table_offset))?;
-    let len = usize::try_from(ext.chunk_table_len)
-        .map_err(|_| err("SISR chunk table length overflow"))?;
-    if len > MAX_MANIFEST_SIZE {
-        return Err(err("SISR manifest exceeds maximum allowed size"));
-    }
     let mut buf = vec![0u8; len];
     r.read_exact(&mut buf)?;
     let manifest = DeltaManifest::parse(&buf)?;
@@ -361,6 +362,25 @@ mod tests {
         data.extend_from_slice(&v3_footer(format::FLAG_SISR));
         let mut cursor = Cursor::new(data);
         assert!(read_sisr(&mut cursor).is_err());
+    }
+
+    #[test]
+    fn read_sisr_rejects_oversized_manifest() {
+        // A manifest larger than MAX_MANIFEST_SIZE must be rejected before any
+        // allocation, even when the reported range sits inside the file.
+        let e = SisrFooterExt {
+            sisr_version: SISR_VERSION,
+            chunk_table_offset: 0,
+            chunk_table_len: (MAX_MANIFEST_SIZE + 1) as u32,
+            merkle_root: [0; 32],
+            signature: [0; 64],
+        };
+        let mut data = vec![0u8; 1000];
+        data.extend_from_slice(&e.pack());
+        data.extend_from_slice(&v3_footer(format::FLAG_SISR));
+        let mut cursor = Cursor::new(data);
+        let err = read_sisr(&mut cursor).unwrap_err();
+        assert!(err.to_string().contains("maximum allowed size"));
     }
 }
 
