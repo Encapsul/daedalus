@@ -60,29 +60,28 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     let tmp = tempfile::tempdir().context("failed to create temp dir")?;
     let tarball = tmp.path().join(&asset);
 
+    // Fetch the expected checksum BEFORE downloading and fail closed: a
+    // release whose integrity cannot be verified is never installed.
+    let checksum_url = format!("{url}.sha256");
+    let expected = fetch_checksum(&checksum_url)
+        .context("failed to fetch release checksum; refusing an unverified upgrade")?;
+    if args.verbose {
+        eprintln!("[xbin] expected checksum {expected}");
+    }
+
     // Download
     if args.verbose {
         eprintln!("[xbin] downloading {asset}...");
     }
     download_file(&url, &tarball).context("download failed")?;
 
-    // Verify checksum
-    let checksum_url = format!("{url}.sha256");
-    match fetch_checksum(&checksum_url) {
-        Ok(expected) => {
-            let got = sha256_file(&tarball)?;
-            if expected != got {
-                anyhow::bail!("checksum mismatch: expected {expected}, got {got}");
-            }
-            if args.verbose {
-                eprintln!("[xbin] checksum verified");
-            }
-        }
-        Err(e) => {
-            if args.verbose {
-                eprintln!("[xbin] warning: could not verify checksum: {e}");
-            }
-        }
+    // Verify checksum — mismatch aborts before anything is extracted or copied.
+    let got = sha256_file(&tarball)?;
+    if expected != got {
+        anyhow::bail!("checksum mismatch: expected {expected}, got {got}");
+    }
+    if args.verbose {
+        eprintln!("[xbin] checksum verified");
     }
 
     // Extract
@@ -282,14 +281,27 @@ fn find_xbin_binary() -> Result<PathBuf> {
     anyhow::bail!("cannot locate xbin binary for self-update")
 }
 
+/// Whether a path is actually writable, probed rather than inferred.
+///
+/// The POSIX readonly bit is only advisory and does not reflect real
+/// writability (e.g. vfat, root-owned dirs). For directories — or files that
+/// do not exist yet — a temp file is created and removed in the directory; a
+/// file that already exists is opened for writing.
 fn is_writable(path: &Path) -> bool {
-    if !path.exists() {
-        return path
-            .parent()
-            .and_then(|p| std::fs::metadata(p).ok())
-            .is_some_and(|m| !m.permissions().readonly());
+    if path.exists() && !path.is_dir() {
+        return std::fs::OpenOptions::new().write(true).open(path).is_ok();
     }
-    std::fs::metadata(path).is_ok_and(|m| !m.permissions().readonly())
+    let dir = if path.is_dir() {
+        path
+    } else {
+        path.parent().unwrap_or(path)
+    };
+    let probe = dir.join(format!(".xbin-probe-{}", std::process::id()));
+    let created = std::fs::File::create(&probe).is_ok();
+    if created {
+        let _ = std::fs::remove_file(&probe);
+    }
+    created
 }
 
 fn is_interactive() -> bool {
@@ -332,5 +344,12 @@ mod tests {
         let file = tmp.path().join("test.txt");
         std::fs::write(&file, b"test").unwrap();
         assert!(is_writable(&file));
+    }
+
+    #[test]
+    fn test_is_writable_dir_probes_real_perms() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(is_writable(tmp.path()));
+        assert!(is_writable(&tmp.path().join("missing-file")));
     }
 }
