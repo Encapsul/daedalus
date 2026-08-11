@@ -30,7 +30,7 @@ use serde::Deserialize;
 #[cfg(unix)]
 use std::ffi::CString;
 use std::fs::{self, File};
-use std::io::{self};
+use std::io::{self, Read, Seek};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -254,12 +254,24 @@ fn run() -> io::Result<()> {
         footer.payload_csize as usize,
     )?;
 
-    // Verify Ed25519 signature (v3+ only).
-    if footer.format_version >= 3 && footer.flags & format::FLAG_SIGNED != 0 {
+    // Verify Ed25519 signature. Enforce a consistent signature state first:
+    // a sig block must exist iff FLAG_SIGNED is set — a flag without a block
+    // (or a block without the flag) is a tampered file. The signature covers
+    // the footer itself, so rewriting format_version/flags to skip it breaks
+    // the signature; a v2 file that still carries the leftover sig block from
+    // a downgraded v3+ file is rejected outright.
+    let has_sig_block = footer.format_version >= 3 && footer.sig_offset != 0;
+    let signed_flag = footer.flags & format::FLAG_SIGNED != 0;
+    if has_sig_block != signed_flag {
+        return Err(err("inconsistent signature state (flag/offset mismatch)"));
+    }
+    if has_sig_block {
         crypto::verify_ed25519(&footer, &mut exe, &payload, &meta_bytes)?;
         if verbose {
             eprintln!("[xbin] Ed25519 signature verified");
         }
+    } else if footer.format_version < 3 && !footer.has_sisr() {
+        reject_downgraded_sig_block(&mut exe, &footer)?;
     }
 
     // Verify SHA-256 integrity (hash = SHA-256(payload || meta_bytes)).
@@ -347,6 +359,35 @@ fn read_from(path: &Path) -> io::Result<(File, Footer, Vec<u8>, Metadata)> {
     let meta: Metadata = serde_json::from_slice(&meta_bytes)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("bad metadata: {e}")))?;
     Ok((exe, footer, meta_bytes, meta))
+}
+
+/// A v3+ signed file downgraded to v2 keeps its 68-byte signature block in
+/// the otherwise-empty gap between the metadata and the 84-byte footer. Two
+/// shapes exist: the 8-byte `sig_offset` prefix may have been stripped with
+/// the footer rewrite (`meta_end + 68 + 84`) or left in place (`meta_end +
+/// 68 + 92`). Either gap with a plausible sig-size field at `meta_end` is a
+/// downgrade attempt, not a legitimate build (a real build ends the metadata
+/// flush at the footer).
+fn reject_downgraded_sig_block<R: Read + Seek>(exe: &mut R, footer: &Footer) -> io::Result<()> {
+    let file_len = exe.seek(io::SeekFrom::End(0))?;
+    let meta_end = footer
+        .meta_offset
+        .checked_add(footer.meta_size)
+        .ok_or_else(|| err("metadata region overflows u64"))?;
+    let gap_with_prefix = format::SIG_BLOCK_SIZE as u64 + format::V3_FOOTER_SIZE;
+    let gap_stripped = format::SIG_BLOCK_SIZE as u64 + format::V2_FOOTER_SIZE;
+    if file_len != meta_end + gap_with_prefix && file_len != meta_end + gap_stripped {
+        return Ok(());
+    }
+    let mut size_buf = [0u8; 4];
+    exe.seek(io::SeekFrom::Start(meta_end))?;
+    exe.read_exact(&mut size_buf)?;
+    if u32::from_le_bytes(size_buf) as usize == format::SIG_LEN {
+        return Err(err(
+            "rejected: leftover signature block (downgraded signed binary)",
+        ));
+    }
+    Ok(())
 }
 
 /// Canonical absolute path of the running executable (the .xbin file itself).
@@ -1099,5 +1140,80 @@ mod tests {
         assert_eq!(human_bytes(1536), "1.5 KiB");
         assert_eq!(human_bytes(1024 * 1024), "1.0 MiB");
         assert_eq!(human_bytes((1024 * 1024) + (512 * 1024)), "1.5 MiB");
+    }
+
+    /// Builds a v2 layout `[stub][payload][meta][tail][84-byte footer]` for
+    /// the downgrade-detection tests.
+    fn build_v2_bytes(payload: &[u8], meta: &[u8], tail: &[u8]) -> Vec<u8> {
+        let stub = [0u8; 64];
+        let footer = Footer {
+            format_version: 2,
+            arch: 0x01,
+            flags: 0,
+            payload_offset: stub.len() as u64,
+            payload_csize: payload.len() as u64,
+            payload_usize: 0,
+            payload_sha256: [0u8; 32],
+            meta_offset: (stub.len() + payload.len()) as u64,
+            meta_size: meta.len() as u64,
+            sig_offset: 0,
+        };
+        let mut data = stub.to_vec();
+        data.extend_from_slice(payload);
+        data.extend_from_slice(meta);
+        data.extend_from_slice(tail);
+        data.extend_from_slice(&footer.pack());
+        data
+    }
+
+    #[test]
+    fn downgrade_reject_detects_leftover_sig_block() {
+        let mut leftover = Vec::new();
+        leftover.extend_from_slice(&(format::SIG_LEN as u32).to_le_bytes());
+        leftover.extend_from_slice(&[0xAAu8; format::SIG_LEN]);
+        // Lazy downgrade keeps the 8-byte sig_offset prefix between the sig
+        // block and the rewritten v2 core.
+        let mut with_prefix = Vec::new();
+        with_prefix.extend_from_slice(&leftover);
+        with_prefix.extend_from_slice(&[0u8; 8]);
+        let data = build_v2_bytes(b"payload", b"{}", &with_prefix);
+        let footer = Footer::read_from(&mut std::io::Cursor::new(&data)).unwrap();
+        let result = reject_downgraded_sig_block(&mut std::io::Cursor::new(data), &footer);
+        assert!(
+            result.is_err(),
+            "leftover sig block (prefix kept) must be rejected"
+        );
+        // Downgrade that also stripped the prefix.
+        let data = build_v2_bytes(b"payload", b"{}", &leftover);
+        let footer = Footer::read_from(&mut std::io::Cursor::new(&data)).unwrap();
+        let result = reject_downgraded_sig_block(&mut std::io::Cursor::new(data), &footer);
+        assert!(
+            result.is_err(),
+            "leftover sig block (prefix stripped) must be rejected"
+        );
+    }
+
+    #[test]
+    fn downgrade_reject_accepts_clean_v2_layout() {
+        let data = build_v2_bytes(b"payload", b"{}", &[]);
+        let footer = Footer::read_from(&mut std::io::Cursor::new(&data)).unwrap();
+        let result = reject_downgraded_sig_block(&mut std::io::Cursor::new(data), &footer);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn downgrade_reject_ignores_unrelated_gaps() {
+        let data = build_v2_bytes(b"payload", b"{}", &[0x00; 20]);
+        let footer = Footer::read_from(&mut std::io::Cursor::new(&data)).unwrap();
+        let result = reject_downgraded_sig_block(&mut std::io::Cursor::new(data), &footer);
+        assert!(result.is_ok());
+
+        let data = build_v2_bytes(b"payload", b"{}", &[0x00; format::SIG_BLOCK_SIZE]);
+        let footer = Footer::read_from(&mut std::io::Cursor::new(&data)).unwrap();
+        let result = reject_downgraded_sig_block(&mut std::io::Cursor::new(data), &footer);
+        assert!(
+            result.is_ok(),
+            "a sig-sized gap without size field 64 is not a signature block"
+        );
     }
 }

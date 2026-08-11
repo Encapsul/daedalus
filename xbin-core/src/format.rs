@@ -30,6 +30,8 @@ pub const ARCH_AARCH64: u8 = 0x02;
 
 pub const SIG_BLOCK_SIZE: usize = 68;
 pub const SIG_BLOCK_SIZE_FIELD: usize = 4;
+/// Ed25519 signature length, derived from the fixed block layout.
+pub const SIG_LEN: usize = SIG_BLOCK_SIZE - SIG_BLOCK_SIZE_FIELD;
 
 /// Fixed footer at the very end of a .xbin file.
 #[derive(Debug)]
@@ -145,6 +147,19 @@ impl Footer {
         buf[64..72].copy_from_slice(&self.meta_offset.to_le_bytes());
         buf[72..80].copy_from_slice(&self.meta_size.to_le_bytes());
         buf[80..84].copy_from_slice(&FOOTER_MAGIC.to_le_bytes());
+        buf
+    }
+
+    /// Full on-disk footer representation (v3+): the 8-byte `sig_offset`
+    /// prefix followed by the 84-byte core, byte-identical to what a signed
+    /// file stores at EOF. Used as the signature digest input — the footer
+    /// decides whether the signature is consulted at all (version + flags),
+    /// so a signature over payload‖meta alone would let an attacker downgrade
+    /// the file to v2 and have it skipped.
+    pub fn pack_full(&self) -> [u8; 92] {
+        let mut buf = [0u8; V3_FOOTER_SIZE as usize];
+        buf[0..8].copy_from_slice(&self.sig_offset.to_le_bytes());
+        buf[8..].copy_from_slice(&self.pack());
         buf
     }
 
@@ -383,6 +398,32 @@ mod tests {
         assert_eq!(f.flags & FLAG_ENCRYPTED, 0);
         f.flags = FLAG_ENCRYPTED;
         assert!(f.flags & FLAG_ENCRYPTED != 0);
+    }
+
+    #[test]
+    fn pack_full_roundtrips_v3_footer() {
+        let sha = [0xDDu8; 32];
+        let f = Footer {
+            format_version: 5,
+            arch: 0x86,
+            flags: FLAG_SIGNED,
+            payload_offset: 4096,
+            payload_csize: 1024,
+            payload_usize: 8192,
+            payload_sha256: sha,
+            meta_offset: 5120,
+            meta_size: 256,
+            sig_offset: 5376,
+        };
+        let raw = f.pack_full();
+        assert_eq!(raw.len(), V3_FOOTER_SIZE as usize);
+        let mut data = vec![0u8; f.payload_offset as usize + 100];
+        data.extend_from_slice(&raw);
+        let parsed = Footer::read_from(&mut Cursor::new(data)).unwrap();
+        assert_eq!(parsed.format_version, f.format_version);
+        assert_eq!(parsed.flags, f.flags);
+        assert_eq!(parsed.sig_offset, f.sig_offset);
+        assert_eq!(parsed.payload_sha256, f.payload_sha256);
     }
 
     #[test]

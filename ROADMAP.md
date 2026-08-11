@@ -3,6 +3,8 @@
 Generated from security audit and code review. All tests pass, clippy passes, fmt passes — these are issues beyond the verification loop.
 
 > **Second review pass (2026-08-10):** items #23–#42 added after a full codebase re-read. Note: #2 (static mut signal handler) and #18 (v2/v3 footer) are already resolved in the current code (`OnceLock<Mutex<Vec<i32>>>`, version-gated footer parse) — kept above for historical context.
+>
+> **Third review pass (2026-08-10):** items #43–#50 added after a follow-up review. Note: #6 (Landlock READ_ONLY allows EXECUTE) is resolved in the current code (`landlock.rs:55` = `READ_FILE | READ_DIR` only) — the remaining Landlock problems are covered by #44.
 
 ---
 
@@ -52,6 +54,20 @@ static mut CHILD_PIDS: Vec<i32> = Vec::new();
 - Unused node_modules packages are permanently deleted and JS/CSS rewritten in the user's source tree; irreversible without `npm install` again
 - Runs once per target on multi-arch builds (second run is a no-op only by luck)
 - **Action:** Copy the app to a staging dir first, then tree-shake/minify the staging copy. Never mutate the source directory.
+
+### 43. Signature Does Not Cover the Footer — Downgrade Bypass
+**Location:** `xbin-cli/src/commands/sign.rs:110-115`, `stub/src/main.rs:258-268`, `xbin-core/src/format.rs`
+- The signed digest is only `SHA-256(payload ‖ meta)` — the footer bytes (`format_version`, `flags`, `payload_sha256`, offsets) are NOT covered by the signature
+- The stub verifies the signature only when `format_version >= 3 && FLAG_SIGNED` (`main.rs:258-263`); the SHA-256 check (`main.rs:268`) is unkeyed and recomputable by anyone
+- Attack: take any signed `.xbin`, flip `format_version` 5→2 (or clear `FLAG_SIGNED`), replace the payload, recompute `payload_sha256` → signature AND decryption (version < 4 = `CRYPTO_NONE`) are both skipped → arbitrary code execution from a "signed" file
+- **Action:** include the packed footer (version + flags + payload offset/size) in the signed digest; reject mixed-state files (sig block present but `FLAG_SIGNED` unset); verify the signature whenever a sig block exists, regardless of flags.
+
+### 44. Landlock Sandbox Is Dead Code and Fails Open
+**Location:** `stub/src/exec.rs:411-415`, `stub/src/main.rs:981-1024`, `stub/src/landlock.rs:33, 49`
+- `sandbox(rootfs)` (`exec.rs:411`) is called with the **pre-pivot absolute path after** `pivot_root_into` has already detached the old root (`umount2(MNT_DETACH)`, `main.rs:1018`) → path unreachable → `add_path_beneath` fails with ENOENT → warn-only (`exec.rs:412-414`) → app runs **unsandboxed**
+- `HANDLED_FS` includes `LANDLOCK_ACCESS_FS_TRUNCATE` (bit 14), which requires Landlock **ABI v3 = kernel ≥ 6.2**, while the module claims ABI v1 / 5.13+ → `create_ruleset` returns EINVAL on 5.13–6.1 → sandbox fails → fail-open
+- `REFER` (bit 13) is missing from `HANDLED_FS` → once the above is fixed, cross-directory rename/link inside rootfs is denied despite the `FULL_RW` grant
+- **Action:** open an `O_PATH` dir fd of rootfs **before** `pivot_root` and pass it to `add_path_beneath`; drop TRUNCATE or gate it on kernel ≥ 6.2; add `REFER`; and **fail closed** — abort when the requested sandbox cannot be enforced.
 
 ---
 
@@ -115,6 +131,13 @@ const READ_ONLY: u64 = EXECUTE | READ_FILE | READ_DIR; // allows execution outsi
 - `sign.rs` only checks `is_signed()`, not `FLAG_SISR`; build.rs guards the combination, but the standalone `xbin sign <file>` does not
 - Inserting the sig block between meta and footer shifts the SISR manifest/SisrFooterExt offsets → unbootable binary
 - **Action:** Bail in `sign_file` when `footer.has_sisr()` (or support signature-insertion in the SISR layout properly).
+
+### 45. SISR Binaries Are Never Signed at Rest; Updates Strip Signing
+**Location:** `xbin-core/src/sisr/engine.rs:199`, `xbin-cli/src/commands/build.rs:1350-1370`, `xbin-core/src/legacy.rs:59-63`
+- `apply_update_with_stats` rewrites the footer as `(flags & !FLAG_SIGNED) | FLAG_SISR` (`engine.rs:199`) — every applied update permanently removes binary signing
+- With `--enable-sisr`, `--key` signs only the manifest (`build.rs:1367-1370`, `manifest_signed`), never the binary; signed binaries cannot be upgraded at all (`legacy.rs:59-63`)
+- Result: SISR binaries have no authenticity at rest — only the manifest signature, verified during the update flow, protects them
+- **Action:** resign after update (key available at update site) or build a signature chain — sign `SHA256(new_footer_hash ‖ parent_footer_hash)` so the stub verifies updates offline; at minimum document that SISR files are authenticated only during the update.
 
 ---
 
@@ -204,6 +227,31 @@ const READ_ONLY: u64 = EXECUTE | READ_FILE | READ_DIR; // allows execution outsi
 - Downloaded over HTTPS with no checksum pinning; composer runs without script suppression
 - **Action:** Pin checksums, use `--no-scripts` / `--ignore-scripts` everywhere, or require a user-provided tool path.
 
+### 46. Extraction `.ready` Marker Location Mismatch
+**Location:** `stub/src/extraction.rs:89, 94-102`
+- The marker is written to `tmp/.ready` (`extraction.rs:89`) — i.e. `cache_root/.ready` after the rename — but the rename-failure fallback checks `rootfs/.ready` (`extraction.rs:94`), which is never created
+- Any rename failure therefore always returns `Err`; worse, a stale partial `cache_root` (no `.ready`) fails the rename on **every** cold start with no cleanup — the binary is permanently stuck until the user deletes the cache dir manually
+- **Action:** check `cache_root/.ready` in the fallback; on rename failure wipe the stale `cache_root` and retry once.
+
+### 47. `tar.rs` Drops Symlinks, Over-Broad `.git` Exclusion, Non-Deterministic Output
+**Location:** `xbin-core/src/tar.rs:54, 103-117` (+ `xbin-core/src/compress.rs:27`)
+- Symlinks are silently skipped (`tar.rs:107`); the comment at `tar.rs:103` claims they are "followed by the tar builder", which is wrong — apps relying on symlinks (node_modules/.bin, venvs, `usr/bin/python3 → python3.11`) break at runtime
+- `rel_str.contains(".git")` (`tar.rs:117`) excludes any file whose path contains `.git` (e.g. `.gitignore`, `.gitattributes`)
+- `multithread(num_cpus())` (`tar.rs:54`, `compress.rs:27`) makes compressed output machine-dependent → non-reproducible builds, defeating the incremental hash-reuse feature (#29)
+- **Action:** store symlinks as symlink tar entries (with guarded targets); use per-component matching (`.git` only as a top-level dir); pin the zstd thread count for deterministic output.
+
+### 48. `.env` Is Packaged Into the Binary (Secret Leak)
+**Location:** `xbin-core/src/dotenv.rs:66-91`, skip lists in `xbin-core/src/include.rs:10, 93`, `xbin-core/src/tar.rs:117`
+- `.env` is in no skip list → secrets land in the compressed payload of the redistributable and are extracted in plaintext to `~/.cache/xbin/<hash>/rootfs/.env` (runtime loads it, `stub/src/exec.rs:113`)
+- `load_dotenv` only *warns* about secret-looking keys (`dotenv.rs:84`) — it still packages them
+- **Action:** exclude `.env` by default (hard error unless `--include .env` is explicit), and document the risk. Related to #35 (precedence), but this is a packaging leak.
+
+### 49. `wait_for_children` Reaps by Wildcard with Blind Accounting
+**Location:** `stub/src/exec.rs:821-832`
+- `waitpid(-1, ...)` waits for any child while `remaining` is decremented per reaped pid, without checking the pid is one of the supervised services
+- Any spurious SIGCHLD or `ECHILD` (children already reaped elsewhere) decrements wrongly or breaks the loop early → wrong exit status, or a supervisor that reports success while services still run
+- **Action:** `waitpid(pid, ...)` per tracked service (or verify the returned pid is in the set before decrementing), and treat `ECHILD` as an error only if `remaining > 0`.
+
 ---
 
 ## 🟢 Low (Technical Debt)
@@ -274,6 +322,11 @@ Despite clippy allows:
 - Works for Ed25519 today, but the sig block layout is duplicated with `SIG_BLOCK_SIZE`/`SIG_BLOCK_SIZE_FIELD` constants
 - **Action:** Use the shared format constants instead of literals.
 
+### 50. Java Entrypoint Emits Literal `$PORT`
+**Location:** `xbin-core/src/detect.rs:392`
+- `cmd.push("-Dserver.port=$PORT".into())` — the placeholder is never expanded; Java apps receive the literal argument `-Dserver.port=$PORT` (the server tries to bind port `"$PORT"` and fails)
+- **Action:** expand `$PORT` / `$XBIN_PORT` at runtime from the environment, or drop the flag and rely on the web-port detection (`stub/src/exec.rs:154`).
+
 ---
 
 ## ✅ Positive Findings (Maintain)
@@ -310,6 +363,10 @@ Despite clippy allows:
 14. **PR 14:** `xbin upgrade` fail-closed checksum + release signature verification (#27)
 15. **PR 15:** Stub config precedence + trust model (#30, #31) + warm-start verification note (#32)
 16. **PR 16:** Sandbox no-op warnings (#33) + update URL parsing (#34) + env precedence (#35) + cleanup (#36, #37, #38, #39, #40, #41, #42)
+17. **PR 17:** Sign the footer version+flags so downgrades are impossible (#43)
+18. **PR 18:** Landlock: pre-pivot fd, fail closed, ABI-aware flags (#44)
+19. **PR 19:** SISR at-rest signing / post-update resign (#45)
+20. **PR 20:** Extraction marker fix (#46) + packaging/dotenv/supervision cleanup (#47, #48, #49, #50)
 
 ---
 
@@ -317,16 +374,16 @@ Despite clippy allows:
 
 | Label | Issues |
 |-------|--------|
-| `security` | #1, #2, #3, #4, #5, #6, #27, #31, #32, #37 |
+| `security` | #1, #2, #3, #4, #5, #6, #27, #31, #32, #37, #43, #45, #48 |
 | `unsafe-audit` | #2, #7, #39 |
 | `refactor` | #8, #9, #16, #41, #42 |
 | `testing` | #10, #21 |
 | `windows` | #11 |
 | `configurable` | #12, #17 |
-| `sandbox` | #6, #13, #33 |
+| `sandbox` | #6, #13, #33, #44 |
 | `docs` | #1, #18 |
 | `tech-debt` | #16, #17, #20, #22, #36, #40 |
-| `broken-feature` | #23, #24, #25, #26, #28, #34, #35 |
+| `broken-feature` | #23, #24, #25, #26, #28, #34, #35, #46, #47, #49, #50 |
 | `cache-correctness` | #29, #30 |
 
 ---

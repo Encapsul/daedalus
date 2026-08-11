@@ -12,8 +12,9 @@ use sha2::{Digest, Sha256};
 
 use crate::{CryptoMeta, Footer, Layer};
 use xbin_core::encrypt::{decrypt_chunks, hkdf_derive_key as core_hkdf_derive_key, NONCE_LEN};
+use xbin_core::format::{SIG_BLOCK_SIZE, SIG_LEN};
 
-/// Verify Ed25519 signature: `Ed25519_verify(SHA256(payload‖meta), sig, public_key)`.
+/// Verify Ed25519 signature: `Ed25519_verify(SHA256(payload‖meta‖footer), sig, public_key)`.
 ///
 /// Trusted public keys are read from `~/.xbin/trusted-keys/` (or `$XBIN_TRUSTED_DIR`).
 /// The launcher accepts the file if **any** trusted key verifies the signature.
@@ -24,22 +25,26 @@ pub fn verify_ed25519<R: std::io::Read + std::io::Seek>(
     meta_bytes: &[u8],
 ) -> io::Result<()> {
     // Read signature block: [sig_size: u32le][signature: 64 bytes]
-    let sig_data = crate::read_at(exe, footer.sig_offset, 68)?;
+    let sig_data = crate::read_at(exe, footer.sig_offset, SIG_BLOCK_SIZE)?;
     let size_bytes: [u8; 4] = sig_data[0..4]
         .try_into()
         .map_err(|_| crate::err("signature block too small"))?;
     let sig_size = u32::from_le_bytes(size_bytes) as usize;
-    if sig_size != 64 {
+    if sig_size != SIG_LEN {
         return Err(crate::err("invalid Ed25519 signature size"));
     }
-    let sig_bytes: &[u8; 64] = sig_data[4..68]
+    let sig_bytes: &[u8; 64] = sig_data[4..SIG_BLOCK_SIZE]
         .try_into()
         .map_err(|_| crate::err("invalid signature block size"))?;
 
-    // Compute SHA-256(payload ‖ meta)
+    // The digest covers the footer (pack_full) as well as payload‖meta: the
+    // footer's format_version and FLAG_SIGNED decide whether the signature is
+    // consulted at all, so omitting it would let an attacker downgrade the
+    // file to v2 and have the signature silently skipped.
     let mut hasher = Sha256::new();
     hasher.update(payload);
     hasher.update(meta_bytes);
+    hasher.update(&footer.pack_full());
     let hash = hasher.finalize();
 
     // Parse signature once.
