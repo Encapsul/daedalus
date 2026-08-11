@@ -13,6 +13,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 
 use crate::format::{self, Footer};
 use crate::manifest::DeltaManifest;
@@ -293,7 +294,7 @@ fn resolve_chunk_bytes(
     let expected_len = usize::try_from(chunk.length).map_err(|_| err("chunk length overflow"))?;
     if let Some(&(off, len)) = index.get(&chunk.hash) {
         let candidate = read_at(exe, off, len)?;
-        if sha256_of(&candidate) == chunk.hash {
+        if ct_eq_hash(&sha256_of(&candidate), &chunk.hash) {
             return Ok((candidate, true));
         }
     }
@@ -313,7 +314,7 @@ fn fetch_verified(
             "fetched chunk length mismatch",
         ));
     }
-    if sha256_of(&bytes) != chunk.hash {
+    if !ct_eq_hash(&sha256_of(&bytes), &chunk.hash) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "fetched chunk failed SHA-256 verification",
@@ -324,6 +325,13 @@ fn fetch_verified(
 
 fn sha256_of(data: &[u8]) -> [u8; 32] {
     Sha256::digest(data).into()
+}
+
+/// Constant-time 32-byte digest comparison. Integrity hashes are public, but
+/// the codebase's policy is to compare every verification digest without a
+/// timing side-channel so a future secret-bearing digest can't regress.
+fn ct_eq_hash(a: &[u8; 32], b: &[u8; 32]) -> bool {
+    a.ct_eq(b).into()
 }
 
 /// v3+ footers carry an 8-byte signature-offset prefix (92 bytes total);
