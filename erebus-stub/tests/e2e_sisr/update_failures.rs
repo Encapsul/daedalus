@@ -9,7 +9,9 @@ use super::{env, footer_sha, run_update, BODY_V1, BODY_V2};
 
 /// A manifest whose signature is valid but whose chunk table no longer commits
 /// to the signed Merkle root (simulates a signer/editor bug).
-fn staged_remote_with_tampered_chunk(e: &super::TestEnv) -> erebus_core::sisr_stage::RemoteManifest {
+fn staged_remote_with_tampered_chunk(
+    e: &super::TestEnv,
+) -> erebus_core::sisr_stage::RemoteManifest {
     let mut manifest = e.staged.remote.manifest.clone();
     manifest.chunks[0].hash[0] ^= 0xFF;
     let signature = sign(

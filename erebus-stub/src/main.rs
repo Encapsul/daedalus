@@ -26,6 +26,12 @@ mod update_url;
 #[cfg(target_os = "windows")]
 mod win;
 
+use erebus_core::detect;
+use erebus_core::format::{self as format, read_at, Footer};
+use erebus_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
+use erebus_core::sisr::resilience::{
+    backup_path_for, create_backup, discard_backup, restore_backup,
+};
 use serde::Deserialize;
 #[cfg(unix)]
 use std::ffi::CString;
@@ -37,10 +43,6 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use erebus_core::detect;
-use erebus_core::format::{self as format, read_at, Footer};
-use erebus_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
-use erebus_core::sisr::resilience::{backup_path_for, create_backup, discard_backup, restore_backup};
 
 /// Standard library search paths for `LD_LIBRARY_PATH`.
 /// Kept in sync with cli/erebus/build.py `LD_LIBRARY_PATH` construction.
@@ -178,7 +180,7 @@ fn main() {
 }
 
 fn run() -> io::Result<()> {
-    let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
+    let verbose = std::env::var_os("ERE_VERBOSE").is_some();
 
     // Load configuration (multi-layered: CLI args → local config → env vars → global config)
     let app_config = config::AppConfig::load();
@@ -299,7 +301,7 @@ fn run() -> io::Result<()> {
     flock_exclusive(&lock)?;
 
     if !ready_marker.exists() {
-        let gc_limit = std::env::var("XBIN_CACHE_MAX_ENTRIES")
+        let gc_limit = std::env::var("ERE_CACHE_MAX_ENTRIES")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(16);
@@ -393,7 +395,7 @@ fn self_exe() -> io::Result<PathBuf> {
 // SISR self-update
 // ---------------------------------------------------------------------------
 
-/// Applies a SISR delta update when `$XBIN_SISR_MANIFEST` points at a signed
+/// Applies a SISR delta update when `$ERE_SISR_MANIFEST` points at a signed
 /// remote manifest; returns the canonical path of the replaced binary, or
 /// `None` when no update was requested.
 ///
@@ -403,7 +405,7 @@ fn self_exe() -> io::Result<PathBuf> {
 /// additionally hash-verified, and the swap is atomic — any failure leaves the
 /// running binary intact.
 fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
-    let Some(manifest_path) = std::env::var_os("XBIN_SISR_MANIFEST") else {
+    let Some(manifest_path) = std::env::var_os("ERE_SISR_MANIFEST") else {
         return Ok(None);
     };
     let manifest_path = PathBuf::from(manifest_path);
@@ -445,18 +447,18 @@ fn health_store_dir() -> io::Result<PathBuf> {
     Ok(cache_dir()?.join("health"))
 }
 
-/// The gate's policy: defaults with `XBIN_HEALTH_TIMEOUT_MS` /
-/// `XBIN_HEALTH_MAX_ATTEMPTS` overrides (the test harness uses these to make
+/// The gate's policy: defaults with `ERE_HEALTH_TIMEOUT_MS` /
+/// `ERE_HEALTH_MAX_ATTEMPTS` overrides (the test harness uses these to make
 /// quarantine immediate).
 fn health_policy() -> HealthCheckPolicy {
     let mut policy = HealthCheckPolicy::default();
-    if let Some(v) = std::env::var("XBIN_HEALTH_TIMEOUT_MS")
+    if let Some(v) = std::env::var("ERE_HEALTH_TIMEOUT_MS")
         .ok()
         .and_then(|s| s.parse().ok())
     {
         policy.timeout_ms = v;
     }
-    if let Some(v) = std::env::var("XBIN_HEALTH_MAX_ATTEMPTS")
+    if let Some(v) = std::env::var("ERE_HEALTH_MAX_ATTEMPTS")
         .ok()
         .and_then(|s| s.parse().ok())
     {
@@ -543,7 +545,7 @@ fn supervised_launch(
     version_id: &str,
     bin_path: &Path,
 ) -> io::Result<()> {
-    let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
+    let verbose = std::env::var_os("ERE_VERBOSE").is_some();
     let policy = health_policy();
 
     // SAFETY: fork(2) creates a copy of the calling process. The child runs
@@ -609,7 +611,7 @@ fn supervised_launch(
     version_id: &str,
     bin_path: &Path,
 ) -> io::Result<()> {
-    let verbose = std::env::var_os("XBIN_VERBOSE").is_some();
+    let verbose = std::env::var_os("ERE_VERBOSE").is_some();
     let policy = health_policy();
 
     let child = if meta.services.is_empty() {
@@ -736,8 +738,8 @@ fn rollback_to_previous(bin_path: &Path, verbose: bool) -> io::Result<()> {
             bin_path.display()
         );
     }
-    std::env::remove_var("XBIN_SISR_MANIFEST");
-    std::env::remove_var("XBIN_UPDATE_URL");
+    std::env::remove_var("ERE_SISR_MANIFEST");
+    std::env::remove_var("ERE_UPDATE_URL");
     exec_again(bin_path)
 }
 
@@ -781,7 +783,7 @@ fn exec_again(bin_path: &Path) -> io::Result<()> {
 /// - `--erebus-update=<URL>` fetches the signed remote manifest and the changed
 ///   chunks from the update channel, applies the delta atomically, prints
 ///   reuse/fetch statistics on stderr, and exits 0. A bare `--erebus-update`
-///   falls back to `$XBIN_UPDATE_URL` then the embedded metadata URL.
+///   falls back to `$ERE_UPDATE_URL` then the embedded metadata URL.
 ///
 /// Because both paths call `process::exit`, these flags never reach the host
 /// app's `argv`. When neither flag is present this is a no-op.
@@ -809,7 +811,7 @@ fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
 }
 
 /// Resolves the update channel base URL:
-/// `--erebus-update=<URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
+/// `--erebus-update=<URL>` argument > `$ERE_UPDATE_URL` > embedded `meta.update_url`.
 fn resolve_update_url(
     args: &[std::ffi::OsString],
     idx: usize,
@@ -921,8 +923,8 @@ fn env_timeout_ms(name: &str, default_ms: u64) -> u64 {
 }
 
 /// Minimal HTTPS GET returning the raw response body. Timeouts are tunable via
-/// `XBIN_HTTP_TIMEOUT_CONNECT`, `XBIN_HTTP_TIMEOUT_RESPONSE`, and
-/// `XBIN_HTTP_TIMEOUT_BODY` (milliseconds; defaults 10s / 30s / 30s).
+/// `ERE_HTTP_TIMEOUT_CONNECT`, `ERE_HTTP_TIMEOUT_RESPONSE`, and
+/// `ERE_HTTP_TIMEOUT_BODY` (milliseconds; defaults 10s / 30s / 30s).
 ///
 /// Only caller-verified content is consumed (signed manifest, hash-checked
 /// chunks), so the transport is a convenience — never a trust anchor.
@@ -930,9 +932,9 @@ fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
     let ms = |name, default| std::time::Duration::from_millis(env_timeout_ms(name, default));
     let resp = ureq::get(url)
         .config()
-        .timeout_connect(Some(ms("XBIN_HTTP_TIMEOUT_CONNECT", 10_000)))
-        .timeout_recv_response(Some(ms("XBIN_HTTP_TIMEOUT_RESPONSE", 30_000)))
-        .timeout_recv_body(Some(ms("XBIN_HTTP_TIMEOUT_BODY", 30_000)))
+        .timeout_connect(Some(ms("ERE_HTTP_TIMEOUT_CONNECT", 10_000)))
+        .timeout_recv_response(Some(ms("ERE_HTTP_TIMEOUT_RESPONSE", 30_000)))
+        .timeout_recv_body(Some(ms("ERE_HTTP_TIMEOUT_BODY", 30_000)))
         .build()
         .call()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))?;
@@ -1185,13 +1187,13 @@ mod tests {
 
     #[test]
     fn env_timeout_ms_reads_int_and_falls_back() {
-        std::env::set_var("XBIN_HTTP_TIMEOUT_TEST", "2500");
-        assert_eq!(env_timeout_ms("XBIN_HTTP_TIMEOUT_TEST", 10_000), 2500);
-        std::env::remove_var("XBIN_HTTP_TIMEOUT_TEST");
-        assert_eq!(env_timeout_ms("XBIN_HTTP_TIMEOUT_TEST", 10_000), 10_000);
-        std::env::set_var("XBIN_HTTP_TIMEOUT_TEST", "garbage");
-        assert_eq!(env_timeout_ms("XBIN_HTTP_TIMEOUT_TEST", 10_000), 10_000);
-        std::env::remove_var("XBIN_HTTP_TIMEOUT_TEST");
+        std::env::set_var("ERE_HTTP_TIMEOUT_TEST", "2500");
+        assert_eq!(env_timeout_ms("ERE_HTTP_TIMEOUT_TEST", 10_000), 2500);
+        std::env::remove_var("ERE_HTTP_TIMEOUT_TEST");
+        assert_eq!(env_timeout_ms("ERE_HTTP_TIMEOUT_TEST", 10_000), 10_000);
+        std::env::set_var("ERE_HTTP_TIMEOUT_TEST", "garbage");
+        assert_eq!(env_timeout_ms("ERE_HTTP_TIMEOUT_TEST", 10_000), 10_000);
+        std::env::remove_var("ERE_HTTP_TIMEOUT_TEST");
     }
 
     #[test]

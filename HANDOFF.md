@@ -5,15 +5,15 @@
 - **Format**: v5 (SquashFS support)
 - **Status**: Phase 1/2/3 COMPLETE — full Rust CLI, no Python dependency for builds
 - **Build**: `cargo build --release` (or `make stub` for development)
-- **CLI**: Rust CLI (`xbin` binary). The legacy Python CLI (`cli/`) was removed.
-- **Health check**: `xbin doctor` or `make preflight`
+- **CLI**: Rust CLI (`erebus` binary). The legacy Python CLI (`cli/`) was removed.
+- **Health check**: `erebus doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
 - **Release**: create release on GitHub UI → `on: release: types: [published]` triggers workflow → builds 4 platforms → uploads binaries + SHASUMS256.txt
 - **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo (11 total)
 - **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
-- **Rust core**: `xbin-core` crate — format, compress, detect, pkgmgr, tar, assembly, sign, verify, scan, PyO3 bindings
-- **Rust CLI**: `xbin-cli` crate — 15 commands (build, run, inspect, scan, sign, verify, keygen, trust, doctor, env, clean, selftest, upgrade, completion, man)
-- **Tests**: 127 Rust (106 xbin-core + 17 xbin-cli + 4 xbin-stub) (0 failures)
+- **Rust core**: `erebus-core` crate — format, compress, detect, pkgmgr, tar, assembly, sign, verify, scan, PyO3 bindings
+- **Rust CLI**: `erebus-cli` crate — 15 commands (build, run, inspect, scan, sign, verify, keygen, trust, doctor, env, clean, selftest, upgrade, completion, man)
+- **Tests**: 127 Rust (106 erebus-core + 17 erebus-cli + 4 erebus-stub) (0 failures)
 - **Last updated**: 2026-08-04
 - **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), GitHub signing key id=1064819. Note: Codespaces `gh-gpgsign` proxy currently returns 403 (GPG signing not enabled) — recent commits are unsigned until the environment permits it.
 - **Release workflow**: `on: release: types: [published]` — create release on GitHub UI → workflow builds 4 platforms → uploads tar.gz + SHASUMS256.txt
@@ -73,7 +73,7 @@ Version bumped to **0.4.0** across all crates.
 
 | Issue | Impact | Mitigation |
 |-------|--------|------------|
-| Locale of subprocess output | Error messages in French/Chinese/etc | Added `--lang` flag to xbin CLI |
+| Locale of subprocess output | Error messages in French/Chinese/etc | Added `--lang` flag to erebus CLI |
 | `vendor/` already in app layer | `shutil.copytree` fails with FileExistsError | `rmtree` before copy in `build_app_layer` |
 | `node_modules` ignored in app layer copy | Dependencies not embedded | Update `plan.site_packages` after `install_deps` |
 | Build on live USB (vfat) | No exec bit, no symlinks | Stub in `/tmp`, `std::fs::copy` not symlink |
@@ -170,7 +170,7 @@ Machine specs (Xeon run):
 ### Remaining Dead Code (Low Priority)
 
 - `#[allow(dead_code)]` fields in stub: `Metadata::runtime`, `CryptoMeta::tag_offset`, `Layer::kind`, `Layer::uncompressed_size` — kept for JSON deserialization forward compatibility
-- 6 `eprintln!` calls in xbin-core (treeshake.rs, minify.rs, dotenv.rs) — behind `verbose` flag but library shouldn't emit to stderr. Requires refactoring function signatures to return messages. Not removed.
+- 6 `eprintln!` calls in erebus-core (treeshake.rs, minify.rs, dotenv.rs) — behind `verbose` flag but library shouldn't emit to stderr. Requires refactoring function signatures to return messages. Not removed.
 - 18 `pub` functions with zero external callers — mostly intentional library API. Internal helpers (treeshake, dotenv, minify) could be `pub(crate)` but harmless.
 
 ---
@@ -179,11 +179,11 @@ Machine specs (Xeon run):
 
 | Crate | Tests | Clippy |
 |-------|-------|--------|
-| xbin-core | 106 passed | Clean |
-| xbin-stub | 4 passed | Clean |
-| xbin-cli | 17 passed (7 unit + 10 integration) | Clean |
+| erebus-core | 106 passed | Clean |
+| erebus-stub | 4 passed | Clean |
+| erebus-cli | 17 passed (7 unit + 10 integration) | Clean |
 
-**Note:** xbin-cli uses `reqwest` with `rustls-tls` (no OpenSSL) — it builds and tests without `libssl-dev`.
+**Note:** erebus-cli uses `reqwest` with `rustls-tls` (no OpenSSL) — it builds and tests without `libssl-dev`.
 
 ---
 
@@ -219,25 +219,25 @@ Machine specs (Xeon run):
 | Confirm before dangerous actions | clig.dev | ✅ clean --all, doctor --fix |
 | `--force` / `-f` for scripts | clig.dev | ✅ |
 | `--version` reads from pyproject.toml | clig.dev | ✅ (was hardcoded 0.1.0) |
-| Shell completion (bash/zsh/fish) | Docker/Bun | ✅ `xbin completion {bash,zsh,fish}` |
+| Shell completion (bash/zsh/fish) | Docker/Bun | ✅ `erebus completion {bash,zsh,fish}` |
 | `--strict` mode | Better CLI | ✅ doctor --strict |
 | `human-panic` crash reports | Rust CLI Book | ✅ |
 | `anyhow` for error context | Rust CLI Book | ✅ |
 | Global `--verbose` flag | Docker/Bun | ✅ |
 | Exit codes 0/1/2 | clig.dev + BSD sysexits | ✅ documented in help |
-| `--dry-run` for destructive ops | clig.dev | ✅ xbin build --dry-run |
-| Config file (`.xbin.toml`) | Docker/Bun/Wasmer | ✅ .xbin.toml in app dir |
-| Shell completion (Rust CLI) | clap_complete | ✅ `xbin completion bash/zsh/fish` |
-| Man pages | Rust CLI Book | ✅ `xbin man [dir]` |
+| `--dry-run` for destructive ops | clig.dev | ✅ erebus build --dry-run |
+| Config file (`.ere.toml`) | Docker/Bun/Wasmer | ✅ .ere.toml in app dir |
+| Shell completion (Rust CLI) | clap_complete | ✅ `erebus completion bash/zsh/fish` |
+| Man pages | Rust CLI Book | ✅ `erebus man [dir]` |
 | `human-panic` crash reports | Rust CLI Book | ✅ |
 | `anyhow` for error context | Rust CLI Book | ✅ |
 | Global `--verbose` flag | Docker/Bun | ✅ |
 | Exit codes 0/1/2 | clig.dev + BSD sysexits | ✅ documented in help |
-| Man pages | Rust CLI Book | ✅ `xbin man [dir]` |
+| Man pages | Rust CLI Book | ✅ `erebus man [dir]` |
 
-## Config file (`.xbin.toml`)
+## Config file (`.ere.toml`)
 
-Place `.xbin.toml` in your app directory. CLI flags override config file values.
+Place `.ere.toml` in your app directory. CLI flags override config file values.
 
 ```toml
 [package]
@@ -260,25 +260,25 @@ env_file = ".env"
 
 ```bash
 # Bash
-xbin completion bash >> ~/.bashrc
+erebus completion bash >> ~/.bashrc
 
 # Zsh
-xbin completion zsh >> ~/.zshrc
+erebus completion zsh >> ~/.zshrc
 
 # Fish
-xbin completion fish > ~/.config/fish/completions/xbin.fish
+erebus completion fish > ~/.config/fish/completions/erebus.fish
 ```
 
 ### Man pages
 
 ```bash
-xbin man /usr/local/share/man/man1/
+erebus man /usr/local/share/man/man1/
 ```
 
 ### Dry run
 
 ```bash
-xbin build ./myapp --dry-run --verbose
+erebus build ./myapp --dry-run --verbose
 ```
 
 ---
@@ -327,14 +327,14 @@ git push --force --tags origin
 5. Click "Publish release"
 6. Workflow auto-triggers: builds linux-x64, linux-arm64, macos-arm64, macos-x64 → uploads tar.gz + SHASUMS256.txt
 
-**Package names**: `xbin-{os}-{arch}.tar.gz` (e.g., `xbin-linux-x64.tar.gz`)
-**Each tar.gz contains**: `bin/xbin-stub`, `bin/xbin-crypto`, `bin/xbin` (wrapper), `lib/python/xbin/` (CLI)
+**Package names**: `erebus-{os}-{arch}.tar.gz` (e.g., `erebus-linux-x64.tar.gz`)
+**Each tar.gz contains**: `bin/erebus-stub`, `bin/erebus-crypto`, `bin/erebus` (wrapper), `lib/python/erebus/` (CLI)
 
 ---
 
 ## Dependency maintenance policy
 
-**Rust crates** (`xbin-core/Cargo.toml`, `stub/Cargo.toml`):
+**Rust crates** (`erebus-core/Cargo.toml`, `stub/Cargo.toml`):
 - Run `cargo update` periodically to get latest semver-compatible versions
 - Check https://crates.io for major version bumps (sha2, ruzstd, etc.)
 - Dependabot alerts: monitor and fix promptly
@@ -356,8 +356,8 @@ git push --force --tags origin
 
 ### ⚠️ RULE: NEVER commit without running ALL of these first:
 ```bash
-cd cli && python3 -m ruff check xbin/     # lint
-cd cli && python3 -m black --check xbin/  # format
+cd cli && python3 -m ruff check erebus/     # lint
+cd cli && python3 -m black --check erebus/  # format
 cd cli && python3 -m pytest tests/ -q     # tests
 ```
 
@@ -367,7 +367,7 @@ If you edited any `.py`, `.rs`, `.toml`, or `.yml` file → continue. Otherwise 
 ### 2. Does it compile / import?
 ```bash
 cargo check                                          # Rust core & CLI
-cargo clippy -p xbin-core --all-targets -- -D warnings  # Lint
+cargo clippy -p erebus-core --all-targets -- -D warnings  # Lint
 cargo fmt --check                                    # Format
 cargo test --workspace                               # Tests
 ```
@@ -375,7 +375,7 @@ cargo test --workspace                               # Tests
 
 ### 3. Does the app work?
 ```bash
-cargo build -p xbin-cli && ./target/release/xbin build examples/hello-web -o /tmp/test.xbin 2>&1
+cargo build -p erebus-cli && ./target/release/erebus build examples/hello-web -o /tmp/test.ere 2>&1
 ```
 If this fails, your change broke the build. Fix it before proceeding.
 
@@ -399,11 +399,11 @@ relevant `docs/src/` page.
 ### 8. No regressions?
 Run the full test sequence:
 ```bash
-xbin build examples/hello-web -o /tmp/t.xbin
-xbin inspect /tmp/t.xbin
-xbin keygen --key-dir /tmp/tk
-xbin sign /tmp/t.xbin --key /tmp/tk/*.key
-xbin verify /tmp/t.xbin --trusted-dir /tmp/tk
+erebus build examples/hello-web -o /tmp/t.ere
+erebus inspect /tmp/t.ere
+erebus keygen --key-dir /tmp/tk
+erebus sign /tmp/t.ere --key /tmp/tk/*.key
+erebus verify /tmp/t.ere --trusted-dir /tmp/tk
 ```
 All must pass. If any fails, your change introduced a regression.
 
@@ -411,12 +411,12 @@ All must pass. If any fails, your change introduced a regression.
 
 ## Cross-compilation (`--target aarch64`) — 2026-07-18
 
-- **File**: `cli/xbin/cross.py`
-- `download_vendored_python(runtime, arch)`: downloads prebuilt Python/Node from `python-build-standalone` (astral-sh) or Node.js official, extracts to `~/.cache/xbin/vendor/{runtime}-{arch}/`
+- **File**: `cli/erebus/cross.py`
+- `download_vendored_python(runtime, arch)`: downloads prebuilt Python/Node from `python-build-standalone` (astral-sh) or Node.js official, extracts to `~/.cache/erebus/vendor/{runtime}-{arch}/`
 - `pip_download_target(app_dir, requirements, venv_dir, target_arch)`: runs `pip download --only-binary=:all: --platform {manylinux tag} --python-version {ver}` to fetch wheels for target arch
 - `_vendored_python_version(vendored_root)`: detects Python version from vendored `lib/pythonX.Y/` directory
 - `_unpack_wheel(wheel_path, site_packages_dir)`: extracts wheel `.zip` into site-packages for cross-build
-- **File**: `cli/xbin/build.py`
+- **File**: `cli/erebus/build.py`
 - `build()` rejects non-Python runtimes for cross-build (`node`/`deno` → clear error message)
 - `_pip_install_requirements()` accepts `target_arch`: uses `pip_download_target()` when cross-building, falls back to normal pip when native
 - `_build_runtime_layer()` / `_build_layers()` / `_build_layers_squashfs()` pass `target_arch` through for cross-build pip
@@ -424,8 +424,8 @@ All must pass. If any fails, your change introduced a regression.
 
 ## Dependency checks — 2026-07-18
 
-- **File**: `cli/xbin/doctor.py`
-- `xbin doctor` subcommand: checks Python, pip, cargo, rustc, musl target, C compiler, zstd, mksquashfs, node, deno, cryptography, ruff, black, xbin-stub, xbin-crypto
+- **File**: `cli/erebus/doctor.py`
+- `erebus doctor` subcommand: checks Python, pip, cargo, rustc, musl target, C compiler, zstd, mksquashfs, node, deno, cryptography, ruff, black, erebus-stub, erebus-crypto
 - Each check returns (ok, detail). Required vs optional. Returns exit 1 if any required check fails.
 - **File**: `Makefile`
 - `make preflight`: quick prerequisite check (python3, pip, cargo, rustc, musl target, cc, zstd). Exit 1 on failure.
@@ -436,41 +436,41 @@ All must pass. If any fails, your change introduced a regression.
 
 ## Doctor --fix (auto-install missing deps) — 2026-07-20
 
-- **File**: `cli/xbin/doctor.py` — `--fix` flag, `--force` / `-f` flag
-- `xbin doctor --fix`: attempts to auto-install missing required prerequisites
-- `xbin doctor --fix --force`: skips confirmation prompt (for scripts/CI)
-- **Fixable checks**: musl target (`rustup target add`), zstd (`apt install`), mksquashfs (`apt install`), cryptography/ruff/black (`pip install`), xbin-stub/xbin-crypto (`make stub`)
+- **File**: `cli/erebus/doctor.py` — `--fix` flag, `--force` / `-f` flag
+- `erebus doctor --fix`: attempts to auto-install missing required prerequisites
+- `erebus doctor --fix --force`: skips confirmation prompt (for scripts/CI)
+- **Fixable checks**: musl target (`rustup target add`), zstd (`apt install`), mksquashfs (`apt install`), cryptography/ruff/black (`pip install`), erebus-stub/erebus-crypto (`make stub`)
 - **Non-fixable checks** (manual install required): Python version, pip, cargo, rustc, C compiler, node, deno
 - **Safety**: confirms interactively before fixing (unless `--force`); each fix has a timeout; re-verifies after fix; continues on individual failures
 - **clig.dev compliance**: `--fix` follows "confirm before dangerous actions" guideline; `--force` for scriptability; exit 0 on full success, 1 on partial/full failure
 
 ## Incremental update (`--update` flag) — 2026-07-20
 
-- **File**: `cli/xbin/build.py` — `--update` flag on build subcommand
-- **File**: `cli/xbin/assembly.py` — `app_hash` and `rt_deps_hash` params on `build_meta_json()`
+- **File**: `cli/erebus/build.py` — `--update` flag on build subcommand
+- **File**: `cli/erebus/assembly.py` — `app_hash` and `rt_deps_hash` params on `build_meta_json()`
 - **How it works**:
-  - First build: computes `app_hash` (SHA-256 of all app files) and `rt_deps_hash` (SHA-256 of requirements.txt), stores them in the .xbin metadata JSON
-  - `xbin build --update`: reads existing .xbin, compares hashes:
+  - First build: computes `app_hash` (SHA-256 of all app files) and `rt_deps_hash` (SHA-256 of requirements.txt), stores them in the .ere metadata JSON
+  - `erebus build --update`: reads existing .ere, compares hashes:
     - Same app + same runtime deps → early return ("everything up to date")
     - Same runtime deps, app changed → reuses existing runtime squashfs/zstd blob, only rebuilds app layer
     - Runtime deps changed → full rebuild
 - **Helper functions**:
   - `_hash_app_files(app_dir)`: SHA-256 of all files in app_dir (excluding .venv, node_modules, .git, etc.)
-  - `_read_existing_xbin(xbin_path, verbose)`: reads footer → meta JSON → extracts runtime layer blob
+  - `_read_existing_erebus(erebus_path, verbose)`: reads footer → meta JSON → extracts runtime layer blob
 - **Benefits**: 2-5x faster rebuilds when only app code changes (runtime layer is 12+ MB, app layer is small)
 - **Tested**: build → modify app.py → build --update → runtime layer SHA unchanged, app layer SHA changed ✓
 
-## xbin scan (discover .xbin files) — 2026-07-20
+## erebus scan (discover .ere files) — 2026-07-20
 
-- **File**: `cli/xbin/scan.py` — `scan(paths, json_output)` function
-- **File**: `cli/xbin/cli.py` — `scan` subparser with `paths` (nargs="*", default=["."]) and `--json`
-- **File**: `cli/xbin/_util.py` — `cache_dir()` moved here from `clean.py` (shared by scan + clean)
-- **File**: `cli/xbin/clean.py` — imports `cache_dir` from `_util` instead of defining locally
+- **File**: `cli/erebus/scan.py` — `scan(paths, json_output)` function
+- **File**: `cli/erebus/cli.py` — `scan` subparser with `paths` (nargs="*", default=["."]) and `--json`
+- **File**: `cli/erebus/_util.py` — `cache_dir()` moved here from `clean.py` (shared by scan + clean)
+- **File**: `cli/erebus/clean.py` — imports `cache_dir` from `_util` instead of defining locally
 - **How it works**:
-  - Recursively finds `.xbin` files by extension + footer magic (`0xBEEFCAFE`)
+  - Recursively finds `.ere` files by extension + footer magic (`0xBEEFCAFE`)
   - Reads metadata from each file (reuses `format.read_footer()`)
   - Displays table: FILE, NAME, RUNTIME, ARCH, SIGNED, CREATED
-  - Shows cache stats (entries + total size from `~/.cache/xbin/`)
+  - Shows cache stats (entries + total size from `~/.cache/erebus/`)
   - `--json` outputs structured JSON with all metadata fields
 - **Exit codes**: 0 if files found, 1 if none found
 - **Tested**: scan /tmp/ (found 4 files), scan --json, scan /nonexistent (exit 1), scan examples/ (exit 1) ✓
@@ -479,18 +479,18 @@ All must pass. If any fails, your change introduced a regression.
 
 ### New runtimes: Go, PHP, Perl
 
-- **File**: `cli/xbin/runtimes/go.py` — Go runtime
+- **File**: `cli/erebus/runtimes/go.py` — Go runtime
   - Detection: `go.mod` in project root
-  - Builds static binary via `go build`, embeds into .xbin
+  - Builds static binary via `go build`, embeds into .ere
   - Cross-compilation supported (GOOS/GOARCH)
-- **File**: `cli/xbin/runtimes/php.py` — PHP runtime
+- **File**: `cli/erebus/runtimes/php.py` — PHP runtime
   - Detection: `composer.json` in project root
   - Framework detection: Laravel (artisan), Symfony (symfony.lock), WordPress (wp-config.php)
   - Entry point: public/index.php, index.php, bin/console, artisan
-- **File**: `cli/xbin/runtimes/perl.py` — Perl runtime
+- **File**: `cli/erebus/runtimes/perl.py` — Perl runtime
   - Detection: `Makefile.PL` or `cpanfile` in project root
   - Entry point: app.pl, bin/app, main.pl, server.pl, app.psgi
-- **File**: `cli/xbin/runtimes/__init__.py` — updated registry
+- **File**: `cli/erebus/runtimes/__init__.py` — updated registry
   - Detection order: Python > Deno > Node > Java > Ruby > .NET > Go > PHP > Perl > Binary
 
 ### Unit tests
@@ -505,18 +505,18 @@ All must pass. If any fails, your change introduced a regression.
 
 ### Release fix (critical bug)
 
-- **Bug**: `release.yml` only packaged `xbin-stub` + `xbin-crypto` (Rust binaries), NOT the Python CLI (`xbin`). Users could not run `xbin` after installing from a release.
+- **Bug**: `release.yml` only packaged `erebus-stub` + `erebus-crypto` (Rust binaries), NOT the Python CLI (`erebus`). Users could not run `erebus` after installing from a release.
 - **File**: `.github/workflows/release.yml` — restructured:
   - Packages full CLI bundle: Python package + Rust stubs + wrapper script
-  - Naming: `xbin-{os}-{arch}.tar.gz` (Bun/Wasmer pattern, no version in dir name)
+  - Naming: `erebus-{os}-{arch}.tar.gz` (Bun/Wasmer pattern, no version in dir name)
   - SHA-256 checksums included
   - Release notes with changelog, install instructions, checksums section
 - **File**: `scripts/install.sh` — updated to match new structure:
-  - Expects `xbin-{platform}/bin/xbin` wrapper script
+  - Expects `erebus-{platform}/bin/erebus` wrapper script
   - Handles both `sha256sum` (Linux) and `shasum` (macOS)
-  - Installs Python CLI lib to `{INSTALL_DIR}/../lib/xbin/python/`
+  - Installs Python CLI lib to `{INSTALL_DIR}/../lib/erebus/python/`
   - Updates wrapper script with correct lib path
-- **Architecture**: Rust CLI binary (`xbin-cli`) built with `cargo`, installed to `target/release/xbin`
+- **Architecture**: Rust CLI binary (`erebus-cli`) built with `cargo`, installed to `target/release/erebus`
 
 ### Documentation
 
@@ -531,7 +531,7 @@ All must pass. If any fails, your change introduced a regression.
 
 ### Enhanced runtime detectors
 
-**Node.js** (`cli/xbin/runtimes/node.py`):
+**Node.js** (`cli/erebus/runtimes/node.py`):
 - Framework detection: Next.js (`next.config.js/mjs/ts`), Nuxt (`nuxt.config.ts/js/mjs`), Astro (`astro.config.mjs/ts`)
 - Reads `scripts.start` from `package.json` as fallback entrypoint
 - Next.js: entrypoint = `next start`
@@ -539,19 +539,19 @@ All must pass. If any fails, your change introduced a regression.
 - Astro SSR: entrypoint = `dist/server/entry.mjs` (after build) or `astro start`
 - Generic: `main` field → `index.js`/`server.js`/`app.js`
 
-**Python** (`cli/xbin/runtimes/python.py`):
+**Python** (`cli/erebus/runtimes/python.py`):
 - Django detection: `manage.py` + `wsgi.py`/`asgi.py` in subdirectory
 - Auto-finds gunicorn (WSGI) or uvicorn (ASGI) on PATH
 - Fallback: `manage.py runserver 0.0.0.0:8000`
 - Generic: `app.py`/`main.py`/`__main__.py`/`server.py`
 
-**PHP** (`cli/xbin/runtimes/php.py`):
+**PHP** (`cli/erebus/runtimes/php.py`):
 - Laravel: `php artisan serve --host=0.0.0.0 --port=8000` (was just `artisan` which prints help)
 - Symfony: `php bin/console server:run 0.0.0.0:8000`
 - WordPress: `php -S 0.0.0.0:8080 -t /app` (PHP built-in server)
 - Generic: `php -S 0.0.0.0:8000 -t /app/public`
 
-**Hugo** (`cli/xbin/runtimes/hugo.py`) — REWRITTEN RUNTIME:
+**Hugo** (`cli/erebus/runtimes/hugo.py`) — REWRITTEN RUNTIME:
 - Detection: `hugo.toml`, `hugo.yaml`, `hugo.json`, `config.toml`/`config.yaml` (with Hugo-specific keywords)
 - **Build phase**: runs `hugo --minify` during detect(), generates `public/` directory
 - **Runtime**: serves static files via `python3 -m http.server 1313 --directory /app/public`
@@ -584,78 +584,78 @@ All must pass. If any fails, your change introduced a regression.
 
 ## .env file baking — 2026-07-20
 
-- **File**: `cli/xbin/dotenv.py` — NEW module
+- **File**: `cli/erebus/dotenv.py` — NEW module
   - `parse_dotenv(env_file)`: parses KEY=value format (export prefix, quotes, comments, empty lines, values with `=`)
   - `detect_secret_keys(env)`: warns on `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `PRIVATE_KEY`, `CREDENTIALS` patterns
   - `load_dotenv(app_dir, env_file, verbose)`: resolves path relative to app_dir, parses, warns on secrets
-- **File**: `cli/xbin/cli.py` — `--env-file FILE` flag on build subcommand
-- **File**: `cli/xbin/build.py` — `env_file` param on `build()`, resolves to `env_file_path`, threads through `build_app_layer()` + `build_layers()`
-- **File**: `cli/xbin/layers.py` — `env_file_path` param on `build_app_layer()` and `build_layers()`:
+- **File**: `cli/erebus/cli.py` — `--env-file FILE` flag on build subcommand
+- **File**: `cli/erebus/build.py` — `env_file` param on `build()`, resolves to `env_file_path`, threads through `build_app_layer()` + `build_layers()`
+- **File**: `cli/erebus/layers.py` — `env_file_path` param on `build_app_layer()` and `build_layers()`:
   - Copies external `.env` file into app layer as `.env`
-  - If `plan.env` is set (from xbin.toml), writes a `.env` file with those key-value pairs
+  - If `plan.env` is set (from erebus.toml), writes a `.env` file with those key-value pairs
 - **Flow**: `--env-file .env` → parse → merge into `plan.env` (set as real env vars by launcher) + copy file into app layer
 - **Test file**: `cli/tests/test_dotenv.py` — 15 tests (parse_dotenv, detect_secret_keys, load_dotenv)
 - **Status**: implemented, wired through build pipeline, tests passing
 
 ## Version metadata — 2026-07-20
 
-- **File**: `cli/xbin/cli.py` — `--version-info`, `--author`, `--description`, `--license` flags on build subcommand
-- **File**: `cli/xbin/build.py` — passes version/author/description/license to `build_meta_json()`
-- **File**: `cli/xbin/assembly.py` — `build_meta_json()` accepts and includes version/author/description/license in metadata JSON
-- **File**: `cli/xbin/inspect.py` — displays version/author/description/license when present
-- **Flow**: `--version-info 1.0 --author "John"` → stored in `.xbin` metadata JSON → displayed by `xbin inspect`
+- **File**: `cli/erebus/cli.py` — `--version-info`, `--author`, `--description`, `--license` flags on build subcommand
+- **File**: `cli/erebus/build.py` — passes version/author/description/license to `build_meta_json()`
+- **File**: `cli/erebus/assembly.py` — `build_meta_json()` accepts and includes version/author/description/license in metadata JSON
+- **File**: `cli/erebus/inspect.py` — displays version/author/description/license when present
+- **Flow**: `--version-info 1.0 --author "John"` → stored in `.ere` metadata JSON → displayed by `erebus inspect`
 - **Test file**: `cli/tests/test_version_metadata.py` — 6 tests
 - **Status**: implemented, committed `961c526`
 
 ## Persistent storage — 2026-07-20
 
-- **File**: `cli/xbin/persistent.py` — NEW module
-  - `get_persist_dir(app_name)` → `~/.local/share/xbin/{app-name}/` (XDG compliant)
+- **File**: `cli/erebus/persistent.py` — NEW module
+  - `get_persist_dir(app_name)` → `~/.local/share/erebus/{app-name}/` (XDG compliant)
   - `ensure_persist_dir()` creates directory
-  - `get_persist_env()` returns `{"XBIN_PERSIST_DIR": "<path>"}`
-- **File**: `cli/xbin/cli.py` — `--persist` flag on build subcommand
-- **File**: `cli/xbin/build.py` — injects `XBIN_PERSIST_DIR` into `plan.env` when `--persist` is set
-- **Flow**: `--persist` → sets `XBIN_PERSIST_DIR` env var → app reads it for persistent data
+  - `get_persist_env()` returns `{"ERE_PERSIST_DIR": "<path>"}`
+- **File**: `cli/erebus/cli.py` — `--persist` flag on build subcommand
+- **File**: `cli/erebus/build.py` — injects `ERE_PERSIST_DIR` into `plan.env` when `--persist` is set
+- **Flow**: `--persist` → sets `ERE_PERSIST_DIR` env var → app reads it for persistent data
 - **Test file**: `cli/tests/test_persistent.py` — 7 tests
 - **Status**: implemented, committed `9872d53`
 
 ## Data files (--include) — 2026-07-20
 
-- **File**: `cli/xbin/cli.py` — `--include PATH` flag (repeatable, `action="append"`)
-- **File**: `cli/xbin/build.py` — resolves include paths relative to app_dir, validates existence
-- **File**: `cli/xbin/layers.py` — `build_app_layer()` and `build_layers()` accept `include_paths` param
+- **File**: `cli/erebus/cli.py` — `--include PATH` flag (repeatable, `action="append"`)
+- **File**: `cli/erebus/build.py` — resolves include paths relative to app_dir, validates existence
+- **File**: `cli/erebus/layers.py` — `build_app_layer()` and `build_layers()` accept `include_paths` param
 - **Flow**: `--include data/config.json --include templates/` → copies files/dirs into app layer
 - **Test file**: `cli/tests/test_include.py` — 6 tests (file, dir, multiple, none, overwrite, symlink)
 - **Status**: implemented, committed `6ea54a5`
 
 ## Tree-shaking — 2026-07-20
 
-- **File**: `cli/xbin/treeshake.py` — NEW module
+- **File**: `cli/erebus/treeshake.py` — NEW module
   - `detect_used_packages(app_dir)` → scans JS/TS source for require() and import statements
   - `prune_node_modules(app_dir)` → removes unused top-level packages from node_modules
-- **File**: `cli/xbin/cli.py` — `--tree-shake` flag on build subcommand
-- **File**: `cli/xbin/build.py` — runs `prune_node_modules()` before layer building
+- **File**: `cli/erebus/cli.py` — `--tree-shake` flag on build subcommand
+- **File**: `cli/erebus/build.py` — runs `prune_node_modules()` before layer building
 - **Flow**: `--tree-shake` → scan source → resolve used packages → remove unused from node_modules
 - **Test file**: `cli/tests/test_treeshake.py` — 10 tests (detect, prune, scoped packages)
 - **Status**: implemented, committed `0a1c5a9`
 
 ## Minification — 2026-07-20
 
-- **File**: `cli/xbin/minify.py` — NEW module
+- **File**: `cli/erebus/minify.py` — NEW module
   - `minify_app_dir(app_dir)` → minifies JS/TS (via terser) and CSS (built-in stripper)
-- **File**: `cli/xbin/cli.py` — `--minify` flag on build subcommand
-- **File**: `cli/xbin/build.py` — runs `minify_app_dir()` before layer building
+- **File**: `cli/erebus/cli.py` — `--minify` flag on build subcommand
+- **File**: `cli/erebus/build.py` — runs `minify_app_dir()` before layer building
 - **Flow**: `--minify` → scan app dir → minify JS/TS via terser, CSS via whitespace stripping
 - **Test file**: `cli/tests/test_minify.py` — 7 tests (CSS, JS, skip node_modules, no files)
 - **Status**: implemented, committed `74d2011`
 
 ## Framework auto-detect (enhanced) — 2026-07-20
 
-- **File**: `cli/xbin/runtimes/node.py` — enhanced `_detect_framework()`:
+- **File**: `cli/erebus/runtimes/node.py` — enhanced `_detect_framework()`:
   - Config-file detection: Next.js, Nuxt, Astro, Remix, SvelteKit
   - Dependency-based detection: Express, Fastify, Hono (from package.json)
   - Entrypoint builders for Remix (`remix-serve build`), SvelteKit (`svelte-kit dev`), Express/Fastify (`node entry.js`), Hono (`node src/index.ts`)
-- **File**: `cli/xbin/runtimes/python.py` — added FastAPI and Flask detection:
+- **File**: `cli/erebus/runtimes/python.py` — added FastAPI and Flask detection:
   - `_detect_fastapi()` — scans source for `from fastapi import`, auto-selects uvicorn
   - `_detect_flask()` — scans source for `from flask import`
   - `_build_python_plan()` — shared builder for detected frameworks
@@ -664,45 +664,45 @@ All must pass. If any fails, your change introduced a regression.
 
 ## Health checks — 2026-07-20
 
-- **File**: `cli/xbin/health.py` — NEW module
+- **File**: `cli/erebus/health.py` — NEW module
   - `HealthState` class: mark_ready(), mark_not_ready(), uptime, version, extra fields
   - HTTP server: `/healthz` (liveness, always 200), `/readyz` (readiness), `/status` (JSON)
   - `start_health_server(port)` — background thread, daemon
   - `get_health_state()` — global singleton for app code
-- **File**: `cli/xbin/cli.py` — `--health-port PORT` flag on build subcommand
-- **File**: `cli/xbin/build.py` — injects `XBIN_HEALTH_PORT` into plan.env
-- **Flow**: `--health-port 8081` → launcher starts HTTP server → app marks ready via `xbin.health.mark_ready()`
+- **File**: `cli/erebus/cli.py` — `--health-port PORT` flag on build subcommand
+- **File**: `cli/erebus/build.py` — injects `ERE_HEALTH_PORT` into plan.env
+- **Flow**: `--health-port 8081` → launcher starts HTTP server → app marks ready via `erebus.health.mark_ready()`
 - **Test file**: `cli/tests/test_health.py` — 12 tests (state, server endpoints, disabled)
 - **Status**: implemented, committed `0da1980`
 
 ## OpenTelemetry — 2026-07-20
 
-- **File**: `cli/xbin/otel.py` — NEW module
+- **File**: `cli/erebus/otel.py` — NEW module
   - `build_otel_env()` — builds OTEL_SERVICE_NAME, OTEL_RESOURCE_ATTRIBUTES, OTEL_EXPORTER_OTLP_ENDPOINT, etc.
   - `get_otel_config()` — reads current OTel config from environment
   - `format_resource_attributes()` — parses "key=value,key2=value2" string
-- **File**: `cli/xbin/cli.py` — `--otel-endpoint URL` and `--otel-protocol` flags
-- **File**: `cli/xbin/build.py` — injects OTel env vars into plan.env
+- **File**: `cli/erebus/cli.py` — `--otel-endpoint URL` and `--otel-protocol` flags
+- **File**: `cli/erebus/build.py` — injects OTel env vars into plan.env
 - **Flow**: `--otel-endpoint http://localhost:4317` → OTEL_* env vars set → app auto-instruments
 - **Test file**: `cli/tests/test_otel.py` — 15 tests (env building, config reading, resource attrs)
 - **Status**: implemented, committed `71b2c28`
 
 ## Cron/scheduled tasks — 2026-07-20
 
-- **File**: `cli/xbin/cron.py` — NEW module
+- **File**: `cli/erebus/cron.py` — NEW module
   - `CronScheduler` — background thread, tick-based, @every/@hourly/@daily/@weekly + cron-style
   - `Task` dataclass — name, schedule, func, error tracking
   - `get_scheduler()` — global singleton
-  - `build_cron_env()` — XBIN_CRON_ENABLED + XBIN_CRON_TASKS env vars
-- **File**: `cli/xbin/cli.py` — `--cron NAME:SCHEDULE` flag (repeatable)
-- **File**: `cli/xbin/build.py` — parses cron tasks, injects env vars
-- **Flow**: `--cron cleanup:'*/5 * * * *'` → XBIN_CRON_TASKS JSON → app registers tasks
+  - `build_cron_env()` — ERE_CRON_ENABLED + ERE_CRON_TASKS env vars
+- **File**: `cli/erebus/cli.py` — `--cron NAME:SCHEDULE` flag (repeatable)
+- **File**: `cli/erebus/build.py` — parses cron tasks, injects env vars
+- **Flow**: `--cron cleanup:'*/5 * * * *'` → ERE_CRON_TASKS JSON → app registers tasks
 - **Test file**: `cli/tests/test_cron.py` — 22 tests (schedule parsing, scheduler, error handling)
 - **Status**: implemented, committed `465a3c9`
 
 ## Package manager support — 2026-07-20
 
-### New module: `cli/xbin/pkgmgr.py`
+### New module: `cli/erebus/pkgmgr.py`
 
 Automatic dependency installation via the user's package manager.
 
@@ -730,8 +730,8 @@ Automatic dependency installation via the user's package manager.
 - `--no-install` flag skips automatic installation (for pre-installed deps)
 - Incremental update hashes all lock files (not just `requirements.txt`)
 
-**File**: `cli/xbin/build.py` — added `no_install` param, pkgmgr integration
-**File**: `cli/xbin/cli.py` — added `--no-install` flag to build subcommand
+**File**: `cli/erebus/build.py` — added `no_install` param, pkgmgr integration
+**File**: `cli/erebus/cli.py` — added `--no-install` flag to build subcommand
 
 ### Unit tests
 
@@ -745,59 +745,59 @@ Automatic dependency installation via the user's package manager.
 ```
 Phase 1 ✅            Phase 2 ✅            Phase 3 ✅
 ───────────────       ────────────          ──────────
-xbin-core crate       Full core lib         Full Rust CLI
-format, compress      + assembly, sign,     xbin-cli (all commands)
+erebus-core crate       Full core lib         Full Rust CLI
+format, compress      + assembly, sign,     erebus-cli (all commands)
 detect, pkgmgr        verify, tar, scan     workspace (3 crates)
                       + crypto binary       multi-arch release
                       + PyO3 bindings       no Python dependency
 ```
 
-### Phase 1: xbin-core crate — ✅ COMPLETE
+### Phase 1: erebus-core crate — ✅ COMPLETE
 
 **Modules**: format.rs, compress.rs, detect.rs, pkgmgr.rs
 **Tests**: 40 Rust unit tests, all passing, clippy clean
 
 ### Phase 2: Full core lib — ✅ COMPLETE
 
-xbin-core now contains all build logic previously in Python:
+erebus-core now contains all build logic previously in Python:
 
 | Rust module | Replaces | Tests |
 |---|---|---|
-| `format.rs` | `cli/xbin/format.py` | 15 (footer parsing v2-v5, constants, read_at) |
-| `compress.rs` | `cli/xbin/layers.py` (zstd) | 3 (compress, decompress, roundtrip) |
-| `detect.rs` | `cli/xbin/analyzer/runtime.py` | 5 (11 runtimes: Python, Node, Deno, Java, Ruby, .NET, Go, PHP, Perl, Binary, Hugo) |
-| `pkgmgr.rs` | `cli/xbin/pkgmgr.py` | 5 (8 managers: uv, poetry, pipenv, pip, pnpm, yarn, bun, npm) |
-| `tar.rs` | `cli/xbin/layers.py` (tar) | 4 (create, deterministic, roundtrip) |
-| `assembly.rs` | `cli/xbin/assembly.py` | 5 (assemble, meta JSON, arch resolve, versioned footer) |
-| `sign.rs` / `verify.rs` | `cli/xbin/sign.py`, `verify.py` | integrated in build pipeline |
+| `format.rs` | `cli/erebus/format.py` | 15 (footer parsing v2-v5, constants, read_at) |
+| `compress.rs` | `cli/erebus/layers.py` (zstd) | 3 (compress, decompress, roundtrip) |
+| `detect.rs` | `cli/erebus/analyzer/runtime.py` | 5 (11 runtimes: Python, Node, Deno, Java, Ruby, .NET, Go, PHP, Perl, Binary, Hugo) |
+| `pkgmgr.rs` | `cli/erebus/pkgmgr.py` | 5 (8 managers: uv, poetry, pipenv, pip, pnpm, yarn, bun, npm) |
+| `tar.rs` | `cli/erebus/layers.py` (tar) | 4 (create, deterministic, roundtrip) |
+| `assembly.rs` | `cli/erebus/assembly.py` | 5 (assemble, meta JSON, arch resolve, versioned footer) |
+| `sign.rs` / `verify.rs` | `cli/erebus/sign.py`, `verify.py` | integrated in build pipeline |
 | `python.rs` | PyO3 bindings | exposed: format, compress, detect, pkgmgr |
-| `crypto.rs` | `stub/src/bin/xbin-crypto.rs` | keygen, sign, verify |
+| `crypto.rs` | `stub/src/bin/erebus-crypto.rs` | keygen, sign, verify |
 
 **Dependencies**: sha2, serde/serde_json, ruzstd, zstd, tar, ed25519-dalek, aes-gcm, hkdf
 
 ### Phase 3: Full Rust CLI — ✅ COMPLETE
 
-**xbin-cli** crate with 10 commands:
+**erebus-cli** crate with 10 commands:
 
 | Command | Description | Status |
 |---|---|---|
-| `xbin build` | Package app into .xbin | ✅ Full Rust |
-| `xbin inspect` | Read .xbin footer metadata | ✅ |
-| `xbin scan` | Scan .xbin for crypto/integrity info | ✅ |
-| `xbin sign` | Ed25519 sign a .xbin | ✅ |
-| `xbin verify` | Verify signature | ✅ |
-| `xbin keygen` | Generate Ed25519 keypair | ✅ |
-| `xbin trust` | Add key to trusted dir | ✅ |
-| `xbin doctor` | Check dependencies | ✅ (--strict flag) |
-| `xbin env` | Show environment info | ✅ |
-| `xbin clean` | Clean build artifacts | ✅ |
+| `erebus build` | Package app into .ere | ✅ Full Rust |
+| `erebus inspect` | Read .ere footer metadata | ✅ |
+| `erebus scan` | Scan .ere for crypto/integrity info | ✅ |
+| `erebus sign` | Ed25519 sign a .ere | ✅ |
+| `erebus verify` | Verify signature | ✅ |
+| `erebus keygen` | Generate Ed25519 keypair | ✅ |
+| `erebus trust` | Add key to trusted dir | ✅ |
+| `erebus doctor` | Check dependencies | ✅ (--strict flag) |
+| `erebus env` | Show environment info | ✅ |
+| `erebus clean` | Clean build artifacts | ✅ |
 
 **Workspace structure**:
 ```
 Cargo.toml          (workspace root, [profile.release])
-├── xbin-core/      (shared library)
+├── erebus-core/      (shared library)
 ├── stub/           (self-extracting launcher, Linux-only)
-└── xbin-cli/       (CLI tool, cross-platform)
+└── erebus-cli/       (CLI tool, cross-platform)
 ```
 
 **Release workflow**: Multi-arch GitHub releases
@@ -817,25 +817,25 @@ Cargo.toml          (workspace root, [profile.release])
 | 2 ✅ | Yes (wrapper) | 2-5x faster | Same |
 | 3 ✅ | **No** | **10-50x faster** | **Single binary** |
 
-## xbin-core wiring (Phase 1 complete) — 2026-07-20
+## erebus-core wiring (Phase 1 complete) — 2026-07-20
 
-Stub now uses `xbin-core` as a shared library dependency instead of its local `format.rs`.
+Stub now uses `erebus-core` as a shared library dependency instead of its local `format.rs`.
 
 **Changes**:
-- `stub/Cargo.toml` — added `xbin-core = { path = "../xbin-core" }`
-- `stub/src/main.rs` — removed `mod format;`, replaced with `use xbin_core::format::{self as format, read_at, Footer};`
-- `stub/src/format.rs` — **deleted** (format parsing now comes from xbin-core)
-- `xbin-core/src/format.rs` — fixed 3 clippy warnings (`doc_markdown`, `format_collect`, `unnecessary_map_or`)
+- `stub/Cargo.toml` — added `erebus-core = { path = "../erebus-core" }`
+- `stub/src/main.rs` — removed `mod format;`, replaced with `use erebus_core::format::{self as format, read_at, Footer};`
+- `stub/src/format.rs` — **deleted** (format parsing now comes from erebus-core)
+- `erebus-core/src/format.rs` — fixed 3 clippy warnings (`doc_markdown`, `format_collect`, `unnecessary_map_or`)
 
 **Verification**:
 - `stub` compiles clean with `cargo check` and `cargo clippy -- -D warnings`
-- `xbin-core` — 26/26 tests pass, clippy clean
+- `erebus-core` — 26/26 tests pass, clippy clean
 - All existing `format::FLAG_SIGNED`, `format::CRYPTO_AES_256_GCM`, `format::PAYLOAD_FORMAT_SQUASHFS` references work unchanged via `self as format` alias
 
 **What this enables**:
-- Phase 2: Python CLI can call xbin-core via PyO3 or subprocess
+- Phase 2: Python CLI can call erebus-core via PyO3 or subprocess
 - Phase 3: Full Rust CLI — both stub and CLI share the same format parser
-- Single source of truth for .xbin format (no more duplicate format.rs)
+- Single source of truth for .ere format (no more duplicate format.rs)
 
 ## Install script + upgrade command — 2026-07-20
 
@@ -843,15 +843,15 @@ Stub now uses `xbin-core` as a shared library dependency instead of its local `f
   - Detects platform (linux-x64, linux-arm64, macos-x64, macos-arm64)
   - Fetches latest version from GitHub API
   - Downloads tar.gz from releases, verifies SHA-256 checksum
-  - Installs to `/usr/local/bin/` (or `$XBIN_INSTALL_DIR`)
+  - Installs to `/usr/local/bin/` (or `$ERE_INSTALL_DIR`)
   - Idempotent: skips if already up-to-date
   - Usage: `curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash`
-- **File**: `cli/xbin/upgrade.py` — `xbin upgrade` self-update command
+- **File**: `cli/erebus/upgrade.py` — `erebus upgrade` self-update command
   - Fetches latest version from GitHub API
-  - Compares against current `_XBIN_VERSION`
+  - Compares against current `_ERE_VERSION`
   - Downloads platform-specific tar.gz, verifies SHA-256
-  - Replaces xbin binary in-place (with sudo if needed)
-- **File**: `cli/xbin/cli.py` — `upgrade` subparser + dispatch
+  - Replaces erebus binary in-place (with sudo if needed)
+- **File**: `cli/erebus/cli.py` — `upgrade` subparser + dispatch
 - **File**: `.github/workflows/release.yml` — fixes:
   - Removed stale `RUST_VERSION: "1.80"` env var (never used, rustc is 1.97.1)
   - Release notes now point to `scripts/install.sh` for easy install
@@ -864,7 +864,7 @@ Stub now uses `xbin-core` as a shared library dependency instead of its local `f
 - **File**: `stub/src/format.rs` — format v5, `PAYLOAD_FORMAT_SQUASHFS = 2`
 - **File**: `stub/src/main.rs` — squashfs extraction via `squashfs_extract::extract()`, uses backhand crate
 - **File**: `stub/src/squashfs_extract.rs` — backhand-based squashfs reader (gzip/lz4/zstd support)
-- **File**: `cli/xbin/build.py` — `--squashfs` flag, `mksquashfs` build, tar→squashfs conversion
+- **File**: `cli/erebus/build.py` — `--squashfs` flag, `mksquashfs` build, tar→squashfs conversion
 - **File**: `docs/src/reference/format.md` — v5 format documented
 - Metadata `"payload_format": "squashfs"` tells launcher to use squashfs extraction instead of zstd(tar)
 - **Note**: SquashFS is a better-compressed layer format (vs zstd+tar). Extraction to disk still happens at startup. Direct mmap without extraction (the real cold-start perf win) is a Phase 3 goal — see "Next steps".
@@ -873,45 +873,45 @@ Stub now uses `xbin-core` as a shared library dependency instead of its local `f
 
 - `stub/src/main.rs:70-75` — calls `verify_ed25519()` when `format_version >= 3 && flags & FLAG_SIGNED`.
 - `stub/src/main.rs:119-182` — full verification logic: reads sig block at `sig_offset`,
-  computes SHA-256(payload ‖ meta_bytes), iterates trusted keys from `$XDG_DATA_HOME/xbin/trusted-keys/`
-  (legacy fallback: `~/.xbin/trusted-keys/`), verifies via `ed25519_dalek::Verifier`.
+  computes SHA-256(payload ‖ meta_bytes), iterates trusted keys from `$XDG_DATA_HOME/erebus/trusted-keys/`
+  (legacy fallback: `~/.ere/trusted-keys/`), verifies via `ed25519_dalek::Verifier`.
 - `stub/Cargo.toml:18` — `ed25519-dalek` with `default-features = false, features = ["alloc"]`.
 
 ## Keygen / Sign / Verify CLI: IMPLEMENTED
 
 All implemented in the session of 2026-07-09:
 
-- `stub/Cargo.toml` — added `[[bin]]` target `xbin-crypto`. Also added `rand = "0.8"`.
-- `stub/src/bin/xbin-crypto.rs` — three subcommands:
+- `stub/Cargo.toml` — added `[[bin]]` target `erebus-crypto`. Also added `rand = "0.8"`.
+- `stub/src/bin/erebus-crypto.rs` — three subcommands:
   - `keygen --key-dir <dir>`: generate Ed25519 keypair, write `{fingerprint}.key` (32-byte seed)
     and `{fingerprint}.pub` (32-byte pubkey), print hex fingerprint to stdout.
   - `sign <keyfile>`: read 32-byte SHA-256 hash from stdin, sign, write 64-byte sig to stdout.
     Exit 0 = success, 1 = error.
   - `verify <pubkey>`: read 96 bytes from stdin ([32-byte hash][64-byte sig]), verify.
     Exit 0 = valid, 1 = invalid, 2 = error.
-- `cli/xbin/crypto.py` — `find_crypto()` (mirrors `find_stub()`) + thin subprocess wrappers
+- `cli/erebus/crypto.py` — `find_crypto()` (mirrors `find_stub()`) + thin subprocess wrappers
   for keygen/sign/verify.
-- `cli/xbin/keygen.py` — `xbin keygen` CLI (default dir `$XDG_DATA_HOME/xbin/keys`, legacy fallback `~/.xbin/keys`).
-- `cli/xbin/sign.py` — `xbin sign <file.xbin>`: reads file with format.py, computes
+- `cli/erebus/keygen.py` — `erebus keygen` CLI (default dir `$XDG_DATA_HOME/erebus/keys`, legacy fallback `~/.ere/keys`).
+- `cli/erebus/sign.py` — `erebus sign <file.ere>`: reads file with format.py, computes
   SHA-256(payload‖meta), calls crypto.py sign, writes sig_block `[sig_size:u32le][64-byte sig]`
   between metadata and footer, rewrites footer as v3 (format_version=3, flags|=FLAG_SIGNED,
   sig_offset set, footer grown to 92 bytes). In-place modification.
-- `cli/xbin/verify.py` — `xbin verify <file.xbin>`: reads v3 footer, iterates trusted keys
-  from `$XDG_DATA_HOME/xbin/trusted-keys/` (legacy fallback `~/.xbin/trusted-keys/`, or `--trusted-dir`), calls crypto.py verify for each.
-- `cli/xbin/cli.py` — wired up keygen/sign/verify subcommands.
-- `Makefile` — `make stub` builds both `xbin-stub` and `xbin-crypto`.
-- `.cargo/config.toml` — target-dir is `/tmp/xbin-stub-target` (vfat workaround).
-- `find_stub()` and `find_crypto()` now also search `/tmp/xbin-stub-target/`.
+- `cli/erebus/verify.py` — `erebus verify <file.ere>`: reads v3 footer, iterates trusted keys
+  from `$XDG_DATA_HOME/erebus/trusted-keys/` (legacy fallback `~/.ere/trusted-keys/`, or `--trusted-dir`), calls crypto.py verify for each.
+- `cli/erebus/cli.py` — wired up keygen/sign/verify subcommands.
+- `Makefile` — `make stub` builds both `erebus-stub` and `erebus-crypto`.
+- `.cargo/config.toml` — target-dir is `/tmp/erebus-stub-target` (vfat workaround).
+- `find_stub()` and `find_crypto()` now also search `/tmp/erebus-stub-target/`.
 
 ## End-to-end test results
 
 ```
-$ cargo build -p xbin-cli && ./target/release/xbin build examples/hello-web -o /tmp/hello-web.xbin       → OK (7.1MB)
-$ ./target/release/xbin keygen --key-dir /tmp/xbin-keys                        → OK, fingerprint printed
-$ ./target/release/xbin sign /tmp/hello-web.xbin --key <keyfile>               → OK, sig_offset=7117820
-$ ./target/release/xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted → OK, exit 0
-$ dd if=/dev/urandom of=/tmp/hello-web.xbin bs=1 seek=688788 count=1    → corrupt payload
-$ ./target/release/xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trusted → FAIL, exit 1 (no crash)
+$ cargo build -p erebus-cli && ./target/release/erebus build examples/hello-web -o /tmp/hello-web.ere       → OK (7.1MB)
+$ ./target/release/erebus keygen --key-dir /tmp/erebus-keys                        → OK, fingerprint printed
+$ ./target/release/erebus sign /tmp/hello-web.ere --key <keyfile>               → OK, sig_offset=7117820
+$ ./target/release/erebus verify /tmp/hello-web.ere --trusted-dir /tmp/erebus-trusted → OK, exit 0
+$ dd if=/dev/urandom of=/tmp/hello-web.ere bs=1 seek=688788 count=1    → corrupt payload
+$ ./target/release/erebus verify /tmp/hello-web.ere --trusted-dir /tmp/erebus-trusted → FAIL, exit 1 (no crash)
 ```
 
 ## Design audit fixes (2026-07-17)
@@ -919,15 +919,15 @@ $ ./target/release/xbin verify /tmp/hello-web.xbin --trusted-dir /tmp/xbin-trust
 All 14 issues from the design audit have been fixed. Changes verified via Python import tests and pack/unpack round-trip tests.
 
 ### Fix #1: inspect.py fingerprint (removed wrong logic)
-**File:** `cli/xbin/inspect.py:39-45`
-**What changed:** Removed incorrect `hashlib.sha256(sig[:32])` fingerprint computation — it was hashing 32 arbitrary bytes from the Ed25519 signature, not the actual public key. Replaced with actionable guidance: "run 'xbin verify'". Removed unused `hashlib` import. Now uses `fmt.SIG_BLOCK_SIZE` constant instead of hardcoded `68`.
+**File:** `cli/erebus/inspect.py:39-45`
+**What changed:** Removed incorrect `hashlib.sha256(sig[:32])` fingerprint computation — it was hashing 32 arbitrary bytes from the Ed25519 signature, not the actual public key. Replaced with actionable guidance: "run 'erebus verify'". Removed unused `hashlib` import. Now uses `fmt.SIG_BLOCK_SIZE` constant instead of hardcoded `68`.
 
 ### Fix #2: format.py sig-block constants (eliminated struct duplication)
-**Files:** `cli/xbin/format.py`, `cli/xbin/build.py`, `cli/xbin/sign.py`, `cli/xbin/verify.py`, `cli/xbin/inspect.py`
+**Files:** `cli/erebus/format.py`, `cli/erebus/build.py`, `cli/erebus/sign.py`, `cli/erebus/verify.py`, `cli/erebus/inspect.py`
 **What changed:** Added `SIG_BLOCK_SIZE = 68`, `SIG_BLOCK_SIZE_FIELD = 64`, `pack_sig_block()`, `unpack_sig_block()` to `format.py`. Updated `sign.py` and `verify.py` to use these helpers (removed `import struct` from both). Updated `inspect.py` to use `fmt.SIG_BLOCK_SIZE`. Removed unused `import struct` from `build.py`. All sig-block logic is now in one place (format.py) matching Rust's `format.rs`.
 
 ### Fix #3: cli.py RuntimeError catch (was missing)
-**File:** `cli/xbin/cli.py:103`
+**File:** `cli/erebus/cli.py:103`
 **What changed:** Added `RuntimeError` to the catch list. `build.py` raises `RuntimeError` at lines 250 and 254 when pip subprocess fails; these were uncaught and would show raw tracebacks to users.
 
 ### Fix #4+6: main.rs LD_LIBRARY_PATH + env duplication (DRY refactor)
@@ -935,7 +935,7 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 **What changed:** Extracted `const LD_PATHS` (lines 24-26), `enter_namespace_if_needed()` (322-327), `setup_env()` (331-366), `make_resolve()` (369-379), and `env_to_cstrings()` (382-386). Both `exec_app()` and `supervise_services()` now call these shared functions instead of duplicating env setup, LD_LIBRARY_PATH construction, and namespace entry logic. LD_LIBRARY_PATH dirs were defined in 4+ places; now in one constant.
 
 ### Fix #5: SHA-256 contract documentation
-**Files:** `stub/src/format.rs`, `cli/xbin/format.py`
+**Files:** `stub/src/format.rs`, `cli/erebus/format.py`
 **What changed:** Added cross-reference doc comments in both Rust and Python documenting the integrity hash contract: `SHA-256(payload ‖ metadata_json)`. Also corrected stale wording from `SHA-256(layers ‖ metadata)` to `SHA-256(payload ‖ metadata)` (the old wording was misleading — the hash is over the full payload, not just layers).
 
 ### Fix #7: Layer.usize rename (descriptive field name)
@@ -943,27 +943,27 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 **What changed:** Renamed `Layer.usize` to `Layer.uncompressed_size` with `#[serde(rename = "usize")]` for JSON compat. Removed `#[allow(dead_code)]` — the field is now descriptively named and actively used.
 
 ### Fix #8: _sign_and_write helper (DRY in build.py)
-**File:** `cli/xbin/build.py`
+**File:** `cli/erebus/build.py`
 **What changed:** Extracted `_sign_and_write()` helper function for the inline-sign-then-write-footer pattern that was duplicated in two places. Removed unused `pub_path` variable.
 
 ### Fix #9: _ManifestPlan dead field (removed extra_dirs_host)
-**File:** `cli/xbin/build.py`
+**File:** `cli/erebus/build.py`
 **What changed:** Removed the unused `extra_dirs_host` field from `_ManifestPlan` dataclass.
 
 ### Fix #10: sys.exit → ValueError (proper error flow through cli.py)
-**Files:** `cli/xbin/sign.py`, `cli/xbin/verify.py`, `cli/xbin/trust.py`
-**What changed:** Converted all `sys.exit(1)` / `sys.exit(0)` to `raise ValueError(...)` (or `return` for the "already trusted" case in trust.py). Errors now flow through `cli.py`'s catch list and get formatted as `[xbin] error: ...` instead of ugly tracebacks or silent exits. Added `try/except FileNotFoundError` around `os.listdir(keys_dir)` in sign.py.
+**Files:** `cli/erebus/sign.py`, `cli/erebus/verify.py`, `cli/erebus/trust.py`
+**What changed:** Converted all `sys.exit(1)` / `sys.exit(0)` to `raise ValueError(...)` (or `return` for the "already trusted" case in trust.py). Errors now flow through `cli.py`'s catch list and get formatted as `[erebus] error: ...` instead of ugly tracebacks or silent exits. Added `try/except FileNotFoundError` around `os.listdir(keys_dir)` in sign.py.
 
 ### Fix #11: find_binary extraction (shared utility)
-**Files:** `cli/xbin/_util.py` (new), `cli/xbin/build.py`, `cli/xbin/crypto.py`
+**Files:** `cli/erebus/_util.py` (new), `cli/erebus/build.py`, `cli/erebus/crypto.py`
 **What changed:** Created `_util.py` with shared `find_binary()` function (searches PATH + Cargo target dir). Updated `build.py` and `crypto.py` to import from `_util.py` instead of duplicating binary-finding logic. No circular imports — `_util` is a leaf module.
 
 ### Fix #12: French → English comments
-**File:** `cli/xbin/analyzer/runtime.py:25, 59`, `cli/xbin/cli.py:71`
+**File:** `cli/erebus/analyzer/runtime.py:25, 59`, `cli/erebus/cli.py:71`
 **What changed:** Translated three French comments to English: "argv relatif au rootfs" → "argv relative to rootfs", "On embarque les site-packages..." → "Embed site-packages...", "remplace le process" → "replaces the process".
 
 ### Fix #13: ldd.py inlined to elf.py
-**Files:** `cli/xbin/analyzer/ldd.py` (reduced to 2-line re-export), `cli/xbin/build.py`
+**Files:** `cli/erebus/analyzer/ldd.py` (reduced to 2-line re-export), `cli/erebus/build.py`
 **What changed:** `ldd.py` was just a one-function wrapper around `elf.shared_libs`. Reduced it to a 2-line backwards-compat re-export from `elf.py`. Updated `build.py` to import from `elf` directly, 3 call sites changed from `ldd.shared_libs` to `elf.shared_libs`.
 
 ### Fix #14: __pycache__ cleanup
@@ -973,7 +973,7 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - All Python modules import cleanly with no circular dependencies
 - `format.py` pack/unpack sig-block round-trip test passes
 - `cargo build --release` + `cargo clippy -- -D warnings` passent clean (0 warnings, 0 errors)
-- No test suite exists; `make example` should build a working .xbin to confirm end-to-end
+- No test suite exists; `make example` should build a working .ere to confirm end-to-end
 
 ## Clig.dev CLI audit (2026-07-20)
 
@@ -984,18 +984,18 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 | 1 | Progress on stdout | All `print()` → `file=sys.stderr` (build, clean, lockfile, fetch, cross) | `348e0b4` |
 | 2 | `clean --all` no confirmation | Interactive prompt + `-f`/`--force` flag, non-interactive requires `--force` | `fe8aaba` |
 | 3 | Silent network fetches | "detecting dependencies..." + "downloading N dependencies..." messages | `9ba1473` |
-| 4 | Non-XDG key paths | `$XDG_DATA_HOME/xbin/` with legacy `~/.xbin/` fallback + deprecation warning | `8a2bafe` |
-| 5 | No `--version` | `xbin --version` → `xbin 0.1.0` | `f519099` |
+| 4 | Non-XDG key paths | `$XDG_DATA_HOME/erebus/` with legacy `~/.ere/` fallback + deprecation warning | `8a2bafe` |
+| 5 | No `--version` | `erebus --version` → `erebus 0.1.0` | `f519099` |
 | 6 | No machine-readable output | `--json` flag for `inspect` and `doctor` | `9b567f3` |
 | 7 | Subcommand abbreviation | Already prevented by argparse (Python 3.12) | N/A |
 | 8 | No color support | `_color.py` module: `--no-color`, `NO_COLOR`, `TERM=dumb`, isatty detection | `b36e086` |
 | 9 | No isatty checks | `verbose = not args.quiet and sys.stderr.isatty()` — auto-suppress in pipes | `7ae378b` |
 | 10 | No help examples | Epilog with 6 usage examples + docs link | `a64dcfd` |
-| 11 | No `help` subcommand | `xbin help [command]` via `_SUBPARSERS` dict dispatch | `5652e83` |
+| 11 | No `help` subcommand | `erebus help [command]` via `_SUBPARSERS` dict dispatch | `5652e83` |
 | 12 | No exit code docs | 0/1/2 documented in `--help` epilog | `2158078` |
 
 ### New files
-- `cli/xbin/_color.py` — ANSI color helpers (red, green, yellow, bold) with TTY/NO_COLOR/dumb detection
+- `cli/erebus/_color.py` — ANSI color helpers (red, green, yellow, bold) with TTY/NO_COLOR/dumb detection
 
 ### Key changes
 - `_util.py`: added `keys_dir()` and `trusted_dir()` functions (XDG + legacy fallback)
@@ -1011,7 +1011,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 
 **Why**: Unit tests pass but we've never tested with real apps. Toy examples hide real bugs — missing shared libs, wrong entrypoints, broken dep resolution, env issues. We need to prove x.bin works on production apps for every runtime.
 
-**Process per app**: `git clone` → `xbin build` → run → document pass/fail/bugs → fix → re-test
+**Process per app**: `git clone` → `erebus build` → run → document pass/fail/bugs → fix → re-test
 
 ### Testing matrix (one real app per runtime, user will send apps)
 
@@ -1051,7 +1051,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 
 ### Real-app testing — top 200 GitHub projects (HIGH PRIORITY)
 - **Goal**: prove x.bin works on real-world apps, not just toy examples
-- **Approach**: test `xbin build` against top 200 GitHub repos (by stars), curate the ones that work as prebuilt downloads
+- **Approach**: test `erebus build` against top 200 GitHub repos (by stars), curate the ones that work as prebuilt downloads
 - **Target repos to test** (Python/Node.js focus, apps not libraries):
   - **Python web**: flask (pallets/flask), fastapi (tiangolo/fastapi), django (django/django), sanic (sanic-org/sanic), litestar (litestar-org/litestar)
   - **Python tools**: httpie (httpie/cli), httpx (encode/httpx), thefuck (nvbn/thefuck), borgbackup (borgbackup/borg), pgcli (dbcli/pgcli), mycli (dbcli/mycli), ranger (ranger/ranger), streamlink (streamlink/streamlink), you-get (soimort/you-get), yt-dlp (yt-dlp/yt-dlp), tldr (tldr-pages/tldr)
@@ -1059,23 +1059,23 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
   - **Python infra**: ansible (ansible/ansible), fabric (fabric/fabric), invoke (pyinvoke/invoke), salt (saltstack/salt)
   - **Node.js**: express (expressjs/express), next.js (vercel/next.js), n8n (n8n-io/n8n), Ghost (TryGhost/Ghost), PM2 (Unitech/pm2), homebridge (homebridge/homebridge), mosca (moscajs/mosca)
   - **Go (future)**: caddy (caddyserver/caddy), traefik (traefik/traefik), hugo (gohugoio/hugo), lazygit (jesseduffield/lazygit)
-- **Process**: for each repo, `git clone` → `xbin build` → test run → document what works/breaks
-- **Distribution**: working builds become official downloads on the website (`xbin.sh/downloads`)
+- **Process**: for each repo, `git clone` → `erebus build` → test run → document what works/breaks
+- **Distribution**: working builds become official downloads on the website (`erebus.sh/downloads`)
 - **Why**: marketing proof point ("we can build Flask, FastAPI, yt-dlp, n8n…"), real-world bug discovery, performance benchmarks
 - **File**: track results in `TESTED_APPS.md` at repo root (pass/fail, size, notes)
 
 ### Distribution & packaging
-- GitHub Actions official action (`action-xbin/build`) — for CI/CD workflows
+- GitHub Actions official action (`action-erebus/build`) — for CI/CD workflows
 
 ### Remaining features
 - Cross-build aarch64 stub locally: requires `rustup target add aarch64-unknown-linux-musl` + cross-linker. CI handles this automatically via GitHub Actions runners.
-- `xbin sign` with automatic key lookup in `$XDG_DATA_HOME/xbin/keys/` (without `--key`).
+- `erebus sign` with automatic key lookup in `$XDG_DATA_HOME/erebus/keys/` (without `--key`).
 - `squashfs + mmap` direct read (kernel mount, Linux 5.12+, no extraction needed) — the real cold-start perf win beyond just better compression.
 - LRU cache cleanup (evict beyond threshold)
 - Cold/warm start < 100 ms end-to-end
 - Distribution / discovery (lightweight registry)
 - Run full end-to-end build+sign+verify cycle for aarch64 once stub is compiled locally
-- GitHub Actions official action (`action-xbin/build`) — for CI/CD workflows
+- GitHub Actions official action (`action-erebus/build`) — for CI/CD workflows
 
 ### Competitor feature gaps (x.bin vs Bun vs Deno Deploy)
 
@@ -1132,14 +1132,14 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 | 1 | **Embedded runtime option** — optionally bundle python3/node/etc. into the binary for targets without the runtime installed | Bun's self-contained approach | HIGH | LARGE |
 | 2 | **Cross-compilation for apps** — build for aarch64 from x86_64 (stub already does this, extend to app layers) | Bun's 8-target cross-compilation | HIGH | MEDIUM |
 | 3 | **Bytecode precompilation** — precompile Python `.pyc` or Node bytecode at build time for faster startup | Bun's `--bytecode` flag | MEDIUM | MEDIUM |
-| 4 | **Registry/manifest** — `xbin publish` + `xbin install <package>` for sharing apps, like wasi.dev | Wasmer Registry | MEDIUM | LARGE |
-| 5 | **Cloud deploy** — `xbin deploy` to a backend (Wasmer Edge-like) | Wasmer Edge platform | LOW | VERY LARGE |
+| 4 | **Registry/manifest** — `erebus publish` + `erebus install <package>` for sharing apps, like wasi.dev | Wasmer Registry | MEDIUM | LARGE |
+| 5 | **Cloud deploy** — `erebus deploy` to a backend (Wasmer Edge-like) | Wasmer Edge platform | LOW | VERY LARGE |
 | 6 | **WASM support** — package .wasm + wasmer runtime in the binary | Wasmer's universal approach | LOW | VERY LARGE |
 | 7 | **Minification** — JS/CSS minification for Node apps at build time | Bun's `--minify` | MEDIUM | SMALL |
 | 8 | **Sourcemaps** — embed sourcemaps for better error reporting | Bun's `--sourcemap` | LOW | SMALL |
 | 9 | **Full-stack HTML** — embed HTML/CSS/JS frontend + server in one binary | Bun's full-stack executables | LOW | MEDIUM |
 | 10 | **Windows support** — extend beyond Linux/macOS | Bun's 3-OS support | MEDIUM | LARGE |
-| 11 | **Hot reload** — `xbin dev` for development mode | Bun's `--hot` | LOW | MEDIUM |
+| 11 | **Hot reload** — `erebus dev` for development mode | Bun's `--hot` | LOW | MEDIUM |
 | 12 | **Metering/instruction limits** — deterministic resource limits for sandboxed apps | Wasmer's metering | LOW | MEDIUM |
 
 ### Hugo real-site test — ✅ DONE
@@ -1155,7 +1155,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - **Rationale**: Python/Node.js use 150+ distinct syscalls. An allowlist would break apps unpredictably. A denylist of clearly dangerous syscalls is sufficient — namespace isolation handles the rest.
 - **Blocked syscalls**: ptrace, mount, umount2, pivot_root, reboot, kexec_load, kexec_file_load, init_module, finit_module, delete_module, swapon, swapoff, sethostname, setdomainname, acct, nfsservctl.
 - **Hook point**: After `pivot_root_into()` in both `exec_app()` (single-service) and `supervise_services()` (multi-service). Filter applies before `execve()` — child processes inherit it.
-- **Graceful degradation**: If `prctl(PR_SET_SECCOMP)` fails, prints `[xbin] warning` to stderr and continues. Never blocks execution.
+- **Graceful degradation**: If `prctl(PR_SET_SECCOMP)` fails, prints `[erebus] warning` to stderr and continues. Never blocks execution.
 - **BPF program**: 21 instructions. Architecture check (reject non-x86_64), then 16 syscall comparisons with forward-jump chain to KILL at instruction [19]. ALLOW at instruction [20].
 - **x86_64 only**: Syscall numbers are hardcoded for x86_64 (`asm/unistd_64.h`). Cross-arch (aarch64) is Phase 3.
 - **No new crate**: Uses `libc = "0.2"` only. Raw BPF structs (`libc::sock_filter`, `libc::sock_fprog`) + `libc::prctl`.
@@ -1179,7 +1179,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - **sign.py**: extracted `_resolve_signing_key()`, `_write_signed()` — `sign()` 65→30 lines. Removed WHAT comments. Committed `b8f6cc6`.
 - **verify.py**: removed WHAT comments. Committed `b8f6cc6`.
 - **inspect.py**: Black formatting, fixed f-string without placeholders (ruff F541). Committed `b8f6cc6`.
-- **build.py**: extracted 10+ helpers (`_resolve_app_path`, `_resolve_service_binary`, `_collect_service_bins`, `_build_meta_json`, `_assemble_xbin`, `_build_layers`, `_copy_service_layers`, `_copy_app_files`, `_install_manifest_pip`, `_build_service_metadata`) — `_build_manifest` 171→35, `build` 138→40 lines. Committed `c7e402e`.
+- **build.py**: extracted 10+ helpers (`_resolve_app_path`, `_resolve_service_binary`, `_collect_service_bins`, `_build_meta_json`, `_assemble_erebus`, `_build_layers`, `_copy_service_layers`, `_copy_app_files`, `_install_manifest_pip`, `_build_service_metadata`) — `_build_manifest` 171→35, `build` 138→40 lines. Committed `c7e402e`.
 - **trust.py**: removed unused `import os` (ruff F401). Committed `4d938d3`.
 - **crypto.py**: Black formatting. Committed `4d938d3`.
 - **cli.py**: Black formatting. Committed `4d938d3`.
@@ -1190,7 +1190,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 
 ## Dockerfile dependency analyzer: Feature A (2026-07-17)
 
-- **File**: `cli/xbin/analyzer/dockerfile.py` — committed `ebea282`.
+- **File**: `cli/erebus/analyzer/dockerfile.py` — committed `ebea282`.
 - **Public API**: `detect_from_dockerfile(app_dir: Path) -> list[DetectedDep]`
 - **DetectedDep** dataclass: `kind` ("pip"/"npm"/"apt"/"apk"/"external"), `name`, `version`, `url` (for external), `source`.
 - Parses Dockerfile RUN instructions with join-then-split architecture:
@@ -1214,7 +1214,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 
 ## Feature B: Python source AST scanner (2026-07-17)
 
-- **File**: `cli/xbin/analyzer/python_ast.py` — committed `638b868`.
+- **File**: `cli/erebus/analyzer/python_ast.py` — committed `638b868`.
 - **Public API**: `detect_from_python_source(app_dir: Path) -> list[DetectedDep]`
 - **Merge utility**: `merge_deps(dockerfile_deps, ast_deps) -> list[DetectedDep]`
 - Walks `ast.Call` nodes for `subprocess.run/Popen/call/check_call/check_output/getoutput/getstatusoutput` and `os.system/os.popen`.
@@ -1226,10 +1226,10 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 
 ## Feature C: dependency fetcher into staging (2026-07-17)
 
-- **File**: `cli/xbin/analyzer/fetch.py` — committed next.
+- **File**: `cli/erebus/analyzer/fetch.py` — committed next.
 - **Public API**: `fetch_deps(deps, verbose) -> (stage_dir, list[FetchResult])`
 - **FetchResult** dataclass: `dep`, `ok`, `error`, `sha256`.
-- Staging directory: `~/.cache/xbin/stage/{SHA-256 of sorted dep list}/` with subdirs per kind.
+- Staging directory: `~/.cache/erebus/stage/{SHA-256 of sorted dep list}/` with subdirs per kind.
 - Fetchers per dependency type:
   - **pip**: `pip download --no-deps --dest {stage}/pip/` (never installs globally)
   - **npm**: `npm install --prefix {stage}/npm/ --save=false` (never touches global node_modules)
@@ -1239,7 +1239,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - Checksum handling: SHA-256 recorded in `manifest.json` for auditability; no upstream verification (no signatures to check against).
 - Failure handling: warn and continue, never hard-fail. Summary report at end.
 - Uncertain-confidence deps (from AST scanner) are never fetched — reported as SKIP.
-- `xbin clean` covers stage cleanup (already removes `~/.cache/xbin/`).
+- `erebus clean` covers stage cleanup (already removes `~/.cache/erebus/`).
 
 ## Launcher PATH injection (2026-07-17)
 
@@ -1252,27 +1252,27 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 
 ## Payload encryption (AES-256-GCM)
 
-- **File**: `cli/xbin/encrypt.py` — `encrypt_payload(plaintext, signing_seed) -> (ciphertext, metadata)`
-- **File**: `cli/xbin/build.py` — `--encrypt` flag, requires `--key` for signing seed (used as AES key via HKDF).
+- **File**: `cli/erebus/encrypt.py` — `encrypt_payload(plaintext, signing_seed) -> (ciphertext, metadata)`
+- **File**: `cli/erebus/build.py` — `--encrypt` flag, requires `--key` for signing seed (used as AES key via HKDF).
 - **File**: `cli/pyproject.toml` — `pip install -e "./cli[encrypt]"` pulls in `cryptography`.
-- AES-256-GCM with HKDF key derivation from signing seed. Salt: `xbin-encrypt-v1`.
+- AES-256-GCM with HKDF key derivation from signing seed. Salt: `erebus-encrypt-v1`.
 - Encrypted payloads produce format v4 footers (`ENCRYPTED_AES_256_GCM` marker). Launcher decrypts after signature verification.
 - Signing key = encryption key (whoever can sign can also decrypt). Key rotation planned for future.
 
 ## Deno support
 
-- **File**: `cli/xbin/analyzer/runtime.py` — `_detect_deno()`, `_deno_entry()`
+- **File**: `cli/erebus/analyzer/runtime.py` — `_detect_deno()`, `_deno_entry()`
 - Detection: looks for `deno.json` / `deno.jsonc` in app directory.
 - Entrypoint: reads `tasks.start` / `tasks.dev` / `tasks.default` from deno config, falls back to common names (`main.ts`, `mod.ts`, `index.ts`).
 - Embeds deno binary into rootfs at `/usr/bin/deno`.
-- **Vendored fallback**: if `deno` is not on PATH, `cross.py:download_vendored_deno()` downloads from GitHub Releases (`deno-{arch}-unknown-linux-gnu.zip`), caches in `~/.cache/xbin/cross/deno/{arch}/deno`.
+- **Vendored fallback**: if `deno` is not on PATH, `cross.py:download_vendored_deno()` downloads from GitHub Releases (`deno-{arch}-unknown-linux-gnu.zip`), caches in `~/.cache/erebus/cross/deno/{arch}/deno`.
 - Cross-build for Deno not yet supported (Python only for `--target`).
 
-## xbin.lock lockfile: Feature D (2026-07-17)
+## erebus.lock lockfile: Feature D (2026-07-17)
 
-- **File**: `cli/xbin/analyzer/lockfile.py` — written and tested (not yet committed).
+- **File**: `cli/erebus/analyzer/lockfile.py` — written and tested (not yet committed).
 - **Public API**: `detect_or_read_lock(app_dir, redetect, verbose) -> list[DetectedDep] | None`
-- **Lockfile**: `xbin.lock` in app directory — human-readable TOML, never edited by hand.
+- **Lockfile**: `erebus.lock` in app directory — human-readable TOML, never edited by hand.
 - **Staleness check**: SHA-256 of Dockerfile content vs `dockerfile_sha256` in lock.
   - No Dockerfile → hash is `"none"`, lock always fresh (useful for pure-Python apps).
   - Hash mismatch → stale, triggers re-detection.
@@ -1281,15 +1281,15 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
   2. Fresh lock → returns deps, detection skipped.
   3. No lock or stale → runs Dockerfile + AST detection, fetches, writes lock.
   4. `--redetect` flag forces re-detection regardless of lock freshness.
-- **Build integration** (`cli/xbin/build.py`): lockfile check inserted after app_dir resolution, before the xbin.toml manifest check. Detection deps are recorded but not yet wired into rootfs building (that's a future layer).
-- **CLI integration** (`cli/xbin/cli.py`): `--redetect` flag added to build subcommand.
+- **Build integration** (`cli/erebus/build.py`): lockfile check inserted after app_dir resolution, before the erebus.toml manifest check. Detection deps are recorded but not yet wired into rootfs building (that's a future layer).
+- **CLI integration** (`cli/erebus/cli.py`): `--redetect` flag added to build subcommand.
 - **Verified paths**: fresh build (no lock), fresh lock (skip), stale lock (re-detect), --redetect (force), no-Dockerfile app (lock always fresh).
 
 ## Docker-compose multi-service warning (2026-07-17)
 
-- **File**: `cli/xbin/cli.py` — `_parse_compose_services()` + `_warn_multi_service_compose()`.
+- **File**: `cli/erebus/cli.py` — `_parse_compose_services()` + `_warn_multi_service_compose()`.
 - **Parser**: regex-based, no YAML dependency (stdlib only). Finds `services:` at indent 0, extracts service names at indent 2, checks for `build:` or `image:` at indent 4.
-- **Warning** printed to stderr when >1 service detected: names all services, flags which use `build:` (packageable) vs `image:` (dependencies), states xbin packages one process.
+- **Warning** printed to stderr when >1 service detected: names all services, flags which use `build:` (packageable) vs `image:` (dependencies), states erebus packages one process.
 - **Informational only** — does not block the build, does not affect return code. User sees warning then normal build output.
 - **Silent when**: no compose file, single service, unparseable file, or `-q` flag.
 - **Verified**: multi-service (build+image), single service, no file, multiple build services, all image services, .yaml extension, comments, quiet mode.
@@ -1299,7 +1299,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - **File**: `README.md` — full rewrite modeled after Bun's README style.
 - **Structure**: centered logo placeholder → title → badges → nav links → "What is x.bin?" → Install → Quick links (4 categories) → Guides (4 categories) → How it works → Example apps → Contributing → License.
 - **Logo**: references `logo.png` in repo root — user will create their own.
-- **Install**: git clone + `make stub` + `cargo build -p xbin-cli` — Rust CLI is primary
+- **Install**: git clone + `make stub` + `cargo build -p erebus-cli` — Rust CLI is primary
 - **Quick links**: organized by Build, Runtime, Security, CLI — all link to mdbook docs.
 - **Guides**: organized by Python, Node.js, Deployment, Security.
 
@@ -1309,7 +1309,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 
 1. **Push** — `0bffc88` is unpushed
 2. **Benchmark after optimization** — Run `benchmarks/run-bench.sh` again to measure improvement
-3. **Install openssl-dev** for local xbin-cli testing: `sudo apt install libssl-dev`
+3. **Install openssl-dev** for local erebus-cli testing: `sudo apt install libssl-dev`
 4. **Demo recording** — Install `asciinema` + `agg` for YC demo (see demo-yc/)
 5. **Optional: rayon for parallel file collection** — tar.rs `collect_entries()` is sequential. Could be parallelized but impact is small vs compression savings.
 
@@ -1366,12 +1366,12 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 
 1. **Arguments CLI** (highest priority)
    ```bash
-   ./app.xbin --db-url "postgresql://user:pass@neon.tech/db"
+   ./app.ere --db-url "postgresql://user:pass@neon.tech/db"
    ```
 
 2. **Local config file** (fallback)
    ```bash
-   # xbin.toml in same directory as binary
+   # erebus.toml in same directory as binary
    [database]
    url = "postgresql://..."
    
@@ -1382,12 +1382,12 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 3. **Environment variables** (standard Unix)
    ```bash
    export DATABASE_URL="postgresql://..."
-   ./app.xbin
+   ./app.ere
    ```
 
 4. **Interactive prompt** (when TTY available)
    ```bash
-   ./app.xbin
+   ./app.ere
    Enter DATABASE_URL: ********
    ```
 
@@ -1397,7 +1397,7 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 - Add `config.rs` module to stub
 - Implement multi-source config loading
 - Add interactive prompt with masked input
-- Support `xbin.toml` format
+- Support `erebus.toml` format
 
 **Phase 2: CLI Integration**
 - Add `--config` flag to specify config file
@@ -1414,9 +1414,9 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 ### File Locations
 
 ```
-~/.xbin/config.toml          # Global config (Unix)
-%APPDATA%\xbin\config.toml   # Global config (Windows)
-./xbin.toml                   # Local config (same dir as binary)
+~/.ere/config.toml          # Global config (Unix)
+%APPDATA%\erebus\config.toml   # Global config (Windows)
+./erebus.toml                   # Local config (same dir as binary)
 ./config.toml                 # Alternative local config
 ```
 
@@ -1424,19 +1424,19 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 
 ```bash
 # Build openEMR (no secrets embedded)
-xbin build openemr/ -o openemr.xbin
+erebus build openemr/ -o openemr.ere
 
 # Runtime configuration options:
 # Option 1: Environment variables
 export DATABASE_URL="mysql://openemr:pass@mysql.example.com/openemr"
-./openemr.xbin
+./openemr.ere
 
 # Option 2: Local config file
-echo '[database]\nurl = "mysql://openemr:pass@mysql.example.com/openemr"' > xbin.toml
-./openemr.xbin
+echo '[database]\nurl = "mysql://openemr:pass@mysql.example.com/openemr"' > erebus.toml
+./openemr.ere
 
 # Option 3: CLI arguments
-./openemr.xbin --db-url "mysql://openemr:pass@mysql.example.com/openemr"
+./openemr.ere --db-url "mysql://openemr:pass@mysql.example.com/openemr"
 ```
 
 ### Security Best Practices
@@ -1463,7 +1463,7 @@ echo '[database]\nurl = "mysql://openemr:pass@mysql.example.com/openemr"' > xbin
 
 2. **Updated `stub/src/main.rs`**:
    - Load config at startup
-   - Merge secrets as `XBIN_SECRET_*` environment variables
+   - Merge secrets as `ERE_SECRET_*` environment variables
    - Merge database URL as `DATABASE_URL`
 
 3. **Dependencies added** (`stub/Cargo.toml`):
@@ -1476,24 +1476,24 @@ echo '[database]\nurl = "mysql://openemr:pass@mysql.example.com/openemr"' > xbin
 **Simple PHP App (1.1MB):**
 ```
 DATABASE_URL: mysql://openemr:openemr123@127.0.0.1/openemr
-XBIN_SECRET_API_KEY: my-secret-api-key
-XBIN_SECRET_DB_PASSWORD: my-db-password
+ERE_SECRET_API_KEY: my-secret-api-key
+ERE_SECRET_DB_PASSWORD: my-db-password
 ```
 
 **openEMR (92MB):**
 ```
-Built /tmp/openemr-final.xbin (91.2MB)
-Config loaded correctly from xbin.toml
+Built /tmp/openemr-final.ere (91.2MB)
+Config loaded correctly from erebus.toml
 ```
 
 ### Usage Example
 
 ```bash
 # Build the binary
-xbin build myapp/ -o myapp.xbin --embed-interpreter php
+erebus build myapp/ -o myapp.ere --embed-interpreter php
 
 # Create config file
-cat > myapp.xbin.toml << EOF
+cat > myapp.ere.toml << EOF
 [database]
 url = "mysql://user:pass@host/db"
 
@@ -1502,5 +1502,5 @@ api_key = "secret-value"
 EOF
 
 # Run (secrets loaded from config)
-./myapp.xbin
+./myapp.ere
 ```

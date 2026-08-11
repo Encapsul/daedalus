@@ -16,7 +16,10 @@ fn remote_update_swaps_in_v2_and_reports_reuse() {
     let out = run_update(&e);
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-    assert!(out.status.success(), "--erebus-update must succeed: {stderr}");
+    assert!(
+        out.status.success(),
+        "--erebus-update must succeed: {stderr}"
+    );
     assert!(stderr.contains("manifest verified"), "stderr: {stderr}");
     assert!(stderr.contains("chunks reused"), "stderr: {stderr}");
     assert!(stderr.contains("chunks fetched"), "stderr: {stderr}");

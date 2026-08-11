@@ -10,8 +10,8 @@ pub struct EnvArgs {
 }
 
 pub fn run(args: EnvArgs) -> Result<()> {
-    let stub = find_binary("erebus-stub", "XBIN_STUB_PATH");
-    let crypto = find_binary("erebus-crypto", "XBIN_CRYPTO_PATH");
+    let stub = find_binary("erebus-stub", "ERE_STUB_PATH");
+    let crypto = find_binary("erebus-crypto", "ERE_CRYPTO_PATH");
 
     if args.json {
         let info = serde_json::json!({

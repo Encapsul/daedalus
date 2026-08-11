@@ -2,14 +2,14 @@ use crate::remote_cache::remote_cache_from_args;
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use ed25519_dalek::SigningKey;
-use sha2::Digest;
-use std::path::{Path, PathBuf};
 use erebus_core::detect;
 use erebus_core::embed;
 use erebus_core::metadata::{BunFeatures, EmbeddedInterpreter};
 use erebus_core::paths::cache_dir;
 use erebus_core::pkgmgr;
 use erebus_core::sisr_stage::SisrBuildConfig;
+use sha2::Digest;
+use std::path::{Path, PathBuf};
 
 /// Map an isolation spec to the numeric level stored in metadata.
 ///
@@ -371,7 +371,7 @@ pub struct BuildArgs {
     #[arg(long = "include", action = clap::ArgAction::Append)]
     pub include: Vec<PathBuf>,
 
-    /// Enable persistent storage directory (`XBIN_PERSIST_DIR`)
+    /// Enable persistent storage directory (`ERE_PERSIST_DIR`)
     #[arg(long)]
     pub persist: bool,
 
@@ -383,7 +383,7 @@ pub struct BuildArgs {
     #[arg(long)]
     pub minify: bool,
 
-    /// Health check HTTP port (sets `XBIN_HEALTH_PORT`)
+    /// Health check HTTP port (sets `ERE_HEALTH_PORT`)
     #[arg(long)]
     pub health_port: Option<u16>,
 
@@ -581,7 +581,7 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
         match &args.update_url {
             Some(url) => eprintln!("  Update URL: {url}"),
             None => {
-                eprintln!("  Update URL: (none — updates must pass a URL or set XBIN_UPDATE_URL)");
+                eprintln!("  Update URL: (none — updates must pass a URL or set ERE_UPDATE_URL)");
             }
         }
     }
@@ -1174,8 +1174,8 @@ fn build_single_target(
         .map_or_else(|| "app".to_string(), |n| n.to_string_lossy().into());
 
     let mut env_map = serde_json::Map::new();
-    env_map.insert("XBIN_RUNTIME".into(), runtime_name.clone().into());
-    env_map.insert("XBIN_APP_NAME".into(), app_name.clone().into());
+    env_map.insert("ERE_RUNTIME".into(), runtime_name.clone().into());
+    env_map.insert("ERE_APP_NAME".into(), app_name.clone().into());
 
     // Load env-file (KEY=VALUE per line, # comments, blank lines)
     if let Some(ref ef) = env_file {
@@ -1222,7 +1222,7 @@ fn build_single_target(
         let persist_dir = erebus_core::persistent::get_persist_dir(&app_name);
         let _ = erebus_core::persistent::ensure_persist_dir(&app_name);
         env_map.insert(
-            "XBIN_PERSIST_DIR".into(),
+            "ERE_PERSIST_DIR".into(),
             serde_json::Value::String(persist_dir.to_string_lossy().into()),
         );
         if verbose {
@@ -1233,7 +1233,7 @@ fn build_single_target(
     // ── Health check port ─────────────────────────────────────────────
     if let Some(port) = args.health_port {
         env_map.insert(
-            "XBIN_HEALTH_PORT".into(),
+            "ERE_HEALTH_PORT".into(),
             serde_json::Value::String(port.to_string()),
         );
         if verbose {
@@ -1283,7 +1283,7 @@ fn build_single_target(
             }
         }
         env_map.insert(
-            "XBIN_CRON_TASKS".into(),
+            "ERE_CRON_TASKS".into(),
             serde_json::Value::Array(tasks_json),
         );
         if verbose {
@@ -1450,7 +1450,8 @@ fn build_single_target(
             target_arch: target.as_deref(),
             sisr: None,
         };
-        erebus_core::assembly::assemble_erebus(output, &input).context("failed to assemble erebus")?
+        erebus_core::assembly::assemble_erebus(output, &input)
+            .context("failed to assemble erebus")?
     };
 
     eprintln!(
@@ -1549,7 +1550,7 @@ fn sign_macos_binary(path: &Path, verbose: bool) -> Result<()> {
 
         // Ad-hoc signing is sufficient for local development; distribution
         // requires a Developer ID in the user's keychain.
-        let identity = match std::env::var("XBIN_CODESIGN_IDENTITY") {
+        let identity = match std::env::var("ERE_CODESIGN_IDENTITY") {
             Ok(id) if !id.is_empty() => id,
             _ => "-".to_string(),
         };
@@ -1776,9 +1777,9 @@ fn ensure_node_download(
             .context("failed to reach nodejs.org")?
             .json()
             .context("failed to parse node version manifest")?;
-    let version = if let Ok(pinned) = std::env::var("XBIN_NODE_VERSION") {
+    let version = if let Ok(pinned) = std::env::var("ERE_NODE_VERSION") {
         if verbose {
-            eprintln!("  using pinned node version {pinned} (XBIN_NODE_VERSION)");
+            eprintln!("  using pinned node version {pinned} (ERE_NODE_VERSION)");
         }
         pinned
     } else {
@@ -2199,7 +2200,7 @@ fn ensure_composer(app_dir: &Path, verbose: bool) -> Result<(String, Vec<String>
 }
 
 fn find_stub(target: &Option<String>) -> Result<PathBuf> {
-    if let Ok(path) = std::env::var("XBIN_STUB_PATH") {
+    if let Ok(path) = std::env::var("ERE_STUB_PATH") {
         let p = PathBuf::from(path);
         if p.exists() {
             return Ok(p);
@@ -2258,7 +2259,7 @@ fn find_stub(target: &Option<String>) -> Result<PathBuf> {
 
     // Removed stale fallback `/usr/local/bin/erebus-stub` to prevent embedding
     // an obsolete stub with unknown bugs. Users must build a fresh stub via
-    // `make stub` or set `XBIN_STUB_PATH` explicitly.
+    // `make stub` or set `ERE_STUB_PATH` explicitly.
     if let Ok(p) = which::which("erebus-stub") {
         eprintln!(
             "[erebus] warning: found erebus-stub on PATH at {}; prefer 'make stub' for reproducible builds",

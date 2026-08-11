@@ -29,7 +29,7 @@ pub fn get_persist_env(app_name: &str) -> HashMap<String, String> {
     let dir = get_persist_dir(app_name);
     let mut env = HashMap::new();
     env.insert(
-        "XBIN_PERSIST_DIR".to_string(),
+        "ERE_PERSIST_DIR".to_string(),
         dir.to_string_lossy().into_owned(),
     );
     env
@@ -62,7 +62,10 @@ mod tests {
         env::set_var("HOME", "/home/testuser");
 
         let dir = get_persist_dir("myapp");
-        assert_eq!(dir, PathBuf::from("/home/testuser/.local/share/erebus/myapp"));
+        assert_eq!(
+            dir,
+            PathBuf::from("/home/testuser/.local/share/erebus/myapp")
+        );
 
         if let Some(v) = prev_xdg {
             env::set_var("XDG_DATA_HOME", v);
@@ -83,7 +86,7 @@ mod tests {
         let env_map = get_persist_env("myapp");
         let expected = PathBuf::from("/custom/xdg").join("erebus").join("myapp");
         assert_eq!(
-            env_map.get("XBIN_PERSIST_DIR").unwrap().as_str(),
+            env_map.get("ERE_PERSIST_DIR").unwrap().as_str(),
             expected.to_string_lossy().as_ref()
         );
 

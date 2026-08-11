@@ -5,7 +5,7 @@
 
 use std::io::{self, Read, Seek, SeekFrom};
 
-pub const MAGIC: &[u8; 5] = b"XBIN\x01";
+pub const MAGIC: &[u8; 5] = b"ERE\x01\x00";
 pub const FOOTER_MAGIC: u32 = 0xBEEF_CAFE;
 pub const FORMAT_VERSION: u8 = 5;
 
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn constants_are_correct() {
-        assert_eq!(MAGIC, b"XBIN\x01");
+        assert_eq!(MAGIC, b"ERE\x01\x00");
         assert_eq!(FOOTER_MAGIC, 0xBEEF_CAFE);
         assert_eq!(FORMAT_VERSION, 5);
         assert_eq!(V2_FOOTER_SIZE, 84);

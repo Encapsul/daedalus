@@ -16,9 +16,9 @@ x.bin compiles any web, server, or CLI application into a single self-contained 
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash
-xbin doctor
-cd your-app && xbin build . -o myapp.xbin
-./myapp.xbin
+erebus doctor
+cd your-app && erebus build . -o myapp.ere
+./myapp.ere
 ```
 
 ## Overview
@@ -52,8 +52,8 @@ Each runtime has specific detection logic and framework support that triggers wh
 
 ### Target & host support
 
-`xbin build --target <list>` packages one artifact **per target**. A comma-separated
-list emits one `<name>-<target>.xbin` per target into the output directory. The
+`erebus build --target <list>` packages one artifact **per target**. A comma-separated
+list emits one `<name>-<target>.ere` per target into the output directory. The
 stubs and (where available) embedded runtimes are cross-selected by target.
 
 | `--target` short form | Resolved triple | Stub | Runtime arch | Notes |
@@ -75,24 +75,24 @@ stubs and (where available) embedded runtimes are cross-selected by target.
 
 | Command | Description |
 |---------|-------------|
-| `xbin build <dir>` | Package an app directory into a `.xbin` file |
-| `xbin inspect <file>` | Read metadata from a `.xbin` file |
-| `xbin scan [dir]` | Find `.xbin` files recursively and display metadata |
-| `xbin sign <file>` | Sign a `.xbin` with an Ed25519 private key |
-| `xbin verify <file>` | Verify the signature of a `.xbin` against trusted keys |
-| `xbin keygen` | Generate an Ed25519 keypair for signing |
-| `xbin trust <keyfile>` | Add a public key to the trusted keys directory |
-| `xbin doctor` | Check system prerequisites and report missing dependencies |
-| `xbin env` | Show xbin environment and build configuration |
-| `xbin clean` | Remove xbin cache and build artifacts |
-| `xbin completion <shell>` | Generate shell completions for bash, zsh, fish, elvish, or powershell |
-| `xbin man [dir]` | Generate man pages to the specified directory |
+| `erebus build <dir>` | Package an app directory into a `.ere` file |
+| `erebus inspect <file>` | Read metadata from a `.ere` file |
+| `erebus scan [dir]` | Find `.ere` files recursively and display metadata |
+| `erebus sign <file>` | Sign a `.ere` with an Ed25519 private key |
+| `erebus verify <file>` | Verify the signature of a `.ere` against trusted keys |
+| `erebus keygen` | Generate an Ed25519 keypair for signing |
+| `erebus trust <keyfile>` | Add a public key to the trusted keys directory |
+| `erebus doctor` | Check system prerequisites and report missing dependencies |
+| `erebus env` | Show erebus environment and build configuration |
+| `erebus clean` | Remove erebus cache and build artifacts |
+| `erebus completion <shell>` | Generate shell completions for bash, zsh, fish, elvish, or powershell |
+| `erebus man [dir]` | Generate man pages to the specified directory |
 
 ### Key features
 - **Global `--verbose`** flag for detailed output on any command
-- **`--strict`** mode on `xbin doctor` for strict validation
+- **`--strict`** mode on `erebus doctor` for strict validation
 - **`--dry-run`** flag on build, inspect, scan for preview operations
-- **`.xbin.toml`** configuration file support
+- **`.ere.toml`** configuration file support
 - **Rust-based CLI** with zero Python dependency at runtime
 
 ### Advanced build options
@@ -105,46 +105,46 @@ stubs and (where available) embedded runtimes are cross-selected by target.
 
 ```bash
 # Basic build
-xbin build ./myapp -o myapp.xbin
+erebus build ./myapp -o myapp.ere
 
 # Embed interpreter for self-contained binaries
-xbin build ./myapp --embed-interpreter python3 -o myapp.xbin
+erebus build ./myapp --embed-interpreter python3 -o myapp.ere
 
 # Multi-arch packaging: one artifact per target
-xbin build ./myapp --target linux-x64,linux-arm64 -o out/app.xbin
-#  -> out/app-linux-x64.xbin, out/app-linux-arm64.xbin
+erebus build ./myapp --target linux-x64,linux-arm64 -o out/app.ere
+#  -> out/app-linux-x64.ere, out/app-linux-arm64.ere
 
 # Cross-OS packaging: Windows artifact built on Linux/macOS
-xbin build ./myapp --target win-x64 -o out/app.xbin
+erebus build ./myapp --target win-x64 -o out/app.ere
 #  -> out/app-win-x64.exe (stubs+runtime selected for the target OS)
 
 # Cross-compilation (Bun-inspired) — metadata only, not functional yet
-xbin build ./myapp --cross-compile aarch64,arm64 -o myapp.xbin
+erebus build ./myapp --cross-compile aarch64,arm64 -o myapp.ere
 
 # Enable WASM support (Wasmer-inspired) — metadata only, not functional yet
-xbin build ./myapp --wasm --wasmtime-path /usr/bin/wasmtime -o myapp.xbin
+erebus build ./myapp --wasm --wasmtime-path /usr/bin/wasmtime -o myapp.ere
 
 # HTTP health check endpoint (Wasmer-inspired) — metadata only, not functional yet
-xbin build ./myapp --health-port 8080 --health-endpoint /health -o myapp.xbin
+erebus build ./myapp --health-port 8080 --health-endpoint /health -o myapp.ere
 
 # Intelligent build caching (Wasmer-inspired) — metadata only, not functional yet
-xbin build ./myapp --use-cache --clear-cache -o myapp.xbin
+erebus build ./myapp --use-cache --clear-cache -o myapp.ere
 
 # Sign and encrypt
-xbin keygen --key-dir ~/.xbin/keys
-xbin build ./myapp --sign --key ~/.xbin/keys/*.key -o myapp.xbin
-xbin build ./myapp --encrypt --key ~/.xbin/keys/*.key -o myapp-secure.xbin
+erebus keygen --key-dir ~/.ere/keys
+erebus build ./myapp --sign --key ~/.ere/keys/*.key -o myapp.ere
+erebus build ./myapp --encrypt --key ~/.ere/keys/*.key -o myapp-secure.ere
 
 # Self-updating binary with SISR
-xbin build ./myapp --enable-sisr --update-url https://updates.example.com -o myapp.xbin
-#  -> myapp.xbin + myapp.xbin.manifest
+erebus build ./myapp --enable-sisr --update-url https://updates.example.com -o myapp.ere
+#  -> myapp.ere + myapp.ere.manifest
 
 # Persistent storage
-xbin build ./myapp --persist -o myapp.xbin
-#  -> XBIN_PERSIST_DIR injected into app environment
+erebus build ./myapp --persist -o myapp.ere
+#  -> ERE_PERSIST_DIR injected into app environment
 
 # Environment injection
-xbin build ./myapp --env-file .env --env KEY=VALUE -o myapp.xbin
+erebus build ./myapp --env-file .env --env KEY=VALUE -o myapp.ere
 ```
 
 #### Embedded Runtime Options
@@ -170,10 +170,10 @@ Intelligent caching skips extraction when the app hash matches:
 
 ```bash
 # Use cache for faster rebuilds
-xbin build ./myapp --use-cache
+erebus build ./myapp --use-cache
 
 # Clear cache before building
-xbin build ./myapp --clear-cache
+erebus build ./myapp --clear-cache
 ```
 
 ## Support matrix
@@ -194,7 +194,7 @@ xbin build ./myapp --clear-cache
 
 ## Configuration
 
-Place a `.xbin.toml` in your app directory. CLI flags override config file values.
+Place a `.ere.toml` in your app directory. CLI flags override config file values.
 
 ```toml
 [package]
@@ -216,8 +216,8 @@ env_file = ".env"
 ### Build flags
 
 ```bash
-xbin build ./myapp \
-  --output myapp.xbin \
+erebus build ./myapp \
+  --output myapp.ere \
   --target aarch64 \
   --squashfs \
   --encrypt \
@@ -230,19 +230,19 @@ xbin build ./myapp \
 
 ```bash
 # Bash
-xbin completion bash >> ~/.bashrc
+erebus completion bash >> ~/.bashrc
 
 # Zsh
-xbin completion zsh >> ~/.zshrc
+erebus completion zsh >> ~/.zshrc
 
 # Fish
-xbin completion fish > ~/.config/fish/completions/xbin.fish
+erebus completion fish > ~/.config/fish/completions/erebus.fish
 ```
 
 ### Man pages
 
 ```bash
-xbin man /usr/local/share/man/man1/
+erebus man /usr/local/share/man/man1/
 ```
 
 ## Build from source
@@ -253,16 +253,16 @@ Requires Rust toolchain and `cargo`.
 git clone https://github.com/Tednoob17/x.bin.git
 cd x.bin
 cargo build --release
-# Binary at target/release/xbin
+# Binary at target/release/erebus
 ```
 
 ### Cargo workspace
 
 | Crate | Purpose |
 |-------|---------|
-| `xbin-core` | Shared library: format, compression, detection, signing, assembly |
+| `erebus-core` | Shared library: format, compression, detection, signing, assembly |
 | `stub` | Self-extracting launcher (Linux ELF) |
-| `xbin-cli` | CLI tool (cross-platform) |
+| `erebus-cli` | CLI tool (cross-platform) |
 
 ## Contributing
 
@@ -275,7 +275,7 @@ Run checks before submitting:
 
 ```bash
 cargo fmt --check
-cargo clippy -p xbin-core --all-targets -- -D warnings
+cargo clippy -p erebus-core --all-targets -- -D warnings
 cargo test --workspace
 ```
 

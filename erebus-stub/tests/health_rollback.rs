@@ -16,13 +16,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use ed25519_dalek::SigningKey;
-use sha2::{Digest, Sha256};
 use erebus_core::assembly::{assemble_erebus, AssemblyInput};
 use erebus_core::format::Footer;
 use erebus_core::manifest::DeltaManifest;
 use erebus_core::sisr::health::{HealthState, HealthStore};
 use erebus_core::sisr_header::read_sisr;
 use erebus_core::sisr_stage::{build_artifacts, RemoteManifest, SisrBuildConfig};
+use sha2::{Digest, Sha256};
 
 const KEY_SEED: [u8; 32] = [7u8; 32];
 const CHUNK_TARGET: usize = 64 << 10;

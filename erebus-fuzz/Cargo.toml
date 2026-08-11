@@ -1,5 +1,5 @@
 [package]
-name = "xbin-fuzz"
+name = "erebus-fuzz"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -11,7 +11,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-xbin-core = { path = "../xbin-core" }
+erebus-core = { path = "../erebus-core" }
 
 [[bin]]
 name = "sisr_manifest"

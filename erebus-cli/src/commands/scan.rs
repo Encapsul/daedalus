@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use std::path::{Path, PathBuf};
 use erebus_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64};
 use erebus_core::paths::{cache_dir, format_size};
+use std::path::{Path, PathBuf};
 
 #[derive(Args)]
 pub struct ScanArgs {

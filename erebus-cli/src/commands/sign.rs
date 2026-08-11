@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use ed25519_dalek::{Signer, SigningKey};
-use sha2::{Digest, Sha256};
-use std::path::PathBuf;
 use erebus_core::format::{Footer, FLAG_SIGNED, SIG_BLOCK_SIZE, SIG_LEN};
 use erebus_core::paths::default_key_dir;
+use sha2::{Digest, Sha256};
+use std::path::PathBuf;
 use zeroize::Zeroizing;
 
 #[derive(Args)]

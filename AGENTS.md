@@ -2,14 +2,14 @@
 
 ## Project
 
-x.bin packages any app into a single self-extracting ELF binary. Rust workspace (3 crates): `xbin-core` (library), `xbin-cli` (CLI, cross-platform), `stub` (launcher, Linux-only).
+erebus packages any app into a single self-extracting ELF binary. Rust workspace (3 crates): `erebus-core` (library), `erebus-cli` (CLI, cross-platform), `erebus-stub` (launcher, Linux-only).
 
 ## Critical gotchas
 
-- **vfat filesystem**: repo lives on vfat (no exec bit). Cargo target dir is `/tmp/xbin-stub-target` (set in `.cargo/config.toml`). Build artifacts cannot live in the repo tree.
+- **vfat filesystem**: repo lives on vfat (no exec bit). Cargo target dir is `/tmp/erebus-stub-target` (set in `.cargo/config.toml`). Build artifacts cannot live in the repo tree.
 - **PATH**: tools installed in `~/.local/bin`. Prefix with `export PATH="$HOME/.local/bin:$PATH"` when running pip-installed tools.
 - **musl target**: stub builds with `--target $(uname -m)-unknown-linux-musl` for static linking. Requires `rustup target add` and a C compiler (musl-tools on Ubuntu).
-- **CI runs clippy per-crate**, not workspace-wide: `cargo clippy -p xbin-core --all-targets -- -D warnings`, then same for `xbin-stub`, then `xbin-cli`.
+- **CI runs clippy per-crate**, not workspace-wide: `cargo clippy -p erebus-core --all-targets -- -D warnings`, then same for `erebus-stub`, then `erebus-cli`.
 
 ## Commands
 
@@ -25,7 +25,7 @@ cargo audit                                # dependency vulnerabilities (run in 
 
 ### Python (legacy CLI in `cli/`, deprecated)
 
-This directory has been removed. The Rust CLI (`xbin-cli`) is now the only CLI.
+This directory has been removed. The Rust CLI (`erebus-cli`) is now the only CLI.
 
 ```bash
 # No Python CLI to lint/test — removed
@@ -41,16 +41,16 @@ cargo test --workspace
 
 ## Architecture
 
-### Binary format (`xbin-core/src/format.rs`)
+### Binary format (`erebus-core/src/format.rs`)
 
 Layout: `[stub][payload][metadata][footer]`
-- Footer magic: `0xBEEF_CAFE`, format magic: `XBIN\x01`
+- Footer magic: `0xBEEF_CAFE`, format magic: `ERE\x01`
 - Integrity hash: `SHA-256(payload || meta_bytes)` — computed at build, verified at runtime
 - Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs)
 
 ### Stub launcher (`stub/src/main.rs`)
 
-Reads footer+metadata from `/proc/self/exe` → cache check → SHA-256 verify → extract (zstd+tar or squashfs) to `~/.cache/xbin/<hash>/rootfs/` → `execvp` entrypoint.
+Reads footer+metadata from `/proc/self/exe` → cache check → SHA-256 verify → extract (zstd+tar or squashfs) to `~/.cache/erebus/<hash>/rootfs/` → `execvp` entrypoint.
 
 Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 - Python: `["python3", "/app/app.py"]` (interpreter bare on PATH, app path absolute)
@@ -59,14 +59,14 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 
 ### Unsafe boundary
 
-- **`xbin-core` and `xbin-cli`**: zero `unsafe`. Memory safety via Rust type system.
+- **`erebus-core` and `erebus-cli`**: zero `unsafe`. Memory safety via Rust type system.
 - **`stub/src/main.rs`**: the only crate with `unsafe`. All `unsafe` blocks MUST have `SAFETY` comments. No `unsafe` outside FFI calls and `static mut`.
 
 ## Code style (high-signal)
 
 - Edition 2021, `cargo fmt` is authoritative. `max_width = 100` in `stub/rustfmt.toml`.
 - Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` — tiny binaries.
-- Clippy pedantic subset — do NOT add new `#[allow]` without a comment. See `xbin-core/Cargo.toml [lints.clippy]`.
+- Clippy pedantic subset — do NOT add new `#[allow]` without a comment. See `erebus-core/Cargo.toml [lints.clippy]`.
 - Rust functions: ≤ 30 lines. Python functions: ≤ 40 lines.
 - Functions with >7 params: use a config struct.
 - Prefer `Result::ok()` over `|e| e.ok()`. Prefer `if let Some(v)` over `match` with `None => {}`.
@@ -76,7 +76,7 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 
 - DENV-STABLE: stable toolchain only, never nightly/beta.
 - No `panic!()` in library code. Prefer `Result<T, E>`.
-- No `unwrap()`/`expect()` in `xbin-core` without context.
+- No `unwrap()`/`expect()` in `erebus-core` without context.
 - Use checked/wrapping/saturating arithmetic where overflow is possible.
 - No `mem::forget` or `.leak()` (memory leak).
 - All FFI calls MUST have safe wrappers.
@@ -86,16 +86,16 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 ## Boundaries
 
 **Always do:**
-- Rebuild after every code change: `cargo build --release` before testing xbin on an app.
+- Rebuild after every code change: `cargo build --release` before testing erebus on an app.
 - Run verification loop before committing.
-- Preserve the `.xbin` footer format (magic constants in `format.rs`).
+- Preserve the `.ere` footer format (magic constants in `format.rs`).
 - Verify any auto-fix from `cargo clippy --fix` manually (ANSSI DENV-AUTOFIX).
 
 **Never do:**
 - Commit secrets, keys, or `.env` files.
-- Change the `.xbin` binary format without updating `format.rs` version constants.
+- Change the `.ere` binary format without updating `format.rs` version constants.
 - Remove clippy allows from `Cargo.toml` without understanding why.
-- Use `unsafe` in `xbin-core` or `xbin-cli`.
+- Use `unsafe` in `erebus-core` or `erebus-cli`.
 - Override `debug-assertions` or `overflow-checks` in profiles.
 - Panic in library code or leak memory.
 
@@ -107,9 +107,9 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 ## Testing
 
 - Unit tests: `#[cfg(test)] mod tests` in each module.
-- Integration tests: `xbin-cli/tests/` use `assert_cmd`.
+- Integration tests: `erebus-cli/tests/` use `assert_cmd`.
 - `cargo test --workspace` for all Rust tests.
-- `xbin-cli` depends on `reqwest` (blocking, `rustls-tls` feature) — no OpenSSL dependency.
+- `erebus-cli` depends on `reqwest` (blocking, `rustls-tls` feature) — no OpenSSL dependency.
 
 ## Git conventions
 

@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use ed25519_dalek::SigningKey;
+use erebus_core::paths::default_key_dir;
 use rand::rngs::OsRng;
 use std::path::PathBuf;
-use erebus_core::paths::default_key_dir;
 use zeroize::Zeroize;
 
 #[derive(Args)]

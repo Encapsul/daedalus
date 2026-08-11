@@ -17,13 +17,13 @@ C'est un **format d'artefact exécutable universel**, capable de transporter :
 
 ## État actuel
 
-✅ CAS (`xbin-core/src/cas.rs`)  
-✅ Format binaire (`xbin-core/src/format.rs`)  
-✅ Metadata riche (`xbin-core/src/metadata.rs`)  
+✅ CAS (`erebus-core/src/cas.rs`)  
+✅ Format binaire (`erebus-core/src/format.rs`)  
+✅ Metadata riche (`erebus-core/src/metadata.rs`)  
 ✅ Signature Ed25519 (`stub/src/crypto.rs`)  
 ✅ Stub runtime (`stub/src/main.rs`)  
-✅ CLI (`xbin-cli/`)  
-✅ SISR/delta updates (`xbin-core/src/sisr/`)
+✅ CLI (`erebus-cli/`)  
+✅ SISR/delta updates (`erebus-core/src/sisr/`)
 
 ---
 
@@ -33,10 +33,10 @@ C'est un **format d'artefact exécutable universel**, capable de transporter :
 
 **Objectif** : Transformer le runtime en couche composable.
 
-1. **Créer `trait Layer`** dans `xbin-core`
+1. **Créer `trait Layer`** dans `erebus-core`
    - méthodes : `name()`, `kind()`, `payload_sha256()`
 
-2. **Créer `trait Entrypoint`** dans `xbin-core`
+2. **Créer `trait Entrypoint`** dans `erebus-core`
    - méthode : `execute(&self, ctx: &Context) -> io::Result<()>`
 
 3. **Refactoriser `detect.rs`** pour exposer un `Entrypoint` par runtime supporté (Python, Node, Go, WASM, etc.)
@@ -51,7 +51,7 @@ C'est un **format d'artefact exécutable universel**, capable de transporter :
    - `Vec<Layer>` (au lieu de `runtime`, `entrypoint`, `services` en dur)
    - `Entrypoint` (le point d'entrée principal)
 
-2. **Faire de `assemble_xbin`** → builder générique de graphe de layers
+2. **Faire de `assemble_erebus`** → builder générique de graphe de layers
 
 3. **Mettre à jour `stub`** pour parcourir les layers dynamiquement
 
@@ -61,14 +61,14 @@ C'est un **format d'artefact exécutable universel**, capable de transporter :
 
 **Objectif** : Publier/charger des layers/artefacts via un registre.
 
-1. **Implémenter `Registry`** dans `xbin-core`
+1. **Implémenter `Registry`** dans `erebus-core`
    - `pub fn push_layer(&self, layer: &Layer) -> Result<()>`
    - `pub fn pull_layer(&self, hash: &str) -> Result<Layer>`
    - `pub fn publish_artifact(&self, artifact: &Artifact) -> Result<String>`
 
-2. **Serveur registry simple** (actuel, ou intégrer à `xbin-cli`)
+2. **Serveur registry simple** (actuel, ou intégrer à `erebus-cli`)
 
-3. **CLI `xbin registry push/pull/list`**
+3. **CLI `erebus registry push/pull/list`**
 
 ---
 
@@ -100,7 +100,7 @@ C'est un **format d'artefact exécutable universel**, capable de transporter :
 
 2. **Exemples concrets dans `examples/`**
 
-3. **Docs migration AppImage → xbin agents**
+3. **Docs migration AppImage → erebus agents**
 
 ---
 
