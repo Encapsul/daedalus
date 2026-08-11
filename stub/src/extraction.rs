@@ -16,6 +16,37 @@ const MAX_DECOMPRESSED_BYTES: u64 = 1024 * 1024 * 1024;
 /// Maximum number of files in a single tar archive.
 const MAX_FILES: usize = 50_000;
 
+/// Whether a cached extraction can be trusted as-is.
+///
+/// The warm path skips signature/integrity verification and execs whatever
+/// lives at `cache_root/rootfs`; that is only sound if the cache directory is
+/// owned by the current user and not group/other-writable (a wrong owner or a
+/// 0o777 dir means someone else could have planted the rootfs). On non-Unix
+/// platforms there is no permission model to inspect, so we trust the cache.
+#[cfg(unix)]
+pub fn cache_root_trustworthy(cache_root: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    let Ok(meta) = fs::metadata(cache_root) else {
+        return false;
+    };
+    // SAFETY: geteuid(2) cannot fail and has no invalid inputs; the effective
+    // uid identifies who the kernel would credit as owner of a file we create.
+    let euid = unsafe { libc::geteuid() };
+    if !meta.is_dir() || meta.uid() != euid {
+        return false;
+    }
+    // Group/other-write bits would let any co-resident user replace the
+    // extracted rootfs with their own code, so treat such a cache as absent.
+    meta.mode() & 0o022 == 0
+}
+
+/// Non-Unix platforms have no permission model to inspect — trust the cache.
+#[cfg(not(unix))]
+pub fn cache_root_trustworthy(_cache_root: &Path) -> bool {
+    true
+}
+
 /// Extract zstd-compressed tar blobs atomically into `cache_root/rootfs`.
 pub fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
     atomic_extract(cache_root, |tmp_rootfs| {
@@ -85,6 +116,15 @@ pub fn atomic_extract(
 
     extract_fn(&tmp_rootfs)?;
 
+    // A freshly extracted cache is private to the invoking user regardless of
+    // umask; otherwise a lax umask would produce a group/other-writable cache
+    // that `cache_root_trustworthy` then rejects on every warm start.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o700))?;
+    }
+
     File::create(tmp.join(".ready"))?.write_all(b"1")?;
 
     // The marker lives at cache_root/.ready (the tmp dir becomes cache_root
@@ -95,7 +135,9 @@ pub fn atomic_extract(
         Err(e) => {
             // A valid .ready marker means a concurrent/successful extraction
             // already completed — surface the error but don't block the run.
-            if marker.exists() {
+            // The marker only legitimizes the cache when the directory is
+            // owned by us with sane perms; a foreign cache is wiped instead.
+            if marker.exists() && cache_root_trustworthy(cache_root) {
                 let _ = fs::remove_dir_all(&tmp);
                 eprintln!("[xbin] warning: cache rename failed but existing cache is valid: {e}");
                 Ok(())
@@ -153,15 +195,45 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn valid_marker_survives_rename_failure() {
+        use std::os::unix::fs::PermissionsExt;
+
         let dir = TempDir::new().unwrap();
         let cache_root = dir.path().join("hash");
         fs::create_dir_all(cache_root.join("rootfs")).unwrap();
         fs::write(cache_root.join("rootfs/old"), b"previous").unwrap();
         fs::write(cache_root.join(".ready"), b"1").unwrap();
+        // The marker only legitimizes a cache the current user owns with sane
+        // perms; pin 0o755 so the test does not depend on the shell's umask.
+        fs::set_permissions(&cache_root, fs::Permissions::from_mode(0o755)).unwrap();
 
         atomic_extract(&cache_root, write_app).unwrap();
 
         assert!(cache_root.join("rootfs/old").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn trustworthy_cache_requires_private_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        let cache_root = dir.path().join("hash");
+        fs::create_dir_all(&cache_root).unwrap();
+
+        fs::set_permissions(&cache_root, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            cache_root_trustworthy(&cache_root),
+            "a user-owned, group/other-read-only dir is trustworthy"
+        );
+
+        fs::set_permissions(&cache_root, fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(
+            !cache_root_trustworthy(&cache_root),
+            "a group/other-writable dir must be rejected"
+        );
+
+        assert!(!cache_root_trustworthy(&dir.path().join("absent")));
     }
 }

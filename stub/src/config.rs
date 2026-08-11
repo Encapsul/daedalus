@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::{self, BufRead, IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[allow(dead_code)]
@@ -44,6 +44,7 @@ impl AppConfig {
         // 1. Load from CLI arguments (handled by main.rs)
         // 2. Load from local config file
         if let Some(local_config) = Self::find_local_config() {
+            Self::warn_if_unsafe_config(&local_config, "local");
             if let Ok(cfg) = Self::load_from_file(&local_config) {
                 config.merge(cfg);
             }
@@ -51,6 +52,7 @@ impl AppConfig {
 
         // 3. Load from global config
         if let Some(global_config) = Self::find_global_config() {
+            Self::warn_if_unsafe_config(&global_config, "global");
             if let Ok(cfg) = Self::load_from_file(&global_config) {
                 config.merge(cfg);
             }
@@ -96,6 +98,37 @@ impl AppConfig {
         let config: Self =
             toml::from_str(&contents).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         Ok(config)
+    }
+
+    /// The generic `config.toml` name can pick up unrelated files and a
+    /// group/other-writable config in a shared install dir can inject secrets
+    /// into every user of the binary. Returns a human-readable reason when the
+    /// file is unsafe to trust, `None` when it is fine.
+    fn config_file_perilous(path: &Path) -> Option<&'static str> {
+        if path.file_name().and_then(|n| n.to_str()) == Some("config.toml") {
+            return Some(
+                "generic `config.toml` name may pick up unrelated files; prefer `xbin.toml`",
+            );
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if let Ok(meta) = fs::metadata(path) {
+                if meta.mode() & 0o022 != 0 {
+                    return Some("file is group/other-writable — any co-resident user could modify the secrets it injects");
+                }
+            }
+        }
+        None
+    }
+
+    fn warn_if_unsafe_config(path: &Path, role: &str) {
+        if let Some(reason) = Self::config_file_perilous(path) {
+            eprintln!(
+                "[xbin] warning: {role} config {} is untrusted: {reason}",
+                path.display()
+            );
+        }
     }
 
     fn merge(&mut self, other: Self) {
@@ -397,5 +430,40 @@ db_password = "secret"
             Some("postgres://localhost/test".to_string())
         );
         assert_eq!(config.get_secret("api_key"), Some(&"test123".to_string()));
+    }
+
+    #[test]
+    fn generic_config_name_is_perilous() {
+        #[cfg(unix)]
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let generic = dir.path().join("config.toml");
+        fs::write(&generic, "[secrets]\n").unwrap();
+        let specific = dir.path().join("xbin.toml");
+        fs::write(&specific, "[secrets]\n").unwrap();
+        #[cfg(unix)]
+        for path in [&generic, &specific] {
+            fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
+        }
+
+        assert!(AppConfig::config_file_perilous(&generic).is_some());
+        assert!(AppConfig::config_file_perilous(&specific).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn world_writable_config_is_perilous() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("xbin.toml");
+        fs::write(&path, "[secrets]\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
+
+        assert!(AppConfig::config_file_perilous(&path).is_some());
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(AppConfig::config_file_perilous(&path).is_none());
     }
 }

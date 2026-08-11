@@ -11,6 +11,7 @@ use std::path::Path;
 
 use crate::format::{self, Footer, CRYPTO_AES_256_GCM};
 use crate::metadata::BunFeatures;
+use crate::sisr::swap::AtomicWriter;
 use crate::sisr_header::{SisrFooterExt, SISR_VERSION};
 use crate::sisr_stage::{self, RemoteManifest, SisrBuildConfig};
 
@@ -271,31 +272,45 @@ pub fn assemble_xbin_with_sisr_artifacts(
         sig_offset: 0,
     };
 
-    let mut f = fs::File::create(out_path)?;
-    f.write_all(stub_bytes)?;
-    f.write_all(payload)?;
-    f.write_all(meta_bytes)?;
-    if let Some((artifacts, ext)) = sisr_artifacts.as_ref().zip(ext.as_ref()) {
-        f.write_all(&artifacts.manifest_bytes)?;
-        f.write_all(&ext.pack())?;
+    // Write to a temp file in the same directory, fsync, then rename over the
+    // output. Writing in place kept the destination open for write until the
+    // handle dropped — racing an immediate exec (`ETXTBSY` in CI) and leaving
+    // a half-written binary at the output path on a mid-write crash.
+    let parent = out_path.parent().unwrap_or_else(|| Path::new("."));
+    let tag = out_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("xbin");
+    let mut w = AtomicWriter::new(parent, tag)?;
+    {
+        let f = w.file_mut();
+        f.write_all(stub_bytes)?;
+        f.write_all(payload)?;
+        f.write_all(meta_bytes)?;
+        if let Some((artifacts, ext)) = sisr_artifacts.as_ref().zip(ext.as_ref()) {
+            f.write_all(&artifacts.manifest_bytes)?;
+            f.write_all(&ext.pack())?;
+        }
+        // v3+ files store the 8-byte `sig_offset` prefix before the core footer
+        // (92 bytes total, see `Footer::pack_full`); writing the bare 84-byte
+        // `pack()` here made the reader misparse the last 8 metadata bytes as a
+        // phantom `sig_offset`, failing the stub's signature-state check.
+        if footer.format_version >= 3 {
+            f.write_all(&footer.pack_full())?;
+        } else {
+            f.write_all(&footer.pack())?;
+        }
     }
-    // v3+ files store the 8-byte `sig_offset` prefix before the core footer
-    // (92 bytes total, see `Footer::pack_full`); writing the bare 84-byte
-    // `pack()` here made the reader misparse the last 8 metadata bytes as a
-    // phantom `sig_offset`, failing the stub's signature-state check.
-    if footer.format_version >= 3 {
-        f.write_all(&footer.pack_full())?;
-    } else {
-        f.write_all(&footer.pack())?;
-    }
-    f.flush()?;
 
-    // Set executable permission
+    // Set the executable bit on the temp before the atomic rename so a
+    // concurrent exec observes the final mode (mode survives rename(2)).
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(out_path, fs::Permissions::from_mode(0o755))?;
+        fs::set_permissions(w.temp_path(), fs::Permissions::from_mode(0o755))?;
     }
+
+    w.commit(out_path)?;
 
     if let Some((artifacts, _)) = sisr_artifacts.as_ref().zip(ext.as_ref()) {
         let remote = RemoteManifest {
