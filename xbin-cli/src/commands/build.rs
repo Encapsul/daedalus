@@ -2373,6 +2373,27 @@ mod tests {
     }
 
     #[test]
+    fn include_points_to_env_matches_only_explicit_env() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join(".env"), "SECRET=1").unwrap();
+        assert!(!include_points_to_env(dir.path(), &[]));
+        assert!(include_points_to_env(
+            dir.path(),
+            &[dir.path().join(".env")]
+        ));
+        // `sub/../.env` canonicalizes to `.env` once the intermediate dir exists.
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        assert!(include_points_to_env(
+            dir.path(),
+            &[dir.path().join("sub").join("../.env")]
+        ));
+        assert!(!include_points_to_env(
+            dir.path(),
+            &[dir.path().join("sub").join("xbin.toml")]
+        ));
+    }
+
+    #[test]
     fn find_stub_default_is_x86_64() {
         let result = find_stub(&None);
         assert!(result.is_err() || result.is_ok(), "should not panic");

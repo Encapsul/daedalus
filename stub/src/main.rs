@@ -231,8 +231,11 @@ fn run() -> io::Result<()> {
     let rootfs = cache_root.join("rootfs");
     let ready_marker = cache_root.join(".ready");
 
-    if ready_marker.exists() {
-        // Warm path: cache exists, skip payload read entirely.
+    if ready_marker.exists() && extraction::cache_root_trustworthy(&cache_root) {
+        // Warm path: cache exists, skip payload read entirely. The cache is
+        // only trusted after `cache_root_trustworthy` (right owner, sane
+        // perms) — a foreign/writable cache falls through to a fresh
+        // extraction instead of executing unverified bytes.
         if verbose {
             eprintln!("[xbin] warm start: cache hit {}", hash);
         }
