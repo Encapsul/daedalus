@@ -831,33 +831,49 @@ pub fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Resul
         // filled by the kernel. We only read it after a successful return.
         let pid = unsafe { libc::waitpid(-1, &mut status, 0) };
         if pid < 0 {
+            // ECHILD with services still tracked means the children were
+            // reaped elsewhere (or never spawned) — report it instead of
+            // silently "succeeding" while services are gone. Any other
+            // error just stops the wait loop.
+            let err = io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::ECHILD) && remaining > 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("all children gone but {remaining} tracked service(s) not reaped"),
+                ));
+            }
             break;
         }
+
+        // waitpid(-1, ...) also reaps spurious children (grandchildren,
+        // helpers). Only a pid we actually supervise may decrement the
+        // tracked count, or the loop would exit early with services alive.
+        let Some((name, _)) = children.iter().find(|(_, p)| *p == pid) else {
+            continue;
+        };
         remaining -= 1;
 
-        if let Some((name, _)) = children.iter().find(|(_, p)| *p == pid) {
-            if libc::WIFEXITED(status) {
-                let code = libc::WEXITSTATUS(status);
-                if verbose {
-                    eprintln!("[xbin] service '{}' exited with code {}", name, code);
-                }
-                if code != 0 && exit_code == 0 {
-                    exit_code = code;
-                }
-            } else if libc::WIFSIGNALED(status) {
-                let sig = libc::WTERMSIG(status);
-                eprintln!("[xbin] service '{}' killed by signal {}", name, sig);
-                if exit_code == 0 {
-                    exit_code = 128 + sig;
-                }
-                // One service died: kill the rest.
-                for (_, cp) in children {
-                    if *cp != pid {
-                        // SAFETY: kill(2) sends a signal to a process we own
-                        // (forked from us). SIGTERM is a graceful shutdown.
-                        unsafe {
-                            libc::kill(*cp, libc::SIGTERM);
-                        }
+        if libc::WIFEXITED(status) {
+            let code = libc::WEXITSTATUS(status);
+            if verbose {
+                eprintln!("[xbin] service '{}' exited with code {}", name, code);
+            }
+            if code != 0 && exit_code == 0 {
+                exit_code = code;
+            }
+        } else if libc::WIFSIGNALED(status) {
+            let sig = libc::WTERMSIG(status);
+            eprintln!("[xbin] service '{}' killed by signal {}", name, sig);
+            if exit_code == 0 {
+                exit_code = 128 + sig;
+            }
+            // One service died: kill the rest.
+            for (_, cp) in children {
+                if *cp != pid {
+                    // SAFETY: kill(2) sends a signal to a process we own
+                    // (forked from us). SIGTERM is a graceful shutdown.
+                    unsafe {
+                        libc::kill(*cp, libc::SIGTERM);
                     }
                 }
             }
@@ -994,5 +1010,48 @@ mod tests {
         )
         .unwrap();
         assert_eq!(detect_web_port(tmp.path(), "node"), Some(3000));
+    }
+
+    #[test]
+    fn wait_for_children_ignores_spurious_and_waits_for_tracked() {
+        // SAFETY: fork(2) duplicates the test process; the children only call
+        // _exit(0), which is async-signal-safe and safe after forking a
+        // multithreaded process.
+        let spurious = unsafe { libc::fork() };
+        assert!(spurious >= 0, "fork failed");
+        if spurious == 0 {
+            unsafe { libc::_exit(0) };
+        }
+
+        let tracked = unsafe { libc::fork() };
+        assert!(tracked >= 0, "fork failed");
+        if tracked == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            unsafe { libc::_exit(0) };
+        }
+
+        let start = std::time::Instant::now();
+        wait_for_children(&[("tracked".to_string(), tracked)], false).unwrap();
+
+        // Reaping the spurious child must not advance the tracked count: the
+        // call only returns once the tracked service has actually exited.
+        assert!(
+            start.elapsed() >= std::time::Duration::from_millis(250),
+            "returned before the tracked service exited"
+        );
+    }
+
+    #[test]
+    fn wait_for_children_ok_when_tracked_exits_zero() {
+        // SAFETY: fork(2) duplicates the test process; the child only calls
+        // _exit(0), which is async-signal-safe and safe after forking a
+        // multithreaded process.
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+        if pid == 0 {
+            unsafe { libc::_exit(0) };
+        }
+
+        wait_for_children(&[("ok".to_string(), pid)], false).unwrap();
     }
 }
