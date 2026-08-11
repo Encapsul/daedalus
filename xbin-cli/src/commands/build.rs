@@ -567,6 +567,18 @@ fn build_single_target(
     let license = plan.license.clone();
     let env_file = plan.env_file.clone();
 
+    // ── Reject the broken encrypt+SISR combination ─────────────────────
+    // The stub's chunked-decrypt path requires per-layer sizes from
+    // `meta.layers`, but the CLI always assembles with an empty layer list —
+    // the produced binary would carry a chunk-encrypted payload that the
+    // stub can only attempt to decrypt as one GCM blob, failing at runtime.
+    if encrypt && args.enable_sisr {
+        anyhow::bail!(
+            "--encrypt and --enable-sisr cannot be combined: chunk-encrypted SISR \
+             binaries are not decryptable by the current stub — use one or the other"
+        );
+    }
+
     // ── Compute hashes for incremental update ──────────────────────────
     // Hashed BEFORE tree-shake/minify run: those mutate a staging copy
     // below, and the cache/`--update` keys must reflect the pristine
