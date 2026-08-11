@@ -33,6 +33,8 @@ use std::fs::{self, File};
 use std::io::{self, Read, Seek};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
+#[cfg(unix)]
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use xbin_core::detect;
@@ -1011,13 +1013,47 @@ fn cache_dir() -> io::Result<PathBuf> {
 /// The extraction cache lives under `cache_dir()/{hash}/rootfs/`. Each entry
 /// has a `.ready` marker whose mtime is updated on every warm hit, giving a
 /// cheap LRU signal without extra metadata files.
+/// Advisory cross-process lock for cache GC, taken non-blocking so a GC that
+/// finds another GC in progress simply skips this run. `flock` is released by
+/// the kernel when the process exits (even a crash), so no stale-lock cleanup
+/// is needed.
+struct GcLock {
+    /// Held for its lifetime: keeping the fd open is what holds the flock.
+    _file: File,
+}
+
+impl GcLock {
+    fn acquire(base: &Path) -> io::Result<Option<GcLock>> {
+        fs::create_dir_all(base)?;
+        let file = fs::File::create(base.join(".gc.lock"))?;
+        #[cfg(unix)]
+        {
+            // SAFETY: flock(2) is advisory and the fd is valid + owned. LOCK_NB
+            // makes the call fail with EWOULDBLOCK if another process holds it.
+            let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+            if rc != 0 {
+                return Ok(None);
+            }
+        }
+        Ok(Some(GcLock { _file: file }))
+    }
+}
+
+/// Evict the oldest completed extraction caches beyond `max_entries`.
+///
+/// Serialized across processes via `GcLock`. Only entries carrying a `.ready`
+/// marker are eviction candidates: a concurrent extraction has no marker yet,
+/// so it can never be picked as "oldest" and deleted mid-extract.
 fn gc_extraction_cache(max_entries: usize) -> io::Result<()> {
     let base = cache_dir()?;
+    if GcLock::acquire(&base)?.is_none() {
+        return Ok(());
+    }
     let mut entries: Vec<_> = match fs::read_dir(&base) {
         Ok(iter) => iter.filter_map(Result::ok).collect(),
         Err(_) => return Ok(()),
     };
-    entries.retain(|e| e.path().is_dir() && e.path().join("rootfs").is_dir());
+    entries.retain(|e| e.path().join(".ready").is_file());
     if entries.len() <= max_entries {
         return Ok(());
     }
@@ -1181,6 +1217,39 @@ mod tests {
         std::env::set_var("XBIN_HTTP_TIMEOUT_TEST", "garbage");
         assert_eq!(env_timeout_ms("XBIN_HTTP_TIMEOUT_TEST", 10_000), 10_000);
         std::env::remove_var("XBIN_HTTP_TIMEOUT_TEST");
+    }
+
+    #[test]
+    fn gc_extraction_cache_never_evicts_in_progress_extraction() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", tmp.path());
+        // Two completed caches (with .ready) and one in-progress extraction
+        // (rootfs present, no .ready marker yet).
+        for name in ["aaa", "bbb", "ccc"] {
+            let root = tmp.path().join("xbin").join(name);
+            fs::create_dir_all(root.join("rootfs")).unwrap();
+        }
+        fs::write(tmp.path().join("xbin/aaa/.ready"), b"").unwrap();
+        fs::write(tmp.path().join("xbin/bbb/.ready"), b"").unwrap();
+
+        gc_extraction_cache(1).unwrap();
+
+        let survivors: Vec<String> = fs::read_dir(tmp.path().join("xbin"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n != ".gc.lock")
+            .collect();
+        assert_eq!(
+            survivors.len(),
+            2,
+            "only one completed cache may be evicted"
+        );
+        assert!(
+            survivors.contains(&"ccc".to_string()),
+            "in-progress extraction 'ccc' must never be evicted"
+        );
+        std::env::remove_var("XDG_CACHE_HOME");
     }
 
     /// Builds a v2 layout `[stub][payload][meta][tail][84-byte footer]` for
