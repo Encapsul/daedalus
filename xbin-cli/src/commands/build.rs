@@ -1371,6 +1371,13 @@ fn build_single_target(
         size as f64 / (1024.0 * 1024.0)
     );
 
+    if args.enable_sisr {
+        eprintln!(
+            "warning: SISR binaries are NOT signed at rest — authenticity is only guaranteed \
+             during an update, when the remote manifest signature is verified"
+        );
+    }
+
     // macOS code signing: re-sign the assembled binary since appending
     // payload + metadata invalidates any existing Mach-O signature.
     if target

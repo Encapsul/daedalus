@@ -135,6 +135,18 @@ impl SisrEngine {
 
     /// Like [`Self::apply_update`], but also returns reuse/fetch statistics
     /// (used to verify the bandwidth-reduction property in tests).
+    ///
+    /// # Authenticity at rest
+    ///
+    /// The rebuilt binary is NOT signed: the update engine has no signing key
+    /// (keys live at the build site), so the output footer clears
+    /// `FLAG_SIGNED` and `sig_offset` is 0. An applied SISR update is only
+    /// authenticated by the signed remote manifest verified during the update
+    /// flow; once written, the binary has no at-rest authenticity. This is a
+    /// documented limitation (roadmap #45) — the long-term fix is a signature
+    /// chain signing `SHA256(new_footer_hash ‖ parent_footer_hash)` so the
+    /// stub can verify applied updates offline. Callers must not treat an
+    /// updated SISR binary as a signed artifact.
     pub fn apply_update_with_stats(
         &self,
         current_bin: &Path,
