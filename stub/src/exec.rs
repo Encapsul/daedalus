@@ -372,6 +372,38 @@ pub fn check_executable(path: &str) -> bool {
 // Single-service exec
 // ---------------------------------------------------------------------------
 
+/// Enters the `pivot_root` isolation and installs the requested sandboxes.
+///
+/// Landlock rules anchor to the rootfs inode, so the `O_PATH` fd is opened
+/// BEFORE `pivot_root` replaces the mount tree — afterwards the original
+/// rootfs path would no longer resolve and the rule could not be added.
+/// Landlock failures are fatal (fail-closed): the filesystem sandbox is the
+/// last line of defense of the isolation level, and running the app without
+/// it would silently defeat the requested `--landlock` guarantee.
+#[cfg(target_os = "linux")]
+fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
+    let root_guard = if meta.landlock {
+        Some(crate::landlock::RootfsGuard::open(rootfs)?)
+    } else {
+        None
+    };
+    crate::pivot_root_into(rootfs)?;
+    if meta.seccomp {
+        if let Err(e) = crate::seccomp::install_seccomp_denylist() {
+            eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+        }
+    }
+    if let Some(root) = root_guard {
+        crate::landlock::sandbox(&root).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("landlock unavailable, refusing to run without filesystem sandbox: {e}"),
+            )
+        })?;
+    }
+    Ok(())
+}
+
 /// Launch the app entrypoint. Blocks until the app exits (or never returns on
 /// successful execvp).
 pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::Result<()> {
@@ -399,21 +431,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
     enter_namespace_if_needed(meta.isolation)?;
     #[cfg(target_os = "linux")]
     if use_pivot {
-        crate::pivot_root_into(rootfs)?;
-        if meta.seccomp {
-            if let Err(e) = crate::seccomp::install_seccomp_denylist() {
-                eprintln!(
-                    "[xbin] warning: seccomp not available, running without syscall filter: {e}"
-                );
-            }
-        }
-        if meta.landlock {
-            if let Err(e) = crate::landlock::sandbox(rootfs) {
-                eprintln!(
-                    "[xbin] warning: landlock not available, running without filesystem sandbox: {e}"
-                );
-            }
-        }
+        enter_pivot_sandbox(rootfs, meta)?;
     }
 
     #[cfg(target_os = "macos")]
@@ -642,21 +660,7 @@ pub fn supervise_services(
     enter_namespace_if_needed(meta.isolation)?;
     #[cfg(target_os = "linux")]
     if use_pivot {
-        crate::pivot_root_into(rootfs)?;
-        if meta.seccomp {
-            if let Err(e) = crate::seccomp::install_seccomp_denylist() {
-                eprintln!(
-                    "[xbin] warning: seccomp not available, running without syscall filter: {e}"
-                );
-            }
-        }
-        if meta.landlock {
-            if let Err(e) = crate::landlock::sandbox(rootfs) {
-                eprintln!(
-                    "[xbin] warning: landlock not available, running without filesystem sandbox: {e}"
-                );
-            }
-        }
+        enter_pivot_sandbox(rootfs, meta)?;
     }
 
     #[cfg(target_os = "macos")]
