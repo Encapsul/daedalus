@@ -6,7 +6,7 @@
 //! ```text
 //! 1. build app_v1.xbin (SISR enabled)
 //! 2. start a mock HTTP server serving the v1 → v2 delta (XBMR + chunks)
-//! 3. run ./app_v1.xbin --xbin-update http://127.0.0.1:<port>
+//! 3. run ./app_v1.xbin --xbin-update=http://127.0.0.1:<port>
 //! 4. assert app_v1.xbin became v2 and produces v2's output
 //! ```
 
@@ -242,11 +242,10 @@ pub fn env(v1: &str, v2: &str) -> TestEnv {
     }
 }
 
-/// Runs `./app.xbin --xbin-update <base>` in the isolated environment.
+/// Runs `./app.xbin --xbin-update=<base>` in the isolated environment.
 pub fn run_update(env: &TestEnv) -> Output {
     Command::new(&env.app)
-        .arg("--xbin-update")
-        .arg(&env.base_url)
+        .arg(format!("--xbin-update={}", env.base_url))
         .env("XBIN_TRUSTED_DIR", env.work.join("trusted"))
         .env("XDG_CACHE_HOME", env.work.join("cache"))
         .env("XDG_DATA_HOME", env.work.join("data"))

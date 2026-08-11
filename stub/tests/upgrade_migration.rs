@@ -102,8 +102,7 @@ fn upgraded_binary_gains_auto_update() {
     }
 
     let out = Command::new(&upgraded)
-        .arg("--xbin-update")
-        .arg(&base_url)
+        .arg(format!("--xbin-update={base_url}"))
         .envs(isolated_env(&work))
         .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
         .output()
