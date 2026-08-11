@@ -961,9 +961,9 @@ fn build_single_target(
         eprintln!("  (interpreter embedding skipped)");
     }
 
-    // Clean up downloaded build tools (node/npm, composer.phar in /tmp)
-    // Done *after* embedding so the interpreter is still available for copying.
-    let _ = std::fs::remove_dir_all("/tmp/xbin-build-tools");
+    // Clean up downloaded build tools (node/npm, composer.phar). Only the
+    // tool's own cache dir is removed — never a shared `/tmp` path, which
+    // another user/process may own or have symlinked (roadmap #36).
     let _ = std::fs::remove_dir_all(cache_dir().join("build-tools"));
 
     // Build the payload: zstd(tar) by default, or a real SquashFS image
