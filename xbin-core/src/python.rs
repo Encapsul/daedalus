@@ -386,12 +386,15 @@ fn py_assemble_xbin(
 ) -> PyResult<u64> {
     let size = assembly::assemble_xbin(
         Path::new(out_path),
-        stub_bytes,
-        payload,
-        meta_bytes,
-        encrypt,
-        squashfs,
-        target_arch,
+        &assembly::AssemblyInput {
+            stub_bytes,
+            payload,
+            meta_bytes,
+            encrypt,
+            squashfs,
+            target_arch,
+            sisr: None,
+        },
     )
     .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
     Ok(size)

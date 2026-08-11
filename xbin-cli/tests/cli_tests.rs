@@ -147,7 +147,7 @@ fn test_build_dry_run_does_not_enable_sisr_by_default() {
 #[test]
 fn test_upgrade_binary_converts_legacy_file() {
     use std::io::Cursor;
-    use xbin_core::assembly::assemble_xbin;
+    use xbin_core::assembly::{assemble_xbin, AssemblyInput};
     use xbin_core::format::Footer;
     use xbin_core::sisr_header::read_sisr;
 
@@ -155,12 +155,15 @@ fn test_upgrade_binary_converts_legacy_file() {
     let input = dir.path().join("legacy.xbin");
     assemble_xbin(
         &input,
-        b"STUB_DATA",
-        b"PAYLOAD_PAYLOAD_PAYLOAD_PAYLOAD",
-        br#"{"name":"legacy"}"#,
-        false,
-        false,
-        None,
+        &AssemblyInput {
+            stub_bytes: b"STUB_DATA",
+            payload: b"PAYLOAD_PAYLOAD_PAYLOAD_PAYLOAD",
+            meta_bytes: br#"{"name":"legacy"}"#,
+            encrypt: false,
+            squashfs: false,
+            target_arch: None,
+            sisr: None,
+        },
     )
     .unwrap();
 
@@ -244,7 +247,19 @@ fn test_inspect_reports_encrypted_v4() {
     .unwrap();
 
     // 3. Assemble as v4 encrypted; integrity hash + footer cover the ciphertext.
-    assemble_xbin(&out, stub, &ciphertext, &meta, true, false, None).unwrap();
+    assemble_xbin(
+        &out,
+        &xbin_core::assembly::AssemblyInput {
+            stub_bytes: stub,
+            payload: &ciphertext,
+            meta_bytes: &meta,
+            encrypt: true,
+            squashfs: false,
+            target_arch: None,
+            sisr: None,
+        },
+    )
+    .unwrap();
 
     // 4. `xbin inspect` must report encrypted=true + v4, and echo the crypto meta.
     xbin()

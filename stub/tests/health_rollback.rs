@@ -17,7 +17,7 @@ use std::process::{Command, Output};
 
 use ed25519_dalek::SigningKey;
 use sha2::{Digest, Sha256};
-use xbin_core::assembly::assemble_xbin_with_sisr;
+use xbin_core::assembly::{assemble_xbin, AssemblyInput};
 use xbin_core::format::Footer;
 use xbin_core::manifest::DeltaManifest;
 use xbin_core::sisr::health::{HealthState, HealthStore};
@@ -81,16 +81,21 @@ fn build_xbin(work: &Path, stub: &Path, body: &str) {
         chunk_target_size: CHUNK_TARGET,
         signing_key: Some(key()),
     };
+    let stub_bytes = fs::read(stub).unwrap();
+    let body_bytes = payload(body);
+    let artifacts = build_artifacts(&body_bytes, &config).unwrap();
     let out = work.join("app.xbin");
-    assemble_xbin_with_sisr(
+    assemble_xbin(
         &out,
-        &fs::read(stub).unwrap(),
-        &payload(body),
-        meta(),
-        false,
-        false,
-        None,
-        &config,
+        &AssemblyInput {
+            stub_bytes: &stub_bytes,
+            payload: &body_bytes,
+            meta_bytes: meta(),
+            encrypt: false,
+            squashfs: false,
+            target_arch: None,
+            sisr: Some(artifacts),
+        },
     )
     .unwrap();
 }

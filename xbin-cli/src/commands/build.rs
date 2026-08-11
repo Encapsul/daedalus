@@ -1424,42 +1424,33 @@ fn build_single_target(
 
     let size = if args.enable_sisr {
         let sisr_config = build_sisr_config(&args.key)?;
-        if let Some(artifacts) = sisr_artifacts_opt {
-            xbin_core::assembly::assemble_xbin_with_sisr_artifacts(
-                output,
-                &stub_bytes,
-                &payload,
-                &meta,
-                encrypt,
-                squashfs,
-                target.as_deref(),
-                Some(artifacts),
-            )
-            .context("failed to assemble xbin (SISR+encrypt)")?
-        } else {
-            xbin_core::assembly::assemble_xbin_with_sisr(
-                output,
-                &stub_bytes,
-                &payload,
-                &meta,
-                encrypt,
-                squashfs,
-                target.as_deref(),
-                &sisr_config,
-            )
-            .context("failed to assemble xbin (SISR)")?
-        }
-    } else {
-        xbin_core::assembly::assemble_xbin(
-            output,
-            &stub_bytes,
-            &payload,
-            &meta,
+        let artifacts = match sisr_artifacts_opt {
+            Some(a) => a,
+            None => xbin_core::sisr_stage::build_artifacts(&payload, &sisr_config)
+                .context("SISR stage failed during build")?,
+        };
+        let input = xbin_core::assembly::AssemblyInput {
+            stub_bytes: &stub_bytes,
+            payload: &payload,
+            meta_bytes: &meta,
             encrypt,
             squashfs,
-            target.as_deref(),
-        )
-        .context("failed to assemble xbin")?
+            target_arch: target.as_deref(),
+            sisr: Some(artifacts),
+        };
+        xbin_core::assembly::assemble_xbin(output, &input)
+            .context("failed to assemble xbin (SISR)")?
+    } else {
+        let input = xbin_core::assembly::AssemblyInput {
+            stub_bytes: &stub_bytes,
+            payload: &payload,
+            meta_bytes: &meta,
+            encrypt,
+            squashfs,
+            target_arch: target.as_deref(),
+            sisr: None,
+        };
+        xbin_core::assembly::assemble_xbin(output, &input).context("failed to assemble xbin")?
     };
 
     eprintln!(

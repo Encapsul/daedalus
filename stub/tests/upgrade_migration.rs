@@ -11,7 +11,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use xbin_core::assembly::assemble_xbin;
+use xbin_core::assembly::{assemble_xbin, AssemblyInput};
 use xbin_core::format::Footer;
 use xbin_core::legacy::upgrade_binary;
 use xbin_core::sisr_stage::SisrBuildConfig;
@@ -30,14 +30,18 @@ fn isolated_env(work: &Path) -> Vec<(&str, PathBuf)> {
 /// Builds a genuine legacy file: SISR stage disabled, current stub embedded.
 fn build_legacy(work: &Path, stub: &Path, body: &str, shared: &[u8]) -> PathBuf {
     let out = work.join("legacy.xbin");
+    let stub_bytes = fs::read(stub).unwrap();
     assemble_xbin(
         &out,
-        &fs::read(stub).unwrap(),
-        &payload(body, shared),
-        meta(),
-        false,
-        false,
-        None,
+        &AssemblyInput {
+            stub_bytes: &stub_bytes,
+            payload: &payload(body, shared),
+            meta_bytes: meta(),
+            encrypt: false,
+            squashfs: false,
+            target_arch: None,
+            sisr: None,
+        },
     )
     .unwrap();
     out

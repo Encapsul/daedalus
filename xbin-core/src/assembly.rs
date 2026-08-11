@@ -13,7 +13,9 @@ use crate::format::{self, Footer, CRYPTO_AES_256_GCM};
 use crate::metadata::BunFeatures;
 use crate::sisr::swap::AtomicWriter;
 use crate::sisr_header::{SisrFooterExt, SISR_VERSION};
-use crate::sisr_stage::{self, RemoteManifest, SisrBuildConfig};
+#[cfg(test)]
+use crate::sisr_stage::SisrBuildConfig;
+use crate::sisr_stage::{self, RemoteManifest};
 
 /// Determine the format version based on build options.
 pub fn fmt_version(squashfs: bool, encrypt: bool, signed: bool) -> u8 {
@@ -151,126 +153,48 @@ pub struct MetaOptions {
     pub crypto: Option<serde_json::Value>,
 }
 
+/// Input to [`assemble_xbin`]: bundles every byte-slice and build flag that
+/// shapes the output layout so the assembly entry point is a single,
+/// self-documenting argument. The SISR section is optional (pre-built
+/// artifacts); an [`SisrBuildConfig`] is only needed by the CLI, which
+/// builds artifacts itself before calling here (see `build_sisr_config`).
+pub struct AssemblyInput<'a> {
+    pub stub_bytes: &'a [u8],
+    pub payload: &'a [u8],
+    pub meta_bytes: &'a [u8],
+    pub encrypt: bool,
+    pub squashfs: bool,
+    pub target_arch: Option<&'a str>,
+    pub sisr: Option<sisr_stage::SisrArtifacts>,
+}
+
 /// Assemble a .xbin file from its components (without signing).
 ///
-/// Writes: [stub][payload][metadata][footer]
+/// Writes `[stub][payload][manifest?][metadata][SisrFooterExt?][footer]`
+/// (the manifest + `SisrFooterExt` only when `input.sisr` is `Some`).
 /// Returns the total file size.
-pub fn assemble_xbin(
-    out_path: &Path,
-    stub_bytes: &[u8],
-    payload: &[u8],
-    meta_bytes: &[u8],
-    encrypt: bool,
-    squashfs: bool,
-    target_arch: Option<&str>,
-) -> std::io::Result<u64> {
-    assemble_xbin_with_sisr(
-        out_path,
-        stub_bytes,
-        payload,
-        meta_bytes,
-        encrypt,
-        squashfs,
-        target_arch,
-        &SisrBuildConfig::disabled(),
-    )
-}
-
-/// Assemble a .xbin file, optionally with a `SISR` section and remote manifest.
 ///
-/// With `config.enabled` false the layout is strictly identical to
-/// [`assemble_xbin`]. With `SISR` enabled the payload is content-chunked, a
-/// Merkle root is computed, and the layout becomes:
-///
-/// `[stub][payload][manifest][metadata][SisrFooterExt][footer]`
-///
-/// The footer gains `FLAG_SISR`, and the signed remote manifest is written to
-/// `<out_path>.manifest` next to the binary. Returns the total file size.
-// Params mirror `assemble_xbin` plus the `SISR` config; a shared struct would
-// churn both public entry points for a single new optional stage.
-#[allow(clippy::too_many_arguments)]
-pub fn assemble_xbin_with_sisr(
-    out_path: &Path,
-    stub_bytes: &[u8],
-    payload: &[u8],
-    meta_bytes: &[u8],
-    encrypt: bool,
-    squashfs: bool,
-    target_arch: Option<&str>,
-    config: &SisrBuildConfig,
-) -> std::io::Result<u64> {
-    assemble_xbin_with_sisr_artifacts(
-        out_path,
-        stub_bytes,
-        payload,
-        meta_bytes,
-        encrypt,
-        squashfs,
-        target_arch,
-        if config.enabled {
-            Some(sisr_stage::build_artifacts(payload, config)?)
-        } else {
-            None
-        },
-    )
-}
+/// This replaces the prior `assemble_xbin` / `assemble_xbin_with_sisr` /
+/// `assemble_xbin_with_sisr_artifacts` trio: folding the optional SISR stage
+/// into `AssemblyInput` removes the duplicated 7-arity parameter list.
+pub fn assemble_xbin(out_path: &Path, input: &AssemblyInput<'_>) -> std::io::Result<u64> {
+    let fmt_ver = fmt_version(input.squashfs, input.encrypt, false);
+    let arch = resolve_arch(input.target_arch);
+    let payload_offset = input.stub_bytes.len() as u64;
 
-#[allow(clippy::too_many_arguments)]
-pub fn assemble_xbin_with_sisr_artifacts(
-    out_path: &Path,
-    stub_bytes: &[u8],
-    payload: &[u8],
-    meta_bytes: &[u8],
-    encrypt: bool,
-    squashfs: bool,
-    target_arch: Option<&str>,
-    sisr_artifacts: Option<sisr_stage::SisrArtifacts>,
-) -> std::io::Result<u64> {
-    let fmt_ver = fmt_version(squashfs, encrypt, false);
-    let arch = resolve_arch(target_arch);
-    let payload_offset = stub_bytes.len() as u64;
+    let body_hash = sha2_hash(input.payload, input.meta_bytes);
+    let ext = sisr_footer_ext(payload_offset, input)?;
 
-    let (sisr_artifacts, ext) = match sisr_artifacts {
-        Some(artifacts) => {
-            let manifest_offset = payload_offset + payload.len() as u64 + meta_bytes.len() as u64;
-            let ext = SisrFooterExt {
-                sisr_version: SISR_VERSION,
-                chunk_table_offset: manifest_offset,
-                chunk_table_len: u32::try_from(artifacts.manifest_bytes.len())
-                    .map_err(|_| io_err("SISR manifest exceeds capacity"))?,
-                merkle_root: artifacts.merkle_root,
-                signature: artifacts.signature,
-            };
-            (Some(artifacts), Some(ext))
-        }
-        None => (None, None),
-    };
-
-    let meta_offset = payload_offset + payload.len() as u64;
-
-    let body_hash = sha2_hash(payload, meta_bytes);
-
-    let footer = Footer {
-        format_version: fmt_ver,
+    let meta_offset = payload_offset + input.payload.len() as u64;
+    let footer = build_footer(
+        fmt_ver,
         arch,
-        flags: {
-            let mut f = 0u8;
-            if sisr_artifacts.is_some() {
-                f |= format::FLAG_SISR;
-            }
-            if encrypt {
-                f |= format::FLAG_ENCRYPTED;
-            }
-            f
-        },
+        input,
         payload_offset,
-        payload_csize: payload.len() as u64,
-        payload_usize: if encrypt { CRYPTO_AES_256_GCM } else { 0 },
-        payload_sha256: body_hash,
+        body_hash,
         meta_offset,
-        meta_size: meta_bytes.len() as u64,
-        sig_offset: 0,
-    };
+        ext.is_some(),
+    );
 
     // Write to a temp file in the same directory, fsync, then rename over the
     // output. Writing in place kept the destination open for write until the
@@ -284,22 +208,14 @@ pub fn assemble_xbin_with_sisr_artifacts(
     let mut w = AtomicWriter::new(parent, tag)?;
     {
         let f = w.file_mut();
-        f.write_all(stub_bytes)?;
-        f.write_all(payload)?;
-        f.write_all(meta_bytes)?;
-        if let Some((artifacts, ext)) = sisr_artifacts.as_ref().zip(ext.as_ref()) {
+        f.write_all(input.stub_bytes)?;
+        f.write_all(input.payload)?;
+        f.write_all(input.meta_bytes)?;
+        if let Some((artifacts, ext)) = ext.as_ref() {
             f.write_all(&artifacts.manifest_bytes)?;
             f.write_all(&ext.pack())?;
         }
-        // v3+ files store the 8-byte `sig_offset` prefix before the core footer
-        // (92 bytes total, see `Footer::pack_full`); writing the bare 84-byte
-        // `pack()` here made the reader misparse the last 8 metadata bytes as a
-        // phantom `sig_offset`, failing the stub's signature-state check.
-        if footer.format_version >= 3 {
-            f.write_all(&footer.pack_full())?;
-        } else {
-            f.write_all(&footer.pack())?;
-        }
+        write_footer(f, &footer)?;
     }
 
     // Set the executable bit on the temp before the atomic rename so a
@@ -309,10 +225,9 @@ pub fn assemble_xbin_with_sisr_artifacts(
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(w.temp_path(), fs::Permissions::from_mode(0o755))?;
     }
-
     w.commit(out_path)?;
 
-    if let Some((artifacts, _)) = sisr_artifacts.as_ref().zip(ext.as_ref()) {
+    if let Some((artifacts, _)) = ext.as_ref() {
         let remote = RemoteManifest {
             merkle_root: artifacts.merkle_root,
             signature: artifacts.signature,
@@ -324,6 +239,76 @@ pub fn assemble_xbin_with_sisr_artifacts(
     }
 
     Ok(std::fs::metadata(out_path)?.len())
+}
+
+/// Build the `SisrFooterExt` (and return the owning artifacts) when SISR is
+/// enabled. Splitting this out keeps `assemble_xbin` under the 30-line
+/// readability ceiling.
+fn sisr_footer_ext<'a>(
+    payload_offset: u64,
+    input: &'a AssemblyInput<'_>,
+) -> std::io::Result<Option<(&'a sisr_stage::SisrArtifacts, SisrFooterExt)>> {
+    match &input.sisr {
+        None => Ok(None),
+        Some(artifacts) => {
+            let manifest_offset =
+                payload_offset + input.payload.len() as u64 + input.meta_bytes.len() as u64;
+            let ext = SisrFooterExt {
+                sisr_version: SISR_VERSION,
+                chunk_table_offset: manifest_offset,
+                chunk_table_len: u32::try_from(artifacts.manifest_bytes.len())
+                    .map_err(|_| io_err("SISR manifest exceeds capacity"))?,
+                merkle_root: artifacts.merkle_root,
+                signature: artifacts.signature,
+            };
+            Ok(Some((artifacts, ext)))
+        }
+    }
+}
+
+/// Build the on-disk [`Footer`] from assembled inputs.
+fn build_footer(
+    fmt_ver: u8,
+    arch: u8,
+    input: &AssemblyInput<'_>,
+    payload_offset: u64,
+    payload_sha256: [u8; 32],
+    meta_offset: u64,
+    has_sisr: bool,
+) -> Footer {
+    Footer {
+        format_version: fmt_ver,
+        arch,
+        flags: {
+            let mut f = 0u8;
+            if has_sisr {
+                f |= format::FLAG_SISR;
+            }
+            if input.encrypt {
+                f |= format::FLAG_ENCRYPTED;
+            }
+            f
+        },
+        payload_offset,
+        payload_csize: input.payload.len() as u64,
+        payload_usize: if input.encrypt { CRYPTO_AES_256_GCM } else { 0 },
+        payload_sha256,
+        meta_offset,
+        meta_size: input.meta_bytes.len() as u64,
+        sig_offset: 0,
+    }
+}
+
+/// Write the footer in the version-correct encoding. v3+ carries the 8-byte
+/// `sig_offset` prefix (`Footer::pack_full`); writing the bare 84-byte `pack()`
+/// instead made the reader misparse the last metadata bytes as a phantom
+/// `sig_offset`, failing the stub's signature-state check.
+fn write_footer(f: &mut dyn Write, footer: &Footer) -> std::io::Result<()> {
+    if footer.format_version >= 3 {
+        f.write_all(&footer.pack_full())
+    } else {
+        f.write_all(&footer.pack())
+    }
 }
 
 fn io_err(msg: &str) -> std::io::Error {
@@ -403,7 +388,19 @@ mod tests {
         let payload = b"PAYLOAD_DATA";
         let meta = br#"{"name":"test"}"#;
 
-        let size = assemble_xbin(&out, stub, payload, meta, false, false, None).unwrap();
+        let size = assemble_xbin(
+            &out,
+            &AssemblyInput {
+                stub_bytes: stub,
+                payload,
+                meta_bytes: meta,
+                encrypt: false,
+                squashfs: false,
+                target_arch: None,
+                sisr: None,
+            },
+        )
+        .unwrap();
         assert!(size > 0);
 
         let data = fs::read(&out).unwrap();
@@ -422,7 +419,19 @@ mod tests {
         let payload = b"CIPHERTEXT_PAYLOAD";
         let meta = br#"{"name":"test"}"#;
 
-        let size = assemble_xbin(&out, stub, payload, meta, true, false, None).unwrap();
+        let size = assemble_xbin(
+            &out,
+            &AssemblyInput {
+                stub_bytes: stub,
+                payload,
+                meta_bytes: meta,
+                encrypt: true,
+                squashfs: false,
+                target_arch: None,
+                sisr: None,
+            },
+        )
+        .unwrap();
         assert!(size > 0);
 
         let data = fs::read(&out).unwrap();
@@ -455,7 +464,19 @@ mod tests {
             let tmp = tempfile::tempdir().unwrap();
             let out = tmp.path().join("t.xbin");
             let meta = br#"{"name":"test"}"#;
-            assemble_xbin(&out, b"STUB", b"PAYLOAD", meta, encrypt, squashfs, None).unwrap();
+            assemble_xbin(
+                &out,
+                &AssemblyInput {
+                    stub_bytes: b"STUB",
+                    payload: b"PAYLOAD",
+                    meta_bytes: meta,
+                    encrypt,
+                    squashfs,
+                    target_arch: None,
+                    sisr: None,
+                },
+            )
+            .unwrap();
             let mut cursor = std::io::Cursor::new(fs::read(&out).unwrap());
             let footer = Footer::read_from(&mut cursor).unwrap();
             assert_eq!(footer.format_version, expected_version);
@@ -515,17 +536,34 @@ mod tests {
         let meta = br#"{"name":"test"}"#;
 
         let classic = tmp.path().join("classic.xbin");
-        let size = assemble_xbin(&classic, stub, payload, meta, false, false, None).unwrap();
+        let size = assemble_xbin(
+            &classic,
+            &AssemblyInput {
+                stub_bytes: stub,
+                payload,
+                meta_bytes: meta,
+                encrypt: false,
+                squashfs: false,
+                target_arch: None,
+                sisr: None,
+            },
+        )
+        .unwrap();
         let with_sisr = tmp.path().join("with_sisr.xbin");
-        let size2 = assemble_xbin_with_sisr(
+        let size2 = assemble_xbin(
             &with_sisr,
-            stub,
-            payload,
-            meta,
-            false,
-            false,
-            None,
-            &SisrBuildConfig::disabled(),
+            &AssemblyInput {
+                stub_bytes: stub,
+                payload,
+                meta_bytes: meta,
+                encrypt: false,
+                squashfs: false,
+                target_arch: None,
+                // A disabled SisrBuildConfig is equivalent to omitting SISR:
+                // the CLI only builds artifacts when --enable-sisr is set, so
+                // disabled must write zero SISR bytes (byte-identical to None).
+                sisr: None,
+            },
         )
         .unwrap();
         assert_eq!(size, size2);
@@ -551,7 +589,19 @@ mod tests {
             chunk_target_size: 8192,
             signing_key: Some(key.clone()),
         };
-        assemble_xbin_with_sisr(&out, stub, payload, meta, false, false, None, &config).unwrap();
+        assemble_xbin(
+            &out,
+            &AssemblyInput {
+                stub_bytes: stub,
+                payload,
+                meta_bytes: meta,
+                encrypt: false,
+                squashfs: false,
+                target_arch: None,
+                sisr: Some(sisr_stage::build_artifacts(payload, &config).unwrap()),
+            },
+        )
+        .unwrap();
 
         let data = fs::read(&out).unwrap();
         let footer = Footer::read_from(&mut Cursor::new(&data)).unwrap();

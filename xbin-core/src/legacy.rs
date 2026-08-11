@@ -40,7 +40,7 @@ pub struct UpgradeReport {
 /// The payload is chunked exactly as it is stored on disk — never
 /// decompressed and recompressed — so the stored bytes (and therefore any
 /// payload-internal checksums) are unchanged. Also writes `<output>.xbin.manifest`
-/// next to the binary, matching [`crate::assembly::assemble_xbin_with_sisr`].
+/// next to the binary, matching [`crate::assembly::assemble_xbin`].
 pub fn upgrade_binary(
     input: &Path,
     output: &Path,
@@ -149,7 +149,7 @@ fn err(msg: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::assembly::assemble_xbin;
+    use crate::assembly::{assemble_xbin, AssemblyInput};
     use crate::sisr_header::read_sisr;
     use ed25519_dalek::SigningKey;
     use std::io::Cursor;
@@ -158,12 +158,15 @@ mod tests {
         let out = dir.join("legacy.xbin");
         assemble_xbin(
             &out,
-            b"STUB_DATA",
-            b"PAYLOAD_PAYLOAD_PAYLOAD",
-            br#"{"name":"legacy"}"#,
-            false,
-            false,
-            None,
+            &AssemblyInput {
+                stub_bytes: b"STUB_DATA",
+                payload: b"PAYLOAD_PAYLOAD_PAYLOAD",
+                meta_bytes: br#"{"name":"legacy"}"#,
+                encrypt: false,
+                squashfs: false,
+                target_arch: None,
+                sisr: None,
+            },
         )
         .unwrap();
         out
@@ -226,15 +229,19 @@ mod tests {
     fn upgrade_rejects_already_sisr() {
         let tmp = tempfile::tempdir().unwrap();
         let input = tmp.path().join("sisr.xbin");
-        crate::assembly::assemble_xbin_with_sisr(
+        let artifacts =
+            crate::sisr_stage::build_artifacts(b"PAYLOAD_PAYLOAD_PAYLOAD", &config()).unwrap();
+        assemble_xbin(
             &input,
-            b"STUB_DATA",
-            b"PAYLOAD_PAYLOAD_PAYLOAD",
-            br#"{"name":"legacy"}"#,
-            false,
-            false,
-            None,
-            &config(),
+            &AssemblyInput {
+                stub_bytes: b"STUB_DATA",
+                payload: b"PAYLOAD_PAYLOAD_PAYLOAD",
+                meta_bytes: br#"{"name":"legacy"}"#,
+                encrypt: false,
+                squashfs: false,
+                target_arch: None,
+                sisr: Some(artifacts),
+            },
         )
         .unwrap();
         let err = upgrade_binary(&input, &tmp.path().join("out.xbin"), &config()).unwrap_err();
