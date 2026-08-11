@@ -314,10 +314,10 @@ fn run() -> io::Result<()> {
         let is_squashfs = meta.payload_format == format::PAYLOAD_FORMAT_SQUASHFS;
         if is_squashfs {
             let blobs = crypto::slice_layers(&payload, footer.payload_offset, &meta, layered)?;
-            extract_squashfs_atomic(&blobs, &cache_root, &rootfs)?;
+            extract_squashfs_atomic(&blobs, &cache_root)?;
         } else {
             let blobs = crypto::slice_layers(&payload, footer.payload_offset, &meta, layered)?;
-            extract_atomic(&blobs, &cache_root, &rootfs)?;
+            extract_atomic(&blobs, &cache_root)?;
         }
     }
 
@@ -1007,12 +1007,12 @@ fn gc_extraction_cache(max_entries: usize) -> io::Result<()> {
     Ok(())
 }
 
-fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
-    extraction::extract_atomic(blobs, cache_root, rootfs)
+fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
+    extraction::extract_atomic(blobs, cache_root)
 }
 
-fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
-    extraction::extract_squashfs_atomic(blobs, cache_root, rootfs)
+fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
+    extraction::extract_squashfs_atomic(blobs, cache_root)
 }
 
 // ---------------------------------------------------------------------------

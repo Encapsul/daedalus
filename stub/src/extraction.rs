@@ -16,9 +16,9 @@ const MAX_DECOMPRESSED_BYTES: u64 = 1024 * 1024 * 1024;
 /// Maximum number of files in a single tar archive.
 const MAX_FILES: usize = 50_000;
 
-/// Extract zstd-compressed tar blobs atomically into `rootfs`.
-pub fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::Result<()> {
-    atomic_extract(cache_root, rootfs, |tmp_rootfs| {
+/// Extract zstd-compressed tar blobs atomically into `cache_root/rootfs`.
+pub fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
+    atomic_extract(cache_root, |tmp_rootfs| {
         let mut total_bytes: u64 = 0;
         let mut file_count: usize = 0;
         for blob in blobs {
@@ -60,21 +60,20 @@ pub fn extract_atomic(blobs: &[&[u8]], cache_root: &Path, rootfs: &Path) -> io::
     })
 }
 
-/// Extract squashfs blobs atomically into `rootfs`.
-pub fn extract_squashfs_atomic(
-    blobs: &[&[u8]],
-    cache_root: &Path,
-    rootfs: &Path,
-) -> io::Result<()> {
-    atomic_extract(cache_root, rootfs, |tmp_rootfs| {
+/// Extract squashfs blobs atomically into `cache_root/rootfs`.
+pub fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
+    atomic_extract(cache_root, |tmp_rootfs| {
         crate::squashfs_extract::extract_squashfs_layers(blobs, tmp_rootfs)
     })
 }
 
 /// Shared atomic extraction: create tmp dir, run extraction closure, write .ready, rename.
+///
+/// On rename failure, a stale `cache_root` (no `.ready`) is wiped and the
+/// rename is retried once; a `cache_root` that carries a valid `.ready` is a
+/// previous successful extraction and is used as-is.
 pub fn atomic_extract(
     cache_root: &Path,
-    rootfs: &Path,
     extract_fn: impl FnOnce(&Path) -> io::Result<()>,
 ) -> io::Result<()> {
     let parent = cache_root.parent().unwrap_or(Path::new("/tmp"));
@@ -88,22 +87,81 @@ pub fn atomic_extract(
 
     File::create(tmp.join(".ready"))?.write_all(b"1")?;
 
-    // Only treat an existing rootfs as valid if it has a .ready marker.
-    // This prevents using a stale/partial extraction as a fallback, which
-    // would mask real errors (full disk, permissions, etc.).
-    let marker = rootfs.join(".ready");
+    // The marker lives at cache_root/.ready (the tmp dir becomes cache_root
+    // on rename), so the stale-partial check below must look there.
+    let marker = cache_root.join(".ready");
     match fs::rename(&tmp, cache_root) {
         Ok(()) => Ok(()),
         Err(e) => {
-            let _ = fs::remove_dir_all(&tmp);
-            // If the rootfs has a valid .ready marker, the previous extraction
-            // is still usable — surface the error but don't block the run.
+            // A valid .ready marker means a concurrent/successful extraction
+            // already completed — surface the error but don't block the run.
             if marker.exists() {
-                eprintln!("[xbin] warning: cache rename failed but existing rootfs is valid: {e}");
+                let _ = fs::remove_dir_all(&tmp);
+                eprintln!("[xbin] warning: cache rename failed but existing cache is valid: {e}");
                 Ok(())
             } else {
-                Err(e)
+                // Otherwise cache_root is a stale partial extraction (no
+                // .ready). Wipe it and retry the rename once with tmp intact,
+                // instead of leaving the binary permanently stuck on every
+                // cold start.
+                let _ = fs::remove_dir_all(cache_root);
+                match fs::rename(&tmp, cache_root) {
+                    Ok(()) => Ok(()),
+                    Err(e2) => {
+                        let _ = fs::remove_dir_all(&tmp);
+                        Err(e2)
+                    }
+                }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn write_app(tmp_rootfs: &Path) -> io::Result<()> {
+        fs::create_dir_all(tmp_rootfs.join("app"))?;
+        fs::write(tmp_rootfs.join("app/app.py"), b"print('hi')")
+    }
+
+    #[test]
+    fn extract_creates_marker_and_rootfs() {
+        let dir = TempDir::new().unwrap();
+        let cache_root = dir.path().join("hash");
+
+        atomic_extract(&cache_root, write_app).unwrap();
+
+        assert!(cache_root.join(".ready").is_file());
+        assert!(cache_root.join("rootfs/app/app.py").is_file());
+    }
+
+    #[test]
+    fn stale_cache_root_is_wiped_and_retried() {
+        let dir = TempDir::new().unwrap();
+        let cache_root = dir.path().join("hash");
+        fs::create_dir_all(cache_root.join("rootfs")).unwrap();
+        fs::write(cache_root.join("rootfs/partial"), b"leftover").unwrap();
+
+        atomic_extract(&cache_root, write_app).unwrap();
+
+        assert!(cache_root.join(".ready").is_file());
+        assert!(cache_root.join("rootfs/app/app.py").is_file());
+        assert!(!cache_root.join("rootfs/partial").exists());
+    }
+
+    #[test]
+    fn valid_marker_survives_rename_failure() {
+        let dir = TempDir::new().unwrap();
+        let cache_root = dir.path().join("hash");
+        fs::create_dir_all(cache_root.join("rootfs")).unwrap();
+        fs::write(cache_root.join("rootfs/old"), b"previous").unwrap();
+        fs::write(cache_root.join(".ready"), b"1").unwrap();
+
+        atomic_extract(&cache_root, write_app).unwrap();
+
+        assert!(cache_root.join("rootfs/old").exists());
     }
 }
