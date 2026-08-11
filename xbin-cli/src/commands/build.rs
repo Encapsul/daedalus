@@ -1306,7 +1306,6 @@ fn build_single_target(
         isolation_num,
         &entrypoint,
         &env_pairs,
-        &[],
         &xbin_core::assembly::MetaOptions {
             version: version_info,
             author,

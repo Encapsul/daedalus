@@ -226,7 +226,6 @@ fn test_inspect_reports_encrypted_v4() {
         0,
         &["/app/app".to_string()],
         &[],
-        &[],
         &MetaOptions {
             version: None,
             author: None,
