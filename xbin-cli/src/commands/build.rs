@@ -208,7 +208,13 @@ pub struct BuildArgs {
     #[arg(long)]
     pub landlock: bool,
 
-    /// Enable AES-256-GCM encryption (requires --key)
+    /// Encrypt the payload with AES-256-GCM (requires --key).
+    ///
+    /// WARNING: this provides obfuscation against casual inspection only, NOT
+    /// confidentiality. The AES key is stored in the binary's metadata next to
+    /// the ciphertext, so anyone holding the `.xbin` can decrypt it. Real
+    /// confidentiality requires a key that is never stored in the file
+    /// (env var, passphrase, HSM).
     #[arg(long)]
     pub encrypt: bool,
 

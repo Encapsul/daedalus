@@ -43,6 +43,8 @@ enum Commands {
     ///   xbin build ./myapp --target aarch64 --squashfs
     ///   xbin build ./myapp --sign --key ~/.xbin/keys/*.key
     ///   xbin build ./myapp --encrypt --key ~/.xbin/keys/*.key
+    ///     (--encrypt is obfuscation-only: the decryption key is embedded in
+    ///      the metadata, so a determined attacker can always extract the app)
     ///   xbin build ./myapp --health-port 8081
     ///   xbin build ./myapp --persist --env-file .env
     Build(Box<commands::build::BuildArgs>),
