@@ -3,7 +3,7 @@ use clap::Args;
 use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use xbin_core::format::{Footer, FLAG_SIGNED, SIG_BLOCK_SIZE};
+use xbin_core::format::{Footer, FLAG_SIGNED, SIG_BLOCK_SIZE, SIG_LEN};
 use xbin_core::paths::default_key_dir;
 use zeroize::Zeroizing;
 
@@ -98,6 +98,15 @@ pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> 
     if footer.is_signed() {
         anyhow::bail!("file is already signed");
     }
+    if footer.has_sisr() {
+        // `--enable-sisr` already signs the delta manifest with `--key`;
+        // inserting a binary sig block here would rebuild the file as
+        // `[..meta_end][sig][footer]` and truncate the SISR section.
+        anyhow::bail!(
+            "cannot sign a SISR binary: the delta manifest is already signed; \
+             rebuild without `--enable-sisr` to sign the whole binary"
+        );
+    }
 
     let meta_start = footer.meta_offset as usize;
     let meta_end = meta_start + footer.meta_size as usize;
@@ -107,34 +116,35 @@ pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> 
     let payload = original[payload_start..payload_end].to_vec();
     let meta = original[meta_start..meta_end].to_vec();
 
-    let mut hasher = Sha256::new();
-    hasher.update(&payload);
-    hasher.update(&meta);
-    let hash = hasher.finalize();
-
-    let signature = signing_key.sign(&hash);
-
-    let sig_size = 64u32;
-    let mut sig_block = Vec::with_capacity(SIG_BLOCK_SIZE as usize);
-    sig_block.extend_from_slice(&sig_size.to_le_bytes());
-    sig_block.extend_from_slice(&signature.to_bytes());
-
+    // Mutate the footer to its final on-disk form FIRST: the digest covers
+    // the footer itself (via `pack_full`, incl. the sig_offset prefix),
+    // because the footer's format_version and FLAG_SIGNED decide whether the
+    // signature is ever consulted. A signature over payload‖meta alone would
+    // let an attacker downgrade the file to v2 and strip the flag — the
+    // signature would be silently skipped.
     let new_sig_offset = footer.meta_offset + footer.meta_size;
-
     footer.sig_offset = new_sig_offset;
     footer.flags |= FLAG_SIGNED;
     if footer.format_version < 3 {
         footer.format_version = 3;
     }
 
-    let mut v3_footer = Vec::with_capacity(xbin_core::format::V3_FOOTER_SIZE as usize);
-    v3_footer.extend_from_slice(&new_sig_offset.to_le_bytes());
-    v3_footer.extend_from_slice(&footer.pack());
+    let mut hasher = Sha256::new();
+    hasher.update(&payload);
+    hasher.update(&meta);
+    hasher.update(&footer.pack_full());
+    let hash = hasher.finalize();
+
+    let signature = signing_key.sign(&hash);
+
+    let mut sig_block = Vec::with_capacity(SIG_BLOCK_SIZE);
+    sig_block.extend_from_slice(&(SIG_LEN as u32).to_le_bytes());
+    sig_block.extend_from_slice(&signature.to_bytes());
 
     let new_content: Vec<u8> = original[0..meta_end]
         .iter()
         .chain(sig_block.iter())
-        .chain(v3_footer.iter())
+        .chain(footer.pack_full().iter())
         .copied()
         .collect();
 

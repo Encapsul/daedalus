@@ -3,7 +3,7 @@ use clap::Args;
 use ed25519_dalek::{Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use xbin_core::format::{Footer, SIG_BLOCK_SIZE_FIELD};
+use xbin_core::format::{Footer, SIG_BLOCK_SIZE, SIG_LEN};
 use xbin_core::paths::trusted_keys_dir;
 
 fn write_json_output(value: &serde_json::Value, output: Option<&std::path::Path>) -> Result<()> {
@@ -47,7 +47,11 @@ pub fn run(args: VerifyArgs) -> Result<()> {
         .with_context(|| format!("failed to open {}", args.file.display()))?;
     let footer = Footer::read_from(&mut f).context("failed to read xbin footer")?;
 
-    if !footer.is_signed() {
+    let has_sig_block = footer.format_version >= 3 && footer.sig_offset != 0;
+    if has_sig_block != footer.is_signed() {
+        anyhow::bail!("inconsistent signature state (flag/offset mismatch)");
+    }
+    if !has_sig_block {
         if args.json {
             let info = serde_json::json!({
                 "file": args.file.display().to_string(),
@@ -61,26 +65,28 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     }
 
     // Read sig block: [sig_size:u32le][64-byte ed25519 signature]
-    let sig_data = xbin_core::format::read_at(
-        &mut f,
-        footer.sig_offset,
-        SIG_BLOCK_SIZE_FIELD as usize + 64,
-    )?;
+    let sig_data = xbin_core::format::read_at(&mut f, footer.sig_offset, SIG_BLOCK_SIZE)?;
     let sig_size = u32::from_le_bytes([sig_data[0], sig_data[1], sig_data[2], sig_data[3]]);
-    if sig_size != 64 {
-        anyhow::bail!("unexpected sig_size {} (expected 64 for ed25519)", sig_size);
+    if sig_size != SIG_LEN as u32 {
+        anyhow::bail!(
+            "unexpected sig_size {} (expected {SIG_LEN} for ed25519)",
+            sig_size
+        );
     }
-    let signature_bytes = &sig_data[4..68];
+    let signature_bytes = &sig_data[4..SIG_BLOCK_SIZE];
 
     // Read payload and metadata for hash
     let payload =
         xbin_core::format::read_at(&mut f, footer.payload_offset, footer.payload_csize as usize)?;
     let meta = xbin_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)?;
 
-    // SHA-256(payload || meta)
+    // SHA-256(payload || meta || footer) — the footer is hashed so a downgrade
+    // of format_version/FLAG_SIGNED invalidates the signature instead of
+    // being silently skipped.
     let mut hasher = Sha256::new();
     hasher.update(&payload);
     hasher.update(&meta);
+    hasher.update(&footer.pack_full());
     let hash = hasher.finalize();
 
     // Try each trusted key

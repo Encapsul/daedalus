@@ -130,8 +130,17 @@ $ xbin verify my_app.xbin
 SHA-256 alone protects against corruption, not against an attacker who modifies the payload and recomputes the hash. This is why signatures exist — the hash is signed:
 
 ```
-Ed25519_sign(SHA-256(payload ‖ metadata), private_key)
+Ed25519_sign(SHA-256(payload ‖ metadata ‖ footer), private_key)
 ```
+
+The footer is part of the digest because it decides whether the signature is
+consulted at all (`format_version >= 3` + `FLAG_SIGNED`). A signature over
+`payload ‖ metadata` alone would let an attacker downgrade the file to v2,
+clear the flag, and recompute the SHA-256 — the signature would be silently
+skipped. Covering the footer makes any such tampering invalidate the
+signature; the launcher additionally rejects inconsistent states (sig block
+present without `FLAG_SIGNED`, or flag set without a block) and v2 files that
+still carry a leftover signature block from a downgrade.
 
 Without the private key, forging a valid signature is computationally infeasible (2^128 operations for Ed25519).
 

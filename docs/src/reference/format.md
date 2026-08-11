@@ -103,11 +103,19 @@ The launcher recomputes this hash on every cold start and compares it to the
 stored value **before** extracting anything. On mismatch: `exit(1)`, nothing
 written to disk.
 
-For signed files (v3), the same hash is also signed by Ed25519:
+For signed files (v3+), the digest the signature covers also includes the
+footer's full on-disk form (the 8-byte `sig_offset` prefix + the 84-byte core):
 
 ```
-Ed25519_sign(SHA-256(payload ‖ metadata), private_key)
+Ed25519_sign(SHA-256(payload ‖ metadata ‖ footer_bytes), private_key)
 ```
+
+The footer must be covered because it decides whether the signature is ever
+consulted: a signature over `payload ‖ metadata` alone would let an attacker
+downgrade the file to v2, clear `FLAG_SIGNED`, and recompute the SHA-256 —
+the signature would be silently skipped. The launcher also rejects
+inconsistent states (sig block without the flag, or the flag without a block)
+and v2 files carrying a leftover signature block.
 
 See [Security](../security.md) for why SHA-256 alone is insufficient.
 
