@@ -102,8 +102,6 @@ pub struct Metadata {
     #[serde(default)]
     cwd: Option<String>,
     #[serde(default)]
-    layers: Vec<Layer>,
-    #[serde(default)]
     isolation: u8,
     #[serde(default)]
     // Read only in the Linux seccomp/landlock setup path; unused elsewhere.
@@ -172,19 +170,6 @@ pub struct Service {
     ready_timeout: u64,
 }
 
-#[derive(Deserialize)]
-pub struct Layer {
-    #[serde(default)]
-    #[allow(dead_code)]
-    kind: String,
-    offset: u64,
-    csize: u64,
-    #[serde(rename = "usize")]
-    #[allow(dead_code)]
-    uncompressed_size: u64,
-    sha256: String,
-}
-
 fn main() {
     if let Err(e) = run() {
         eprintln!("[xbin] error: {e}");
@@ -238,12 +223,7 @@ fn run() -> io::Result<()> {
     }
 
     // 2. Compute cache key and check hit BEFORE reading the payload.
-    let layered = footer.format_version >= 2 && !meta.layers.is_empty();
-    let hash = if layered {
-        crypto::cache_key_v2(&meta.layers)
-    } else {
-        footer.sha256_hex()
-    };
+    let hash = footer.sha256_hex();
 
     let base = cache_dir()?;
     fs::create_dir_all(&base)?;
@@ -303,17 +283,7 @@ fn run() -> io::Result<()> {
             if verbose {
                 eprintln!("[xbin] decrypting AES-256-GCM payload");
             }
-            let is_sisr = footer.flags & format::FLAG_SISR != 0;
-            if is_sisr && !meta.layers.is_empty() {
-                let chunk_sizes: Vec<usize> = meta
-                    .layers
-                    .iter()
-                    .map(|l| l.uncompressed_size as usize)
-                    .collect();
-                crypto::chunked_decrypt_aes_gcm(&payload, crypto, &chunk_sizes)?
-            } else {
-                crypto::decrypt_aes_gcm(&payload, crypto)?
-            }
+            crypto::decrypt_aes_gcm(&payload, crypto)?
         } else {
             return Err(err("encrypted payload but no crypto metadata"));
         }
@@ -329,11 +299,9 @@ fn run() -> io::Result<()> {
         let _ = gc_extraction_cache(16);
         let is_squashfs = meta.payload_format == format::PAYLOAD_FORMAT_SQUASHFS;
         if is_squashfs {
-            let blobs = crypto::slice_layers(&payload, footer.payload_offset, &meta, layered)?;
-            extract_squashfs_atomic(&blobs, &cache_root)?;
+            extract_squashfs_atomic(&[payload.as_slice()], &cache_root)?;
         } else {
-            let blobs = crypto::slice_layers(&payload, footer.payload_offset, &meta, layered)?;
-            extract_atomic(&blobs, &cache_root)?;
+            extract_atomic(&[payload.as_slice()], &cache_root)?;
         }
     }
 

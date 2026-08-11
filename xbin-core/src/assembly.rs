@@ -47,7 +47,6 @@ pub fn build_meta_json(
     isolation: u32,
     entrypoint: &[String],
     env: &[(String, String)],
-    layers: &[serde_json::Value],
     options: &MetaOptions,
     bun_features: &BunFeatures,
 ) -> std::io::Result<Vec<u8>> {
@@ -59,7 +58,6 @@ pub fn build_meta_json(
         "isolation": isolation,
         "entrypoint": entrypoint,
         "env": env_map(env),
-        "layers": layers,
         "cwd": "/app",
     });
 
@@ -474,7 +472,6 @@ mod tests {
             0,
             &["python3".into(), "app.py".into()],
             &[("PORT".into(), "8000".into())],
-            &[],
             &opts,
             &bun_features,
         )

@@ -1,7 +1,7 @@
 //! Cryptographic verification for the xbin launcher stub.
 //!
 //! Provides Ed25519 signature verification, SHA-256 integrity checks,
-//! AES-256-GCM decryption, HKDF key derivation, and payload layer slicing.
+//! AES-256-GCM decryption, and HKDF key derivation.
 
 use std::io;
 use std::path::PathBuf;
@@ -10,8 +10,8 @@ use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use ed25519_dalek::{Signature, Verifier};
 use sha2::{Digest, Sha256};
 
-use crate::{CryptoMeta, Footer, Layer};
-use xbin_core::encrypt::{decrypt_chunks, hkdf_derive_key as core_hkdf_derive_key, NONCE_LEN};
+use crate::{CryptoMeta, Footer};
+use xbin_core::encrypt::hkdf_derive_key as core_hkdf_derive_key;
 use xbin_core::format::{SIG_BLOCK_SIZE, SIG_LEN};
 
 /// Verify Ed25519 signature: `Ed25519_verify(SHA256(payload‖meta‖footer), sig, public_key)`.
@@ -96,44 +96,6 @@ pub fn trusted_keys_dir() -> PathBuf {
 }
 
 // ---------------------------------------------------------------------------
-// Cache key (v2)
-// ---------------------------------------------------------------------------
-
-/// Compute a SHA-256 cache key from layer digests.
-pub fn cache_key_v2(layers: &[Layer]) -> String {
-    let mut h = Sha256::new();
-    for l in layers {
-        h.update(l.sha256.as_bytes());
-    }
-    hex::encode(h.finalize())
-}
-
-/// Slice the payload into per-layer blobs. Returns a single-element vec when
-/// the binary is not layered (v2 plain).
-pub fn slice_layers<'a>(
-    payload: &'a [u8],
-    region_offset: u64,
-    meta: &crate::Metadata,
-    layered: bool,
-) -> io::Result<Vec<&'a [u8]>> {
-    if !layered {
-        return Ok(vec![payload]);
-    }
-    meta.layers
-        .iter()
-        .map(|l| {
-            let start = (l.offset - region_offset) as usize;
-            let end = start
-                .checked_add(l.csize as usize)
-                .ok_or_else(|| crate::err("layer size overflow"))?;
-            payload
-                .get(start..end)
-                .ok_or_else(|| crate::err("layer extends beyond payload boundary"))
-        })
-        .collect()
-}
-
-// ---------------------------------------------------------------------------
 // SHA-256 integrity
 // ---------------------------------------------------------------------------
 
@@ -192,13 +154,11 @@ pub fn hkdf_derive_key(encryption_key: &[u8], salt: &[u8; 32]) -> io::Result<[u8
 
 /// Decrypt an AES-256-GCM payload.
 ///
-/// The encryption key is stored in metadata. We derive the AES key from it
-/// via HKDF, then decrypt. The encryption key is separate from the Ed25519
-/// signing seed — it does not protect authenticity (that is the signing
-/// key's job), so callers must verify the signature before trusting the
-/// decrypted payload.
-///
-/// Ciphertext layout: [plaintext bytes][16-byte GCM tag]
+/// Ciphertext layout: [plaintext bytes][16-byte GCM tag]. The encryption key
+/// is stored in metadata. We derive the AES key from it via HKDF, then
+/// decrypt. The encryption key is separate from the Ed25519 signing seed — it
+/// does not protect authenticity (that is the signing key's job), so callers
+/// must verify the signature before trusting the plaintext.
 pub fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec<u8>> {
     let encryption_key = hex_decode(&crypto.encryption_key_hex)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption key hex"))?;
@@ -224,38 +184,6 @@ pub fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec
     cipher
         .decrypt(nonce, ciphertext)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("AES decrypt: {e}")))
-}
-
-/// Decrypt an AES-256-GCM payload that was encrypted in per-chunk mode
-/// (`encrypt_chunks` in `xbin-core/src/encrypt.rs`).
-///
-/// Each chunk was encrypted with an independent key derived via HKDF from the
-/// encryption key, salt, and chunk index. The ciphertext layout is
-/// `[ct_chunk_0 || tag_0][ct_chunk_1 || tag_1]...`. `chunk_sizes` gives the
-/// plaintext length of each chunk in order.
-pub fn chunked_decrypt_aes_gcm(
-    ciphertext: &[u8],
-    crypto: &CryptoMeta,
-    chunk_sizes: &[usize],
-) -> io::Result<Vec<u8>> {
-    let encryption_key = hex_decode(&crypto.encryption_key_hex)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption key hex"))?;
-    let encryption_key: [u8; 32] = encryption_key
-        .try_into()
-        .map_err(|_| crate::err("encryption key must be 32 bytes"))?;
-
-    let salt_bytes = hex_decode(&crypto.encryption_salt_hex)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption salt hex"))?;
-    let salt: [u8; 32] = salt_bytes
-        .try_into()
-        .map_err(|_| crate::err("encryption salt must be exactly 32 bytes"))?;
-
-    let nonce_bytes = hex_decode(&crypto.nonce_hex)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad nonce hex"))?;
-    let mut base_nonce = [0u8; NONCE_LEN];
-    base_nonce.copy_from_slice(&nonce_bytes);
-
-    decrypt_chunks(ciphertext, &encryption_key, &salt, &base_nonce, chunk_sizes)
 }
 
 fn hex_decode(s: &str) -> Option<Vec<u8>> {

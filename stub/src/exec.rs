@@ -1182,7 +1182,6 @@ mod tests {
                 m
             },
             cwd: None,
-            layers: Vec::new(),
             isolation: 0,
             seccomp: false,
             landlock: false,
@@ -1329,7 +1328,6 @@ mod tests {
             entrypoint: vec!["/app/app".into()],
             env: BTreeMap::new(),
             cwd: None,
-            layers: Vec::new(),
             isolation: 0,
             seccomp: false,
             landlock: false,
