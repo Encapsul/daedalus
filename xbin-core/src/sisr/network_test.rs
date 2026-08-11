@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use crate::assembly::assemble_xbin_with_sisr;
+use crate::assembly::assemble_xbin;
 use crate::format::Footer;
 use crate::manifest::DeltaManifest;
 use crate::sisr::engine::{ChunkFetcher, SisrEngine};
@@ -150,15 +150,18 @@ fn build_current(dir: &Path, payload: &[u8], chunk: usize) -> PathBuf {
         chunk_target_size: chunk,
         signing_key: None,
     };
-    assemble_xbin_with_sisr(
+    let artifacts = crate::sisr_stage::build_artifacts(payload, &config).unwrap();
+    assemble_xbin(
         &out,
-        b"STUB_DATA_HERE",
-        payload,
-        b"{\"name\":\"network\"}",
-        false,
-        false,
-        None,
-        &config,
+        &crate::assembly::AssemblyInput {
+            stub_bytes: b"STUB_DATA_HERE",
+            payload,
+            meta_bytes: b"{\"name\":\"network\"}",
+            encrypt: false,
+            squashfs: false,
+            target_arch: None,
+            sisr: Some(artifacts),
+        },
     )
     .unwrap();
     out

@@ -369,7 +369,7 @@ mod tests {
     use std::collections::HashMap as Map;
     use std::io::Cursor;
 
-    use crate::assembly::assemble_xbin_with_sisr;
+    use crate::assembly::assemble_xbin;
     use crate::sisr_stage::SisrBuildConfig;
 
     fn random_buf(len: usize, seed: u64) -> Vec<u8> {
@@ -426,15 +426,18 @@ mod tests {
             chunk_target_size: chunk,
             signing_key: None,
         };
-        assemble_xbin_with_sisr(
+        let artifacts = crate::sisr_stage::build_artifacts(payload, &config).unwrap();
+        assemble_xbin(
             &out,
-            b"STUB_DATA_HERE",
-            payload,
-            meta,
-            false,
-            false,
-            None,
-            &config,
+            &crate::assembly::AssemblyInput {
+                stub_bytes: b"STUB_DATA_HERE",
+                payload,
+                meta_bytes: meta,
+                encrypt: false,
+                squashfs: false,
+                target_arch: None,
+                sisr: Some(artifacts),
+            },
         )
         .unwrap();
         out
@@ -591,8 +594,19 @@ mod tests {
         let payload = random_buf(8_000, 5);
         let meta = br#"{"name":"legacy"}"#;
         let out = tmp.path().join("legacy.xbin");
-        crate::assembly::assemble_xbin(&out, b"STUB_DATA_HERE", &payload, meta, false, false, None)
-            .unwrap();
+        crate::assembly::assemble_xbin(
+            &out,
+            &crate::assembly::AssemblyInput {
+                stub_bytes: b"STUB_DATA_HERE",
+                payload: &payload,
+                meta_bytes: meta,
+                encrypt: false,
+                squashfs: false,
+                target_arch: None,
+                sisr: None,
+            },
+        )
+        .unwrap();
 
         let hash = sha256_of(&payload);
         let mut fetcher = MapFetcher::new();

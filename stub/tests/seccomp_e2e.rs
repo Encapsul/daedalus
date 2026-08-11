@@ -9,7 +9,7 @@ use std::process::Command;
 use tempfile::tempdir;
 
 use tar::Builder;
-use xbin_core::assembly::assemble_xbin;
+use xbin_core::assembly::{assemble_xbin, AssemblyInput};
 
 fn meta(seccomp: bool) -> Vec<u8> {
     let mut meta = serde_json::json!({
@@ -48,12 +48,15 @@ fn build_seccomp_xbin(work: &Path, stub: &Path, seccomp: bool) -> PathBuf {
     let meta_bytes = meta(seccomp);
     assemble_xbin(
         &out,
-        &fs::read(stub).unwrap(),
-        &payload_bytes,
-        &meta_bytes,
-        false,
-        false,
-        None,
+        &AssemblyInput {
+            stub_bytes: &fs::read(stub).unwrap(),
+            payload: &payload_bytes,
+            meta_bytes: &meta_bytes,
+            encrypt: false,
+            squashfs: false,
+            target_arch: None,
+            sisr: None,
+        },
     )
     .unwrap();
     out
