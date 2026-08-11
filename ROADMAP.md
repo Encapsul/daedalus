@@ -5,6 +5,14 @@ Generated from security audit and code review. All tests pass, clippy passes, fm
 > **Second review pass (2026-08-10):** items #23–#42 added after a full codebase re-read. Note: #2 (static mut signal handler) and #18 (v2/v3 footer) are already resolved in the current code (`OnceLock<Mutex<Vec<i32>>>`, version-gated footer parse) — kept above for historical context.
 >
 > **Third review pass (2026-08-10):** items #43–#50 added after a follow-up review. Note: #6 (Landlock READ_ONLY allows EXECUTE) is resolved in the current code (`landlock.rs:55` = `READ_FILE | READ_DIR` only) — the remaining Landlock problems are covered by #44.
+>
+> **Work session 2026-08-11:** resolved #23, #24, #25, #28, #42, #43, #44 (commits `6843409`, `e1bd2ac`, `89d49a3`, `0a29088`, `45ebf22`, `065492a`, `769e479`). Two new defects found and fixed while e2e-testing: `assembly.rs` wrote the 84-byte footer core instead of the 92-byte `pack_full` for v3+ files (every unsigned v3+ binary was rejected by the stub's signature-state check), and `xbin sign` stripped the executable bit.
+
+## ⚠️ Build Environment Notes (2026-08-11)
+
+- **`rust-lld` in stable 1.97.1 segfaults on this host.** Deterministic crash in `llvm::opt::GenericOptTable` even for a trivial hello-world link (broke mid-session; the binary worked earlier that day). Workaround for non-`--target` builds: `RUSTFLAGS="-C link-arg=-fuse-ld=bfd"` (GNU ld). Fix: `rustup toolchain uninstall stable && rustup toolchain install stable`.
+- **Musl stub cannot currently be relinked on this host.** With `--target`, cargo does not forward rustflags (env `RUSTFLAGS`, `CARGO_*_RUSTFLAGS`, or `[build]/[host]` config) to host units (build scripts / proc-macros), so the `-fuse-ld=bfd` workaround never reaches them and the broken rust-lld is always used. `make stub` is blocked until the toolchain is reinstalled; tests used a gnu-ELF stub via `XBIN_STUB_PATH`.
+- **`.cargo/config.toml` is missing.** AGENTS.md documents it as setting `CARGO_TARGET_DIR=/tmp/xbin-stub-target`; the file no longer exists in the repo. Recreate it or update AGENTS.md.
 
 ---
 
