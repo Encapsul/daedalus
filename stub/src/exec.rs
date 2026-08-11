@@ -93,6 +93,13 @@ pub fn setup_env(
         env.insert("XBIN_ORIG_CWD".into(), cwd.to_string_lossy().into_owned());
     }
 
+    // App-bundled `.env` is the LOWEST-priority source: every explicit
+    // override below (meta.env, config secrets, DATABASE_URL) wins on
+    // collision, so a packaged `.env` can't silently shadow operator config.
+    for (k, v) in xbin_core::dotenv::load_dotenv(rootfs, None, false) {
+        env.entry(k).or_insert(v);
+    }
+
     let rootfs_str = rootfs.to_string_lossy();
     for (k, v) in &meta.env {
         env.insert(k.clone(), v.replace("${ROOTFS}", &rootfs_str));
@@ -110,15 +117,12 @@ pub fn setup_env(
         env.insert("DATABASE_URL".into(), url);
     }
 
-    let dotenv_env = xbin_core::dotenv::load_dotenv(rootfs, None, false);
-    for (k, v) in dotenv_env {
-        env.insert(k, v);
-    }
-
-    // Framework-specific defaults
+    // Framework-specific defaults (fill gaps only — .env and operator config win)
     match meta.runtime.as_str() {
         "python" => {
-            env.insert("PYTHONUNBUFFERED".into(), "1".into());
+            if !env.contains_key("PYTHONUNBUFFERED") {
+                env.insert("PYTHONUNBUFFERED".into(), "1".into());
+            }
             if !env.contains_key("DJANGO_SETTINGS_MODULE") {
                 if let Some(settings) = detect_django_settings(rootfs) {
                     env.insert("DJANGO_SETTINGS_MODULE".into(), settings);
@@ -126,7 +130,9 @@ pub fn setup_env(
             }
         }
         "node" => {
-            env.insert("NODE_ENV".into(), "production".into());
+            if !env.contains_key("NODE_ENV") {
+                env.insert("NODE_ENV".into(), "production".into());
+            }
         }
         "php" => {
             if !env.contains_key("APP_ENV") {
@@ -137,8 +143,12 @@ pub fn setup_env(
             }
         }
         "ruby" => {
-            env.insert("RAILS_ENV".into(), "production".into());
-            env.insert("RACK_ENV".into(), "production".into());
+            if !env.contains_key("RAILS_ENV") {
+                env.insert("RAILS_ENV".into(), "production".into());
+            }
+            if !env.contains_key("RACK_ENV") {
+                env.insert("RACK_ENV".into(), "production".into());
+            }
         }
         "java" if !env.contains_key("JAVA_TOOL_OPTIONS") => {
             if let Ok(java_opts) = std::env::var("JAVA_OPTS").or_else(|_| std::env::var("JVM_OPTS"))
@@ -1017,6 +1027,7 @@ extern "C" fn signal_forward(sig: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::DatabaseConfig;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
@@ -1100,6 +1111,59 @@ mod tests {
             detect_django_settings(tmp.path()),
             Some("myproject.settings".to_string())
         );
+    }
+
+    #[test]
+    fn setup_env_dotenv_loses_to_explicit_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rootfs = tmp.path();
+        std::fs::write(
+            rootfs.join(".env"),
+            "DATABASE_URL=postgres://dotenv/db\nMY_KEY=dotenv\nNODE_ENV=staging",
+        )
+        .unwrap();
+
+        let meta = Metadata {
+            name: "test".into(),
+            version: None,
+            runtime: "node".into(),
+            entrypoint: Vec::new(),
+            env: {
+                let mut m = BTreeMap::new();
+                m.insert("MY_KEY".to_string(), "explicit".to_string());
+                m
+            },
+            cwd: None,
+            layers: Vec::new(),
+            isolation: 0,
+            seccomp: false,
+            landlock: false,
+            services: Vec::new(),
+            crypto: None,
+            payload_format: String::new(),
+            health_check: None,
+            update_url: None,
+        };
+
+        let app_config = AppConfig {
+            database: Some(DatabaseConfig {
+                url: Some("postgres://config/db".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let env = setup_env(&meta, rootfs, false, None, &app_config).unwrap();
+
+        // Explicit --env wins over the app's .env.
+        assert_eq!(env.get("MY_KEY").map(String::as_str), Some("explicit"));
+        // Config DATABASE_URL wins over the app's .env.
+        assert_eq!(
+            env.get("DATABASE_URL").map(String::as_str),
+            Some("postgres://config/db")
+        );
+        // .env still fills gaps; the node production default loses to it.
+        assert_eq!(env.get("NODE_ENV").map(String::as_str), Some("staging"));
     }
 
     #[test]
