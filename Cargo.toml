@@ -1,5 +1,5 @@
 [workspace]
-members = ["xbin-core", "stub", "xbin-cli"]
+members = ["erebus-core", "erebus-stub", "erebus-cli"]
 resolver = "2"
 
 [profile.release]
