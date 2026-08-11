@@ -281,7 +281,15 @@ pub fn assemble_xbin_with_sisr_artifacts(
         f.write_all(&artifacts.manifest_bytes)?;
         f.write_all(&ext.pack())?;
     }
-    f.write_all(&footer.pack())?;
+    // v3+ files store the 8-byte `sig_offset` prefix before the core footer
+    // (92 bytes total, see `Footer::pack_full`); writing the bare 84-byte
+    // `pack()` here made the reader misparse the last 8 metadata bytes as a
+    // phantom `sig_offset`, failing the stub's signature-state check.
+    if footer.format_version >= 3 {
+        f.write_all(&footer.pack_full())?;
+    } else {
+        f.write_all(&footer.pack())?;
+    }
     f.flush()?;
 
     // Set executable permission
@@ -419,6 +427,29 @@ mod tests {
         assert_eq!(footer.payload_csize, payload.len() as u64);
         // Integrity hash covers the (encrypted) payload || metadata.
         assert_eq!(footer.payload_sha256, sha2_hash(payload, meta));
+    }
+
+    #[test]
+    fn assemble_v3plus_footer_roundtrips_sig_offset() {
+        // Regression: v3+ files must end with the 92-byte `pack_full` footer
+        // (sig_offset prefix + 84-byte core). Writing the bare 84-byte core
+        // made the reader misparse trailing metadata bytes as a phantom
+        // `sig_offset`, so the stub's signature-state check
+        // (`has_sig_block == FLAG_SIGNED`) rejected valid unsigned files.
+        for (encrypt, squashfs, expected_version) in
+            [(true, false, 4), (false, true, 5), (true, true, 5)]
+        {
+            let tmp = tempfile::tempdir().unwrap();
+            let out = tmp.path().join("t.xbin");
+            let meta = br#"{"name":"test"}"#;
+            assemble_xbin(&out, b"STUB", b"PAYLOAD", meta, encrypt, squashfs, None).unwrap();
+            let mut cursor = std::io::Cursor::new(fs::read(&out).unwrap());
+            let footer = Footer::read_from(&mut cursor).unwrap();
+            assert_eq!(footer.format_version, expected_version);
+            assert_eq!(footer.sig_offset, 0, "unsigned file must have sig_offset 0");
+            let has_sig_block = footer.format_version >= 3 && footer.sig_offset != 0;
+            assert_eq!(has_sig_block, footer.is_signed());
+        }
     }
 
     #[test]
