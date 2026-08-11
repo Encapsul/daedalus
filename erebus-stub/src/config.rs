@@ -1,10 +1,10 @@
-//! Configuration management for xbin launcher.
+//! Configuration management for erebus launcher.
 //!
 //! Multi-layered configuration system (lowest priority last):
 //! 1. CLI arguments
 //! 2. Environment variables (12-factor overrides)
-//! 3. Local config file (xbin.toml in same directory as binary)
-//! 4. Global config (~/.xbin/config.toml on Unix)
+//! 3. Local config file (erebus.toml in same directory as binary)
+//! 4. Global config (~/.erebus/config.toml on Unix)
 //! 5. Interactive prompt (when TTY available)
 //!
 //! `merge` fills gaps only, so an earlier layer never loses a key it already
@@ -65,10 +65,10 @@ impl AppConfig {
     }
 
     fn find_local_config() -> Option<PathBuf> {
-        // Check xbin.toml in same directory as binary
+        // Check erebus.toml in same directory as binary
         let exe_path = env::current_exe().ok()?;
         let dir = exe_path.parent()?;
-        let config_path = dir.join("xbin.toml");
+        let config_path = dir.join("erebus.toml");
         if config_path.exists() {
             return Some(config_path);
         }
@@ -84,7 +84,7 @@ impl AppConfig {
 
     fn find_global_config() -> Option<PathBuf> {
         let home = env::var("HOME").ok()?;
-        let config_dir = PathBuf::from(home).join(".xbin");
+        let config_dir = PathBuf::from(home).join(".erebus");
         let config_path = config_dir.join("config.toml");
         if config_path.exists() {
             return Some(config_path);
@@ -107,7 +107,7 @@ impl AppConfig {
     fn config_file_perilous(path: &Path) -> Option<&'static str> {
         if path.file_name().and_then(|n| n.to_str()) == Some("config.toml") {
             return Some(
-                "generic `config.toml` name may pick up unrelated files; prefer `xbin.toml`",
+                "generic `config.toml` name may pick up unrelated files; prefer `erebus.toml`",
             );
         }
         #[cfg(unix)]
@@ -125,7 +125,7 @@ impl AppConfig {
     fn warn_if_unsafe_config(path: &Path, role: &str) {
         if let Some(reason) = Self::config_file_perilous(path) {
             eprintln!(
-                "[xbin] warning: {role} config {} is untrusted: {reason}",
+                "[erebus] warning: {role} config {} is untrusted: {reason}",
                 path.display()
             );
         }
@@ -440,7 +440,7 @@ db_password = "secret"
         let dir = tempfile::TempDir::new().unwrap();
         let generic = dir.path().join("config.toml");
         fs::write(&generic, "[secrets]\n").unwrap();
-        let specific = dir.path().join("xbin.toml");
+        let specific = dir.path().join("erebus.toml");
         fs::write(&specific, "[secrets]\n").unwrap();
         #[cfg(unix)]
         for path in [&generic, &specific] {
@@ -457,7 +457,7 @@ db_password = "secret"
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempfile::TempDir::new().unwrap();
-        let path = dir.path().join("xbin.toml");
+        let path = dir.path().join("erebus.toml");
         fs::write(&path, "[secrets]\n").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
 

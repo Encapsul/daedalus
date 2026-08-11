@@ -1,4 +1,4 @@
-//! Atomic extraction for the xbin launcher stub.
+//! Atomic extraction for the erebus launcher stub.
 //!
 //! Provides `extract_atomic` (zstd+tar) and `extract_squashfs_atomic`
 //! (squashfs), both built on the shared `atomic_extract` helper.
@@ -24,7 +24,7 @@ const DEFAULT_MAX_FILES: usize = 50_000;
 ///
 /// The env vars are read once per extraction and only from the launcher's own
 /// process environment — they are NOT parsed from the (untrusted) payload, so
-/// an attacker cannot weaken the limits by smuggling values into the xbin.
+/// an attacker cannot weaken the limits by smuggling values into the erebus.
 struct ExtractLimits {
     max_bytes: u64,
     max_files: usize,
@@ -177,7 +177,7 @@ pub fn atomic_extract(
             // owned by us with sane perms; a foreign cache is wiped instead.
             if marker.exists() && cache_root_trustworthy(cache_root) {
                 let _ = fs::remove_dir_all(&tmp);
-                eprintln!("[xbin] warning: cache rename failed but existing cache is valid: {e}");
+                eprintln!("[erebus] warning: cache rename failed but existing cache is valid: {e}");
                 Ok(())
             } else {
                 // Otherwise cache_root is a stale partial extraction (no

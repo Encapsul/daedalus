@@ -12,10 +12,10 @@ use std::process::ExitCode;
 
 #[derive(Parser)]
 #[command(
-    name = "xbin",
+    name = "erebus",
     version,
     about = "Package any app into a single self-extracting binary",
-    long_about = "x.bin compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  xbin build ./myapp -o myapp.xbin\n  xbin run myapp.xbin\n  xbin inspect myapp.xbin\n  xbin keygen\n  xbin sign myapp.xbin --key ~/.xbin/keys/*.key\n  xbin verify myapp.xbin\n  xbin doctor\n  xbin scan .\n  xbin completion bash >> ~/.bashrc\n  xbin completion zsh >> ~/.zshrc\n  xbin completion fish > ~/.config/fish/completions/xbin.fish"
+    long_about = "x.bin compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  erebus build ./myapp -o myapp.erebus\n  erebus run myapp.erebus\n  erebus inspect myapp.erebus\n  erebus keygen\n  erebus sign myapp.erebus --key ~/.erebus/keys/*.key\n  erebus verify myapp.erebus\n  erebus doctor\n  erebus scan .\n  erebus completion bash >> ~/.bashrc\n  erebus completion zsh >> ~/.zshrc\n  erebus completion fish > ~/.config/fish/completions/erebus.fish"
 )]
 struct Cli {
     /// Enable verbose output
@@ -36,59 +36,59 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build a .xbin binary from an app directory
+    /// Build a .erebus binary from an app directory
     ///
     /// Examples:
-    ///   xbin build ./myapp -o myapp.xbin
-    ///   xbin build ./myapp --target aarch64 --squashfs
-    ///   xbin build ./myapp --sign --key ~/.xbin/keys/*.key
-    ///   xbin build ./myapp --encrypt --key ~/.xbin/keys/*.key
+    ///   erebus build ./myapp -o myapp.erebus
+    ///   erebus build ./myapp --target aarch64 --squashfs
+    ///   erebus build ./myapp --sign --key ~/.erebus/keys/*.key
+    ///   erebus build ./myapp --encrypt --key ~/.erebus/keys/*.key
     ///     (--encrypt is obfuscation-only: the decryption key is embedded in
     ///      the metadata, so a determined attacker can always extract the app)
-    ///   xbin build ./myapp --health-port 8081
-    ///   xbin build ./myapp --persist --env-file .env
+    ///   erebus build ./myapp --health-port 8081
+    ///   erebus build ./myapp --persist --env-file .env
     Build(Box<commands::build::BuildArgs>),
 
-    /// Execute a .xbin file
+    /// Execute a .erebus file
     Run(commands::run::RunArgs),
 
-    /// Inspect a .xbin file's metadata
+    /// Inspect a .erebus file's metadata
     Inspect(commands::inspect::InspectArgs),
 
     /// Generate Ed25519 signing keys
     Keygen(commands::keygen::KeygenArgs),
 
-    /// Sign a .xbin file
+    /// Sign a .erebus file
     Sign(commands::sign::SignArgs),
 
-    /// Verify a .xbin file's signature
+    /// Verify a .erebus file's signature
     Verify(commands::verify::VerifyArgs),
 
     /// Trust a public key
     Trust(commands::trust::TrustArgs),
 
-    /// Scan directories for .xbin files
+    /// Scan directories for .erebus files
     Scan(commands::scan::ScanArgs),
 
     /// Check system prerequisites
     Doctor(commands::doctor::DoctorArgs),
 
-    /// Clean xbin cache
+    /// Clean erebus cache
     Clean(commands::clean::CleanArgs),
 
-    /// Test a .xbin file in an ephemeral sandbox
+    /// Test a .erebus file in an ephemeral sandbox
     Selftest(commands::selftest::SelftestArgs),
 
     /// Upgrade x.bin to the latest release
     Upgrade(commands::upgrade::UpgradeArgs),
 
-    /// Migrate a legacy .xbin (v1) to the SISR-enabled v2 format
+    /// Migrate a legacy .erebus (v1) to the SISR-enabled v2 format
     UpgradeBinary(commands::upgrade_binary::UpgradeBinaryArgs),
 
-    /// Publish a .xbin file to a registry
+    /// Publish a .erebus file to a registry
     Publish(commands::publish::PublishArgs),
 
-    /// Show xbin environment info
+    /// Show erebus environment info
     Env(commands::env::EnvArgs),
 
     /// Generate shell completion scripts
@@ -181,7 +181,7 @@ fn main() -> ExitCode {
         Commands::Env(args) => commands::env::run(args),
         Commands::Completion { shell } => {
             let mut cmd = Cli::command();
-            let bin_name = "xbin";
+            let bin_name = "erebus";
             match shell {
                 Shell::Bash => generate(Bash, &mut cmd, bin_name, &mut io::stdout()),
                 Shell::Zsh => generate(Zsh, &mut cmd, bin_name, &mut io::stdout()),
@@ -211,7 +211,7 @@ fn generate_man_pages(dir: &std::path::Path) -> anyhow::Result<()> {
     let author = "Ted Kouhouenou <ted.sig42@tutamail.com>";
     let manual = format!("x.bin {version}");
 
-    // ── Main man page (xbin.1) ────────────────────────────────────────
+    // ── Main man page (erebus.1) ────────────────────────────────────────
     let man = clap_mangen::Man::new(cmd.clone())
         .section("1")
         .manual(&manual)
@@ -236,27 +236,27 @@ EXIT STATUS
 
 ENVIRONMENT
        XBIN_CACHE_DIR
-              Override the cache directory (default: ~/.cache/xbin).
+              Override the cache directory (default: ~/.cache/erebus).
 
        XBIN_VERBOSE
               If set, enable verbose output (equivalent to -v).
 
        XDG_DATA_HOME
-              Base directory for xbin keys and trusted keys.
+              Base directory for erebus keys and trusted keys.
 
 FILES
-       ~/.cache/xbin/<hash>/rootfs/
+       ~/.cache/erebus/<hash>/rootfs/
               Extracted rootfs for each built binary, keyed by SHA-256 hash.
 
-       ~/.xbin/trusted-keys/
+       ~/.erebus/trusted-keys/
               Directory of trusted public keys for signature verification.
 
-       ~/.local/share/xbin/keys/
+       ~/.local/share/erebus/keys/
               Default directory for generated signing keys.
 
 SEE ALSO
-       xbin-build(1), xbin-sign(1), xbin-verify(1), xbin-keygen(1),
-       xbin-inspect(1), xbin-doctor(1)
+       erebus-build(1), erebus-sign(1), erebus-verify(1), erebus-keygen(1),
+       erebus-inspect(1), erebus-doctor(1)
 
 AUTHORS
        Written by {author}.
@@ -272,7 +272,7 @@ BUGS
 "
     );
     buffer.extend_from_slice(extra.as_bytes());
-    std::fs::write(dir.join("xbin.1"), &buffer)?;
+    std::fs::write(dir.join("erebus.1"), &buffer)?;
 
     // ── Subcommand man pages ──────────────────────────────────────────
     let sub_extras: &[(&str, &str)] = &[
@@ -287,7 +287,7 @@ BUGS
         ("upgrade-binary", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for key lookup.\n"),
         ("inspect", ""),
         ("scan", ""),
-        ("clean", "FILES\n       ~/.cache/xbin/\n              The cache directory cleaned by this command.\n"),
+        ("clean", "FILES\n       ~/.cache/erebus/\n              The cache directory cleaned by this command.\n"),
         ("env", ""),
         ("trust", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for trusted key storage.\n"),
         ("completion", ""),
@@ -327,7 +327,7 @@ EXIT STATUS
        5      Not found.
 
 SEE ALSO
-       xbin(1)
+       erebus(1)
 
 AUTHORS
        Written by {author}.
@@ -337,7 +337,7 @@ HISTORY
 {extra_footer}"
         );
         buffer.extend_from_slice(shared.as_bytes());
-        std::fs::write(dir.join(format!("xbin-{sub_name}.1")), &buffer)?;
+        std::fs::write(dir.join(format!("erebus-{sub_name}.1")), &buffer)?;
     }
 
     eprintln!("Generated man pages in {}", dir.display());

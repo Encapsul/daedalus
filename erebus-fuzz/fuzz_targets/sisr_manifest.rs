@@ -13,10 +13,10 @@ use std::io::Cursor;
 
 use libfuzzer_sys::fuzz_target;
 
-use xbin_core::format::Footer;
-use xbin_core::manifest::DeltaManifest;
-use xbin_core::sisr_header::{read_sisr, SisrFooterExt};
-use xbin_core::sisr_stage::RemoteManifest;
+use erebus_core::format::Footer;
+use erebus_core::manifest::DeltaManifest;
+use erebus_core::sisr_header::{read_sisr, SisrFooterExt};
+use erebus_core::sisr_stage::RemoteManifest;
 
 fuzz_target!(|data: &[u8]| {
     let _ = DeltaManifest::parse(data);

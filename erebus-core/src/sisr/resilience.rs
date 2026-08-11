@@ -1,7 +1,7 @@
 //! Backup / restore / discard primitives for post-update rollback.
 //!
 //! The mission invariant ("the user is never left with a broken binary")
-//! depends on the `.xbin.bak` snapshot being trustworthy at every instant:
+//! depends on the `.erebus.bak` snapshot being trustworthy at every instant:
 //! `create_backup` snapshots the current binary before a SISR swap, the
 //! snapshot is kept only until the health gate confirms the new version, and
 //! `restore_backup` swaps it back over a failed new version. Every write goes
@@ -17,14 +17,14 @@ use crate::sisr::swap::AtomicWriter;
 /// Suffix appended to a binary's file name for its rollback snapshot.
 pub const BACKUP_SUFFIX: &str = ".bak";
 
-/// `/dir/app.xbin` → `/dir/app.xbin.bak`.
+/// `/dir/app.erebus` → `/dir/app.erebus.bak`.
 ///
 /// The snapshot lives next to the binary so the restore rename is atomic
 /// (same filesystem) and so a renamed binary keeps a co-located snapshot.
 pub fn backup_path_for(bin: &Path) -> PathBuf {
     let parent = bin.parent().unwrap_or_else(|| Path::new(""));
     let file = bin.file_name().map_or_else(
-        || "app.xbin".to_string(),
+        || "app.erebus".to_string(),
         |n| n.to_string_lossy().into_owned(),
     );
     parent.join(format!("{file}{BACKUP_SUFFIX}"))
@@ -38,7 +38,7 @@ pub fn backup_path_for(bin: &Path) -> PathBuf {
 pub fn create_backup(src: &Path, backup: &Path) -> io::Result<()> {
     let parent = backup.parent().unwrap_or_else(|| Path::new(""));
     let mut src_file = fs::File::open(src)?;
-    let mut writer = AtomicWriter::new(parent, "xbin.bak")?;
+    let mut writer = AtomicWriter::new(parent, "erebus.bak")?;
     io::copy(&mut src_file, writer.file_mut())?;
     let perms = fs::metadata(src)?.permissions();
     writer.file_mut().set_permissions(perms)?;
@@ -59,7 +59,7 @@ pub fn restore_backup(bin: &Path, backup: &Path) -> io::Result<()> {
     }
     let parent = bin.parent().unwrap_or_else(|| Path::new(""));
     let mut src_file = fs::File::open(backup)?;
-    let mut writer = AtomicWriter::new(parent, "xbin.restore")?;
+    let mut writer = AtomicWriter::new(parent, "erebus.restore")?;
     io::copy(&mut src_file, writer.file_mut())?;
     let perms = fs::metadata(backup)?.permissions();
     writer.file_mut().set_permissions(perms)?;
@@ -86,7 +86,7 @@ mod tests {
 
     #[cfg(unix)]
     fn bin_and_backup(tmp: &Path) -> (PathBuf, PathBuf) {
-        let bin = tmp.join("app.xbin");
+        let bin = tmp.join("app.erebus");
         fs::write(&bin, b"v1-bytes").unwrap();
         fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
         (bin.clone(), backup_path_for(&bin))
@@ -94,8 +94,8 @@ mod tests {
 
     #[test]
     fn backup_path_is_co_located() {
-        let bin = Path::new("/home/u/app.xbin");
-        assert_eq!(backup_path_for(bin), PathBuf::from("/home/u/app.xbin.bak"));
+        let bin = Path::new("/home/u/app.erebus");
+        assert_eq!(backup_path_for(bin), PathBuf::from("/home/u/app.erebus.bak"));
         let nested = Path::new("/opt/tools/bin/tool");
         assert_eq!(
             backup_path_for(nested),

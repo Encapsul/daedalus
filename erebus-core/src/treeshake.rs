@@ -24,7 +24,7 @@ const SKIP_DIRS: &[&str] = &[
     "__pycache__",
     ".venv",
     "venv",
-    ".xbin",
+    ".erebus",
     "dist",
     "build",
     ".next",

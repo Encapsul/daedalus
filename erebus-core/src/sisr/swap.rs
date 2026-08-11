@@ -87,10 +87,10 @@ mod tests {
     fn commit_replaces_destination_and_cleans_tmp() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
-        let dst = dir.join("app.xbin");
+        let dst = dir.join("app.erebus");
         fs::write(&dst, b"old").unwrap();
 
-        let mut w = AtomicWriter::new(dir, "app.xbin.sisr").unwrap();
+        let mut w = AtomicWriter::new(dir, "app.erebus.sisr").unwrap();
         let tmp_path = w.temp_path().to_path_buf();
         assert!(tmp_path.exists());
         w.file_mut().write_all(b"new-content").unwrap();
@@ -104,11 +104,11 @@ mod tests {
     fn drop_without_commit_leaves_destination_untouched() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
-        let dst = dir.join("app.xbin");
+        let dst = dir.join("app.erebus");
         fs::write(&dst, b"original").unwrap();
 
         {
-            let mut w = AtomicWriter::new(dir, "app.xbin.sisr").unwrap();
+            let mut w = AtomicWriter::new(dir, "app.erebus.sisr").unwrap();
             let tmp_path = w.temp_path().to_path_buf();
             w.file_mut().write_all(b"partial").unwrap();
             // Simulated interruption: drop without commit.
@@ -127,13 +127,13 @@ mod tests {
     fn commit_error_leaves_destination_untouched() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
-        let dst = dir.join("app.xbin");
+        let dst = dir.join("app.erebus");
         fs::write(&dst, b"original").unwrap();
 
         // Commit to a path inside a missing directory -> rename fails.
-        let mut w = AtomicWriter::new(dir, "app.xbin.sisr").unwrap();
+        let mut w = AtomicWriter::new(dir, "app.erebus.sisr").unwrap();
         w.file_mut().write_all(b"new").unwrap();
-        let missing = dir.join("nope").join("app.xbin");
+        let missing = dir.join("nope").join("app.erebus");
         assert!(w.commit(&missing).is_err());
         assert_eq!(fs::read(&dst).unwrap(), b"original");
     }
@@ -141,8 +141,8 @@ mod tests {
     #[test]
     fn atomic_replace_overwrites_existing_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let src = tmp.path().join("new.xbin");
-        let dst = tmp.path().join("app.xbin");
+        let src = tmp.path().join("new.erebus");
+        let dst = tmp.path().join("app.erebus");
         fs::write(&src, b"v2").unwrap();
         fs::write(&dst, b"v1").unwrap();
 
@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn atomic_replace_missing_source_errors() {
         let tmp = tempfile::tempdir().unwrap();
-        let dst = tmp.path().join("app.xbin");
+        let dst = tmp.path().join("app.erebus");
         fs::write(&dst, b"v1").unwrap();
         assert!(atomic_replace(&tmp.path().join("missing"), &dst).is_err());
         assert_eq!(fs::read(&dst).unwrap(), b"v1");

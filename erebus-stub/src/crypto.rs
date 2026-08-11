@@ -1,4 +1,4 @@
-//! Cryptographic verification for the xbin launcher stub.
+//! Cryptographic verification for the erebus launcher stub.
 //!
 //! Provides Ed25519 signature verification, SHA-256 integrity checks,
 //! AES-256-GCM decryption, and HKDF key derivation.
@@ -16,7 +16,7 @@ use erebus_core::format::{SIG_BLOCK_SIZE, SIG_LEN};
 
 /// Verify Ed25519 signature: `Ed25519_verify(SHA256(payload‖meta‖footer), sig, public_key)`.
 ///
-/// Trusted public keys are read from `~/.xbin/trusted-keys/` (or `$XBIN_TRUSTED_DIR`).
+/// Trusted public keys are read from `~/.erebus/trusted-keys/` (or `$XBIN_TRUSTED_DIR`).
 /// The launcher accepts the file if **any** trusted key verifies the signature.
 pub fn verify_ed25519<R: std::io::Read + std::io::Seek>(
     footer: &Footer,
@@ -90,7 +90,7 @@ pub fn load_trusted_keys() -> io::Result<Vec<ed25519_dalek::VerifyingKey>> {
 }
 
 /// Return the directory where trusted Ed25519 public keys are stored.
-/// Override via `$XBIN_TRUSTED_DIR`; default `~/.xbin/trusted-keys/`.
+/// Override via `$XBIN_TRUSTED_DIR`; default `~/.erebus/trusted-keys/`.
 pub fn trusted_keys_dir() -> PathBuf {
     erebus_core::paths::trusted_keys_dir()
 }

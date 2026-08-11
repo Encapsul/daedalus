@@ -1,4 +1,4 @@
-//! Windows process spawning for the xbin stub.
+//! Windows process spawning for the erebus stub.
 //!
 //! Windows has no `fork`/`execvp`: the launcher spawns the app as a child
 //! process via `CreateProcessW` and either waits for it (exit code passthrough)

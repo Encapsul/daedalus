@@ -1,4 +1,4 @@
-//! Metadata structures for .xbin files.
+//! Metadata structures for .erebus files.
 //!
 //! Contains configuration for embedded runtimes, build caching, health checks, and WASM support.
 

@@ -147,7 +147,7 @@ impl PyFooter {
 
         if &core[0..5] != format::MAGIC {
             return Err(pyo3::exceptions::PyValueError::new_err(
-                "bad magic: not a .xbin file",
+                "bad magic: not a .erebus file",
             ));
         }
         let footer_magic = u32::from_le_bytes(
@@ -375,7 +375,7 @@ fn py_create_tar_zstd<'py>(py: Python<'py>, root: &str) -> PyResult<Bound<'py, P
 
 #[pyfunction]
 #[pyo3(signature = (out_path, stub_bytes, payload, meta_bytes, encrypt=false, squashfs=false, target_arch=None))]
-fn py_assemble_xbin(
+fn py_assemble_erebus(
     out_path: &str,
     stub_bytes: &[u8],
     payload: &[u8],
@@ -384,7 +384,7 @@ fn py_assemble_xbin(
     squashfs: bool,
     target_arch: Option<&str>,
 ) -> PyResult<u64> {
-    let size = assembly::assemble_xbin(
+    let size = assembly::assemble_erebus(
         Path::new(out_path),
         &assembly::AssemblyInput {
             stub_bytes,
@@ -448,7 +448,7 @@ fn erebus_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_create_tar_zstd, m)?)?;
 
     // assembly
-    m.add_function(wrap_pyfunction!(py_assemble_xbin, m)?)?;
+    m.add_function(wrap_pyfunction!(py_assemble_erebus, m)?)?;
 
     Ok(())
 }

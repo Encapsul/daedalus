@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let seed = [0xABu8; 32];
-        let plaintext = b"hello xbin encryption test data";
+        let plaintext = b"hello erebus encryption test data";
         let (ciphertext, meta) = encrypt_payload(plaintext, &seed).unwrap();
 
         assert_eq!(ciphertext.len(), plaintext.len() + 16);
@@ -295,7 +295,7 @@ mod tests {
         let salt = [0xCDu8; 32];
         let mut nonce = [0u8; NONCE_LEN];
         nonce[4..12].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
-        let plaintext = b"hello xbin chunked encryption test data, this is longer than one chunk";
+        let plaintext = b"hello erebus chunked encryption test data, this is longer than one chunk";
         let chunk_sizes = vec![8, 16, plaintext.len() - 24];
         let ciphertext = encrypt_chunks(plaintext, &seed, &salt, &nonce, &chunk_sizes).unwrap();
         let decrypted = decrypt_chunks(&ciphertext, &seed, &salt, &nonce, &chunk_sizes).unwrap();

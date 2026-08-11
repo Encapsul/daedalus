@@ -7,7 +7,7 @@ use std::os::unix::fs::PermissionsExt;
 use super::{env, footer_sha, parse_stats, payload_sha, run_app, run_update, BODY_V1, BODY_V2};
 
 /// The full prompt-9 architecture loop: build v1, serve the delta over a mock
-/// HTTP server, `--xbin-update`, then assert the binary became v2.
+/// HTTP server, `--erebus-update`, then assert the binary became v2.
 #[cfg(unix)]
 #[test]
 fn remote_update_swaps_in_v2_and_reports_reuse() {
@@ -16,7 +16,7 @@ fn remote_update_swaps_in_v2_and_reports_reuse() {
     let out = run_update(&e);
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-    assert!(out.status.success(), "--xbin-update must succeed: {stderr}");
+    assert!(out.status.success(), "--erebus-update must succeed: {stderr}");
     assert!(stderr.contains("manifest verified"), "stderr: {stderr}");
     assert!(stderr.contains("chunks reused"), "stderr: {stderr}");
     assert!(stderr.contains("chunks fetched"), "stderr: {stderr}");
@@ -115,7 +115,7 @@ fn local_staging_path_still_applies() {
         .env("XDG_DATA_HOME", e.work.join("data"))
         .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
         .output()
-        .expect("failed to spawn xbin with XBIN_SISR_MANIFEST");
+        .expect("failed to spawn erebus with XBIN_SISR_MANIFEST");
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     assert!(out.status.success(), "local update must run v2: {stderr}");

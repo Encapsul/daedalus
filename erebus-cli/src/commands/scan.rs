@@ -71,14 +71,14 @@ pub fn run(args: ScanArgs) -> Result<()> {
 
     for path in &args.paths {
         if path.is_dir() {
-            find_xbin_files(path, &mut files)?;
-        } else if path.is_file() && is_xbin_file(path) {
+            find_erebus_files(path, &mut files)?;
+        } else if path.is_file() && is_erebus_file(path) {
             files.push(path.clone());
         }
     }
 
     if files.is_empty() {
-        anyhow::bail!("No .xbin files found");
+        anyhow::bail!("No .erebus files found");
     }
 
     if args.json {
@@ -134,7 +134,7 @@ pub fn run(args: ScanArgs) -> Result<()> {
     Ok(())
 }
 
-fn find_xbin_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+fn find_erebus_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -144,16 +144,16 @@ fn find_xbin_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
             {
                 continue;
             }
-            find_xbin_files(&path, files)?;
-        } else if is_xbin_file(&path) {
+            find_erebus_files(&path, files)?;
+        } else if is_erebus_file(&path) {
             files.push(path);
         }
     }
     Ok(())
 }
 
-fn is_xbin_file(path: &Path) -> bool {
-    path.extension().map_or(false, |ext| ext == "xbin")
+fn is_erebus_file(path: &Path) -> bool {
+    path.extension().map_or(false, |ext| ext == "erebus")
         && std::fs::metadata(path).map_or(false, |m| m.len() > 84)
 }
 

@@ -9,7 +9,7 @@ use zeroize::Zeroizing;
 
 #[derive(Args)]
 pub struct SignArgs {
-    /// Path to the .xbin file
+    /// Path to the .erebus file
     pub file: PathBuf,
 
     /// Path to the signing key file
@@ -72,8 +72,8 @@ pub fn run(args: SignArgs) -> Result<()> {
     Ok(())
 }
 
-/// Sign a `.xbin` file in-place with the given key. Used by both `xbin sign`
-/// and `xbin build --key`.
+/// Sign a `.erebus` file in-place with the given key. Used by both `erebus sign`
+/// and `erebus build --key`.
 ///
 /// Write is atomic: a temp file is created in the same directory and
 /// renamed over the source only after the new content is fully flushed.
@@ -93,7 +93,7 @@ pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> 
     let original =
         std::fs::read(file).with_context(|| format!("failed to read {}", file.display()))?;
     let mut cursor = std::io::Cursor::new(&original);
-    let mut footer = Footer::read_from(&mut cursor).context("failed to read xbin footer")?;
+    let mut footer = Footer::read_from(&mut cursor).context("failed to read erebus footer")?;
 
     if footer.is_signed() {
         anyhow::bail!("file is already signed");
@@ -148,7 +148,7 @@ pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> 
         .copied()
         .collect();
 
-    let tmp_path = file.with_extension("xbin.tmp");
+    let tmp_path = file.with_extension("erebus.tmp");
     std::fs::write(&tmp_path, &new_content)
         .with_context(|| format!("failed to write temp file {}", tmp_path.display()))?;
     // `fs::write` creates the temp file with default perms; restore the

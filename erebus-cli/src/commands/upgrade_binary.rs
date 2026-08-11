@@ -7,7 +7,7 @@ use erebus_core::sisr_stage::SisrBuildConfig;
 
 #[derive(Args)]
 pub struct UpgradeBinaryArgs {
-    /// Input legacy .xbin (built without --enable-sisr)
+    /// Input legacy .erebus (built without --enable-sisr)
     pub input: PathBuf,
 
     /// Output path for the SISR-enabled binary
@@ -68,13 +68,13 @@ pub fn run(args: UpgradeBinaryArgs) -> Result<()> {
 
     let report = upgrade_binary(&args.input, &args.output, &config).with_context(|| {
         format!(
-            "failed to upgrade {} (rebuild with `xbin build --enable-sisr` if it is signed)",
+            "failed to upgrade {} (rebuild with `erebus build --enable-sisr` if it is signed)",
             args.input.display()
         )
     })?;
 
     let mut manifest = args.output.clone();
-    manifest.set_extension("xbin.manifest");
+    manifest.set_extension("erebus.manifest");
 
     if args.json {
         let result = serde_json::json!({
@@ -111,7 +111,7 @@ fn warn_if_insecure_key_permissions(path: &Path) {
             let mode = meta.permissions().mode() & 0o777;
             if mode != 0o600 {
                 eprintln!(
-                    "[xbin] warning: private key {} has mode {mode:o}, expected 0600",
+                    "[erebus] warning: private key {} has mode {mode:o}, expected 0600",
                     path.display()
                 );
             }

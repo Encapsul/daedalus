@@ -30,7 +30,7 @@ pub struct HttpRemoteCache {
 impl HttpRemoteCache {
     pub fn new(base_url: impl Into<String>) -> anyhow::Result<Self> {
         let client = reqwest::blocking::Client::builder()
-            .user_agent("xbin-remote-cache/0.1")
+            .user_agent("erebus-remote-cache/0.1")
             .build()?;
         Ok(Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),

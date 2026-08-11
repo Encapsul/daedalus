@@ -1,13 +1,13 @@
 //! SISR end-to-end integration tests against a mock HTTP update channel.
 //!
 //! The full reconstruction loop is exercised with the **real** launcher
-//! binary (`CARGO_BIN_EXE_xbin-stub`, embedded into a freshly built `.xbin`):
+//! binary (`CARGO_BIN_EXE_erebus-stub`, embedded into a freshly built `.erebus`):
 //!
 //! ```text
-//! 1. build app_v1.xbin (SISR enabled)
+//! 1. build app_v1.erebus (SISR enabled)
 //! 2. start a mock HTTP server serving the v1 → v2 delta (XBMR + chunks)
-//! 3. run ./app_v1.xbin --xbin-update=http://127.0.0.1:<port>
-//! 4. assert app_v1.xbin became v2 and produces v2's output
+//! 3. run ./app_v1.erebus --erebus-update=http://127.0.0.1:<port>
+//! 4. assert app_v1.erebus became v2 and produces v2's output
 //! ```
 
 pub mod mock_server;
@@ -22,10 +22,10 @@ use std::process::{Command, Output};
 
 use ed25519_dalek::SigningKey;
 use sha2::{Digest, Sha256};
-use xbin_core::assembly::{assemble_xbin, AssemblyInput};
-use xbin_core::format::Footer;
-use xbin_core::sisr_header::read_sisr;
-use xbin_core::sisr_stage::{build_artifacts, RemoteManifest, SisrBuildConfig};
+use erebus_core::assembly::{assemble_erebus, AssemblyInput};
+use erebus_core::format::Footer;
+use erebus_core::sisr_header::read_sisr;
+use erebus_core::sisr_stage::{build_artifacts, RemoteManifest, SisrBuildConfig};
 
 use mock_server::MockHttpServer;
 
@@ -110,7 +110,7 @@ pub fn setup_trusted_keys(work: &Path) {
     fs::write(dir.join("update.key"), key().verifying_key().to_bytes()).unwrap();
 }
 
-pub fn build_xbin(work: &Path, stub: &Path, body: &str, shared: &[u8]) {
+pub fn build_erebus(work: &Path, stub: &Path, body: &str, shared: &[u8]) {
     let config = SisrBuildConfig {
         enabled: true,
         chunk_target_size: CHUNK_TARGET,
@@ -119,8 +119,8 @@ pub fn build_xbin(work: &Path, stub: &Path, body: &str, shared: &[u8]) {
     let stub_bytes = fs::read(stub).unwrap();
     let body_bytes = payload(body, shared);
     let artifacts = build_artifacts(&body_bytes, &config).unwrap();
-    let out = work.join("app.xbin");
-    assemble_xbin(
+    let out = work.join("app.erebus");
+    assemble_erebus(
         &out,
         &AssemblyInput {
             stub_bytes: &stub_bytes,
@@ -203,7 +203,7 @@ pub fn stage_update(
     }
 }
 
-/// A running test environment: an isolated workdir, the built `.xbin`, a mock
+/// A running test environment: an isolated workdir, the built `.erebus`, a mock
 /// update channel, and the staged v2 delta.
 pub struct TestEnv {
     pub _tmp: tempfile::TempDir,
@@ -219,12 +219,12 @@ pub fn env(v1: &str, v2: &str) -> TestEnv {
     let tmp = tempfile::tempdir().unwrap();
     let work = tmp.path().to_path_buf();
     setup_trusted_keys(&work);
-    let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
+    let stub = PathBuf::from(env!("CARGO_BIN_EXE_erebus-stub"));
     let shared = random_buf(256 << 10, 42);
 
-    build_xbin(&work, &stub, v1, &shared);
-    let v1_sha = footer_sha(&work.join("app.xbin"));
-    let staged = stage_update(&work.join("app.xbin"), v2, &shared, key());
+    build_erebus(&work, &stub, v1, &shared);
+    let v1_sha = footer_sha(&work.join("app.erebus"));
+    let staged = stage_update(&work.join("app.erebus"), v2, &shared, key());
     assert!(
         staged.changed_count > 0,
         "test delta must actually change something"
@@ -236,7 +236,7 @@ pub fn env(v1: &str, v2: &str) -> TestEnv {
         server.route(path, bytes.clone());
     }
 
-    let app = work.join("app.xbin");
+    let app = work.join("app.erebus");
     TestEnv {
         _tmp: tmp,
         work,
@@ -248,16 +248,16 @@ pub fn env(v1: &str, v2: &str) -> TestEnv {
     }
 }
 
-/// Runs `./app.xbin --xbin-update=<base>` in the isolated environment.
+/// Runs `./app.erebus --erebus-update=<base>` in the isolated environment.
 pub fn run_update(env: &TestEnv) -> Output {
     Command::new(&env.app)
-        .arg(format!("--xbin-update={}", env.base_url))
+        .arg(format!("--erebus-update={}", env.base_url))
         .env("XBIN_TRUSTED_DIR", env.work.join("trusted"))
         .env("XDG_CACHE_HOME", env.work.join("cache"))
         .env("XDG_DATA_HOME", env.work.join("data"))
         .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
         .output()
-        .expect("failed to spawn xbin --xbin-update")
+        .expect("failed to spawn erebus --erebus-update")
 }
 
 /// Runs the binary as a normal app in the isolated environment.
@@ -268,7 +268,7 @@ pub fn run_app(env: &TestEnv) -> Output {
         .env("XDG_DATA_HOME", env.work.join("data"))
         .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
         .output()
-        .expect("failed to spawn the xbin app")
+        .expect("failed to spawn the erebus app")
 }
 
 /// Parsed reuse/fetch statistics from the launcher's stderr.
@@ -281,7 +281,7 @@ pub struct Stats {
 }
 
 /// Extracts the update statistics from the launcher's stderr line:
-/// `[xbin] update applied: N chunks reused (…), M chunks fetched (…), total K`.
+/// `[erebus] update applied: N chunks reused (…), M chunks fetched (…), total K`.
 pub fn parse_stats(stderr: &str) -> Stats {
     let line = stderr
         .lines()

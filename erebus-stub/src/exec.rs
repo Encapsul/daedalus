@@ -1,4 +1,4 @@
-//! Process execution for the xbin launcher stub.
+//! Process execution for the erebus launcher stub.
 //!
 //! Provides single-service exec, multi-service supervisor, entrypoint
 //! resolution, environment setup, and platform-specific process spawning.
@@ -460,7 +460,7 @@ fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
     crate::pivot_root_into(rootfs)?;
     if meta.seccomp {
         if let Err(e) = crate::seccomp::install_seccomp_denylist() {
-            eprintln!("[xbin] warning: seccomp not available, running without syscall filter: {e}");
+            eprintln!("[erebus] warning: seccomp not available, running without syscall filter: {e}");
         }
     }
     if let Some(root) = root_guard {
@@ -506,12 +506,12 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             })
             .collect::<Vec<_>>()
             .join(", ");
-        eprintln!("[xbin] warning: {flags} requested but isolation < 2 — sandbox not applied");
+        eprintln!("[erebus] warning: {flags} requested but isolation < 2 — sandbox not applied");
     }
 
     #[cfg(target_os = "linux")]
     if use_pivot && crate::namespace::running_in_container() {
-        eprintln!("[xbin] warning: running inside a container — namespace isolation may be restricted by the host");
+        eprintln!("[erebus] warning: running inside a container — namespace isolation may be restricted by the host");
     }
 
     enter_namespace_if_needed(meta.isolation)?;
@@ -539,7 +539,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 format!(
-                    "[xbin] error: interpreter '{}' not found (tried: {})",
+                    "[erebus] error: interpreter '{}' not found (tried: {})",
                     interpreter_name,
                     prog.display()
                 ),
@@ -563,7 +563,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             if !entrypoint_is_executable(interpreter_name.as_bytes(), &interpreter_name, rootfs) {
                 return Err(io::Error::new(
                     io::ErrorKind::NotFound,
-                    format!("[xbin] error: interpreter '{}' not found", interpreter_name),
+                    format!("[erebus] error: interpreter '{}' not found", interpreter_name),
                 ));
             }
             argv.push(cstr(interpreter_name.as_bytes())?);
@@ -704,7 +704,7 @@ pub fn spawn_app_windows(
             io::Error::new(
                 io::ErrorKind::NotFound,
                 format!(
-                    "[xbin] error: interpreter '{}' not found (tried: {})",
+                    "[erebus] error: interpreter '{}' not found (tried: {})",
                     interpreter_name,
                     cmd.display()
                 ),
@@ -827,7 +827,7 @@ pub fn supervise_services(
             prog = find_in_bin_paths(rootfs, &svc.cmd[0]).ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::NotFound,
-                    format!("[xbin] error: service '{}' not found", svc.cmd[0]),
+                    format!("[erebus] error: service '{}' not found", svc.cmd[0]),
                 )
             })?;
         }
@@ -841,7 +841,7 @@ pub fn supervise_services(
         }
         let child = crate::win::spawn(&prog, &argv, &env, None, false)?;
         if verbose {
-            eprintln!("[xbin] service '{}' started (pid {})", svc.name, child.pid);
+            eprintln!("[erebus] service '{}' started (pid {})", svc.name, child.pid);
         }
         children.push((svc.name.clone(), child));
     }
@@ -852,7 +852,7 @@ pub fn supervise_services(
     for (name, child) in &children {
         let code = crate::win::wait(child)?;
         if verbose {
-            eprintln!("[xbin] service '{}' exited with code {}", name, code);
+            eprintln!("[erebus] service '{}' exited with code {}", name, code);
         }
         if code != 0 && exit_code == 0 {
             exit_code = code;
@@ -905,14 +905,14 @@ pub fn fork_services(
                 // are valid CStrings, envp is null-terminated.
                 crate::libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
                 eprintln!(
-                    "[xbin] failed to exec {}: {}",
+                    "[erebus] failed to exec {}: {}",
                     svc.cmd[0],
                     io::Error::last_os_error()
                 );
                 std::process::exit(127);
             }
             if verbose {
-                eprintln!("[xbin] service '{}' started (pid {})", svc.name, pid);
+                eprintln!("[erebus] service '{}' started (pid {})", svc.name, pid);
             }
             children.push((svc.name.clone(), pid));
         }
@@ -933,13 +933,13 @@ pub fn wait_for_health(meta: &Metadata, verbose: bool) -> io::Result<()> {
         };
         if verbose {
             eprintln!(
-                "[xbin] waiting for {}:{} (timeout {}s)",
+                "[erebus] waiting for {}:{} (timeout {}s)",
                 svc.name, svc.ready_port, timeout
             );
         }
         wait_for_port(svc.ready_port, timeout)?;
         if verbose {
-            eprintln!("[xbin] {}:{} is ready", svc.name, svc.ready_port);
+            eprintln!("[erebus] {}:{} is ready", svc.name, svc.ready_port);
         }
     }
     Ok(())
@@ -982,14 +982,14 @@ pub fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Resul
         if libc::WIFEXITED(status) {
             let code = libc::WEXITSTATUS(status);
             if verbose {
-                eprintln!("[xbin] service '{}' exited with code {}", name, code);
+                eprintln!("[erebus] service '{}' exited with code {}", name, code);
             }
             if code != 0 && exit_code == 0 {
                 exit_code = code;
             }
         } else if libc::WIFSIGNALED(status) {
             let sig = libc::WTERMSIG(status);
-            eprintln!("[xbin] service '{}' killed by signal {}", name, sig);
+            eprintln!("[erebus] service '{}' killed by signal {}", name, sig);
             if exit_code == 0 {
                 exit_code = 128 + sig;
             }
@@ -1094,7 +1094,7 @@ mod tests {
 
     #[test]
     fn make_resolve_strips_leading_slash_when_no_pivot() {
-        let rootfs = PathBuf::from("/tmp/xbin-cache/abc");
+        let rootfs = PathBuf::from("/tmp/erebus-cache/abc");
         let resolve = make_resolve(&rootfs, false);
         assert_eq!(resolve("/usr/bin/python3"), rootfs.join("usr/bin/python3"));
     }

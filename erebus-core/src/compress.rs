@@ -1,4 +1,4 @@
-//! Zstd compression and decompression for .xbin payload layers.
+//! Zstd compression and decompression for .erebus payload layers.
 //!
 //! Default compression: level 3, single-threaded for byte-deterministic
 //! output (a multithreaded encoder varies with the host core count, which
@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn roundtrip() {
-        let original = b"hello xbin compression test data ".repeat(100);
+        let original = b"hello erebus compression test data ".repeat(100);
         let compressed = compress(&original).unwrap();
         let decompressed = decompress(&compressed).unwrap();
         assert_eq!(original.as_slice(), decompressed.as_slice());

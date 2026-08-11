@@ -11,10 +11,10 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use xbin_core::assembly::{assemble_xbin, AssemblyInput};
-use xbin_core::format::Footer;
-use xbin_core::legacy::upgrade_binary;
-use xbin_core::sisr_stage::SisrBuildConfig;
+use erebus_core::assembly::{assemble_erebus, AssemblyInput};
+use erebus_core::format::Footer;
+use erebus_core::legacy::upgrade_binary;
+use erebus_core::sisr_stage::SisrBuildConfig;
 
 use e2e_sisr::mock_server::MockHttpServer;
 use e2e_sisr::*;
@@ -29,9 +29,9 @@ fn isolated_env(work: &Path) -> Vec<(&str, PathBuf)> {
 
 /// Builds a genuine legacy file: SISR stage disabled, current stub embedded.
 fn build_legacy(work: &Path, stub: &Path, body: &str, shared: &[u8]) -> PathBuf {
-    let out = work.join("legacy.xbin");
+    let out = work.join("legacy.erebus");
     let stub_bytes = fs::read(stub).unwrap();
-    assemble_xbin(
+    assemble_erebus(
         &out,
         &AssemblyInput {
             stub_bytes: &stub_bytes,
@@ -54,7 +54,7 @@ fn legacy_binary_runs_on_v2_runtime() {
     let tmp = tempfile::tempdir().unwrap();
     let work = tmp.path().to_path_buf();
     setup_trusted_keys(&work);
-    let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
+    let stub = PathBuf::from(env!("CARGO_BIN_EXE_erebus-stub"));
     let shared = random_buf(256 << 10, 42);
     let app = build_legacy(&work, &stub, BODY_V1, &shared);
 
@@ -72,7 +72,7 @@ fn legacy_binary_runs_on_v2_runtime() {
         "legacy payload must execute: {stdout}"
     );
     assert!(
-        !stderr.contains("[xbin]"),
+        !stderr.contains("[erebus]"),
         "legacy run must produce no launcher warnings: {stderr}"
     );
 }
@@ -84,11 +84,11 @@ fn upgraded_binary_gains_auto_update() {
     let tmp = tempfile::tempdir().unwrap();
     let work = tmp.path().to_path_buf();
     setup_trusted_keys(&work);
-    let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
+    let stub = PathBuf::from(env!("CARGO_BIN_EXE_erebus-stub"));
     let shared = random_buf(256 << 10, 42);
 
     let legacy = build_legacy(&work, &stub, BODY_V1, &shared);
-    let upgraded = work.join("upgraded.xbin");
+    let upgraded = work.join("upgraded.erebus");
     let config = SisrBuildConfig {
         enabled: true,
         chunk_target_size: CHUNK_TARGET,
@@ -106,11 +106,11 @@ fn upgraded_binary_gains_auto_update() {
     }
 
     let out = Command::new(&upgraded)
-        .arg(format!("--xbin-update={base_url}"))
+        .arg(format!("--erebus-update={base_url}"))
         .envs(isolated_env(&work))
         .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
         .output()
-        .expect("failed to spawn upgraded binary --xbin-update");
+        .expect("failed to spawn upgraded binary --erebus-update");
     assert!(
         out.status.success(),
         "upgraded binary must accept the delta: {}",
@@ -146,14 +146,14 @@ fn upgraded_binary_gains_auto_update() {
 fn upgraded_binary_preserves_payload_bytes() {
     let tmp = tempfile::tempdir().unwrap();
     let work = tmp.path().to_path_buf();
-    let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
+    let stub = PathBuf::from(env!("CARGO_BIN_EXE_erebus-stub"));
     let shared = random_buf(256 << 10, 42);
 
     let legacy = build_legacy(&work, &stub, BODY_V1, &shared);
     let before = fs::read(&legacy).unwrap();
     let in_footer = Footer::read_from(&mut Cursor::new(&before)).unwrap();
 
-    let upgraded = work.join("upgraded.xbin");
+    let upgraded = work.join("upgraded.erebus");
     let config = SisrBuildConfig {
         enabled: true,
         chunk_target_size: CHUNK_TARGET,

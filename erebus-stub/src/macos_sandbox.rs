@@ -3,12 +3,12 @@
 //! macOS provides no `seccomp` or `landlock` equivalent. The closest
 //! counterpart is Seatbelt, an `sbpf`-based sandbox profile evaluated by
 //! `sandbox-exec`. This module provides a minimal baseline profile that
-//! restricts filesystem access to the xbin cache and the app rootfs.
+//! restricts filesystem access to the erebus cache and the app rootfs.
 //!
 //! Seatbelt profiles are textual rules evaluated by the kernel. The profile
 //! below is intentionally permissive (allowing network, standard IPC, etc.)
-//! because xbin is a general-purpose packager — it just constrains filesystem
-//! access to the extracted rootfs and the xbin cache directory.
+//! because erebus is a general-purpose packager — it just constrains filesystem
+//! access to the extracted rootfs and the erebus cache directory.
 
 #![cfg(target_os = "macos")]
 
@@ -18,7 +18,7 @@ use std::path::Path;
 /// Apply a Seatbelt sandbox profile when running under macOS.
 ///
 /// The profile restricts the process to:
-/// - read/write/execute under the xbin cache directory
+/// - read/write/execute under the erebus cache directory
 /// - read/write/execute under the app rootfs
 /// - standard macOS system services (network, IPC, etc.)
 ///
@@ -27,7 +27,7 @@ use std::path::Path;
 pub fn apply_sandbox(rootfs: &Path) {
     let cache = dirs::cache_dir()
         .map(|d| d.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "/Users/Shared/.cache/xbin".to_string());
+        .unwrap_or_else(|| "/Users/Shared/.cache/erebus".to_string());
 
     let profile = format!(
         r#"(version 1)

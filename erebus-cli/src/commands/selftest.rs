@@ -7,7 +7,7 @@ use erebus_core::format::Footer;
 
 #[derive(Args)]
 pub struct SelftestArgs {
-    /// Path to the .xbin file to test
+    /// Path to the .erebus file to test
     pub file: PathBuf,
 
     /// Test mode: `auto`, `server`, or `cli`
@@ -40,7 +40,7 @@ pub fn run(args: SelftestArgs) -> Result<()> {
     // Read footer + metadata
     let mut f =
         std::fs::File::open(&path).with_context(|| format!("failed to open {}", path.display()))?;
-    let footer = Footer::read_from(&mut f).context("invalid .xbin file")?;
+    let footer = Footer::read_from(&mut f).context("invalid .erebus file")?;
     let meta_bytes =
         erebus_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)
             .context("failed to read metadata")?;
@@ -64,13 +64,13 @@ pub fn run(args: SelftestArgs) -> Result<()> {
             .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
         eprintln!(
-            "[xbin] selftest: {}  runtime={rt}  mode={mode}  timeout={}",
+            "[erebus] selftest: {}  runtime={rt}  mode={mode}  timeout={}",
             path.file_name()
                 .map_or_else(|| "?".to_string(), |n| n.to_string_lossy().into()),
             effective_timeout.as_secs(),
         );
         if !ep.is_empty() {
-            eprintln!("[xbin] selftest: entrypoint={}", ep.join(" "));
+            eprintln!("[erebus] selftest: entrypoint={}", ep.join(" "));
         }
     }
 
@@ -95,7 +95,7 @@ pub fn run(args: SelftestArgs) -> Result<()> {
         .with_context(|| format!("failed to launch {}", path.display()))?;
 
     if args.verbose {
-        eprintln!("[xbin] selftest: started pid={}", child.id());
+        eprintln!("[erebus] selftest: started pid={}", child.id());
     }
 
     let rc = wait_and_observe(
@@ -113,7 +113,7 @@ pub fn run(args: SelftestArgs) -> Result<()> {
             2 => "DEGRADED",
             _ => "UNKNOWN",
         };
-        eprintln!("[xbin] selftest: {label}");
+        eprintln!("[erebus] selftest: {label}");
     }
 
     std::process::exit(rc);
@@ -179,7 +179,7 @@ fn wait_and_observe(
 
 fn report_exit(child: &mut std::process::Child, rc: i32, mode: &str) {
     let label = if rc != 0 { "crashed" } else { "exited" };
-    eprintln!("[xbin] selftest: {label} with code {rc}");
+    eprintln!("[erebus] selftest: {label} with code {rc}");
 
     if mode == "cli" {
         if let Some(ref mut stderr) = child.stderr {
@@ -219,7 +219,7 @@ fn do_probe(child: &mut std::process::Child, probe_url: &str, verbose: bool) -> 
         match client.get(probe_url).send() {
             Ok(resp) if resp.status().is_success() => {
                 if verbose {
-                    eprintln!("[xbin] selftest: probe {probe_url} → {}", resp.status());
+                    eprintln!("[erebus] selftest: probe {probe_url} → {}", resp.status());
                 }
                 return Ok(0);
             }
@@ -229,7 +229,7 @@ fn do_probe(child: &mut std::process::Child, probe_url: &str, verbose: bool) -> 
         std::thread::sleep(Duration::from_millis(300));
     }
 
-    eprintln!("[xbin] selftest: alive but probe {probe_url} failed (not responding)");
+    eprintln!("[erebus] selftest: alive but probe {probe_url} failed (not responding)");
     Ok(2)
 }
 

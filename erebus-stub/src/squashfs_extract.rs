@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn safe_join_accepts_normal_relative_paths() {
-        let dest = Path::new("/tmp/xbin_test_rootfs");
+        let dest = Path::new("/tmp/erebus_test_rootfs");
         let rel = Path::new("usr/bin/foo");
         let got = safe_join(dest, rel).unwrap();
         assert_eq!(got, dest.join("usr").join("bin").join("foo"));
@@ -191,21 +191,21 @@ mod tests {
 
     #[test]
     fn safe_join_accepts_single_dot() {
-        let dest = Path::new("/tmp/xbin_test_rootfs");
+        let dest = Path::new("/tmp/erebus_test_rootfs");
         let got = safe_join(dest, Path::new("a/./b")).unwrap();
         assert_eq!(got, dest.join("a").join("b"));
     }
 
     #[test]
     fn safe_join_rejects_parent_dir_traversal() {
-        let dest = Path::new("/tmp/xbin_test_rootfs");
+        let dest = Path::new("/tmp/erebus_test_rootfs");
         let err = safe_join(dest, Path::new("a/../b")).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]
     fn safe_join_rejects_absolute_escaped_path() {
-        let dest = Path::new("/tmp/xbin_test_rootfs");
+        let dest = Path::new("/tmp/erebus_test_rootfs");
         // A relative path cannot contain RootDir; if one sneaks in, it is
         // rejected (no escape).
         let err = safe_join(dest, Path::new("/etc/passwd")).unwrap_err();

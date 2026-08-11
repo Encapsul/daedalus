@@ -1,4 +1,4 @@
-//! `.xbin` format parser — see docs/src/reference/format.md.
+//! `.erebus` format parser — see docs/src/reference/format.md.
 //!
 //! Shared between the launcher (stub) and the build tool.
 //! Footer versions: v1-v5. See format docs for layout details.
@@ -33,7 +33,7 @@ pub const SIG_BLOCK_SIZE_FIELD: usize = 4;
 /// Ed25519 signature length, derived from the fixed block layout.
 pub const SIG_LEN: usize = SIG_BLOCK_SIZE - SIG_BLOCK_SIZE_FIELD;
 
-/// Fixed footer at the very end of a .xbin file.
+/// Fixed footer at the very end of a .erebus file.
 #[derive(Debug)]
 pub struct Footer {
     pub format_version: u8,
@@ -97,10 +97,10 @@ impl Footer {
             if &buf[0..5] == MAGIC {
                 return Self::parse(&buf, 0);
             }
-            return Err(err("bad magic: not a .xbin file"));
+            return Err(err("bad magic: not a .erebus file"));
         }
 
-        Err(err("file too small to be a .xbin"))
+        Err(err("file too small to be a .erebus"))
     }
 
     fn parse(buf: &[u8], sig_offset: u64) -> io::Result<Footer> {
@@ -114,7 +114,7 @@ impl Footer {
         }
         let format_version = buf[5];
         if format_version > FORMAT_VERSION {
-            return Err(err("unsupported .xbin format version"));
+            return Err(err("unsupported .erebus format version"));
         }
 
         let mut payload_sha256 = [0u8; 32];
@@ -181,7 +181,7 @@ fn u64_le(b: &[u8]) -> io::Result<u64> {
 }
 
 pub fn read_at<R: Read + Seek>(f: &mut R, off: u64, len: usize) -> io::Result<Vec<u8>> {
-    // `off` and `len` originate from a `.xbin` footer (untrusted input). A
+    // `off` and `len` originate from a `.erebus` footer (untrusted input). A
     // malicious footer can set `len` to `u64::MAX`, which the call sites fold to
     // `usize::MAX` via `as usize`; allocating `vec![0u8; len]` up-front would then
     // OOM/abort the process *before* signature or SHA-256 verification. Bound the
@@ -508,7 +508,7 @@ mod tests {
         // Simulates a malicious footer whose csize/len field is u64::MAX, which
         // the call sites fold to `usize::MAX` via `as usize`. read_at must reject
         // it via the file-size bound instead of allocating (and aborting).
-        let data = b"xbin";
+        let data = b"erebus";
         let mut cursor = Cursor::new(data);
         let result = read_at(&mut cursor, 0, usize::MAX);
         assert!(result.is_err(), "oversized read must be rejected");

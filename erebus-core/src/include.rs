@@ -1,5 +1,5 @@
 //! File-tree walker that selects which files to include in the payload,
-//! respecting `.xbinignore`, `.gitignore`, and built-in skip directories.
+//! respecting `.erebusignore`, `.gitignore`, and built-in skip directories.
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ const SKIP_DIRS: &[&str] = &[
     "__pycache__",
     ".venv",
     "venv",
-    ".xbin",
+    ".erebus",
     "dist",
     "build",
     ".next",
@@ -102,7 +102,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
 
 /// Compute a SHA-256 hash of all app files for change detection.
 ///
-/// Excludes `.git`, `node_modules`, `.venv`, `venv`, `__pycache__`, `.xbin`.
+/// Excludes `.git`, `node_modules`, `.venv`, `venv`, `__pycache__`, `.erebus`.
 pub fn hash_app_files(app_dir: &Path) -> String {
     let mut hasher = Sha256::new();
     let mut paths: Vec<_> = walk_dir_sorted(app_dir);

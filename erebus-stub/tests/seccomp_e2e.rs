@@ -9,7 +9,7 @@ use std::process::Command;
 use tempfile::tempdir;
 
 use tar::Builder;
-use xbin_core::assembly::{assemble_xbin, AssemblyInput};
+use erebus_core::assembly::{assemble_erebus, AssemblyInput};
 
 fn meta(seccomp: bool) -> Vec<u8> {
     let mut meta = serde_json::json!({
@@ -42,11 +42,11 @@ fn payload() -> Vec<u8> {
     zstd::stream::encode_all(Cursor::new(tar_bytes), 3).unwrap()
 }
 
-fn build_seccomp_xbin(work: &Path, stub: &Path, seccomp: bool) -> PathBuf {
-    let out = work.join("app.xbin");
+fn build_seccomp_erebus(work: &Path, stub: &Path, seccomp: bool) -> PathBuf {
+    let out = work.join("app.erebus");
     let payload_bytes = payload();
     let meta_bytes = meta(seccomp);
-    assemble_xbin(
+    assemble_erebus(
         &out,
         &AssemblyInput {
             stub_bytes: &fs::read(stub).unwrap(),
@@ -62,19 +62,19 @@ fn build_seccomp_xbin(work: &Path, stub: &Path, seccomp: bool) -> PathBuf {
     out
 }
 
-/// Test that an xbin built with seccomp=true runs successfully (denylist, not deny-all).
+/// Test that an erebus built with seccomp=true runs successfully (denylist, not deny-all).
 #[test]
 fn seccomp_denylist_allows_normal_execution() {
     let tmp = tempdir().unwrap();
     let work = tmp.path().to_path_buf();
 
-    let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
-    let xbin_path = build_seccomp_xbin(&work, &stub, true);
+    let stub = PathBuf::from(env!("CARGO_BIN_EXE_erebus-stub"));
+    let erebus_path = build_seccomp_erebus(&work, &stub, true);
 
-    let output = Command::new(&xbin_path).output().expect("run xbin");
+    let output = Command::new(&erebus_path).output().expect("run erebus");
     assert!(
         output.status.success(),
-        "xbin with seccomp should run successfully (denylist, not deny-all): stderr={}",
+        "erebus with seccomp should run successfully (denylist, not deny-all): stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -85,19 +85,19 @@ fn seccomp_denylist_allows_normal_execution() {
     );
 }
 
-/// Test that an xbin built WITHOUT seccomp also runs (baseline).
+/// Test that an erebus built WITHOUT seccomp also runs (baseline).
 #[test]
 fn seccomp_without_flag_works() {
     let tmp = tempdir().unwrap();
     let work = tmp.path().to_path_buf();
 
-    let stub = PathBuf::from(env!("CARGO_BIN_EXE_xbin-stub"));
-    let xbin_path = build_seccomp_xbin(&work, &stub, false);
+    let stub = PathBuf::from(env!("CARGO_BIN_EXE_erebus-stub"));
+    let erebus_path = build_seccomp_erebus(&work, &stub, false);
 
-    let output = Command::new(&xbin_path).output().expect("run xbin");
+    let output = Command::new(&erebus_path).output().expect("run erebus");
     assert!(
         output.status.success(),
-        "xbin without seccomp should run successfully: stderr={}",
+        "erebus without seccomp should run successfully: stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);

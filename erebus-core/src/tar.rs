@@ -1,4 +1,4 @@
-//! Deterministic tar archive creation for .xbin payload layers.
+//! Deterministic tar archive creation for .erebus payload layers.
 //!
 //! Creates reproducible tar archives with normalized metadata (mtime=0,
 //! uid/gid=0, sorted entries) for consistent builds.

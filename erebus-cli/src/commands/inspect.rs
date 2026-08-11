@@ -6,7 +6,7 @@ use erebus_core::paths::format_size;
 
 #[derive(Args)]
 pub struct InspectArgs {
-    /// Path to the .xbin file
+    /// Path to the .erebus file
     pub file: PathBuf,
 
     /// Output as JSON
@@ -30,7 +30,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
 
     let mut f = std::fs::File::open(&args.file)
         .with_context(|| format!("failed to open {}", args.file.display()))?;
-    let footer = Footer::read_from(&mut f).context("failed to read xbin footer")?;
+    let footer = Footer::read_from(&mut f).context("failed to read erebus footer")?;
 
     let arch_name = match footer.arch {
         ARCH_X86_64 => "x86_64",

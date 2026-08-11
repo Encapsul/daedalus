@@ -95,7 +95,7 @@ impl SisrFooterExt {
     }
 }
 
-/// Reads the `SISR` extension and delta manifest from a `.xbin` stream.
+/// Reads the `SISR` extension and delta manifest from a `.erebus` stream.
 ///
 /// Returns `Ok(None)` for files predating `SISR` (the `FLAG_SISR` bit is
 /// clear), so legacy binaries decode transparently. Out-of-bounds offsets, a

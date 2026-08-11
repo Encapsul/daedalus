@@ -1,4 +1,4 @@
-//! Seccomp BPF denylist for the xbin launcher stub.
+//! Seccomp BPF denylist for the erebus launcher stub.
 //!
 //! Provides `install_seccomp_denylist()` which installs a conservative BPF
 //! filter after `pivot_root`. Linux-only.

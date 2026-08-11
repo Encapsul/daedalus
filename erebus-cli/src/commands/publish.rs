@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 #[derive(Args)]
 pub struct PublishArgs {
-    /// Path to the .xbin file to publish
+    /// Path to the .erebus file to publish
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
 
@@ -25,14 +25,14 @@ pub struct PublishArgs {
     pub verbose: bool,
 }
 
-const DEFAULT_REGISTRY_PLACEHOLDER: &str = "https://xbin.example.com";
+const DEFAULT_REGISTRY_PLACEHOLDER: &str = "https://erebus.example.com";
 
 pub fn run(args: PublishArgs) -> Result<()> {
     let file = args.file.canonicalize().context("failed to find file")?;
 
-    if file.extension().is_none_or(|e| e != "xbin") {
+    if file.extension().is_none_or(|e| e != "erebus") {
         anyhow::bail!(
-            "{} is not a .xbin file (expected .xbin extension)",
+            "{} is not a .erebus file (expected .erebus extension)",
             file.display()
         );
     }
@@ -59,7 +59,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
     }
 
     if args.verbose {
-        eprintln!("[xbin] publish: {}", file.display());
+        eprintln!("[erebus] publish: {}", file.display());
         eprintln!("  size: {meta_size} bytes");
         eprintln!("  registry: {}", registry);
     }
@@ -76,7 +76,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
         file.file_name().unwrap_or_default().to_string_lossy()
     );
 
-    let content = std::fs::read(&file).context("failed to read .xbin file")?;
+    let content = std::fs::read(&file).context("failed to read .erebus file")?;
 
     // Build the multipart upload request using reqwest (blocking)
     let client = reqwest::blocking::Client::builder()
@@ -93,7 +93,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
         request = request.header("Authorization", format!("Bearer {t}"));
     }
 
-    let response = request.send().context("failed to upload .xbin file")?;
+    let response = request.send().context("failed to upload .erebus file")?;
 
     if !response.status().is_success() {
         let status = response.status();
