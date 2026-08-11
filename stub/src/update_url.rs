@@ -1,7 +1,8 @@
 //! Update URL resolution for the xbin launcher stub.
 //!
-//! Provides `resolve_update_url` (precedence: CLI arg > env > embedded meta)
-//! and `normalize_base_url` (strip trailing slashes, reject non-http(s)).
+//! Provides `resolve_update_url` (precedence: `--xbin-update=<URL>` CLI arg >
+//! env > embedded meta) and `normalize_base_url` (strip trailing slashes,
+//! reject non-http(s)).
 
 use std::ffi::OsString;
 use std::io;
@@ -9,21 +10,16 @@ use std::io;
 use crate::Metadata;
 
 /// Resolves the update channel base URL:
-/// `--xbin-update <URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
+/// `--xbin-update=<URL>` argument > `$XBIN_UPDATE_URL` > embedded `meta.update_url`.
+///
+/// Only the `=` form is accepted as a CLI override — the next positional argv
+/// is never guessed as the URL, so the app's first argument can't be swallowed.
 pub fn resolve_update_url(args: &[OsString], idx: usize, meta: &Metadata) -> io::Result<String> {
     if let Some(arg) = args.get(idx) {
-        let arg_str = arg.to_string_lossy();
-        if arg_str.starts_with("--xbin-update=") {
-            let url = arg_str.strip_prefix("--xbin-update=").unwrap_or("");
+        if let Some(url) = arg.to_string_lossy().strip_prefix("--xbin-update=") {
             if !url.is_empty() {
                 return normalize_base_url(url);
             }
-        }
-    }
-    if let Some(next) = args.get(idx + 1) {
-        let candidate = next.to_string_lossy();
-        if !candidate.starts_with('-') && !candidate.is_empty() {
-            return normalize_base_url(&candidate);
         }
     }
     if let Some(url) = std::env::var_os("XBIN_UPDATE_URL") {
@@ -34,7 +30,7 @@ pub fn resolve_update_url(args: &[OsString], idx: usize, meta: &Metadata) -> io:
     }
     Err(io::Error::new(
         io::ErrorKind::InvalidData,
-        "no update URL — pass one after --xbin-update, set $XBIN_UPDATE_URL, \
+        "no update URL — pass --xbin-update=<URL>, set $XBIN_UPDATE_URL, \
          or rebuild with xbin build --update-url",
     ))
 }
@@ -80,31 +76,62 @@ mod tests {
     }
 
     #[test]
-    fn resolve_update_url_prefers_the_positional_argument() {
+    fn resolve_update_url_prefers_the_equals_argument() {
         let args = vec![
-            OsString::from("--xbin-update"),
-            OsString::from("https://arg.example/app"),
+            OsString::from("--xbin-update=https://arg.example/app"),
             OsString::from("--flag-for-app"),
         ];
         let meta = Metadata {
-            name: "test".into(),
-            version: None,
-            runtime: String::new(),
-            entrypoint: Vec::new(),
-            env: std::collections::BTreeMap::new(),
-            cwd: None,
-            layers: Vec::new(),
-            isolation: 0,
-            seccomp: false,
-            landlock: false,
-            services: Vec::new(),
-            crypto: None,
-            payload_format: String::new(),
-            health_check: None,
             update_url: Some("https://embedded.example".into()),
+            ..Metadata {
+                name: "test".into(),
+                version: None,
+                runtime: String::new(),
+                entrypoint: Vec::new(),
+                env: std::collections::BTreeMap::new(),
+                cwd: None,
+                layers: Vec::new(),
+                isolation: 0,
+                seccomp: false,
+                landlock: false,
+                services: Vec::new(),
+                crypto: None,
+                payload_format: String::new(),
+                health_check: None,
+                update_url: None,
+            }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
         assert_eq!(base, "https://arg.example/app");
+    }
+
+    #[test]
+    fn resolve_update_url_does_not_swallow_app_positional_arg() {
+        // `--xbin-update serve` must NOT treat `serve` as the URL — the next
+        // positional argv belongs to the app and is never consumed.
+        let args = vec![OsString::from("--xbin-update"), OsString::from("serve")];
+        let meta = Metadata {
+            update_url: Some("https://meta.example/app/".into()),
+            ..Metadata {
+                name: "test".into(),
+                version: None,
+                runtime: String::new(),
+                entrypoint: Vec::new(),
+                env: std::collections::BTreeMap::new(),
+                cwd: None,
+                layers: Vec::new(),
+                isolation: 0,
+                seccomp: false,
+                landlock: false,
+                services: Vec::new(),
+                crypto: None,
+                payload_format: String::new(),
+                health_check: None,
+                update_url: None,
+            }
+        };
+        let base = resolve_update_url(&args, 0, &meta).unwrap();
+        assert_eq!(base, "https://meta.example/app");
     }
 
     #[test]
