@@ -72,6 +72,70 @@ pub trait Layer: Send + Sync {
     }
 }
 
+/// Serializable layer types for metadata storage.
+/// This enum allows layers to be stored in the binary metadata JSON.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum SerializableLayer {
+    Runtime(RuntimeLayer),
+    Model(ModelLayer),
+    Tool(ToolLayer),
+    Config(ConfigLayer),
+    Custom {
+        name: String,
+        #[serde(flatten)]
+        extra: serde_json::Value,
+    },
+}
+
+impl SerializableLayer {
+    /// Get the layer name.
+    pub fn name(&self) -> &str {
+        match self {
+            SerializableLayer::Runtime(l) => &l.name,
+            SerializableLayer::Model(l) => &l.name,
+            SerializableLayer::Tool(l) => &l.name,
+            SerializableLayer::Config(l) => &l.name,
+            SerializableLayer::Custom { name, .. } => name,
+        }
+    }
+
+    /// Get the layer kind.
+    pub fn kind(&self) -> LayerKind {
+        match self {
+            SerializableLayer::Runtime(_) => LayerKind::Runtime,
+            SerializableLayer::Model(_) => LayerKind::Model,
+            SerializableLayer::Tool(_) => LayerKind::Tool,
+            SerializableLayer::Config(_) => LayerKind::Config,
+            SerializableLayer::Custom { .. } => LayerKind::Custom,
+        }
+    }
+}
+
+impl From<RuntimeLayer> for SerializableLayer {
+    fn from(layer: RuntimeLayer) -> Self {
+        SerializableLayer::Runtime(layer)
+    }
+}
+
+impl From<ModelLayer> for SerializableLayer {
+    fn from(layer: ModelLayer) -> Self {
+        SerializableLayer::Model(layer)
+    }
+}
+
+impl From<ToolLayer> for SerializableLayer {
+    fn from(layer: ToolLayer) -> Self {
+        SerializableLayer::Tool(layer)
+    }
+}
+
+impl From<ConfigLayer> for SerializableLayer {
+    fn from(layer: ConfigLayer) -> Self {
+        SerializableLayer::Config(layer)
+    }
+}
+
 /// Encryption metadata for a layer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayerEncryption {

@@ -4,36 +4,98 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum EmbeddedInterpreter {
-    Python3,
-    Node,
-    Deno,
-    Ruby,
-    Php,
-    Perl,
-    Java,
-    Go,
-    Wasm,
-    Electron,
-    Custom(String),
+use crate::layer::{LayerKind, SerializableLayer};
+
+/// Metadata for the entire artifact (new format with layers).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ArtifactMetadata {
+    /// Application name.
+    pub name: String,
+    /// erebus version that created this artifact.
+    pub erebus_version: String,
+    /// Creation timestamp (RFC3339).
+    pub created: String,
+    /// Layers that compose this artifact.
+    #[serde(default)]
+    pub layers: Vec<SerializableLayer>,
+    /// Name of the layer that contains the main entrypoint.
+    #[serde(default)]
+    pub entrypoint_layer: Option<String>,
+    /// Fallback runtime (for backward compatibility).
+    #[serde(default)]
+    pub runtime: String,
+    /// Fallback entrypoint (for backward compatibility).
+    #[serde(default)]
+    pub entrypoint: Vec<String>,
+    /// Environment variables.
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+    /// Working directory.
+    #[serde(default)]
+    pub cwd: Option<String>,
+    /// Isolation level.
+    #[serde(default)]
+    pub isolation: u8,
+    /// Seccomp sandbox enabled.
+    #[serde(default)]
+    pub seccomp: bool,
+    /// Landlock sandbox enabled.
+    #[serde(default)]
+    pub landlock: bool,
+    /// Payload format (zstd-tar, squashfs).
+    #[serde(default)]
+    pub payload_format: String,
+    /// Health check configuration.
+    #[serde(default)]
+    pub health_check: Option<HealthCheck>,
+    /// Update URL for SISR.
+    #[serde(default)]
+    pub update_url: Option<String>,
+    /// Crypto metadata for encrypted payloads.
+    #[serde(default)]
+    pub crypto: Option<CryptoMeta>,
+    /// Services to run alongside the main entrypoint.
+    #[serde(default)]
+    pub services: Vec<Service>,
+    /// Application version.
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Author.
+    #[serde(default)]
+    pub author: Option<String>,
+    /// Description.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// License.
+    #[serde(default)]
+    pub license: Option<String>,
+    /// Application hash for cache invalidation.
+    #[serde(default)]
+    pub app_hash: Option<String>,
+    /// Runtime dependencies hash.
+    #[serde(default)]
+    pub rt_deps_hash: Option<String>,
+    /// Cross-compile targets.
+    #[serde(default)]
+    pub cross_compile_targets: Vec<String>,
 }
 
-impl std::fmt::Display for EmbeddedInterpreter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EmbeddedInterpreter::Python3 => write!(f, "python3"),
-            EmbeddedInterpreter::Node => write!(f, "node"),
-            EmbeddedInterpreter::Deno => write!(f, "deno"),
-            EmbeddedInterpreter::Ruby => write!(f, "ruby"),
-            EmbeddedInterpreter::Php => write!(f, "php"),
-            EmbeddedInterpreter::Perl => write!(f, "perl"),
-            EmbeddedInterpreter::Java => write!(f, "java"),
-            EmbeddedInterpreter::Go => write!(f, "go"),
-            EmbeddedInterpreter::Wasm => write!(f, "wasm"),
-            EmbeddedInterpreter::Electron => write!(f, "electron"),
-            EmbeddedInterpreter::Custom(p) => write!(f, "{p}"),
-        }
+impl ArtifactMetadata {
+    /// Get the main entrypoint layer if specified and found.
+    pub fn get_entrypoint_layer(&self) -> Option<&SerializableLayer> {
+        self.entrypoint_layer
+            .as_ref()
+            .and_then(|name| self.layers.iter().find(|l| l.name() == name))
+    }
+
+    /// Get all layers of a specific kind.
+    pub fn layers_of_kind(&self, kind: LayerKind) -> Vec<&SerializableLayer> {
+        self.layers.iter().filter(|l| l.kind() == kind).collect()
+    }
+
+    /// Get runtime layers (for backward compatibility).
+    pub fn runtime_layers(&self) -> Vec<&SerializableLayer> {
+        self.layers_of_kind(LayerKind::Runtime)
     }
 }
 
@@ -197,6 +259,64 @@ impl BunFeatures {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum EmbeddedInterpreter {
+    Python3,
+    Node,
+    Deno,
+    Ruby,
+    Php,
+    Perl,
+    Java,
+    Go,
+    Wasm,
+    Electron,
+    Custom(String),
+}
+
+impl std::fmt::Display for EmbeddedInterpreter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EmbeddedInterpreter::Python3 => write!(f, "python3"),
+            EmbeddedInterpreter::Node => write!(f, "node"),
+            EmbeddedInterpreter::Deno => write!(f, "deno"),
+            EmbeddedInterpreter::Ruby => write!(f, "ruby"),
+            EmbeddedInterpreter::Php => write!(f, "php"),
+            EmbeddedInterpreter::Perl => write!(f, "perl"),
+            EmbeddedInterpreter::Java => write!(f, "java"),
+            EmbeddedInterpreter::Go => write!(f, "go"),
+            EmbeddedInterpreter::Wasm => write!(f, "wasm"),
+            EmbeddedInterpreter::Electron => write!(f, "electron"),
+            EmbeddedInterpreter::Custom(p) => write!(f, "{p}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CryptoMeta {
+    pub nonce_hex: String,
+    pub tag_offset: usize,
+    pub encryption_key_hex: String,
+    pub encryption_salt_hex: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Service {
+    pub name: String,
+    pub command: Vec<String>,
+    pub env: std::collections::BTreeMap<String, String>,
+    pub health_check: Option<HealthCheck>,
+    pub restart: RestartPolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub enum RestartPolicy {
+    #[default]
+    Never,
+    OnFailure,
+    Always,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,17 +354,67 @@ mod tests {
     }
 
     #[test]
-    fn bun_features_builder_pattern() {
-        let features = BunFeatures::default()
-            .with_embedded_runtime(EmbeddedInterpreter::Python3)
-            .with_health_check(8080, Some("/_health".into()));
+    fn artifact_metadata_layers() {
+        use crate::layer::{Capability, LayerKind, RuntimeLayer, SerializableLayer};
 
-        assert_eq!(
-            features.embedded_runtime.interpreter,
-            Some(EmbeddedInterpreter::Python3)
-        );
-        assert!(features.health_check.enabled);
-        assert_eq!(features.health_check.port, 8080);
-        assert_eq!(features.health_check.endpoint, "/_health");
+        let runtime_layer = RuntimeLayer {
+            name: "python3".into(),
+            interpreter: "python3".into(),
+            entrypoint: vec!["{app}/main.py".into()],
+            version: Some("3.11".into()),
+            env: vec![],
+            capabilities: vec![Capability::ReadFile, Capability::Network],
+        };
+
+        let metadata = ArtifactMetadata {
+            name: "test-app".into(),
+            erebus_version: "0.5.0".into(),
+            created: "2024-01-01T00:00:00Z".into(),
+            layers: vec![SerializableLayer::Runtime(runtime_layer)],
+            entrypoint_layer: Some("python3".into()),
+            ..Default::default()
+        };
+
+        // Test get_entrypoint_layer
+        let entry_layer = metadata.get_entrypoint_layer().unwrap();
+        assert_eq!(entry_layer.name(), "python3");
+        assert_eq!(entry_layer.kind(), LayerKind::Runtime);
+
+        // Test layers_of_kind
+        let runtime_layers = metadata.layers_of_kind(LayerKind::Runtime);
+        assert_eq!(runtime_layers.len(), 1);
+
+        let model_layers = metadata.layers_of_kind(LayerKind::Model);
+        assert_eq!(model_layers.len(), 0);
+    }
+
+    #[test]
+    fn artifact_metadata_serialization() {
+        use crate::layer::{RuntimeLayer, SerializableLayer};
+
+        let runtime_layer = RuntimeLayer {
+            name: "node".into(),
+            interpreter: "node".into(),
+            entrypoint: vec!["{app}/index.js".into()],
+            version: Some("20".into()),
+            env: vec![],
+            capabilities: vec![],
+        };
+
+        let metadata = ArtifactMetadata {
+            name: "test-app".into(),
+            erebus_version: "0.5.0".into(),
+            created: "2024-01-01T00:00:00Z".into(),
+            layers: vec![SerializableLayer::Runtime(runtime_layer)],
+            entrypoint_layer: Some("node".into()),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        let parsed: ArtifactMetadata = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.name, metadata.name);
+        assert_eq!(parsed.layers.len(), 1);
+        assert_eq!(parsed.entrypoint_layer, metadata.entrypoint_layer);
     }
 }
