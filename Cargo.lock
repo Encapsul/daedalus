@@ -781,6 +781,7 @@ dependencies = [
  "subtle",
  "tar",
  "tempfile",
+ "thiserror 2.0.19",
  "time",
  "toml 0.8.23",
  "which",
