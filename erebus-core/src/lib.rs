@@ -16,6 +16,7 @@ pub mod embed;
 pub mod encrypt;
 pub mod format;
 pub mod include;
+pub mod layer;
 pub mod legacy;
 pub mod manifest;
 pub mod metadata;
