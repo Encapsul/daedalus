@@ -7,6 +7,20 @@
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::Path;
+use thiserror::Error;
+
+/// Errors for layer operations.
+#[derive(Debug, Error)]
+pub enum LayerError {
+    #[error("failed to compute payload hash: {0}")]
+    HashError(#[from] io::Error),
+    #[error("serialization failed: {0}")]
+    SerializationError(#[from] serde_json::Error),
+    #[error("encryption error: {0}")]
+    EncryptionError(String),
+    #[error("invalid nonce length: expected 12 bytes, got {0}")]
+    InvalidNonceLength(usize),
+}
 
 /// The kind of layer content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,7 +39,7 @@ pub enum LayerKind {
 }
 
 /// A layer in the Erebus artifact graph.
-/// Each layer is content-addressed by its SHA-256 hash.
+/// Each layer is content-addressed by its SHA-256 hash of its actual payload.
 pub trait Layer: Send + Sync {
     /// Unique identifier for this layer type (e.g. "python3", "llama.cpp", "my-model").
     fn name(&self) -> &str;
@@ -33,8 +47,14 @@ pub trait Layer: Send + Sync {
     /// Human-readable kind of this layer.
     fn kind(&self) -> LayerKind;
 
-    /// SHA-256 of the layer's payload (content-addressed).
-    fn payload_sha256(&self) -> [u8; 32];
+    /// SHA-256 of the layer's actual payload content (content-addressed).
+    /// Must be computed from the actual bytes on disk, not from metadata.
+    fn payload_sha256(&self, payload: &[u8]) -> Result<[u8; 32], LayerError> {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(payload);
+        Ok(hasher.finalize().into())
+    }
 
     /// Optional: compression algorithm used for this layer's payload.
     fn compression(&self) -> Option<&str> {
@@ -57,7 +77,17 @@ pub trait Layer: Send + Sync {
 pub struct LayerEncryption {
     pub algorithm: String,      // e.g., "aes-256-gcm"
     pub key_id: Option<String>, // key identifier for key management
-    pub nonce: Vec<u8>,
+    pub nonce: [u8; 12],        // fixed 12-byte nonce for AES-GCM
+}
+
+impl LayerEncryption {
+    pub fn new(algorithm: String, key_id: Option<String>, nonce: [u8; 12]) -> Self {
+        Self {
+            algorithm,
+            key_id,
+            nonce,
+        }
+    }
 }
 
 /// Capabilities a layer may request at runtime.
@@ -73,6 +103,7 @@ pub enum Capability {
 }
 
 /// Context passed to an Entrypoint during execution.
+#[derive(Debug, Clone)]
 pub struct ExecutionContext<'a> {
     /// The rootfs path where layers are extracted.
     pub rootfs: &'a Path,
@@ -82,8 +113,26 @@ pub struct ExecutionContext<'a> {
     pub env: Vec<(String, String)>,
     /// Arguments passed to the entrypoint.
     pub args: Vec<String>,
-    /// Working directory.
-    pub cwd: &'a Path,
+    /// Working directory (owned to avoid lifetime issues).
+    pub cwd: std::path::PathBuf,
+}
+
+impl<'a> ExecutionContext<'a> {
+    /// Create a new context with the app directory as working directory.
+    pub fn new(rootfs: &'a Path, layer_dir: &'a Path) -> Self {
+        Self {
+            rootfs,
+            layer_dir,
+            env: Vec::new(),
+            args: Vec::new(),
+            cwd: rootfs.join("app"),
+        }
+    }
+
+    /// Get working directory as a reference.
+    pub fn cwd(&self) -> &Path {
+        &self.cwd
+    }
 }
 
 /// An Entrypoint knows how to execute a Layer.
@@ -153,16 +202,11 @@ impl Layer for RuntimeLayer {
         LayerKind::Runtime
     }
 
-    fn payload_sha256(&self) -> [u8; 32] {
-        // Compute from serialized form
+    fn payload_sha256(&self, payload: &[u8]) -> Result<[u8; 32], LayerError> {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
-        hasher.update(self.name.as_bytes());
-        hasher.update(self.interpreter.as_bytes());
-        for arg in &self.entrypoint {
-            hasher.update(arg.as_bytes());
-        }
-        hasher.finalize().into()
+        hasher.update(payload);
+        Ok(hasher.finalize().into())
     }
 
     fn capabilities(&self) -> Vec<Capability> {
@@ -187,11 +231,15 @@ impl Entrypoint for RuntimeEntrypoint {
     }
 
     fn execute(&self, ctx: ExecutionContext<'_>) -> io::Result<i32> {
+        // Get cwd first (before moving ctx fields)
+        let cwd = ctx.cwd().to_path_buf();
+        let app_path = ctx.rootfs.join("app");
+
         // Build argv: interpreter + entrypoint args (with {app} replaced)
         let mut argv = Vec::new();
         argv.push(self.layer.interpreter.clone());
         for arg in &self.layer.entrypoint {
-            let replaced = arg.replace("{app}", ctx.rootfs.join("app").to_str().unwrap_or("/app"));
+            let replaced = arg.replace("{app}", app_path.to_str().unwrap_or("/app"));
             argv.push(replaced);
         }
         // Add any additional args passed at runtime
@@ -201,24 +249,26 @@ impl Entrypoint for RuntimeEntrypoint {
         let mut env = ctx.env.clone();
         env.extend(self.layer.env.iter().cloned());
 
-        // Execute using execvp (replaces current process)
+        // Execute using execvp (replaces current process on Unix)
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
 
-            // This never returns on success
-            Err(std::process::Command::new(&self.layer.interpreter)
+            // exec() never returns on success
+            let err = std::process::Command::new(&self.layer.interpreter)
                 .args(&argv[1..])
                 .envs(env)
-                .current_dir(ctx.cwd)
-                .exec())
+                .current_dir(cwd)
+                .exec();
+            // If we get here, exec failed
+            Err(err)
         }
 
         #[cfg(windows)]
         {
             use std::process::Command;
             let mut cmd = Command::new(&self.layer.interpreter);
-            cmd.args(&argv[1..]).envs(env).current_dir(ctx.cwd);
+            cmd.args(&argv[1..]).envs(env).current_dir(cwd);
             let status = cmd.status()?;
             Ok(status.code().unwrap_or(-1))
         }
@@ -244,13 +294,11 @@ impl Layer for ModelLayer {
         LayerKind::Model
     }
 
-    fn payload_sha256(&self) -> [u8; 32] {
+    fn payload_sha256(&self, payload: &[u8]) -> Result<[u8; 32], LayerError> {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
-        hasher.update(self.name.as_bytes());
-        hasher.update(self.format.as_bytes());
-        hasher.update(self.path.as_bytes());
-        hasher.finalize().into()
+        hasher.update(payload);
+        Ok(hasher.finalize().into())
     }
 }
 
@@ -272,14 +320,11 @@ impl Layer for ToolLayer {
         LayerKind::Tool
     }
 
-    fn payload_sha256(&self) -> [u8; 32] {
+    fn payload_sha256(&self, payload: &[u8]) -> Result<[u8; 32], LayerError> {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
-        hasher.update(self.name.as_bytes());
-        for arg in &self.command {
-            hasher.update(arg.as_bytes());
-        }
-        hasher.finalize().into()
+        hasher.update(payload);
+        Ok(hasher.finalize().into())
     }
 }
 
@@ -300,12 +345,11 @@ impl Layer for ConfigLayer {
         LayerKind::Config
     }
 
-    fn payload_sha256(&self) -> [u8; 32] {
+    fn payload_sha256(&self, payload: &[u8]) -> Result<[u8; 32], LayerError> {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
-        hasher.update(self.name.as_bytes());
-        hasher.update(serde_json::to_vec(&self.data).unwrap_or_default());
-        hasher.finalize().into()
+        hasher.update(payload);
+        Ok(hasher.finalize().into())
     }
 }
 
@@ -355,5 +399,34 @@ mod tests {
         registry.register(Box::new(RuntimeEntrypoint::new(layer)));
         assert!(registry.get("test").is_some());
         assert!(registry.get("unknown").is_none());
+    }
+
+    #[test]
+    fn payload_sha256_content_addressed() {
+        let layer = RuntimeLayer {
+            name: "python3".into(),
+            interpreter: "python3".into(),
+            entrypoint: vec!["{app}/main.py".into()],
+            version: Some("3.11".into()),
+            env: vec![],
+            capabilities: vec![],
+        };
+        let payload1 = b"python3 binary content v1";
+        let payload2 = b"python3 binary content v2";
+        let hash1 = layer.payload_sha256(payload1).unwrap();
+        let hash2 = layer.payload_sha256(payload1).unwrap();
+        let hash3 = layer.payload_sha256(payload2).unwrap();
+        // Same payload -> same hash
+        assert_eq!(hash1, hash2);
+        // Different payload -> different hash
+        assert_ne!(hash1, hash3);
+    }
+
+    #[test]
+    fn layer_encryption_nonce_fixed_size() {
+        let nonce = [0x42u8; 12];
+        let enc = LayerEncryption::new("aes-256-gcm".into(), None, nonce);
+        assert_eq!(enc.nonce.len(), 12);
+        assert_eq!(enc.algorithm, "aes-256-gcm");
     }
 }
