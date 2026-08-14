@@ -5,12 +5,12 @@ name: Release
 # On every `v*` tag push, build one archive per platform, produce
 # checksums.txt, then create the GitHub release with all assets.
 #
-#   xbin_<version>_<os>_<arch>.<ext>
-#   xbin_0.5.0_linux_amd64.tar.gz     (xbin + xbin-stub + xbin-crypto)
-#   xbin_0.5.0_linux_arm64.tar.gz     (xbin + xbin-stub + xbin-crypto)
-#   xbin_0.5.0_darwin_amd64.tar.gz    (xbin + xbin-stub + xbin-crypto)
-#   xbin_0.5.0_darwin_arm64.tar.gz    (xbin + xbin-stub + xbin-crypto)
-#   xbin_0.5.0_windows_amd64.tar.gz   (xbin + xbin-stub + xbin-crypto)
+#   erebus_<version>_<os>_<arch>.<ext>
+#   erebus_0.5.0_linux_amd64.tar.gz     (erebus + erebus-stub + erebus-crypto)
+#   erebus_0.5.0_linux_arm64.tar.gz     (erebus + erebus-stub + erebus-crypto)
+#   erebus_0.5.0_darwin_amd64.tar.gz    (erebus + erebus-stub + erebus-crypto)
+#   erebus_0.5.0_darwin_arm64.tar.gz    (erebus + erebus-stub + erebus-crypto)
+#   erebus_0.5.0_windows_amd64.tar.gz   (erebus + erebus-stub + erebus-crypto)
 #   checksums.txt
 #
 # Strategy:
@@ -35,7 +35,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  XBIN_NODE_VERSION: "20.18.0"
+  EREBUS_NODE_VERSION: "20.18.0"
 
 jobs:
   # ── Linux (all targets, cross-compiled with zigbuild) ───────────────
@@ -74,31 +74,31 @@ jobs:
 
       - name: Build stub (Linux only — uses /proc/self/exe, namespaces, seccomp)
         if: matrix.stub
-        run: cargo zigbuild --release --target ${{ matrix.target }} -p xbin-stub
+        run: cargo zigbuild --release --target ${{ matrix.target }} -p erebus-stub
 
       - name: Build CLI
-        run: cargo zigbuild --release --target ${{ matrix.target }} -p xbin-cli
+        run: cargo zigbuild --release --target ${{ matrix.target }} -p erebus-cli
 
       - name: Package
         run: |
           set -euxo pipefail
           V="${GITHUB_REF_NAME#v}"
           T="${{ matrix.target }}"
-          D="xbin_${V}_linux_${{ matrix.arch }}"
+          D="erebus_${V}_linux_${{ matrix.arch }}"
           mkdir -p "${D}"
-          cp "target/${T}/release/xbin" "${D}/xbin"
-          if [ -f "target/${T}/release/xbin-stub" ]; then
-            cp "target/${T}/release/xbin-stub" "${D}/xbin-stub"
+          cp "target/${T}/release/erebus" "${D}/erebus"
+          if [ -f "target/${T}/release/erebus-stub" ]; then
+            cp "target/${T}/release/erebus-stub" "${D}/erebus-stub"
           fi
-          if [ -f "target/${T}/release/xbin-crypto" ]; then
-            cp "target/${T}/release/xbin-crypto" "${D}/xbin-crypto"
+          if [ -f "target/${T}/release/erebus-crypto" ]; then
+            cp "target/${T}/release/erebus-crypto" "${D}/erebus-crypto"
           fi
           find "${D}" -type f -exec chmod +x {} +
           tar -czf "${D}.tar.gz" "${D}"
       - uses: actions/upload-artifact@v6
         with:
           name: linux-${{ matrix.arch }}
-          path: xbin_*.tar.gz
+          path: erebus_*.tar.gz
           if-no-files-found: error
 
   # ── Darwin amd64 (macOS Intel) ──────────────────────────────────────
@@ -109,7 +109,7 @@ jobs:
     name: darwin amd64
     runs-on: ubuntu-latest
     env:
-      CARGO_TARGET_DIR: /tmp/xbin-stub-target
+      CARGO_TARGET_DIR: /tmp/erebus-stub-target
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -127,38 +127,38 @@ jobs:
           echo "SDKROOT=/tmp/macos-sdk/MacOSX13.1.sdk" >> "$GITHUB_ENV"
 
       - name: Build stub
-        run: cargo zigbuild --release -p xbin-stub --target x86_64-apple-darwin
+        run: cargo zigbuild --release -p erebus-stub --target x86_64-apple-darwin
 
       - name: Build CLI
-        run: cargo zigbuild --release -p xbin-cli --target x86_64-apple-darwin
+        run: cargo zigbuild --release -p erebus-cli --target x86_64-apple-darwin
 
       - name: Verify
         run: |
-          file /tmp/xbin-stub-target/x86_64-apple-darwin/release/xbin | grep -q "Mach-O"
-          file /tmp/xbin-stub-target/x86_64-apple-darwin/release/xbin-stub | grep -q "Mach-O"
+          file /tmp/erebus-stub-target/x86_64-apple-darwin/release/erebus | grep -q "Mach-O"
+          file /tmp/erebus-stub-target/x86_64-apple-darwin/release/erebus-stub | grep -q "Mach-O"
 
       - name: Package
         run: |
           set -euxo pipefail
           V="${GITHUB_REF_NAME#v}"
-          D="xbin_${V}_darwin_amd64"
+          D="erebus_${V}_darwin_amd64"
           mkdir -p "${D}"
-          cp /tmp/xbin-stub-target/x86_64-apple-darwin/release/xbin "${D}/xbin"
-          cp /tmp/xbin-stub-target/x86_64-apple-darwin/release/xbin-stub "${D}/xbin-stub"
-          cp /tmp/xbin-stub-target/x86_64-apple-darwin/release/xbin-crypto "${D}/xbin-crypto"
-          chmod +x "${D}/xbin" "${D}/xbin-stub" "${D}/xbin-crypto"
+          cp /tmp/erebus-stub-target/x86_64-apple-darwin/release/erebus "${D}/erebus"
+          cp /tmp/erebus-stub-target/x86_64-apple-darwin/release/erebus-stub "${D}/erebus-stub"
+          cp /tmp/erebus-stub-target/x86_64-apple-darwin/release/erebus-crypto "${D}/erebus-crypto"
+          chmod +x "${D}/erebus" "${D}/erebus-stub" "${D}/erebus-crypto"
           tar -czf "${D}.tar.gz" "${D}"
       - uses: actions/upload-artifact@v6
         with:
           name: darwin-amd64
-          path: xbin_*.tar.gz
+          path: erebus_*.tar.gz
 
   # ── Darwin arm64 (macOS Apple Silicon) ──────────────────────────────
   darwin-arm64:
     name: darwin arm64
     runs-on: ubuntu-latest
     env:
-      CARGO_TARGET_DIR: /tmp/xbin-stub-target
+      CARGO_TARGET_DIR: /tmp/erebus-stub-target
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -176,43 +176,43 @@ jobs:
           echo "SDKROOT=/tmp/macos-sdk/MacOSX13.1.sdk" >> "$GITHUB_ENV"
 
       - name: Build stub
-        run: cargo zigbuild --release -p xbin-stub --target aarch64-apple-darwin
+        run: cargo zigbuild --release -p erebus-stub --target aarch64-apple-darwin
 
       - name: Build CLI
-        run: cargo zigbuild --release -p xbin-cli --target aarch64-apple-darwin
+        run: cargo zigbuild --release -p erebus-cli --target aarch64-apple-darwin
 
       - name: Verify
         run: |
-          file /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin | grep -q "Mach-O"
-          file /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin | grep -q "arm64"
-          file /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin-stub | grep -q "Mach-O"
-          file /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin-stub | grep -q "arm64"
+          file /tmp/erebus-stub-target/aarch64-apple-darwin/release/erebus | grep -q "Mach-O"
+          file /tmp/erebus-stub-target/aarch64-apple-darwin/release/erebus | grep -q "arm64"
+          file /tmp/erebus-stub-target/aarch64-apple-darwin/release/erebus-stub | grep -q "Mach-O"
+          file /tmp/erebus-stub-target/aarch64-apple-darwin/release/erebus-stub | grep -q "arm64"
 
       - name: Package
         run: |
           set -euxo pipefail
           V="${GITHUB_REF_NAME#v}"
-          D="xbin_${V}_darwin_arm64"
+          D="erebus_${V}_darwin_arm64"
           mkdir -p "${D}"
-          cp /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin "${D}/xbin"
-          cp /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin-stub "${D}/xbin-stub"
-          cp /tmp/xbin-stub-target/aarch64-apple-darwin/release/xbin-crypto "${D}/xbin-crypto"
-          chmod +x "${D}/xbin" "${D}/xbin-stub" "${D}/xbin-crypto"
+          cp /tmp/erebus-stub-target/aarch64-apple-darwin/release/erebus "${D}/erebus"
+          cp /tmp/erebus-stub-target/aarch64-apple-darwin/release/erebus-stub "${D}/erebus-stub"
+          cp /tmp/erebus-stub-target/aarch64-apple-darwin/release/erebus-crypto "${D}/erebus-crypto"
+          chmod +x "${D}/erebus" "${D}/erebus-stub" "${D}/erebus-crypto"
           tar -czf "${D}.tar.gz" "${D}"
       - uses: actions/upload-artifact@v6
         with:
           name: darwin-arm64
-          path: xbin_*.tar.gz
+          path: erebus_*.tar.gz
 
   # ── Windows amd64 ───────────────────────────────────────────────────
   # Cross-compiled on ubuntu via cargo-zigbuild (zig provides the mingw C
-  # toolchain; no mingw-w64 install needed). Verified green — xbin-core and
-  # xbin-cli are Windows-portable and the stub has a win.rs FFI layer.
+  # toolchain; no mingw-w64 install needed). Verified green — erebus-core and
+  # erebus-cli are Windows-portable and the stub has a win.rs FFI layer.
   windows-amd64:
     name: windows amd64
     runs-on: ubuntu-latest
     env:
-      CARGO_TARGET_DIR: /tmp/xbin-stub-target
+      CARGO_TARGET_DIR: /tmp/erebus-stub-target
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -223,31 +223,31 @@ jobs:
         run: cargo install cargo-zigbuild --locked
 
       - name: Build stub
-        run: cargo zigbuild --release -p xbin-stub --target x86_64-pc-windows-gnu
+        run: cargo zigbuild --release -p erebus-stub --target x86_64-pc-windows-gnu
 
       - name: Build CLI
-        run: cargo zigbuild --release -p xbin-cli --target x86_64-pc-windows-gnu
+        run: cargo zigbuild --release -p erebus-cli --target x86_64-pc-windows-gnu
 
       - name: Verify
         run: |
-          file /tmp/xbin-stub-target/x86_64-pc-windows-gnu/release/xbin.exe | grep -q "PE32+"
-          file /tmp/xbin-stub-target/x86_64-pc-windows-gnu/release/xbin-stub.exe | grep -q "PE32+"
+          file /tmp/erebus-stub-target/x86_64-pc-windows-gnu/release/erebus.exe | grep -q "PE32+"
+          file /tmp/erebus-stub-target/x86_64-pc-windows-gnu/release/erebus-stub.exe | grep -q "PE32+"
 
       - name: Package
         shell: bash
         run: |
           set -euxo pipefail
           V="${GITHUB_REF_NAME#v}"
-          D="xbin_${V}_windows_amd64"
+          D="erebus_${V}_windows_amd64"
           mkdir -p "${D}"
-          cp /tmp/xbin-stub-target/x86_64-pc-windows-gnu/release/xbin.exe "${D}/xbin.exe"
-          cp /tmp/xbin-stub-target/x86_64-pc-windows-gnu/release/xbin-stub.exe "${D}/xbin-stub.exe"
-          cp /tmp/xbin-stub-target/x86_64-pc-windows-gnu/release/xbin-crypto.exe "${D}/xbin-crypto.exe"
+          cp /tmp/erebus-stub-target/x86_64-pc-windows-gnu/release/erebus.exe "${D}/erebus.exe"
+          cp /tmp/erebus-stub-target/x86_64-pc-windows-gnu/release/erebus-stub.exe "${D}/erebus-stub.exe"
+          cp /tmp/erebus-stub-target/x86_64-pc-windows-gnu/release/erebus-crypto.exe "${D}/erebus-crypto.exe"
           tar -czf "${D}.tar.gz" "${D}"
       - uses: actions/upload-artifact@v6
         with:
           name: windows-amd64
-          path: xbin_*.tar.gz
+          path: erebus_*.tar.gz
 
   # ── Publish the release with all assets + checksums ─────────────────
   publish:
@@ -266,7 +266,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum xbin_*.tar.gz > checksums.txt
+          sha256sum erebus_*.tar.gz > checksums.txt
           cat checksums.txt
 
       - name: List artifacts
@@ -278,11 +278,11 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "x.bin $GITHUB_REF_NAME" \
+            --title "erebus $GITHUB_REF_NAME" \
             --notes-file CHANGELOG.md \
-            dist/xbin_*.tar.gz dist/checksums.txt \
+            dist/erebus_*.tar.gz dist/checksums.txt \
           || gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-             dist/xbin_*.tar.gz dist/checksums.txt --clobber
+             dist/erebus_*.tar.gz dist/checksums.txt --clobber
 
   # ── QEMU boot test for linux-aarch64 ─────────────────────────────────
   qemu-aarch64:
@@ -299,15 +299,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y qemu-user-static
       - name: Build aarch64 stub + CLI
         run: |
-          cargo zigbuild --release --target aarch64-unknown-linux-musl -p xbin-stub
-          cargo zigbuild --release --target aarch64-unknown-linux-musl -p xbin-cli
+          cargo zigbuild --release --target aarch64-unknown-linux-musl -p erebus-stub
+          cargo zigbuild --release --target aarch64-unknown-linux-musl -p erebus-cli
       - name: Build hello-web for aarch64
         run: |
-          ./target/aarch64-unknown-linux-musl/release/xbin build examples/hello-web --target aarch64 -o /tmp/hello-web-aarch64.xbin
+          ./target/aarch64-unknown-linux-musl/release/erebus build examples/hello-web --target aarch64 -o /tmp/hello-web-aarch64.ere
       - name: Run under QEMU
         timeout-minutes: 10
         run: |
-          qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/hello-web-aarch64.xbin &
+          qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/hello-web-aarch64.ere &
           PID=$!
           sleep 5
           curl -s http://127.0.0.1:8080 | grep -q "Hello" && echo "QEMU boot test passed" || (echo "QEMU boot test failed" && kill $PID && exit 1)
