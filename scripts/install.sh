@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# install.sh — install or upgrade x.bin
-# Usage: curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash
+# install.sh — install or upgrade erebus
+# Usage: curl -fsSL https://raw.githubusercontent.com/Tednoob17/erebus/main/scripts/install.sh | bash
 set -euo pipefail
 
-REPO="Tednoob17/x.bin"
-INSTALL_DIR="${XBIN_INSTALL_DIR:-/usr/local/bin}"
+REPO="Tednoob17/erebus"
+INSTALL_DIR="${EREBUS_INSTALL_DIR:-/usr/local/bin}"
 GITHUB="https://github.com/${REPO}"
 
 # ── Helpers ────────────────────────────────────────────────────────────
-info()  { printf "\033[1;34m[xbin]\033[0m %s\n" "$*"; }
-ok()    { printf "\033[1;32m[xbin]\033[0m %s\n" "$*"; }
-warn()  { printf "\033[1;33m[xbin]\033[0m %s\n" "$*"; }
-err()   { printf "\033[1;31m[xbin]\033[0m %s\n" "$*" >&2; exit 1; }
+info()  { printf "\033[1;34m[erebus]\033[0m %s\n" "$*"; }
+ok()    { printf "\033[1;32m[erebus]\033[0m %s\n" "$*"; }
+warn()  { printf "\033[1;33m[erebus]\033[0m %s\n" "$*"; }
+err()   { printf "\033[1;31m[erebus]\033[0m %s\n" "$*" >&2; exit 1; }
 
 detect_platform() {
   local os arch
@@ -45,7 +45,7 @@ verify_checksum() {
   expected="$(grep "$(basename "$file")" "$checksum_file" 2>/dev/null | awk '{print $1}')"
 
   if [ -z "$expected" ]; then
-    warn "checksum for $(basename "$file") not found in SHASUMS256.txt, skipping"
+    warn "checksum for $(basename "$file") not found in checksums.txt, skipping"
     return 0
   fi
 
@@ -90,11 +90,11 @@ main() {
   info "latest version: ${version}"
 
   # Check if already installed and up-to-date
-  if command -v xbin &>/dev/null; then
+  if command -v erebus &>/dev/null; then
     local current
-    current="$(xbin --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")"
+    current="$(erebus --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")"
     if [ "$current" = "$version" ]; then
-      ok "xbin ${version} is already installed"
+      ok "erebus ${version} is already installed"
       return 0
     fi
     [ -n "$current" ] && info "upgrading from ${current} to ${version}"
@@ -104,7 +104,7 @@ main() {
   tmpdir="$(mktemp -d)"
   trap 'rm -rf "${tmpdir}"' EXIT
 
-  asset="xbin-${platform}.tar.gz"
+  asset="erebus-${platform}.tar.gz"
   url="${GITHUB}/releases/download/${tag}/${asset}"
 
   info "downloading ${asset}..."
@@ -116,40 +116,40 @@ main() {
       || err "download failed — is version ${version} available for ${platform}?"
   fi
 
-  # Download SHASUMS256.txt
-  local checksum_url="${GITHUB}/releases/download/${tag}/SHASUMS256.txt"
+  # Download checksums.txt
+  local checksum_url="${GITHUB}/releases/download/${tag}/checksums.txt"
   if command -v curl &>/dev/null; then
-    curl -fsSL "$checksum_url" -o "${tmpdir}/SHASUMS256.txt" 2>/dev/null || true
+    curl -fsSL "$checksum_url" -o "${tmpdir}/checksums.txt" 2>/dev/null || true
   else
-    wget -q "$checksum_url" -O "${tmpdir}/SHASUMS256.txt" 2>/dev/null || true
+    wget -q "$checksum_url" -O "${tmpdir}/checksums.txt" 2>/dev/null || true
   fi
 
   # Verify checksum
-  verify_checksum "${tmpdir}/${asset}" "${tmpdir}/SHASUMS256.txt"
+  verify_checksum "${tmpdir}/${asset}" "${tmpdir}/checksums.txt"
 
   # Extract
   info "extracting..."
   tar xzf "${tmpdir}/${asset}" -C "${tmpdir}"
 
-  local extracted_dir="${tmpdir}/xbin-${platform}"
+  local extracted_dir="${tmpdir}/erebus-${platform}"
   if [ ! -d "$extracted_dir" ]; then
-    extracted_dir="$(find "${tmpdir}" -maxdepth 1 -type d -name 'xbin-*' | head -1)"
+    extracted_dir="$(find "${tmpdir}" -maxdepth 1 -type d -name 'erebus-*' | head -1)"
   fi
 
-  if [ ! -d "$extracted_dir/bin" ]; then
-    err "unexpected archive structure — no bin/ directory found"
+  if [ ! -d "$extracted_dir" ]; then
+    err "unexpected archive structure — no directory found"
   fi
 
   # Install binaries
   info "installing to ${INSTALL_DIR}..."
   if [ -w "$INSTALL_DIR" ] 2>/dev/null; then
-    cp "${extracted_dir}/bin/"* "$INSTALL_DIR/"
+    cp "${extracted_dir}/"* "$INSTALL_DIR/"
   else
-    sudo cp "${extracted_dir}/bin/"* "$INSTALL_DIR/"
+    sudo cp "${extracted_dir}/"* "$INSTALL_DIR/"
   fi
 
-  ok "installed xbin ${version} to ${INSTALL_DIR}"
-  info "run 'xbin --version' to verify"
+  ok "installed erebus ${version} to ${INSTALL_DIR}"
+  info "run 'erebus --version' to verify"
 }
 
 main "$@"

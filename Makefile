@@ -178,11 +178,11 @@ release: dist
 	@git tag "v$(VERSION)" 2>/dev/null || true
 	@git push origin "v$(VERSION)" 2>/dev/null || true
 	@gh release create "v$(VERSION)" \
-		--repo Tednoob17/x.bin \
+		--repo Tednoob17/erebus \
 		--title "x.bin v$(VERSION)" \
 		--notes-file CHANGELOG.md \
 		$(DIST_DIR)/*
-	@echo "Release v$(VERSION) created: https://github.com/Tednoob17/x.bin/releases/tag/v$(VERSION)"
+	@echo "Release v$(VERSION) created: https://github.com/Tednoob17/erebus/releases/tag/v$(VERSION)"
 
 help:
 	@echo "x.bin — package any app into a single self-extracting ELF binary"

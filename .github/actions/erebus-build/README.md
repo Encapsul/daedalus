@@ -1,18 +1,18 @@
-# xbin Build Action
+# erebus Build Action
 
-Package any app into a single self-extracting `.xbin` binary directly in your CI/CD pipeline.
+Package any app into a single self-extracting `.ere` binary directly in your CI/CD pipeline.
 
 ## Quick Start
 
 ```yaml
-- uses: Tednoob17/x.bin/.github/actions/xbin-build@main
+- uses: Tednoob17/erebus/.github/actions/erebus-build@main
   with:
     app-path: '.'
 
 - uses: actions/upload-artifact@v4
   with:
     name: my-app
-    path: app.xbin
+    path: app.ere
 ```
 
 ## Usage Examples
@@ -26,15 +26,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: Tednoob17/x.bin/.github/actions/xbin-build@main
+      - uses: Tednoob17/erebus/.github/actions/erebus-build@main
         with:
           app-path: '.'
-          output: 'my-python-app.xbin'
+          output: 'my-python-app.ere'
 
       - uses: actions/upload-artifact@v4
         with:
           name: my-python-app
-          path: my-python-app.xbin
+          path: my-python-app.ere
 ```
 
 ### Node.js app with signing
@@ -46,18 +46,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: Tednoob17/x.bin/.github/actions/xbin-build@main
+      - uses: Tednoob17/erebus/.github/actions/erebus-build@main
         with:
           app-path: '.'
           runtime: 'node'
           sign: 'true'
-          key: ${{ secrets.XBIN_SIGNING_KEY }}
-          output: 'my-node-app.xbin'
+          key: ${{ secrets.EREBUS_SIGNING_KEY }}
+          output: 'my-node-app.ere'
 
       - uses: actions/upload-artifact@v4
         with:
           name: my-node-app
-          path: my-node-app.xbin
+          path: my-node-app.ere
 ```
 
 ### Multi-platform build
@@ -76,38 +76,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: Tednoob17/x.bin/.github/actions/xbin-build@main
+      - uses: Tednoob17/erebus/.github/actions/erebus-build@main
         with:
           app-path: '.'
           target: ${{ matrix.target }}
-          output: 'app-${{ matrix.target }}.xbin'
+          output: 'app-${{ matrix.target }}.ere'
 
       - uses: actions/upload-artifact@v4
         with:
           name: app-${{ matrix.target }}
-          path: app-${{ matrix.target }}.xbin
+          path: app-${{ matrix.target }}.ere
 ```
 
 ### With extra files
 
 ```yaml
-- uses: Tednoob17/x.bin/.github/actions/xbin-build@main
+- uses: Tednoob17/erebus/.github/actions/erebus-build@main
   with:
     app-path: '.'
     include: |
       config/
       data/
       migrations/
-    output: 'full-app.xbin'
+    output: 'full-app.ere'
 ```
 
 ### Specific version
 
 ```yaml
-- uses: Tednoob17/x.bin/.github/actions/xbin-build@main
+- uses: Tednoob17/erebus/.github/actions/erebus-build@main
   with:
     app-path: '.'
-    xbin-version: 'v0.3.2'
+    erebus-version: 'v0.5.0'
 ```
 
 ## Inputs
@@ -121,16 +121,16 @@ jobs:
 | `sign` | Sign the binary | `false` |
 | `encrypt` | Encrypt the payload (requires key) | `false` |
 | `include` | Extra files/dirs to include (newline-separated) | — |
-| `output` | Output binary path | `app.xbin` |
-| `xbin-version` | xbin version to install | `latest` |
-| `xbin-repo` | GitHub repo to download xbin from | `Tednoob17/x.bin` |
-| `build-args` | Extra arguments to pass to xbin build | — |
+| `output` | Output binary path | `app.ere` |
+| `erebus-version` | erebus version to install | `latest` |
+| `erebus-repo` | GitHub repo to download erebus from | `Tednoob17/erebus` |
+| `build-args` | Extra arguments to pass to erebus build | — |
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
-| `binary-path` | Path to the built .xbin binary |
+| `binary-path` | Path to the built .ere binary |
 | `runtime` | Detected runtime |
 | `size` | Binary size in bytes |
 
@@ -138,19 +138,18 @@ jobs:
 
 To sign your binary, add your Ed25519 private key as a repository secret:
 
-1. Generate a key: `xbin keygen`
-2. Add the private key content as a secret named `XBIN_SIGNING_KEY`
-3. Set `sign: 'true'` and `key: ${{ secrets.XBIN_SIGNING_KEY }}` in the action
+1. Generate a key: `erebus keygen`
+2. Add the private key content as a secret named `EREBUS_SIGNING_KEY`
+3. Set `sign: 'true'` and `key: ${{ secrets.EREBUS_SIGNING_KEY }}` in the action
 
 ## How It Works
 
 1. Detects the runner OS and architecture
-2. Downloads the matching xbin release binary
+2. Downloads the matching erebus release binary
 3. Installs it to PATH
-4. Runs `xbin build` with your provided options
+4. Runs `erebus build` with your provided options
 5. Outputs the path, detected runtime, and binary size
 
 ## Requirements
 
 - Linux (x86_64 or aarch64) or macOS (Intel or Apple Silicon) runner
-- `python3` on PATH (needed by the xbin wrapper script)

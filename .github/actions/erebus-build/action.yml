@@ -1,5 +1,5 @@
-name: 'xbin Build'
-description: 'Package any app into a single self-extracting .xbin binary'
+name: 'erebus Build'
+description: 'Package any app into a single self-extracting .ere binary'
 
 inputs:
   app-path:
@@ -30,22 +30,22 @@ inputs:
   output:
     description: 'Output binary path'
     required: false
-    default: 'app.xbin'
-  xbin-version:
-    description: 'xbin version to install (e.g. v0.3.2, latest)'
+    default: 'app.ere'
+  erebus-version:
+    description: 'erebus version to install (e.g. v0.5.0, latest)'
     required: false
     default: 'latest'
-  xbin-repo:
-    description: 'GitHub repo to download xbin from'
+  erebus-repo:
+    description: 'GitHub repo to download erebus from'
     required: false
-    default: 'Tednoob17/x.bin'
+    default: 'Tednoob17/erebus'
   build-args:
-    description: 'Extra arguments to pass to xbin build'
+    description: 'Extra arguments to pass to erebus build'
     required: false
 
 outputs:
   binary-path:
-    description: 'Path to the built .xbin binary'
+    description: 'Path to the built .ere binary'
     value: ${{ steps.build.outputs.binary-path }}
   runtime:
     description: 'Detected runtime'
@@ -77,22 +77,21 @@ runs:
           *)             echo "error: unsupported arch: $ARCH" && exit 1 ;;
         esac
 
-        TARBALL="xbin-${OS_NAME}-${ARCH_NAME}.tar.gz"
+        TARBALL="erebus-${OS_NAME}-${ARCH_NAME}.tar.gz"
         echo "os=${OS_NAME}" >> "$GITHUB_OUTPUT"
         echo "arch=${ARCH_NAME}" >> "$GITHUB_OUTPUT"
         echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
         echo "platform=${OS_NAME}-${ARCH_NAME}" >> "$GITHUB_OUTPUT"
 
     # ── Resolve version ──────────────────────────────────────────────
-    - name: Resolve xbin version
+    - name: Resolve erebus version
       id: version
       shell: bash
       run: |
-        VERSION="${{ inputs.xbin-version }}"
-        REPO="${{ inputs.xbin-repo }}"
+        VERSION="${{ inputs.erebus-version }}"
+        REPO="${{ inputs.erebus-repo }}"
 
         if [ "$VERSION" = "latest" ]; then
-          # Follow redirect to get latest release tag
           VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
             | grep '"tag_name"' | head -1 | cut -d'"' -f4)
           if [ -z "$VERSION" ]; then
@@ -101,13 +100,13 @@ runs:
         fi
 
         echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-        echo "xbin version: ${VERSION}"
+        echo "erebus version: ${VERSION}"
 
     # ── Download and install ─────────────────────────────────────────
-    - name: Install xbin ${{ steps.version.outputs.version }}
+    - name: Install erebus ${{ steps.version.outputs.version }}
       shell: bash
       run: |
-        REPO="${{ inputs.xbin-repo }}"
+        REPO="${{ inputs.erebus-repo }}"
         VERSION="${{ steps.version.outputs.version }}"
         TARBALL="${{ steps.detect.outputs.tarball }}"
         PLATFORM="${{ steps.detect.outputs.platform }}"
@@ -121,34 +120,28 @@ runs:
           exit 1
         fi
 
-        # Extract — tarball contains xbin-{platform}/ directory
+        # Extract — tarball contains erebus-{platform}/ directory
         tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
 
-        # Find the xbin binary inside the extracted directory
-        XBIN_DIR="${TMPDIR}/xbin-${PLATFORM}"
-        if [ ! -d "$XBIN_DIR" ]; then
-          # Fallback: find any directory that contains bin/xbin
-          XBIN_DIR="$(find "$TMPDIR" -maxdepth 1 -type d -name 'xbin-*' | head -1)"
+        # Find the erebus binary inside the extracted directory
+        EREBUS_DIR="${TMPDIR}/erebus-${PLATFORM}"
+        if [ ! -d "$EREBUS_DIR" ]; then
+          EREBUS_DIR="$(find "$TMPDIR" -maxdepth 1 -type d -name 'erebus-*' | head -1)"
         fi
 
-        if [ ! -f "${XBIN_DIR}/bin/xbin" ]; then
-          echo "error: xbin binary not found in ${XBIN_DIR}/bin/"
+        if [ ! -f "${EREBUS_DIR}/erebus" ]; then
+          echo "error: erebus binary not found in ${EREBUS_DIR}/"
           echo "Contents:"
-          find "$XBIN_DIR" -type f 2>/dev/null || true
+          find "$EREBUS_DIR" -type f 2>/dev/null || true
           exit 1
         fi
 
         # Make executable and add to PATH
-        chmod +x "${XBIN_DIR}/bin/xbin"
-        echo "${XBIN_DIR}/bin" >> "$GITHUB_PATH"
+        chmod +x "${EREBUS_DIR}/erebus"
+        echo "${EREBUS_DIR}" >> "$GITHUB_PATH"
 
-        # Also ensure python3 is available (needed by the wrapper script)
-        if ! command -v python3 &>/dev/null; then
-          echo "warning: python3 not found, xbin may not work"
-        fi
-
-        echo "Installed xbin: $(which xbin)"
-        xbin --version 2>/dev/null || echo "xbin installed (version check skipped)"
+        echo "Installed erebus: $(which erebus)"
+        erebus --version 2>/dev/null || echo "erebus installed (version check skipped)"
 
     # ── Write signing key if provided ────────────────────────────────
     - name: Write signing key
@@ -159,10 +152,10 @@ runs:
         KEY_FILE="${KEY_DIR}/signing.key"
         echo "${{ inputs.key }}" > "$KEY_FILE"
         chmod 600 "$KEY_FILE"
-        echo "XBIN_KEY_FILE=${KEY_FILE}" >> "$GITHUB_ENV"
+        echo "EREBUS_KEY_FILE=${KEY_FILE}" >> "$GITHUB_ENV"
 
     # ── Build ────────────────────────────────────────────────────────
-    - name: Build .xbin binary
+    - name: Build .ere binary
       id: build
       shell: bash
       run: |
@@ -180,8 +173,8 @@ runs:
         fi
 
         # Signing
-        if [ "${{ inputs.sign }}" = "true" ] && [ -n "$XBIN_KEY_FILE" ]; then
-          ARGS+=("--key" "$XBIN_KEY_FILE")
+        if [ "${{ inputs.sign }}" = "true" ] && [ -n "$EREBUS_KEY_FILE" ]; then
+          ARGS+=("--key" "$EREBUS_KEY_FILE")
         fi
 
         # Encryption
@@ -202,8 +195,8 @@ runs:
           ARGS+=(${{ inputs.build-args }})
         fi
 
-        echo "Running: xbin build ${ARGS[*]}"
-        xbin build "${ARGS[@]}"
+        echo "Running: erebus build ${ARGS[*]}"
+        erebus build "${ARGS[@]}"
 
         # Collect outputs
         OUTPUT_FILE="${{ inputs.output }}"
@@ -218,8 +211,8 @@ runs:
         fi
 
         # Try to detect runtime from inspect output
-        if command -v xbin &>/dev/null; then
-          RUNTIME=$(xbin inspect "$OUTPUT_FILE" --json 2>/dev/null \
+        if command -v erebus &>/dev/null; then
+          RUNTIME=$(erebus inspect "$OUTPUT_FILE" --json 2>/dev/null \
             | grep -o '"runtime":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
           echo "runtime=${RUNTIME}" >> "$GITHUB_OUTPUT"
         fi
@@ -229,6 +222,6 @@ runs:
       if: always() && inputs.key != ''
       shell: bash
       run: |
-        if [ -n "$XBIN_KEY_FILE" ] && [ -f "$XBIN_KEY_FILE" ]; then
-          rm -f "$XBIN_KEY_FILE"
+        if [ -n "$EREBUS_KEY_FILE" ] && [ -f "$EREBUS_KEY_FILE" ]; then
+          rm -f "$EREBUS_KEY_FILE"
         fi

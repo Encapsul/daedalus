@@ -4,20 +4,20 @@
 
 set -euo pipefail
 
-export CARGO_TARGET_DIR="/tmp/xbin-stub-target"
+export CARGO_TARGET_DIR="/tmp/erebus-stub-target"
 export RUSTFLAGS="-D warnings"
 
 echo "=== Building stub (musl) ==="
 make stub
 
 echo "=== Building CLI ==="
-cargo build --release -p xbin-cli
+cargo build --release -p erebus-cli
 
 echo "=== Running tests ==="
 cargo test --workspace
 
 echo "=== Smoke test ==="
-/tmp/xbin-stub-target/release/xbin build examples/hello-web -o /tmp/hello-web.xbin
-/tmp/hello-web.xbin
+/tmp/erebus-stub-target/release/erebus build examples/hello-web -o /tmp/hello-web.ere
+/tmp/hello-web.ere
 
 echo "=== All checks passed ==="
