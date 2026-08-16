@@ -320,7 +320,7 @@ git push --force --tags origin
 **Workflow**: `.github/workflows/release.yml` triggers on `release: types: [published]` (toboggan pattern).
 
 **How to create a release**:
-1. Go to https://github.com/Tednoob17/x.bin/releases/new
+1. Go to https://github.com/Tednoob17/erebus/releases/new
 2. **Tag**: create new tag `vX.Y.Z` (or select existing)
 3. **Release title**: `x.bin vX.Y.Z` (or `x.bin vX.Y.Z — <codename>`)
 4. **Description**: write changelog, install instructions, etc.
@@ -807,7 +807,7 @@ Cargo.toml          (workspace root, [profile.release])
 - `macos-x64` (x86_64-apple-darwin) — queued, runner slow
 
 **Distribution**: Single binary, no `pip install` needed.
-`curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/Tednoob17/erebus/main/scripts/install.sh | bash`
 
 ### Benefits achieved
 
@@ -845,7 +845,7 @@ Stub now uses `erebus-core` as a shared library dependency instead of its local 
   - Downloads tar.gz from releases, verifies SHA-256 checksum
   - Installs to `/usr/local/bin/` (or `$ERE_INSTALL_DIR`)
   - Idempotent: skips if already up-to-date
-  - Usage: `curl -fsSL https://raw.githubusercontent.com/Tednoob17/x.bin/main/scripts/install.sh | bash`
+  - Usage: `curl -fsSL https://raw.githubusercontent.com/Tednoob17/erebus/main/scripts/install.sh | bash`
 - **File**: `cli/erebus/upgrade.py` — `erebus upgrade` self-update command
   - Fetches latest version from GitHub API
   - Compares against current `_ERE_VERSION`

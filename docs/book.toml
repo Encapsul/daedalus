@@ -8,8 +8,8 @@ src = "src"
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/Tednoob17/x.bin"
-edit-url-template = "https://github.com/Tednoob17/x.bin/edit/main/docs/src/{path}"
+git-repository-url = "https://github.com/Tednoob17/erebus"
+edit-url-template = "https://github.com/Tednoob17/erebus/edit/main/docs/src/{path}"
 
 
 [output.html.fold]

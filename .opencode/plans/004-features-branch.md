@@ -192,7 +192,7 @@ canary: bool,
 let (download_url, version_label) = if args.canary {
     // 1. Fetch latest workflow run from GitHub Actions
     let runs_url = format!(
-        "https://api.github.com/repos/Tednoob17/x.bin/actions/runs?branch=main&per_page=1"
+        "https://api.github.com/repos/Tednoob17/erebus/actions/runs?branch=main&per_page=1"
     );
     let runs: serde_json::Value = client.get(&runs_url)
         .header("Accept", "application/vnd.github+json")
@@ -205,7 +205,7 @@ let (download_url, version_label) = if args.canary {
     
     // 2. Fetch artifacts for this run
     let artifacts_url = format!(
-        "https://api.github.com/repos/Tednoob17/x.bin/actions/runs/{run_id}/artifacts"
+        "https://api.github.com/repos/Tednoob17/erebus/actions/runs/{run_id}/artifacts"
     );
     let artifacts: serde_json::Value = client.get(&artifacts_url)
         .header("Accept", "application/vnd.github+json")
@@ -242,7 +242,7 @@ let (download_url, version_label) = if args.canary {
     // Existing stable release logic
     let latest = fetch_latest_version(&client)?;
     let url = format!(
-        "https://github.com/Tednoob17/x.bin/releases/download/v{latest}/xbin-{latest}-{platform}.tar.gz"
+        "https://github.com/Tednoob17/erebus/releases/download/v{latest}/erebus-{latest}-{platform}.tar.gz"
     );
     (url, latest)
 };

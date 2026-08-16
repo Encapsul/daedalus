@@ -144,5 +144,5 @@ Each archive contains `bin/erebus-stub` (statically linked, no dependencies). A 
 
 ## Questions?
 
-Open a [Discussion](https://github.com/Tednoob17/x.bin/discussions) or tag
+Open a [Discussion](https://github.com/Tednoob17/erebus/discussions) or tag
 `@Tednoob17` in your issue.
