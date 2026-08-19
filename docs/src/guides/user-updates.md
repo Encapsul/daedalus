@@ -1,30 +1,30 @@
-# Updating a deployed `.xbin` (SISR)
+# Updating a deployed `.ere` (SISR)
 
-A `.xbin` built with `--enable-sisr` can update itself **in place** from a
+A `.ere` built with `--enable-sisr` can update itself **in place** from a
 signed delta: it downloads only the chunks that changed, verifies every byte,
-and atomically swaps in the new binary. No toolchain, no `xbin` CLI, no
+and atomically swaps in the new binary. No toolchain, no `erebus` CLI, no
 extraction on the target machine — the update runs inside the binary itself.
 
 ```
 DEV MACHINE                        TARGET MACHINE
 
-xbin build ./app -o app.xbin \
-  --enable-sisr --key …           ./app.xbin --xbin-update
+erebus build ./app -o app.ere \
+  --enable-sisr --key …           ./app.ere --erebus-update
   --update-url https://…            │  fetch manifest (HTTPS)
    │                                │  verify signature + Merkle root
    └─ publish to update server ───► │  download changed chunks
-        app.xbin.manifest          │  SHA-256-verify every chunk
+        app.ere.manifest          │  SHA-256-verify every chunk
         chunks/<sha256>            │  atomic in-place swap
                                    ▼
-                               app.xbin is now the new version
+                               app.ere is now the new version
 ```
 
 ## 1. Build an updatable binary
 
 ```bash
-xbin build ./my_app -o my_app.xbin \
+erebus build ./my_app -o my_app.ere \
     --enable-sisr \
-    --key $XDG_DATA_HOME/xbin/keys/<fingerprint>.key \
+    --key $XDG_DATA_HOME/erebus/keys/<fingerprint>.key \
     --update-url https://updates.example.com/my_app
 ```
 
@@ -32,8 +32,8 @@ Two artifacts are produced:
 
 | Artifact | Purpose |
 |---|---|
-| `my_app.xbin` | Self-extracting binary; self-updates against the channel |
-| `my_app.xbin.manifest` | Signed `XBMR` manifest, published to the server |
+| `my_app.ere` | Self-extracting binary; self-updates against the channel |
+| `my_app.ere.manifest` | Signed `XBMR` manifest, published to the server |
 
 ## 2. Publish a release
 
@@ -43,7 +43,7 @@ before use:
 
 ```
 https://updates.example.com/my_app/
-  manifest                     ← the .xbin.manifest (XBMR, signed)
+  manifest                     ← the .ere.manifest (XBMR, signed)
   chunks/
     <64-hex-sha256>            ← one file per chunk
     <64-hex-sha256>
@@ -61,25 +61,25 @@ in sync for the *newest* release.
 
 ```bash
 # Uses the URL embedded at build time
-./my_app.xbin --xbin-update
+./my_app.ere --erebus-update
 
 # Or point at a specific channel
-./my_app.xbin --xbin-update https://updates.example.com/my_app
+./my_app.ere --erebus-update https://updates.example.com/my_app
 
 # Or override per-run via the environment
-XBIN_UPDATE_URL=https://updates.example.com/my_app ./my_app.xbin --xbin-update
+EREBUS_UPDATE_URL=https://updates.example.com/my_app ./my_app.ere --erebus-update
 ```
 
 Progress and statistics are printed on stderr (stdout is reserved for the app):
 
 ```
-[xbin] update: fetching manifest from https://updates.example.com/my_app/manifest
-[xbin] update: manifest verified (247 chunks)
-[xbin]   fetched chunk 1/247 (65536 bytes)
-[xbin]   fetched chunk 2/247 (65536 bytes)
+[erebus] update: fetching manifest from https://updates.example.com/my_app/manifest
+[erebus] update: manifest verified (247 chunks)
+[erebus]   fetched chunk 1/247 (65536 bytes)
+[erebus]   fetched chunk 2/247 (65536 bytes)
 …
-[xbin] update applied: 203 chunks reused (12.7 MiB), 44 chunks fetched (2.8 MiB), total 247
-[xbin] updated binary: /home/alice/app.xbin
+[erebus] update applied: 203 chunks reused (12.7 MiB), 44 chunks fetched (2.8 MiB), total 247
+[erebus] updated binary: /home/alice/app.ere
 ```
 
 The `reused` number is the bandwidth you saved: those chunks were already
@@ -89,10 +89,10 @@ present in the running binary and were copied in place, never downloaded.
 
 | Flag | Effect |
 |---|---|
-| `--xbin-update [URL]` | Check the channel, verify, apply the delta, print stats, exit |
-| `--xbin-version` | Print the xbin stub and app versions, then exit |
+| `--erebus-update [URL]` | Check the channel, verify, apply the delta, print stats, exit |
+| `--erebus-version` | Print the erebus stub and app versions, then exit |
 
-Both are reserved by xbin: they are intercepted by the launcher and are never
+Both are reserved by erebus: they are intercepted by the launcher and are never
 forwarded to the application.
 
 ## Security model
@@ -100,7 +100,7 @@ forwarded to the application.
 Nothing is trusted from the network:
 
 1. The manifest is verified with Ed25519 against the trusted keys in
-   `~/.xbin/trusted-keys/` (same keys the binary signature uses) **before**
+   `~/.ere/trusted-keys/` (same keys the binary signature uses) **before**
    a single byte is written.
 2. The Merkle root must match the manifest's own chunk table.
 3. Every chunk — reused or downloaded — must SHA-256 to its manifest entry;
@@ -122,7 +122,7 @@ Nothing is trusted from the network:
 | Chunk 404s on the server | engine errors, binary untouched |
 | Interruption mid-update | previous binary intact |
 | New version crashes at startup | `.bak` restored, previous version runs |
-| Release fails `XBIN_HEALTH_MAX_ATTEMPTS` times | quarantined, installs refused |
+| Release fails `EREBUS_HEALTH_MAX_ATTEMPTS` times | quarantined, installs refused |
 | Re-install of a quarantined release | refused before any write |
 
 The running binary is always the last **valid** version — there is no
@@ -134,4 +134,4 @@ The running binary is always the last **valid** version — there is no
   for publishers.
 - [Runtime Launcher](../architecture/runtime-launcher.md) — what the launcher
   does step by step.
-- [`xbin build`](../cli/xbin-build.md) — the builder flags.
+- [`erebus build`](../cli/erebus-build.md) — the builder flags.

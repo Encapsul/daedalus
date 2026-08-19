@@ -5,7 +5,7 @@ and bundling exactly the right files.
 
 ## Detection pipeline
 
-The Rust builder (`xbin-core`) combines runtime detection with package
+The Rust builder (`erebus-core`) combines runtime detection with package
 manager detection to resolve dependencies:
 
 ```
@@ -75,11 +75,11 @@ not just read its symbol table.
 ## Configuration override
 
 Users can explicitly declare external binaries, `dlopen` libs, required env
-vars, and data files in an `xbin.toml`. This is the safety net when auto
+vars, and data files in an `erebus.toml`. This is the safety net when auto
 detection is not enough.
 
 ```toml
-# xbin.toml (target)
+# erebus.toml (target)
 [deps]
 binaries = ["ffmpeg", "convert"]
 libraries = ["libcuda.so.1"]   # optional, GPU

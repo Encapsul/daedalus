@@ -1,10 +1,10 @@
 # Perl Applications
 
-Package Perl applications into self-extracting binaries. x.bin supports Perl apps using Makefile.PL or cpanfile.
+Package Perl applications into self-extracting binaries. erebus supports Perl apps using Makefile.PL or cpanfile.
 
 ## Detection
 
-x.bin detects Perl applications by looking for `Makefile.PL` or `cpanfile` in the project root.
+erebus detects Perl applications by looking for `Makefile.PL` or `cpanfile` in the project root.
 
 ## Supported Patterns
 
@@ -12,21 +12,21 @@ x.bin detects Perl applications by looking for `Makefile.PL` or `cpanfile` in th
 
 ```bash
 # Perl apps with app.pl (PSGI)
-xbin build my-perl-app -o my-perl-app.xbin
+erebus build my-perl-app -o my-perl-app.ere
 ```
 
 ### CGI Scripts
 
 ```bash
 # Traditional CGI scripts
-xbin build my-cgi-app -o my-cgi-app.xbin
+erebus build my-cgi-app -o my-cgi-app.ere
 ```
 
 ### CLI Tools
 
 ```bash
 # Perl CLI tools with bin/app
-xbin build my-perl-tool -o my-perl-tool.xbin
+erebus build my-perl-tool -o my-perl-tool.ere
 ```
 
 ## Requirements
@@ -56,11 +56,11 @@ use My::App;
 My::App->new->start;
 EOF
 
-# Build the .xbin
-xbin build . -o my-perl-app.xbin
+# Build the .ere
+erebus build . -o my-perl-app.ere
 
 # Run it
-./my-perl-app.xbin
+./my-perl-app.ere
 ```
 
 ## Notes

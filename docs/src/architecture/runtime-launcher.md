@@ -1,6 +1,6 @@
 # Runtime Launcher: SISR self-update
 
-> Status: **implemented** (`xbin-core` `sisr::engine` + `sisr::swap`, wired into
+> Status: **implemented** (`erebus-core` `sisr::engine` + `sisr::swap`, wired into
 > `stub/src/main.rs`). Describes how the launcher rebuilds the running binary
 > from a signed delta manifest before extracting and executing it. Since
 > mission 8 the launcher also supervises the first run of a freshly updated
@@ -15,28 +15,28 @@ new version.
 
 Two trigger paths exist:
 
-- **Local staging** (mission 6): `$XBIN_SISR_MANIFEST` points at a signed
+- **Local staging** (mission 6): `$EREBUS_SISR_MANIFEST` points at a signed
   manifest whose chunks are staged in `<manifest-dir>/chunks/`. The launcher
   stays network-free; this path is unchanged.
-- **Remote update** (mission 7): `./app.xbin --xbin-update [URL]` — the
+- **Remote update** (mission 7): `./app.ere --erebus-update [URL]` — the
   launcher intercepts the flag before the app sees it, downloads the manifest
   and the changed chunks over HTTPS, applies the delta, prints reuse/fetch
   statistics, and exits. The URL resolution order is
-  `--xbin-update <URL>` argument > `$XBIN_UPDATE_URL` > the `update_url`
-  embedded at build time (`xbin build --update-url`). `--xbin-version` prints
+  `--erebus-update <URL>` argument > `$EREBUS_UPDATE_URL` > the `update_url`
+  embedded at build time (`erebus build --update-url`). `--erebus-version` prints
   version info and exits.
 
 ```
-./app.xbin  (XBIN_SISR_MANIFEST=/updates/app.xbin.manifest   — local staging)
-            (./app.xbin --xbin-update                        — remote update)
+./app.ere  (EREBUS_SISR_MANIFEST=/updates/app.ere.manifest   — local staging)
+            (./app.ere --erebus-update                        — remote update)
    │
    1. open /proc/self/exe → footer → metadata
    2. update requested?
         no  → skip to 6
         yes ↓
-   3a. local: read + parse remote manifest (XBMR) from $XBIN_SISR_MANIFEST
+   3a. local: read + parse remote manifest (XBMR) from $EREBUS_SISR_MANIFEST
    3b. remote: GET {base}/manifest (HTTPS) and parse it
-   4. verify Ed25519 signature against trusted keys (~/.xbin/trusted-keys/)
+   4. verify Ed25519 signature against trusted keys (~/.ere/trusted-keys/)
       verify Merkle root against the chunk table
    5. SisrEngine::apply_update(/proc/self/exe, manifest, fetcher)
         - reuse unchanged chunks from the current binary
@@ -48,7 +48,7 @@ Two trigger paths exist:
     6. re-open the *canonical real path* returned by the engine (not
        /proc/self/exe, which can still resolve to the pinned pre-update inode)
        and re-read footer + metadata — now the new version
-    7. health gate (mission 8): snapshot `./app.xbin.bak` taken before the
+    7. health gate (mission 8): snapshot `./app.ere.bak` taken before the
        swap; the new version is supervised for its startup window
          - healthy  ⇒ confirmed, `.bak` discarded
          - crashing ⇒ recorded, `.bak` restored atomically, previous version runs
@@ -56,20 +56,20 @@ Two trigger paths exist:
     8. cache check → extract → exec as usual
 ```
 
-The `--xbin-update` / `--xbin-version` paths are **terminal**: after the
+The `--erebus-update` / `--erebus-version` paths are **terminal**: after the
 update the launcher prints statistics on stderr and exits without exec'ing the
 app, so those flags never reach the host application.
 
 ## Trigger and chunk location
 
-- `$XBIN_SISR_MANIFEST` — path to a signed [remote manifest]
+- `$EREBUS_SISR_MANIFEST` — path to a signed [remote manifest]
   (`RemoteManifest::from_bytes`); when unset the launcher is stock.
   Chunk files are read from the `chunks/` directory **next to the manifest**
   (`<manifest-dir>/chunks/<64-hex-sha256>`), served by
   [`DirectoryChunkFetcher`].
-- `--xbin-update [URL]` — fetches `<URL>/manifest` and `<URL>/chunks/<hex>`
+- `--erebus-update [URL]` — fetches `<URL>/manifest` and `<URL>/chunks/<hex>`
   over HTTPS via [`HttpChunkFetcher`], resolving the base URL from the
-  positional argument, then `$XBIN_UPDATE_URL`, then the embedded
+  positional argument, then `$EREBUS_UPDATE_URL`, then the embedded
   `update_url`. The transport is never a trust anchor: the manifest is
   signature-verified and every chunk is SHA-256-verified by the engine before
   it is written.
@@ -111,21 +111,21 @@ Only then does the engine assemble and atomically swap.
 ## Post-update health gate
 
 Atomicity alone does not protect against a *valid but broken* update. Before
-the swap the launcher snapshots the running binary to `./app.xbin.bak`
+the swap the launcher snapshots the running binary to `./app.ere.bak`
 (same filesystem → atomic restore); after the swap it supervises the new
-version for its startup window (`XBIN_HEALTH_TIMEOUT_MS`, default 10 s):
+version for its startup window (`EREBUS_HEALTH_TIMEOUT_MS`, default 10 s):
 
 - the new version exits 0, or is still running when the window closes →
   `health_store` marks it healthy and the snapshot is discarded;
 - the new version crashes or exits non-zero → a failure is recorded; once
-  `attempts >= XBIN_HEALTH_MAX_ATTEMPTS` (default 3) the version is
+  `attempts >= EREBUS_HEALTH_MAX_ATTEMPTS` (default 3) the version is
   **quarantined** and the snapshot is restored, after which the previous
   version runs;
 - a quarantined target is refused at the top of the update path — **before**
   any snapshot or engine I/O — so a broken release cannot be re-installed in
   a loop.
 
-Health records are JSON files in `~/.cache/xbin/health/`, keyed by the target
+Health records are JSON files in `~/.cache/erebus/health/`, keyed by the target
 version's content hash. See
 [Rollback & Resilience](../concepts/rollback-and-resilience.md) for the full
 state machine.
@@ -147,9 +147,9 @@ the engine falls back to fetching every chunk — correct, just not incremental.
 
 | Situation | Outcome |
 |---|---|
-| `XBIN_SISR_MANIFEST` unreadable / bad magic | launcher exits, binary untouched |
+| `EREBUS_SISR_MANIFEST` unreadable / bad magic | launcher exits, binary untouched |
 | Manifest URL unreachable / non-2xx | update refused, binary untouched |
-| No update URL resolvable (`--xbin-update` alone) | update refused with guidance |
+| No update URL resolvable (`--erebus-update` alone) | update refused with guidance |
 | Signature fails (no trusted key verifies) | update refused before any write |
 | Merkle root mismatch | update refused before any write |
 | Fetched chunk wrong length or SHA-256 | engine errors, binary untouched |
@@ -157,7 +157,7 @@ the engine falls back to fetching every chunk — correct, just not incremental.
 | `rename` fails (read-only dir) | engine errors, binary untouched |
 | Power loss / `SIGKILL` mid-write | `.tmp` may remain, binary untouched |
 | Update applies, new version crashes at startup | `.bak` restored atomically, previous version runs, failure recorded |
-| Version fails `XBIN_HEALTH_MAX_ATTEMPTS` times | quarantined; previous version runs |
+| Version fails `EREBUS_HEALTH_MAX_ATTEMPTS` times | quarantined; previous version runs |
 | Re-install of a quarantined version | refused before any snapshot or write |
 
 ## Related
@@ -166,11 +166,11 @@ the engine falls back to fetching every chunk — correct, just not incremental.
   produced and signed.
 - [SISR: Self-Incremental Sovereign Reconstruction](./sisr-spec.md) — trust
   model and invariants.
-- [`.xbin` Format v2 — SISR extension](../spec/xbin-format-v2.md) — byte layout
+- [`.ere` Format v2 — SISR extension](../spec/erebus-format-v2.md) — byte layout
   of the remote manifest and the footer extension.
 - [Incremental Updates (SISR)](../guides/incremental-updates.md) — the
   end-to-end workflow the launcher completes.
 
-[remote manifest]: ../spec/xbin-format-v2.md
+[remote manifest]: ../spec/erebus-format-v2.md
 [`DirectoryChunkFetcher`]: ../architecture/internal-crates.md
 [`HttpChunkFetcher`]: ../architecture/internal-crates.md

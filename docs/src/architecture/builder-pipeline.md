@@ -1,18 +1,18 @@
 # Builder Pipeline
 
-> Status: **implemented** (`xbin-core` `assembly` + `sisr_stage`).
-> Describes how a `.xbin` is assembled, how the optional `SISR` stage fits
+> Status: **implemented** (`erebus-core` `assembly` + `sisr_stage`).
+> Describes how a `.ere` is assembled, how the optional `SISR` stage fits
 > into the packager, and the invariants that keep the two outputs consistent.
 
-The packager lives in `xbin-core/src/assembly.rs`. Its entry point is
-`assemble_xbin`; the SISR-enabled variant is `assemble_xbin_with_sisr`. Both
+The packager lives in `erebus-core/src/assembly.rs`. Its entry point is
+`assemble_erebus`; the SISR-enabled variant is `assemble_erebus_with_sisr`. Both
 return the total file size and set executable permissions on Unix.
 
 ## Classic pipeline
 
 ```
 stub_bytes ─┐
-payload    ─┼─► [stub][payload][metadata][footer] ──► app.xbin
+payload    ─┼─► [stub][payload][metadata][footer] ──► app.ere
 meta_bytes ─┘      │                    │
               payload_sha256 = SHA-256(payload ‖ meta_bytes)
               footer         = format version, offsets, hash, magic
@@ -23,7 +23,7 @@ legacy decoder understands.
 
 ## SISR pipeline
 
-`assemble_xbin_with_sisr` takes a [`SisrBuildConfig`]
+`assemble_erebus_with_sisr` takes a [`SisrBuildConfig`]
 (`enabled`, `chunk_target_size`, optional `signing_key`). With `enabled`
 false the bytes written are **strictly identical** to the classic path — this
 is enforced by a test. With `enabled` true the layout becomes:
@@ -42,7 +42,7 @@ Steps, all in memory:
    (`sisr_stage::sign`); all-zeros signature when unsigned.
 5. **Inject** the manifest and the fixed 110-byte `SisrFooterExt` before the
    standard footer; set `FLAG_SISR` in the footer `flags` byte.
-6. **Write** the remote manifest to `<name>.xbin.manifest`
+6. **Write** the remote manifest to `<name>.ere.manifest`
    (`RemoteManifest::to_bytes`): `XBMR` magic + `merkle_root` + signature +
    embedded `DeltaManifest`, self-contained and verifiable offline.
 
@@ -51,8 +51,8 @@ by the insertion; only `flags` and the new blocks change.
 
 ## Invariants
 
-- **Disabled ⇒ identical output.** `assemble_xbin_with_sisr(…, disabled())`
-  emits the exact bytes of `assemble_xbin`.
+- **Disabled ⇒ identical output.** `assemble_erebus_with_sisr(…, disabled())`
+  emits the exact bytes of `assemble_erebus`.
 - **Reader/writer symmetry.** The extension is located by the reader at
   `file_len − footer_size − 110` (immediately before the footer) and the
   manifest via `chunk_table_offset` — the writer places the manifest between
@@ -76,13 +76,13 @@ full SHA-256 pass, so the stage roughly adds a second pass plus the scan; on
 CPUs with SHA-NI the `compress`-featured `sha2` (runtime-dispatched) collapses
 this to well under the < 5 % build-overhead budget. On the current CPU the
 extra pass is the cost of content addressing — run the probe with
-`cargo test -p xbin-core --release perf_sisr -- --ignored --nocapture`.
+`cargo test -p erebus-core --release perf_sisr -- --ignored --nocapture`.
 
 ## Related
 
 - [SISR: Self-Incremental Sovereign Reconstruction](./sisr-spec.md) — the
   trust model the stage serves.
-- [`.xbin` Format v2 — SISR extension](../spec/xbin-format-v2.md) — exact byte
+- [`.ere` Format v2 — SISR extension](../spec/erebus-format-v2.md) — exact byte
   layout of the manifest and footer extension.
 - [The Builder](../reference/builder.md) — CLI flow that feeds this packager.
 - [Incremental Updates (SISR)](../guides/incremental-updates.md) — consuming

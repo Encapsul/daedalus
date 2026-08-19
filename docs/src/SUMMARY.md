@@ -20,11 +20,11 @@
 # Spec
 
 - [Delta Manifest Format](./spec/delta-manifest-format.md)
-- [`.xbin` Format v2 — SISR extension](./spec/xbin-format-v2.md)
+- [`.ere` Format v2 — SISR extension](./spec/erebus-format-v2.md)
 
 # Technical Reference
 
-- [`.xbin` Format](./reference/format.md)
+- [`.ere` Format](./reference/format.md)
 - [The Launcher (stub)](./reference/launcher.md)
 - [The Builder](./reference/builder.md)
 - [Cache](./reference/cache.md)
@@ -45,7 +45,7 @@
 - [Native Binary](./guides/binary.md)
 - [Dependency Detection](./guides/dependencies.md)
 - [Incremental Updates (SISR)](./guides/incremental-updates.md)
-- [Updating a deployed `.xbin` (SISR)](./guides/user-updates.md)
+- [Updating a deployed `.ere` (SISR)](./guides/user-updates.md)
 
 # Migration
 
@@ -53,7 +53,7 @@
 
 # CLI Reference
 
-- [`xbin build`](./cli/xbin-build.md)
+- [`erebus build`](./cli/erebus-build.md)
 
 # Project
 

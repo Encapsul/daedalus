@@ -1,18 +1,18 @@
 # Cache
 
-Extracting the rootfs on every launch would be slow. `xbin` extracts **once**
+Extracting the rootfs on every launch would be slow. `erebus` extracts **once**
 and reuses.
 
 ## Layout
 
 ```
-~/.cache/xbin/
+~/.cache/erebus/
   {sha256-of-payload}/
     rootfs/      ← extracted filesystem, ready to use
     .ready       ← marker: extraction is complete and valid
 ```
 
-The cache key is the **SHA-256 of the compressed payload**. Two `.xbin` with
+The cache key is the **SHA-256 of the compressed payload**. Two `.ere` with
 identical content share the same cache; changing a single byte produces a new
 key. (`.lock` for concurrent access and `last_used` for LRU cleanup are
 planned — see [Roadmap](../roadmap.md).)
@@ -24,9 +24,9 @@ could inject content (Time Of Check To Time Of Use attack). The defense is
 to **never** expose an intermediate state:
 
 ```
-1. extract to  ~/.cache/xbin/.tmp-{pid}-{nanos}/   ← unique directory
+1. extract to  ~/.cache/erebus/.tmp-{pid}-{nanos}/   ← unique directory
 2. write .ready once extraction is complete
-3. rename() to ~/.cache/xbin/{sha256}/              ← atomic on Linux
+3. rename() to ~/.cache/erebus/{sha256}/              ← atomic on Linux
 4. if another instance won the race → discard our tmp
 ```
 
@@ -40,10 +40,10 @@ tmp directory is created in the **same** parent directory as the target.
 |---|---|---|
 | Cache | missing → extraction | present (`.ready`) → reused |
 | Message | `cold start: extracting...` | `warm start: cache hit {hash}` |
-| Cost | zstd decompression + disk write | near-zero from xbin side |
+| Cost | zstd decompression + disk write | near-zero from erebus side |
 
 > Today, warm "time to first HTTP byte" is dominated by the **embedded
-> runtime boot** (Python interpreter startup, imports), not by `xbin`. The
+> runtime boot** (Python interpreter startup, imports), not by `erebus`. The
 > launcher's own overhead is on the order of milliseconds. The < 100 ms
 > end-to-end goal will require squashfs+mmap (no extraction) in Phase 3.
 
@@ -51,13 +51,13 @@ tmp directory is created in the **same** parent directory as the target.
 
 | | Extraction cache | Build cache |
 |---|---|---|
-| Path | `~/.cache/xbin/{sha256}/` | `~/.cache/xbin/build/{hash}.zst` |
+| Path | `~/.cache/erebus/{sha256}/` | `~/.cache/erebus/build/{hash}.zst` |
 | Side | **target** machine (at `run`) | **build** machine (at `build`) |
 | Content | extracted rootfs, ready to use | **compressed** reusable layers |
 | Role | avoid re-extracting on every launch | avoid recompressing on rebuild |
 
 The build cache is what makes a rebuild go from ~25 s to ~1 s (runtime layer
-reused). See [`.xbin` Format](./format.md#layers-v2).
+reused). See [`.ere` Format](./format.md#layers-v2).
 
 ## Extraction cache key in v2
 
@@ -71,6 +71,6 @@ build-time gain is already achieved.)
 ## Cleanup
 
 ```bash
-xbin clean        # clear extracted cache entries, KEEP build cache
-xbin clean --all  # wipe all ~/.cache/xbin (build cache included)
+erebus clean        # clear extracted cache entries, KEEP build cache
+erebus clean --all  # wipe all ~/.cache/erebus (build cache included)
 ```

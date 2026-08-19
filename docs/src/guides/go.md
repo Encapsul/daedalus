@@ -1,16 +1,16 @@
 # Go Applications
 
-Package Go applications into self-extracting binaries. x.bin builds your Go code into a static binary and packages it.
+Package Go applications into self-extracting binaries. erebus builds your Go code into a static binary and packages it.
 
 ## Detection
 
-x.bin detects Go applications by looking for `go.mod` in the project root.
+erebus detects Go applications by looking for `go.mod` in the project root.
 
 ## How It Works
 
 1. Detects `go.mod` in the project directory
 2. Builds the Go binary using `go build`
-3. Packages the static binary into the .xbin format
+3. Packages the static binary into the .ere format
 4. No interpreter needed at runtime — pure native execution
 
 ## Requirements
@@ -42,11 +42,11 @@ func main() {
 }
 EOF
 
-# Build the .xbin
-xbin build . -o my-go-app.xbin
+# Build the .ere
+erebus build . -o my-go-app.ere
 
 # Run it
-./my-go-app.xbin
+./my-go-app.ere
 ```
 
 ## Cross-Compilation
@@ -55,14 +55,14 @@ Go has excellent cross-compilation support. You can build for different architec
 
 ```bash
 # Build for Linux aarch64 from x86_64
-GOOS=linux GOARCH=arm64 xbin build . -o my-go-app-arm64.xbin
+GOOS=linux GOARCH=arm64 erebus build . -o my-go-app-arm64.ere
 
 # Build for macOS from Linux
-GOOS=darwin GOARCH=arm64 xbin build . -o my-go-app-macos.xbin
+GOOS=darwin GOARCH=arm64 erebus build . -o my-go-app-macos.ere
 ```
 
 ## Notes
 
 - Go produces static binaries, so no runtime dependencies are needed
 - CGO_ENABLED=0 is recommended for fully static builds
-- The resulting .xbin will be larger than the Go binary alone due to the launcher
+- The resulting .ere will be larger than the Go binary alone due to the launcher

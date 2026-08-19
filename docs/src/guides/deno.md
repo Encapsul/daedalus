@@ -1,6 +1,6 @@
 # Building a Deno App
 
-`xbin` supports Deno apps. It detects a Deno project by the presence of
+`erebus` supports Deno apps. It detects a Deno project by the presence of
 `deno.json` or `deno.jsonc`.
 
 ## Detection
@@ -12,12 +12,12 @@
 
 ## Prerequisites
 
-- Deno installed (`deno` on PATH), or xbin will download a vendored binary automatically
+- Deno installed (`deno` on PATH), or erebus will download a vendored binary automatically
 
 ## Build
 
 ```bash
-xbin build ./my-deno-app -o my-deno-app.xbin
+erebus build ./my-deno-app -o my-deno-app.ere
 ```
 
 The builder:
@@ -25,7 +25,7 @@ The builder:
 1. detects the `deno` runtime and reads the entrypoint from config;
 2. embeds the `deno` binary (on PATH or vendored);
 3. packages the app source into the app layer;
-4. compresses and assembles the `.xbin`.
+4. compresses and assembles the `.ere`.
 
 ## Entrypoint detection
 
@@ -40,19 +40,19 @@ If no tasks are defined, it falls back to common entry files:
 
 ## Vendored Deno
 
-If Deno is not on your PATH, `xbin` automatically downloads a prebuilt Deno
-binary from GitHub Releases and caches it at `~/.cache/xbin/cross/deno/`.
+If Deno is not on your PATH, `erebus` automatically downloads a prebuilt Deno
+binary from GitHub Releases and caches it at `~/.cache/erebus/cross/deno/`.
 
 ```bash
-# No deno on PATH — xbin downloads it automatically
-xbin build ./my-deno-app -o my-deno-app.xbin
+# No deno on PATH — erebus downloads it automatically
+erebus build ./my-deno-app -o my-deno-app.ere
 ```
 
 ## Environment variables
 
 ```bash
-DENO_ENV=production ./my-deno-app.xbin
-PORT=8000 ./my-deno-app.xbin
+DENO_ENV=production ./my-deno-app.ere
+PORT=8000 ./my-deno-app.ere
 ```
 
 ## Known limitations

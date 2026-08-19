@@ -1,12 +1,12 @@
 # Incremental Updates (SISR)
 
-> **Advanced, opt-in.** This guide covers the SISR extension: making a `.xbin`
+> **Advanced, opt-in.** This guide covers the SISR extension: making a `.ere`
 > able to update itself from signed deltas. If you don't need self-updates,
-> ignore this page — a plain `xbin build` already gives you a static,
+> ignore this page — a plain `erebus build` already gives you a static,
 > self-contained binary.
 >
-> Status: **implemented** — `xbin build --enable-sisr` produces an updatable
-> binary and its signed manifest, and `./app.xbin --xbin-update` applies the
+> Status: **implemented** — `erebus build --enable-sisr` produces an updatable
+> binary and its signed manifest, and `./app.ere --erebus-update` applies the
 > delta on the target (see [User-updates](./user-updates.md) for the
 > end-to-end workflow).
 
@@ -20,15 +20,15 @@ and rebuilding + redistributing the whole file each time is the bottleneck:
 - many identical deployments that can share deltas.
 
 If you deploy to a handful of machines and can rebuild, SISR is overkill. The
-default static `.xbin` remains the right choice.
+default static `.ere` remains the right choice.
 
 ## Overview of the workflow
 
 ```
 DEV MACHINE                          TARGET MACHINE
-                                     (no toolchain, no xbin CLI)
+                                     (no toolchain, no erebus CLI)
 
-build + sign v1.0  ──────────────►   ./app.xbin --xbin-update
+build + sign v1.0  ──────────────►   ./app.ere --erebus-update
 build + sign v1.1                     │  fetch manifest (HTTPS)
    │                                  │  verify signature + anti-rollback
    │                                  │  download changed chunks
@@ -38,7 +38,7 @@ build + sign v1.1                     │  fetch manifest (HTTPS)
    │                              running v1.1
 ```
 
-Three things are produced per release: the `.xbin` itself (for fresh
+Three things are produced per release: the `.ere` itself (for fresh
 installs), the **manifest**, and the **chunks** it references. Both the
 manifest and every chunk are verifiable without any tool — the verification
 runs inside the binary.
@@ -47,12 +47,12 @@ runs inside the binary.
 
 ```bash
 # Static container — no SISR
-xbin build ./my_app -o my_app.xbin
+erebus build ./my_app -o my_app.ere
 
 # Updatable binary — enables SISR and embeds the update channel
-xbin build ./my_app -o my_app.xbin \
+erebus build ./my_app -o my_app.ere \
     --enable-sisr \
-    --key $XDG_DATA_HOME/xbin/keys/<fingerprint>.key \
+    --key $XDG_DATA_HOME/erebus/keys/<fingerprint>.key \
     --update-url https://updates.example.com/my_app
 ```
 
@@ -63,18 +63,18 @@ manifest that gets published.
 
 ## 2. Sign the release
 
-Signing a release uses the same Ed25519 keys as xbin's existing signing
+Signing a release uses the same Ed25519 keys as erebus's existing signing
 support, but the **object** signed differs when SISR is on:
 
 ```bash
-xbin keygen --key-dir $XDG_DATA_HOME/xbin/keys
-xbin build ./my_app --enable-sisr --key $XDG_DATA_HOME/xbin/keys/<fingerprint>.key --update-url https://…
+erebus keygen --key-dir $XDG_DATA_HOME/erebus/keys
+erebus build ./my_app --enable-sisr --key $XDG_DATA_HOME/erebus/keys/<fingerprint>.key --update-url https://…
 ```
 
 With `--enable-sisr` the `--key` argument signs the **manifest**, not the
 binary (the SISR section would be truncated by the binary signature block).
-Without `--enable-sisr`, `xbin sign` still signs the binary as before. The
-trust chain is fixed at build time: a `.xbin` only applies updates signed by
+Without `--enable-sisr`, `erebus sign` still signs the binary as before. The
+trust chain is fixed at build time: a `.ere` only applies updates signed by
 the same key, or by a delegated key recorded in its header.
 
 ## 3. Publish the update
@@ -84,29 +84,29 @@ For each release, publish:
 ```
 updates.example.com/
   my-app/
-    manifest              ← signed XBMR manifest (the .xbin.manifest)
+    manifest              ← signed XBMR manifest (the .ere.manifest)
     chunks/<sha256>        ← content-addressed encoded chunks
 ```
 
 The chunk names are **content-addressed** (see the
 [delta manifest spec](../spec/delta-manifest-format.md)), so a chunk fetched
 by name can be verified against its hash before use. `manifest` is the file
-`xbin build` writes next to the binary (`<output>.manifest`). Publish it
+`erebus build` writes next to the binary (`<output>.manifest`). Publish it
 under the base URL you passed to `--update-url`, with the `chunks/` directory
 beside it.
 
 ## 4. Update on the target
 
 ```bash
-# Check for and apply an update (URL from --update-url, $XBIN_UPDATE_URL,
+# Check for and apply an update (URL from --update-url, $EREBUS_UPDATE_URL,
 # or an explicit argument — in that order)
-./my_app.xbin --xbin-update
+./my_app.ere --erebus-update
 
 # Point at a different channel explicitly
-./my_app.xbin --xbin-update https://updates.example.com/my_app
+./my_app.ere --erebus-update https://updates.example.com/my_app
 
 # Inspect versions without updating
-./my_app.xbin --xbin-version
+./my_app.ere --erebus-version
 ```
 
 What happens under the hood — and what cannot be skipped:
@@ -120,13 +120,13 @@ What happens under the hood — and what cannot be skipped:
 6. it rebuilds the binary and commits atomically — an interruption leaves the
    previous binary intact.
 
-## 5. Verification of a standalone `.xbin`
+## 5. Verification of a standalone `.ere`
 
-A `.xbin` produced by SISR is a **standard, valid `.xbin`**. Existing
+A `.ere` produced by SISR is a **standard, valid `.ere`**. Existing
 verification works unchanged:
 
 ```bash
-xbin verify my_app.xbin --trusted-dir $XDG_DATA_HOME/xbin/trusted-keys
+erebus verify my_app.ere --trusted-dir $XDG_DATA_HOME/erebus/trusted-keys
 ```
 
 There is no separate "SISR format" to verify.
@@ -153,7 +153,7 @@ In every case the running binary is the last valid version. There is no
 - **Updates need a reachable manifest** — self-update requires network access
   to the update channel.
 
-None of this applies to a classic `.xbin`; it stays a zero-dependency static
+None of this applies to a classic `.ere`; it stays a zero-dependency static
 container.
 
 ## References

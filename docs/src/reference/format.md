@@ -1,6 +1,6 @@
-# `.xbin` Format
+# `.ere` Format
 
-A `.xbin` file is a **valid ELF executable** with a compressed payload,
+A `.ere` file is a **valid ELF executable** with a compressed payload,
 JSON metadata, and a **footer** at the very end of the file. The launcher
 reads itself via `/proc/self/exe`, seeks to the end, reads the footer, and
 finds everything else from the offsets stored there.
@@ -30,7 +30,7 @@ prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
 | Field            | Offset | Type  | Size | Description                                  |
 |------------------|--------|-------|------|----------------------------------------------|
 | `sig_offset`     | 0      | u64   | 8    | absolute offset of signature block (0 if unsigned) |
-| `magic`          | 8      | bytes | 5    | `"XBIN\x01"`                                 |
+| `magic`          | 8      | bytes | 5    | `"ERE\x01"`                                 |
 | `format_version` | 13     | u8    | 1    | format version (3, 4, or 5)                  |
 | `arch`           | 14     | u8    | 1    | `0x01`=x86_64, `0x02`=aarch64                |
 | `flags`          | 15     | u8    | 1    | bit0=signed, bit1=encrypted                 |
@@ -42,7 +42,7 @@ prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
 | `meta_size`      | 80     | u64   | 8    | metadata size in bytes                       |
 | `footer_magic`   | 88     | u32   | 4    | `0xBEEFCAFE` end sentinel                    |
 
-The spec is implemented in `xbin-core/src/format.rs` — the single source of
+The spec is implemented in `erebus-core/src/format.rs` — the single source of
 truth, shared by the launcher (stub) and the CLI. There is no separate
 `stub/src/format.rs`.
 
@@ -50,7 +50,7 @@ truth, shared by the launcher (stub) and the CLI. There is no separate
 
 **Constraint:** The Linux kernel requires ELF magic (`\x7fELF`) at offset 0
 to execute the file. We cannot put our own bytes at the start without
-breaking `chmod +x && ./my_app.xbin`.
+breaking `chmod +x && ./my_app.ere`.
 
 **Options considered:**
 1. Custom header before ELF — rejected. The kernel would refuse to execute
@@ -135,7 +135,7 @@ The footer's `sig_offset` field points to the start of this block.
 ```json
 {
   "name": "hello-web",
-  "xbin_version": "0.1.0",
+  "erebus_version": "0.1.0",
   "created": "2026-06-23T12:00:00Z",
   "runtime": "python",
   "isolation": 0,
@@ -188,17 +188,17 @@ change, its extraction is reusable.
 
 The runtime layer (interpreter + stdlib + `.so`) is independent of app code.
 Editing `app.py` doesn't change it. On rebuild, the builder reuses it from
-the build cache (`~/.cache/xbin/build/`) — no recompression. Only the app
+the build cache (`~/.cache/erebus/build/`) — no recompression. Only the app
 layer is rebuilt.
 
 ```bash
 # First build: ~25s (compressing runtime layer, ~54 MB)
-$ xbin build ./my_app
-[xbin] wrote my_app.xbin (7.1MB) in 25.1s
+$ erebus build ./my_app
+[erebus] wrote my_app.ere (7.1MB) in 25.1s
 
 # Rebuild after code change: ~1s (runtime layer reused)
-$ xbin build ./my_app
-[xbin] wrote my_app.xbin (7.1MB) in 1.2s
+$ erebus build ./my_app
+[erebus] wrote my_app.ere (7.1MB) in 1.2s
 ```
 
 Two apps sharing the same runtime share the same runtime layer in the build
@@ -210,8 +210,8 @@ The footer is versioned (`format_version`). A launcher rejects a file with
 a version higher than it understands:
 
 ```bash
-$ ./old-xbin new-format.xbin
-[xbin] error: unsupported .xbin format version (binary newer than launcher)
+$ ./old-erebus new-format.ere
+[erebus] error: unsupported .ere format version (binary newer than launcher)
 ```
 
 | Version | Changes                                            |

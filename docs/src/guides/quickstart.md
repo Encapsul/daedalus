@@ -10,14 +10,14 @@
 Verify all prerequisites in one command:
 
 ```bash
-make preflight      # or: xbin doctor
+make preflight      # or: erebus doctor
 ```
 
 If anything is missing, auto-fix what can be installed:
 
 ```bash
-xbin doctor --fix            # interactive (asks before each fix)
-xbin doctor --fix --force    # non-interactive (for scripts and CI)
+erebus doctor --fix            # interactive (asks before each fix)
+erebus doctor --fix --force    # non-interactive (for scripts and CI)
 ```
 
 ## 1. Build the launcher stub
@@ -30,9 +30,9 @@ make stub
 ## 2. Build & run a Python app
 
 ```bash
-xbin build ./examples/hello-web -o hello-web.xbin
+erebus build ./examples/hello-web -o hello-web.ere
 
-./hello-web.xbin
+./hello-web.ere
 # Server listening on http://127.0.0.1:8080
 ```
 
@@ -41,18 +41,18 @@ Open http://127.0.0.1:8080 in your browser.
 ## 3. Build & run a Node.js app
 
 ```bash
-xbin build ./examples/hello-node -o hello-node.xbin
+erebus build ./examples/hello-node -o hello-node.ere
 
-./hello-node.xbin
+./hello-node.ere
 # Server listening on http://127.0.0.1:8080
 ```
 
 See the [Node.js guide](./node.md) for details on dependencies and `node_modules`.
 
-## 4. Inspect a .xbin
+## 4. Inspect a .ere
 
 ```bash
-xbin inspect hello-web.xbin
+erebus inspect hello-web.ere
 ```
 
 ```
@@ -69,22 +69,22 @@ integrity sha256: 4232327e...
 
 ```bash
 # Generate a keypair
-xbin keygen --key-dir $XDG_DATA_HOME/xbin/keys
+erebus keygen --key-dir $XDG_DATA_HOME/erebus/keys
 
-# Sign a .xbin
-xbin sign hello-web.xbin --key $XDG_DATA_HOME/xbin/keys/<fingerprint>.key
+# Sign a .ere
+erebus sign hello-web.ere --key $XDG_DATA_HOME/erebus/keys/<fingerprint>.key
 
 # Copy public key to trusted directory
-cp $XDG_DATA_HOME/xbin/keys/<fingerprint>.pub $XDG_DATA_HOME/xbin/trusted-keys/
+cp $XDG_DATA_HOME/erebus/keys/<fingerprint>.pub $XDG_DATA_HOME/erebus/trusted-keys/
 
 # Verify
-xbin verify hello-web.xbin
+erebus verify hello-web.ere
 ```
 
 ## Debug
 
 ```bash
-XBIN_VERBOSE=1 ./hello-web.xbin
+EREBUS_VERBOSE=1 ./hello-web.ere
 # Shows cold/warm start, extraction, and cache status
 ```
 

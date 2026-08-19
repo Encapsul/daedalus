@@ -1,10 +1,10 @@
 # The Builder
 
-The builder analyzes an application and produces the `.xbin`. It's written in
-**Rust** as part of `xbin-core` — zero Python dependency at runtime.
+The builder analyzes an application and produces the `.ere`. It's written in
+**Rust** as part of `erebus-core` — zero Python dependency at runtime.
 
-- **Code**: `xbin-core/src/` (assembly, compress, detect, pkgmgr, tar, etc.)
-- **CLI**: `xbin-cli/src/commands/build.rs` orchestrates the build pipeline
+- **Code**: `erebus-core/src/` (assembly, compress, detect, pkgmgr, tar, etc.)
+- **CLI**: `erebus-cli/src/commands/build.rs` orchestrates the build pipeline
 
 ## The three steps
 
@@ -57,7 +57,7 @@ The builder constructs **two layers** (v2 format):
 Each layer is compressed with either `zstd -19` (default) or `mksquashfs`
 (`--squashfs` flag, v5 format, better compression ratio).
 
-**Build cache** (`~/.cache/xbin/build/{hash}.zst`): the runtime layer is
+**Build cache** (`~/.cache/erebus/build/{hash}.zst`): the runtime layer is
 looked up by its tar hash. If an identical blob already exists, it's
 **reused without recompression** — this is what makes rebuilds (and builds
 of apps sharing the same runtime) near-instant.
@@ -69,15 +69,15 @@ Final assembly, then `chmod +x`:
 ^0          ^payload_offset                              ^meta_offset      ^EOF-92
 ```
 
-See [`.xbin` Format](./format.md#layers-v2) for the layer table details.
+See [`.ere` Format](./format.md#layers-v2) for the layer table details.
 
 ## Typical output
 
 First build (cold build cache):
 
 ```
-$ xbin build ./examples/bottle-web
-[xbin] building 'bottle-web'
+$ erebus build ./examples/bottle-web
+[erebus] building 'bottle-web'
   runtime: python
   entrypoint: /usr/bin/python3.12 /app/app.py
   runtime layer: 5 shared libraries
@@ -90,7 +90,7 @@ $ xbin build ./examples/bottle-web
   app layer: site-packages from .../bottle-web/site-packages
   runtime layer: 54.0MB -> 11.9MB (zstd, cached)
   app layer: 0.2MB -> 0.0MB (zstd)
-[xbin] wrote ./bottle-web.xbin (7.1MB) in 25.1s
+[erebus] wrote ./bottle-web.ere (7.1MB) in 25.1s
 ```
 
 Rebuild after code change (runtime layer reused):
@@ -98,7 +98,7 @@ Rebuild after code change (runtime layer reused):
 ```
   runtime layer: reused from build cache (no recompression) ✓
   app layer: 0.2MB -> 0.0MB (zstd)
-[xbin] wrote ./bottle-web.xbin (7.1MB) in 1.2s
+[erebus] wrote ./bottle-web.ere (7.1MB) in 1.2s
 ```
 
 The resolved libraries (5) include the dynamic linker (`ld-linux`) and are
@@ -124,5 +124,5 @@ automatically creates a temporary venv, pip-installs dependencies, and
 embeds them as an additional site-packages entry in `PYTHONPATH`:
 
 ```
-[xbin] pip install: ./my_app/requirements.txt → /app/site-packages
+[erebus] pip install: ./my_app/requirements.txt → /app/site-packages
 ```

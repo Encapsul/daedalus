@@ -1,6 +1,6 @@
 # Building a Ruby App
 
-`xbin` supports Ruby apps with or without Bundler. It detects a Ruby project by
+`erebus` supports Ruby apps with or without Bundler. It detects a Ruby project by
 the presence of a `Gemfile` or a single `.rb` file.
 
 ## Detection
@@ -19,10 +19,10 @@ the presence of a `Gemfile` or a single `.rb` file.
 
 ```bash
 # Bundler project
-xbin build ./my-ruby-app -o my-ruby-app.xbin
+erebus build ./my-ruby-app -o my-ruby-app.ere
 
 # Single file
-xbin build ./my-script -o my-script.xbin
+erebus build ./my-script -o my-script.ere
 ```
 
 The builder:
@@ -31,7 +31,7 @@ The builder:
 2. for Bundler projects, reads `GEM_PATH` from `.bundle/config` or `vendor/bundle/`;
 3. embeds the `ruby` interpreter and its shared libraries;
 4. packages gems into the app layer;
-5. compresses and assembles the `.xbin`.
+5. compresses and assembles the `.ere`.
 
 ## Entrypoint detection
 
@@ -51,7 +51,7 @@ If none found, defaults to `main.rb`.
 ```bash
 cd my-ruby-app
 bundle install --deployment    # installs to vendor/bundle
-xbin build . -o my-app.xbin
+erebus build . -o my-app.ere
 ```
 
 The builder reads `BUNDLE_PATH` from `.bundle/config` and embeds the gem
@@ -65,14 +65,14 @@ Rails projects are detected by the presence of `config/ru`. The builder uses
 ```bash
 cd my-rails-app
 bundle install --deployment
-xbin build . -o my-rails-app.xbin
+erebus build . -o my-rails-app.ere
 ```
 
 ## Environment variables
 
 ```bash
-RAILS_ENV=production ./my-rails-app.xbin
-PORT=3000 ./my-rails-app.xbin
+RAILS_ENV=production ./my-rails-app.ere
+PORT=3000 ./my-rails-app.ere
 ```
 
 ## Known limitations
@@ -80,4 +80,4 @@ PORT=3000 ./my-rails-app.xbin
 - Only Ruby MRI is supported (not JRuby, TruffleRuby, or mruby).
 - Native C extensions (gems with `.so` files) require their system dependencies
   to be available on the build machine. The ELF analyzer resolves these.
-- Rails asset pipeline compilation must happen before `xbin build`.
+- Rails asset pipeline compilation must happen before `erebus build`.
