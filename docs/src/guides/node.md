@@ -1,6 +1,6 @@
 # Building a Node.js app
 
-`xbin` supports Node.js apps end-to-end. It detects a Node.js project by the
+`erebus` supports Node.js apps end-to-end. It detects a Node.js project by the
 presence of a `package.json` file, embeds the Node.js runtime with its shared
 libraries, and automatically handles `node_modules` when present.
 
@@ -21,7 +21,7 @@ const port = parseInt(process.env.PORT || "8080", 10);
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end(`Hello from x.bin + Node.js ${process.version}\n");
+  res.end(`Hello from erebus + Node.js ${process.version}\n");
 });
 
 server.listen(port, () => {
@@ -40,26 +40,26 @@ server.listen(port, () => {
 Build it:
 
 ```bash
-xbin build ./examples/hello-node -o hello-node.xbin
+erebus build ./examples/hello-node -o hello-node.ere
 ```
 
 Run it:
 
 ```bash
-./hello-node.xbin
+./hello-node.ere
 # Server listening on http://127.0.0.1:8080
 ```
 
 ## With dependencies (node_modules)
 
 If your app has npm dependencies, they must be installed first (`npm install`)
-so that `node_modules/` exists in the project directory. `xbin` automatically
+so that `node_modules/` exists in the project directory. `erebus` automatically
 detects it and sets `NODE_PATH` inside the extracted rootfs.
 
 ```bash
 cd my-node-app
 npm install express
-xbin build . -o my-app.xbin
+erebus build . -o my-app.ere
 ```
 
 The build output will confirm:

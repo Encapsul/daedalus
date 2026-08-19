@@ -1,13 +1,13 @@
-# `xbin build`
+# `erebus build`
 
-Package an app directory into a single self-extracting `.xbin` executable.
+Package an app directory into a single self-extracting `.ere` executable.
 
 ```bash
-xbin build [OPTIONS] [APP]
+erebus build [OPTIONS] [APP]
 ```
 
-`APP` defaults to `.`. The output is `app.xbin` unless `-o` is given (a
-trailing slash appends `app.xbin` to the directory).
+`APP` defaults to `.`. The output is `app.ere` unless `-o` is given (a
+trailing slash appends `app.ere` to the directory).
 
 ## Runtime selection
 
@@ -20,7 +20,7 @@ interpreter with `--embed-interpreter` (for example `python3`, `node`,
 
 | Flag | Description |
 |---|---|
-| `-o, --output <PATH>` | Output file (default `app.xbin`) |
+| `-o, --output <PATH>` | Output file (default `app.ere`) |
 | `-k, --key <PATH>` | Ed25519 signing key (32 raw bytes) |
 | `--isolation <MODE>` | Isolation level: `sandbox` (0) .. hard (default `sandbox`) |
 | `--seccomp` | Install a seccomp BPF denylist at runtime |
@@ -51,33 +51,33 @@ interpreter with `--embed-interpreter` (for example `python3`, `node`,
 |---|---|
 | `--enable-sisr` | Enable delta-indexing: content-chunk the payload, embed a SISR section and write `<output>.manifest` |
 | `--key <PATH>` | **With `--enable-sisr`:** signs the SISR manifest instead of the binary |
-| `--update-url <URL>` | Base URL of the update channel; embedded in the binary and used by `--xbin-update` |
+| `--update-url <URL>` | Base URL of the update channel; embedded in the binary and used by `--erebus-update` |
 
 ```bash
 # Updatable binary: SISR section + signed manifest + embedded update channel
-xbin build ./my_app -o my_app.xbin \
+erebus build ./my_app -o my_app.ere \
     --enable-sisr \
-    --key ~/.xbin/keys/<fingerprint>.key \
+    --key ~/.ere/keys/<fingerprint>.key \
     --update-url https://updates.example.com/my_app
 ```
 
 This produces two artifacts:
 
-- `my_app.xbin` — the self-extracting binary (payload is content-addressed;
+- `my_app.ere` — the self-extracting binary (payload is content-addressed;
   unchanged chunks can be reused in place during an update);
-- `my_app.xbin.manifest` — the signed `XBMR` remote manifest that the launcher
+- `my_app.ere.manifest` — the signed `XBMR` remote manifest that the launcher
   fetches and verifies before applying an update.
 
 Publish both, plus the chunk files, to the update channel so target machines
-can run `./my_app.xbin --xbin-update` (see [User-updates](../guides/user-updates.md)).
+can run `./my_app.ere --erebus-update` (see [User-updates](../guides/user-updates.md)).
 
 ### Signing semantics
 
-The Ed25519 key file is the same 32 raw bytes used by `xbin sign`. When
+The Ed25519 key file is the same 32 raw bytes used by `erebus sign`. When
 `--enable-sisr` is given, `--key` signs the **manifest** (the SISR footer
 carries the signature; the launcher verifies it against your trusted keys).
 Because the binary signature block would be inserted after the metadata and
-truncate the SISR section, a single `xbin build` signs *either* the binary
+truncate the SISR section, a single `erebus build` signs *either* the binary
 (no `--enable-sisr`) *or* the manifest (`--enable-sisr`), never both. The
 private key bytes are never printed; under Unix a key file that is not mode
 `0600` produces a warning.
@@ -97,12 +97,12 @@ private key bytes are never printed; under Unix a key file that is not mode
 package managers, file count — without building anything:
 
 ```bash
-xbin build ./my_app --enable-sisr --update-url https://… --dry-run
+erebus build ./my_app --enable-sisr --update-url https://… --dry-run
 ```
 
 ## See also
 
-- [`xbin sign`](./xbin-sign.md), [`xbin verify`](./xbin-verify.md),
-  [`xbin keygen`](./xbin-keygen.md)
+- [`erebus sign`](./erebus-sign.md), [`erebus verify`](./erebus-verify.md),
+  [`erebus keygen`](./erebus-keygen.md)
 - [Incremental Updates (SISR)](../guides/incremental-updates.md)
 - [User-facing update workflow](../guides/user-updates.md)

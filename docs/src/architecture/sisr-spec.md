@@ -2,13 +2,13 @@
 
 > Status: **Conceptual specification** (Phase 1 — no code, no format change).
 > Defines the trust model, invariants, and conceptual ABI for a runtime that
-> can rebuild a `.xbin` **by itself**, from verified deltas, without any host
+> can rebuild a `.ere` **by itself**, from verified deltas, without any host
 > dependency.
 
-SISR ("Self-Incremental Sovereign Reconstruction") turns a `.xbin` from a
+SISR ("Self-Incremental Sovereign Reconstruction") turns a `.ere` from a
 static container into an autonomous, modular system: the binary can receive a
 signed delta, verify it, and re-assemble a new version of itself locally —
-without the `xbin` CLI, without a compiler, and without any system runtime.
+without the `erebus` CLI, without a compiler, and without any system runtime.
 
 The purpose of this document is to fix the **absolute invariants**, the
 **cryptographic trust model**, and the **conceptual boundaries** *before* any
@@ -19,15 +19,15 @@ implementation must satisfy, not the implementation.
 
 ## 1. Motivation
 
-Today a `.xbin` is immutable: shipping a fix means rebuilding on a dev machine
+Today a `.ere` is immutable: shipping a fix means rebuilding on a dev machine
 and redistributing the whole file. SISR addresses the deployment side of that
 loop — the **self-healing runtime** — so a target machine can update itself
 from signed deltas and recover from local corruption without the build
 toolchain ever being present.
 
-SISR changes what a `.xbin` is:
+SISR changes what a `.ere` is:
 
-| | Static `.xbin` (today) | SISR `.xbin` (target) |
+| | Static `.ere` (today) | SISR `.ere` (target) |
 |---|---|---|
 | Update path | Rebuild + redistribute | Self-rebuild from signed delta |
 | Requires toolchain | Only at build time | **Never** |
@@ -43,9 +43,9 @@ and absolute**.
 
 ### I-1. Zero host dependency
 
-A `.xbin` that reconstructs itself must never require, on the target machine:
+A `.ere` that reconstructs itself must never require, on the target machine:
 
-- the `xbin` CLI,
+- the `erebus` CLI,
 - a compiler (Rust, C, Go),
 - any system runtime (node, python, docker),
 - any packaging tool (tar, squashfs-tools, zstd).
@@ -58,7 +58,7 @@ already is) and usable through the same `/proc/self/exe` self-location pattern.
 ### I-2. Application neutrality
 
 Activating the SISR engine must **never alter the default behavior** of the
-hosted application. A user who executes `./app.xbin` without any
+hosted application. A user who executes `./app.ere` without any
 reconstruction trigger must get exactly today's transparent behavior: launcher
 → verify → cache → exec the server/web app. SISR is a **dormant capability**:
 it only engages when explicitly invoked (new binary on disk, explicit update
@@ -79,12 +79,12 @@ invisible: the running and on-disk binaries keep being the last valid version.
 
 ## 3. Architecture: three responsibilities
 
-A `.xbin` is conceptually split into three responsibilities that must remain
+A `.ere` is conceptually split into three responsibilities that must remain
 cleanly separable:
 
 ```
 +-----------------------------------------------------------------+
-|                      APP.XBIN (ELF/PE)                          |
+|                      APP.ERE (ELF/PE)                          |
 +-----------------------------------------------------------------+
 |  1. Entrypoint Launcher  --> Bootstrap + runtime isolation      |
 +-----------------------------------------------------------------+
@@ -99,9 +99,9 @@ cleanly separable:
 2. **Embedded SISR Engine** — dormant code path that can rebuild the binary
    from signed blocks. Never runs during a default launch.
 3. **Payload** — the SquashFS application content. SISR reconstructs the
-   *payload* (and, when needed, the launcher) as a new assembled `.xbin`.
+   *payload* (and, when needed, the launcher) as a new assembled `.ere`.
 
-The trust model requires that a `.xbin` may only apply a delta or a manifest
+The trust model requires that a `.ere` may only apply a delta or a manifest
 **signed by the same Ed25519 public key** that signed the original binary —
 or by a valid **delegated key** present in the original header (see
 [Trust policy](#5-trust-model)).
@@ -138,7 +138,7 @@ controls end-to-end; fetching uses the same primitives the app already needs
 ### 5.1 Chain of trust
 
 ```
-original .xbin  ── Ed25519 ──►  owner signing key  ── delegate ──►  update key
+original .ere  ── Ed25519 ──►  owner signing key  ── delegate ──►  update key
   (trust anchor)                                                  (signs deltas)
 ```
 
@@ -188,7 +188,7 @@ TrustPolicy {
 ## 6. Structures (conceptual)
 
 The following structures define the data model of SISR. They are a contract
-for future implementation, **not** a format change to the current `.xbin`
+for future implementation, **not** a format change to the current `.ere`
 footer (see [Compatibility](#8-compatibility)).
 
 ### 6.1 ManifestHeader
@@ -234,9 +234,9 @@ makes the local cache content-addressed and safe: a block is reused from cache
 The engine maintains a content-addressed local cache:
 
 ```
-~/.cache/xbin/self/{hash}/blocks/<content_sha256>   ← immutable by key
-~/.cache/xbin/self/{hash}/applied.index             ← monotonic counter
-~/.cache/xbin/self/{hash}/reconstruct/<version>     ← staged candidates
+~/.cache/erebus/self/{hash}/blocks/<content_sha256>   ← immutable by key
+~/.cache/erebus/self/{hash}/applied.index             ← monotonic counter
+~/.cache/erebus/self/{hash}/reconstruct/<version>     ← staged candidates
 ```
 
 A cache block is keyed by its content hash, so **injecting a malicious block**
@@ -271,7 +271,7 @@ Key properties of the contract:
 
 ## 8. Compatibility
 
-- **No impact on existing `.xbin` executables (Phase 1).** Old binaries remain
+- **No impact on existing `.ere` executables (Phase 1).** Old binaries remain
   plain static SquashFS containers; SISR is a dormant capability that does not
   run on default launch (invariant I-2).
 - No existing footer field, layer format, or magic constant is modified. The
@@ -339,7 +339,7 @@ implementation design is produced.
 
 - [Security model](../security.md) — in particular the new section
   [Chain of Trust for Local Rebuilding](../security.md#1b-chain-of-trust-for-local-rebuilding)
-- [`.xbin` format](../reference/format.md) — the format this engine will
+- [`.ere` format](../reference/format.md) — the format this engine will
   eventually reconstruct
 - [The Launcher (stub)](../reference/launcher.md) — the existing bootstrap
   responsibility

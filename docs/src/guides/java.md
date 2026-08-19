@@ -1,6 +1,6 @@
 # Building a Java App
 
-`xbin` supports Java apps via Maven and Gradle. It detects a Java project by the
+`erebus` supports Java apps via Maven and Gradle. It detects a Java project by the
 presence of `pom.xml` (Maven) or `build.gradle` / `build.gradle.kts` (Gradle).
 
 ## Detection
@@ -28,10 +28,10 @@ The builder parses `<mainClass>` from:
 
 ```bash
 # Maven project
-xbin build ./my-java-app -o my-java-app.xbin
+erebus build ./my-java-app -o my-java-app.ere
 
 # Gradle project
-xbin build ./my-gradle-app -o my-gradle-app.xbin
+erebus build ./my-gradle-app -o my-gradle-app.ere
 ```
 
 The builder:
@@ -40,7 +40,7 @@ The builder:
 2. parses the `mainClass` from build config or JAR manifest;
 3. embeds the `java` interpreter and its shared libraries;
 4. packages the JAR into the app layer;
-5. compresses and assembles the `.xbin`.
+5. compresses and assembles the `.ere`.
 
 ## Entrypoint
 
@@ -65,15 +65,15 @@ configuration.
 ```bash
 cd my-spring-app
 mvn package
-xbin build . -o my-spring-app.xbin
-./my-spring-app.xbin
+erebus build . -o my-spring-app.ere
+./my-spring-app.ere
 ```
 
 ## Environment variables
 
 ```bash
-JAVA_OPTS="-Xmx512m" ./my-java-app.xbin
-PORT=9000 ./my-java-app.xbin
+JAVA_OPTS="-Xmx512m" ./my-java-app.ere
+PORT=9000 ./my-java-app.ere
 ```
 
 ## Known limitations

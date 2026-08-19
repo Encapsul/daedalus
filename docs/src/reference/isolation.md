@@ -1,6 +1,6 @@
 # Isolation
 
-`xbin` offers three isolation levels. Levels 0 and 2 are available;
+`erebus` offers three isolation levels. Levels 0 and 2 are available;
 level 1 is skipped because level 2 makes it redundant.
 
 ## Level 0 — `LD_LIBRARY_PATH` (available)
@@ -36,7 +36,7 @@ Mechanism (implemented in `stub/src/main.rs`):
 
 Usage:
 ```
-xbin build my-app/ -o my-app.xbin --isolation 2
+erebus build my-app/ -o my-app.ere --isolation 2
 ```
 
 **Implementation details:**
@@ -61,8 +61,8 @@ don't want to ask for → skip directly to level 2.
 
 ## Design decision
 
-> Isolation is a **feature**, not the core product. `xbin`'s value
+> Isolation is a **feature**, not the core product. `erebus`'s value
 > proposition is *"one file, it runs"*. We start at level 0 (which proves
-> the full pipeline) and add isolation **without changing the `.xbin`
+> the full pipeline) and add isolation **without changing the `.ere`
 > format**: only the `isolation` metadata field and the launcher's behavior
 > change.

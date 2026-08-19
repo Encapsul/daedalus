@@ -2,7 +2,7 @@
 
 ## Expected structure
 
-`xbin` detects a Python app by the presence of an entry point at the root:
+`erebus` detects a Python app by the presence of an entry point at the root:
 `app.py`, `main.py`, `server.py` or `__main__.py`.
 
 ```
@@ -14,7 +14,7 @@ my_app/
 ## Build
 
 ```bash
-xbin build ./my_app -o my_app.xbin
+erebus build ./my_app -o my_app.ere
 ```
 
 The builder:
@@ -23,7 +23,7 @@ The builder:
 2. embeds the build machine's `python3` interpreter;
 3. embeds the **stdlib** (`/usr/lib/pythonX.Y`);
 4. resolves `.so` dependencies via the ELF analyzer (libc, etc.);
-5. compresses and assembles the `.xbin`.
+5. compresses and assembles the `.ere`.
 
 ## Environment variables
 
@@ -36,12 +36,12 @@ PORT = int(os.environ.get("PORT", "8080"))
 ```
 
 ```bash
-PORT=9000 ./my_app.xbin
+PORT=9000 ./my_app.ere
 ```
 
 ## Third-party dependencies (site-packages)
 
-`xbin` automatically embeds third-party dependencies. It looks, in order:
+`erebus` automatically embeds third-party dependencies. It looks, in order:
 
 1. a virtualenv `.venv/` or `venv/` at the app root → its
    `lib/pythonX.Y/site-packages`;
@@ -67,8 +67,8 @@ The example `examples/bottle-web` demonstrates this: it serves HTTP with
 `bottle`, a web framework **not** in the stdlib.
 
 ```bash
-xbin build ./examples/bottle-web -o bottle-web.xbin
-./bottle-web.xbin   # → Hello from bottle, packaged by xbin
+erebus build ./examples/bottle-web -o bottle-web.ere
+./bottle-web.ere   # → Hello from bottle, packaged by erebus
 ```
 
 ## Requirements.txt → pip install at build time
@@ -78,8 +78,8 @@ automatically creates a temporary venv, pip-installs the dependencies, and
 embeds them:
 
 ```bash
-xbin build ./my_app -o my_app.xbin
-# [xbin] pip install: ./my_app/requirements.txt → /app/site-packages
+erebus build ./my_app -o my_app.ere
+# [erebus] pip install: ./my_app/requirements.txt → /app/site-packages
 ```
 
 ## Current limitations

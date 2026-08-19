@@ -1,20 +1,20 @@
 # Self-Incremental Sovereign Reconstruction (SISR)
 
-> **Advanced, opt-in.** SISR is an *extension* of xbin — it is not the core
-> value proposition. A default `xbin build` produces a simple, static,
+> **Advanced, opt-in.** SISR is an *extension* of erebus — it is not the core
+> value proposition. A default `erebus build` produces a simple, static,
 > self-contained binary with **no** reconstruction machinery. SISR is
 > documented here so the two models are easy to tell apart.
 
-## The two xbin models
+## The two erebus models
 
-xbin ships in two shapes. They look alike (same `./app.xbin`), but only one
+erebus ships in two shapes. They look alike (same `./app.ere`), but only one
 can update itself.
 
-| | **Classic .xbin** (default) | **SISR .xbin** (opt-in) |
+| | **Classic .ere** (default) | **SISR .ere** (opt-in) |
 |---|---|---|
-| Build | `xbin build ./app -o app.xbin` | `xbin build ./app -o app.xbin --self-update` |
+| Build | `erebus build ./app -o app.ere` | `erebus build ./app -o app.ere --self-update` |
 | Contents | launcher + payload (SquashFS) | launcher + payload + **embedded SISR engine** |
-| Update | rebuild + redistribute | `./app.xbin update` — self-rebuilds from signed deltas |
+| Update | rebuild + redistribute | `./app.ere update` — self-rebuilds from signed deltas |
 | Toolchain on target | none | **still none** (engine is embedded) |
 | Behavior | static container | static container by default, updatable on demand |
 | Trust | signature at launch | signature at launch **+** signed chain for every delta |
@@ -26,10 +26,10 @@ explicitly (invariant I-2 of the [SISR spec](../architecture/sisr-spec.md)).
 
 ## Why SISR exists
 
-A classic `.xbin` is immutable. Shipping a fix means:
+A classic `.ere` is immutable. Shipping a fix means:
 
 ```
-[dev machine] xbin build  →  [v1.1 .xbin]  →  redistribute  →  [target]
+[dev machine] erebus build  →  [v1.1 .ere]  →  redistribute  →  [target]
 ```
 
 For a handful of servers that's acceptable. For fleets behind slow links, or
@@ -44,7 +44,7 @@ target machine itself:
 ## The reconstruction flow
 
 ```
-[ Binary v1.0 ] ──( ./app.xbin update )──▶ [ Interrogate remote manifest ]
+[ Binary v1.0 ] ──( ./app.ere update )──▶ [ Interrogate remote manifest ]
                                                 │
                                                 ▼
                                        [ Download deltas / chunks ]
@@ -75,7 +75,7 @@ responsibility inside the binary (next to the launcher and the payload):
 
 ```
 +-----------------------------------------------------------------+
-|                         APP.XBIN (ELF)                          |
+|                         APP.ERE (ELF)                          |
 +-----------------------------------------------------------------+
 |  1. Entrypoint Launcher  --> Bootstrap + runtime isolation       |
 +-----------------------------------------------------------------+
@@ -94,12 +94,12 @@ responsibility inside the binary (next to the launcher and the payload):
 ## What a developer needs to remember
 
 - SISR is **opt-in at build time** and **explicit at run time**.
-- The target machine never needs the `xbin` CLI, a compiler, or a system
+- The target machine never needs the `erebus` CLI, a compiler, or a system
   runtime — the engine is compiled statically into the binary.
 - Every update is **signed, monotonic (anti-rollback), and atomic**. An
   unsigned, replayed, or tampered update is rejected before any byte is
   written.
-- The cryptographic guarantees are identical to the ones xbin already
+- The cryptographic guarantees are identical to the ones erebus already
   provides at launch — SISR extends the *same* trust chain to updates, it
   does not create a weaker one.
 

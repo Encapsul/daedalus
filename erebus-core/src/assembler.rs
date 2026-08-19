@@ -30,9 +30,9 @@ pub trait BinaryAssembler {
 /// region runs from `payload_offset` to `meta_offset` (per the footer). This
 /// stitcher re-emits everything before the payload, then the new payload
 /// blocks, then everything after (metadata + footer), preserving the format.
-pub struct XbinStitcher;
+pub struct ErebusStitcher;
 
-impl BinaryAssembler for XbinStitcher {
+impl BinaryAssembler for ErebusStitcher {
     fn assemble(
         &self,
         base_exec: &[u8],
@@ -115,7 +115,7 @@ mod tests {
 
         let new_blocks = vec![b"block-a".to_vec(), b"block-b".to_vec()];
         let mut output = Vec::new();
-        XbinStitcher
+        ErebusStitcher
             .assemble(&base, &new_blocks, &mut output)
             .unwrap();
 
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn erebus_stitcher_rejects_invalid_base() {
         let mut output = Vec::new();
-        assert!(XbinStitcher
+        assert!(ErebusStitcher
             .assemble(b"not a erebus", &[], &mut output)
             .is_err());
     }
@@ -138,7 +138,7 @@ mod tests {
     fn erebus_stitcher_rejects_truncated_base() {
         let base = build_base(b"stub", b"payload", b"meta");
         let mut output = Vec::new();
-        assert!(XbinStitcher
+        assert!(ErebusStitcher
             .assemble(&base[..base.len() - 40], &[], &mut output)
             .is_err());
     }
@@ -152,6 +152,6 @@ mod tests {
         // Point meta_offset past the end of the file.
         corrupted[footer_start + 72..footer_start + 80].copy_from_slice(&(u64::MAX).to_le_bytes());
         let mut output = Vec::new();
-        assert!(XbinStitcher.assemble(&corrupted, &[], &mut output).is_err());
+        assert!(ErebusStitcher.assemble(&corrupted, &[], &mut output).is_err());
     }
 }

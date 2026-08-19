@@ -1,6 +1,6 @@
 # Testing
 
-x.bin ships four layers of tests. They run on a stable toolchain only, and
+erebus ships four layers of tests. They run on a stable toolchain only, and
 the full suite fits comfortably under 30 seconds in CI, with no root access.
 
 ## Quick reference
@@ -10,9 +10,9 @@ the full suite fits comfortably under 30 seconds in CI, with no root access.
 cargo fmt --check
 
 # Lint (per-crate, as CI does)
-cargo clippy -p xbin-core --all-targets -- -D warnings
-cargo clippy -p xbin-stub --all-targets -- -D warnings
-cargo clippy -p xbin-cli --all-targets -- -D warnings
+cargo clippy -p erebus-core --all-targets -- -D warnings
+cargo clippy -p erebus-stub --all-targets -- -D warnings
+cargo clippy -p erebus-cli --all-targets -- -D warnings
 
 # Everything
 cargo test --workspace
@@ -23,13 +23,13 @@ mdbook build docs/
 
 ## Layer 1 — unit tests
 
-`#[cfg(test)] mod tests` inside each module of `xbin-core`. Covers the chunker,
+`#[cfg(test)] mod tests` inside each module of `erebus-core`. Covers the chunker,
 Merkle roots, tar/zstd round-trips, footer codec, and parser edge cases.
 
 ## Layer 2 — property-based tests (proptest)
 
-`#[cfg(test)] mod proptests` in `xbin-core/src/manifest.rs`,
-`xbin-core/src/sisr_header.rs`, and `xbin-core/src/format.rs`. Each test runs
+`#[cfg(test)] mod proptests` in `erebus-core/src/manifest.rs`,
+`erebus-core/src/sisr_header.rs`, and `erebus-core/src/format.rs`. Each test runs
 256 generated cases:
 
 - arbitrary bytes never panic any parser (`DeltaManifest::parse`,
@@ -42,12 +42,12 @@ Because proptest runs on stable, it is the primary fuzz surface in CI.
 toolchains.
 
 ```bash
-cargo test -p xbin-core --lib
+cargo test -p erebus-core --lib
 ```
 
 ## Layer 3 — SISR engine fault injection
 
-`xbin-core/src/sisr/network_test.rs` drives the real engine through a
+`erebus-core/src/sisr/network_test.rs` drives the real engine through a
 `ChunkFetcher` wrapper that injects network faults:
 
 - latency (`thread::sleep`) — result unchanged;
@@ -59,19 +59,19 @@ cargo test -p xbin-core --lib
 - fetched-byte accounting.
 
 ```bash
-cargo test -p xbin-core --lib sisr::network_test
+cargo test -p erebus-core --lib sisr::network_test
 ```
 
 ## Layer 4 — end-to-end (stub integration)
 
-`stub/tests/e2e_sisr/` launches the real `xbin-stub` binary
-(`CARGO_BIN_EXE_xbin-stub`) against a standard-library TCP mock HTTP server.
+`stub/tests/e2e_sisr/` launches the real `erebus-stub` binary
+(`CARGO_BIN_EXE_erebus-stub`) against a standard-library TCP mock HTTP server.
 No root, no network access: `XDG_CACHE_HOME`/`XDG_DATA_HOME` isolate the
-cache, `XBIN_TRUSTED_DIR` pins trusted keys, and
-`XBIN_HEALTH_TIMEOUT_MS` keeps the health gate fast.
+cache, `EREBUS_TRUSTED_DIR` pins trusted keys, and
+`EREBUS_HEALTH_TIMEOUT_MS` keeps the health gate fast.
 
 ```bash
-cargo test -p xbin-stub --test e2e_sisr_main
+cargo test -p erebus-stub --test e2e_sisr_main
 ```
 
 `update_basic.rs` covers the happy path (v1→v2 swap, delta-bound downloads
@@ -86,7 +86,7 @@ residual `.bak`.
 The health-gate rollback E2E lives separately:
 
 ```bash
-cargo test -p xbin-stub --test health_rollback
+cargo test -p erebus-stub --test health_rollback
 ```
 
 ## CI notes

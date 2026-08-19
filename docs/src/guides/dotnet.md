@@ -1,6 +1,6 @@
 # Building a .NET / C# App
 
-`xbin` supports .NET apps. It detects a .NET project by the presence of a
+`erebus` supports .NET apps. It detects a .NET project by the presence of a
 `*.csproj` or `*.sln` file.
 
 ## Detection
@@ -22,10 +22,10 @@
 # Published app (recommended)
 cd my-dotnet-app
 dotnet publish -c Release
-xbin build . -o my-app.xbin
+erebus build . -o my-app.ere
 
 # Dev project (uses dotnet run, slower startup)
-xbin build . -o my-app.xbin
+erebus build . -o my-app.ere
 ```
 
 The builder:
@@ -34,7 +34,7 @@ The builder:
 2. checks for a `publish/` directory (pre-built output);
 3. embeds the `dotnet` interpreter and its shared libraries;
 4. packages the published DLLs into the app layer;
-5. compresses and assembles the `.xbin`.
+5. compresses and assembles the `.ere`.
 
 ## Published vs dev mode
 
@@ -65,13 +65,13 @@ This requires the SDK in the runtime layer (larger binary, slower startup).
 - **Framework-dependent** (`dotnet publish`): requires .NET runtime on the target.
   Smaller binary but the runtime must match.
 
-`xbin` works with both. Self-contained is recommended for maximum portability.
+`erebus` works with both. Self-contained is recommended for maximum portability.
 
 ## Environment variables
 
 ```bash
-DOTNET_ENVIRONMENT=Production ./my-app.xbin
-ASPNETCORE_URLS="http://0.0.0.0:9000" ./my-app.xbin
+DOTNET_ENVIRONMENT=Production ./my-app.ere
+ASPNETCORE_URLS="http://0.0.0.0:9000" ./my-app.ere
 ```
 
 ## Known limitations

@@ -1,8 +1,8 @@
 # Comparison
 
-## xbin vs alternatives
+## erebus vs alternatives
 
-| Criteria | xbin | AppImage | Docker | pkg/PyInstaller |
+| Criteria | erebus | AppImage | Docker | pkg/PyInstaller |
 |---|---|---|---|---|
 | Target | **web/server headless** | desktop GUI | everything (server) | single language |
 | Zero installation for user | ✅ | ✅ | ❌ (daemon) | ✅ |
@@ -14,11 +14,11 @@
 | Built-in signatures | ✅ (Phase 2) | optional | ⚠️ | ❌ |
 | Open format | ✅ | ✅ | partial | ❌ |
 
-## What xbin is
+## What erebus is
 
-Go and Rust already produce a single static binary — xbin adds nothing there. Node 21+ includes native Single Executable Applications (SEA). Python has PyInstaller, Nuitka, PyOxidizer, shiv, pex. Java has GraalVM native-image.
+Go and Rust already produce a single static binary — erebus adds nothing there. Node 21+ includes native Single Executable Applications (SEA). Python has PyInstaller, Nuitka, PyOxidizer, shiv, pex. Java has GraalVM native-image.
 
-xbin's angle is not "make a single binary" (already solved language by language), but:
+erebus's angle is not "make a single binary" (already solved language by language), but:
 
 1. **language-agnostic**: one tool, same UX, regardless of the runtime;
 2. **web/server headless**: a niche that AppImage/Snap/Flatpak don't address;
@@ -29,4 +29,4 @@ xbin's angle is not "make a single binary" (already solved language by language)
 
 > *"Why not AppImage / Docker / pkg?"*
 
-One-sentence answer: **AppImage is for desktop, Docker is heavy and needs a daemon, pkg/PyInstaller are mono-language — xbin is for headless web servers, language-agnostic, in a single self-executing file.**
+One-sentence answer: **AppImage is for desktop, Docker is heavy and needs a daemon, pkg/PyInstaller are mono-language — erebus is for headless web servers, language-agnostic, in a single self-executing file.**

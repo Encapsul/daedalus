@@ -27,13 +27,13 @@ Docker solves part of the problem but introduces significant friction:
 Docker remains excellent for orchestration, multi-container, Kubernetes.
 But for *"here, run this server"*, it's overkill.
 
-## The xbin idea
+## The erebus idea
 
 A single self-contained binary file that contains absolutely everything the
 app needs, and runs like a normal program.
 
 ```bash
-chmod +x my_app.xbin && ./my_app.xbin
+chmod +x my_app.ere && ./my_app.ere
 ```
 
 Zero installation. Zero configuration. The file is self-sufficient.

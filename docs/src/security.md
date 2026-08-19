@@ -6,22 +6,22 @@ Status: SHA-256 integrity, atomic extraction, Ed25519 signatures, user namespace
 
 ## 1. Authenticity — Ed25519 signatures
 
-**Attack:** Anyone can produce a `.xbin`, and the user cannot verify its origin or whether it was modified.
+**Attack:** Anyone can produce a `.ere`, and the user cannot verify its origin or whether it was modified.
 
-**Defense:** Every `.xbin` can be signed. The launcher verifies the signature before extracting anything. Invalid or missing signatures result in execution refusal.
+**Defense:** Every `.ere` can be signed. The launcher verifies the signature before extracting anything. Invalid or missing signatures result in execution refusal.
 
 ```bash
 # Generate a keypair
-$ xbin keygen --key-dir $XDG_DATA_HOME/xbin/keys
+$ erebus keygen --key-dir $XDG_DATA_HOME/erebus/keys
 a1b2c3d4e5f6...
 
-# Sign a .xbin (in-place, writes v3 footer)
-$ xbin sign my_app.xbin --key $XDG_DATA_HOME/xbin/keys/a1b2c3d4e5f6.key
-[xbin] signed my_app.xbin
+# Sign a .ere (in-place, writes v3 footer)
+$ erebus sign my_app.ere --key $XDG_DATA_HOME/erebus/keys/a1b2c3d4e5f6.key
+[erebus] signed my_app.ere
 
 # Verify before running
-$ xbin verify my_app.xbin --trusted-dir $XDG_DATA_HOME/xbin/trusted-keys
-[xbin] signature verified for /path/to/my_app.xbin
+$ erebus verify my_app.ere --trusted-dir $XDG_DATA_HOME/erebus/trusted-keys
+[erebus] signature verified for /path/to/my_app.ere
 ```
 
 **Why Ed25519 over RSA:**
@@ -29,22 +29,22 @@ $ xbin verify my_app.xbin --trusted-dir $XDG_DATA_HOME/xbin/trusted-keys
 - Timing-attack resistant by design (constant-time scalar multiplication).
 - Standard in modern protocols (SSH, TLS 1.3, Signal, WireGuard).
 
-**Trust model:** Trusted public keys live in `$XDG_DATA_HOME/xbin/trusted-keys/`. The launcher accepts the file if any trusted key verifies the signature. There is no central authority — trust is local and explicit.
+**Trust model:** Trusted public keys live in `$XDG_DATA_HOME/erebus/trusted-keys/`. The launcher accepts the file if any trusted key verifies the signature. There is no central authority — trust is local and explicit.
 
 ```bash
 # Trust a key
-$ xbin trust $XDG_DATA_HOME/xbin/keys/a1b2c3d4e5f6.pub
-[xbin] trusted key a1b2c3d4e5f6...
+$ erebus trust $XDG_DATA_HOME/erebus/keys/a1b2c3d4e5f6.pub
+[erebus] trusted key a1b2c3d4e5f6...
 ```
 
 ## 1b. Chain of Trust for Local Rebuilding
 
-SISR (Self-Incremental Sovereign Reconstruction) lets a `.xbin` rebuild
+SISR (Self-Incremental Sovereign Reconstruction) lets a `.ere` rebuild
 itself from signed deltas, with zero host dependency. This section fixes the
 cryptographic trust model for that path. The full conceptual specification is
 in [SISR: Self-Incremental Sovereign Reconstruction](./architecture/sisr-spec.md).
 
-**Attack:** A `.xbin` that can reconstruct itself becomes a remote-code
+**Attack:** A `.ere` that can reconstruct itself becomes a remote-code
 execution surface. A malicious or replayed delta could replace the binary with
 an attacker-controlled (or simply old, vulnerable) version. On top of the
 original integrity concern (modification in transit), self-reconstruction adds
@@ -59,7 +59,7 @@ three threats:
 
 **Defense — three linked mechanisms:**
 
-1. **Signed chain of trust (non-repudiation).** A `.xbin` only applies a
+1. **Signed chain of trust (non-repudiation).** A `.ere` only applies a
    delta or manifest signed by the **same Ed25519 public key** that signed
    the original binary, or by a **delegated key** whose delegation record is
    itself signed by the anchor (or transitively by a valid delegate). The
@@ -106,9 +106,9 @@ the full contract.
 **Defense:** Extraction writes to a unique temp directory, then atomically renames it to the final cache path. No intermediate state is ever visible to other processes.
 
 ```
-1. extract to ~/.cache/xbin/.tmp-{pid}-{nanos}/   ← unique, private
+1. extract to ~/.cache/erebus/.tmp-{pid}-{nanos}/   ← unique, private
 2. write .ready marker
-3. rename() to ~/.cache/xbin/{sha256}/              ← atomic on Linux
+3. rename() to ~/.cache/erebus/{sha256}/              ← atomic on Linux
 4. if another instance won the race → discard our tmp
 ```
 
@@ -121,10 +121,10 @@ the full contract.
 **Defense:** The launcher recomputes `SHA-256(payload ‖ metadata)` and compares it to the footer's `payload_sha256` before extraction. On mismatch: `exit(1)`, nothing written to disk.
 
 ```bash
-# Corrupt one byte of a signed .xbin
-$ dd if=/dev/urandom of=my_app.xbin bs=1 seek=688788 count=1
-$ xbin verify my_app.xbin
-[xbin] error: signature verification FAILED for /path/to/my_app.xbin
+# Corrupt one byte of a signed .ere
+$ dd if=/dev/urandom of=my_app.ere bs=1 seek=688788 count=1
+$ erebus verify my_app.ere
+[erebus] error: signature verification FAILED for /path/to/my_app.ere
 ```
 
 SHA-256 alone protects against corruption, not against an attacker who modifies the payload and recomputes the hash. This is why signatures exist — the hash is signed:
@@ -172,15 +172,15 @@ Blocked: ptrace, mount, umount2, pivot_root, reboot, kexec_load,
 
 ## 6. Payload encryption — AES-256-GCM
 
-**Attack:** A `.xbin` file is intercepted at rest (stolen laptop, shared storage, leaked artifact). Without encryption, anyone can extract the embedded application with `tar` after stripping the stub.
+**Attack:** A `.ere` file is intercepted at rest (stolen laptop, shared storage, leaked artifact). Without encryption, anyone can extract the embedded application with `tar` after stripping the stub.
 
 **Defense:** Optional AES-256-GCM encryption (v4 format, `--encrypt` flag). A fresh random 32-byte encryption key is generated at build time and stored (hex-encoded) in the binary's metadata next to the ciphertext; the AES key is then derived from it via HKDF-SHA256. The encryption key is deliberately **independent** of the Ed25519 signing seed — the seed is never embedded in the binary, so a key leak does not compromise authenticity.
 
 ```bash
 # Build with encryption
-$ xbin build my_app/ --key $XDG_DATA_HOME/xbin/keys/a1b2c3d4.key --encrypt
-[xbin] encrypted: 12.3MB -> 12.3MB (AES-256-GCM)
-[xbin] wrote my_app.xbin (12.5MB, signed+encrypted)
+$ erebus build my_app/ --key $XDG_DATA_HOME/erebus/keys/a1b2c3d4.key --encrypt
+[erebus] encrypted: 12.3MB -> 12.3MB (AES-256-GCM)
+[erebus] wrote my_app.ere (12.5MB, signed+encrypted)
 ```
 
 **Security model:**
@@ -207,7 +207,7 @@ Both `random_encryption_key` and `random_salt` are stored in the binary metadata
 **Verification order (non-negotiable):**
 ```
 1. open("/proc/self/exe")               ← self-locate (not argv[0])
-2. read footer, validate magic           ← reject early if not .xbin
+2. read footer, validate magic           ← reject early if not .ere
 2. ── VERIFY Ed25519 SIGNATURE ──        ← nothing executes before this
 2. verify payload SHA-256                ← corruption check (on ciphertext if encrypted)
 3. ── DECRYPT PAYLOAD ──                 ← only after steps 3+4

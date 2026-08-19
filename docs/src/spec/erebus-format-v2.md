@@ -1,11 +1,11 @@
-# `.xbin` Format v2 — SISR extension
+# `.ere` Format v2 — SISR extension
 
-> Status: **implemented** (`xbin-core` `sisr_header` + `manifest` modules).
-> Specifies the `.xbin` layout enriched with the `SISR` header and the
+> Status: **implemented** (`erebus-core` `sisr_header` + `manifest` modules).
+> Specifies the `.ere` layout enriched with the `SISR` header and the
 > embedded delta manifest, and how it stays byte-for-byte backward
 > compatible with existing decoders.
 
-The stock `.xbin` layout `[stub][payload][metadata][footer]` is unchanged.
+The stock `.ere` layout `[stub][payload][metadata][footer]` is unchanged.
 `SISR` adds two blocks between the app metadata and the standard footer, and
 signals their presence with one spare bit of the footer `flags` byte.
 
@@ -25,7 +25,7 @@ signals their presence with one spare bit of the footer `flags` byte.
 +------------------------------------------------------------------+
 | SISR footer extension (110 bytes, fixed)                        |
 +------------------------------------------------------------------+
-| Standard xbin Footer (84 or 92 bytes, XBIN_MAGIC at EOF)        |
+| Standard erebus Footer (84 or 92 bytes, EREBUS_MAGIC at EOF)        |
 +------------------------------------------------------------------+
 ```
 
@@ -34,7 +34,7 @@ Offsets within the standard footer (`payload_offset`, `meta_offset`,
 
 ## Backward compatibility
 
-- `XBIN_MAGIC` (`0x5842494E` + `\x01`) stays at the exact end of the file,
+- `EREBUS_MAGIC` (`0x5842494E` + `\x01`) stays at the exact end of the file,
   and the standard footer is byte-for-byte identical with or without `SISR`.
 - Legacy decoders read the footer backwards from EOF; the `SISR` blocks sit
   *before* it and are never seen.
@@ -76,7 +76,7 @@ payload order; each is addressed by content, so reuse and tamper detection
 follow from the hash. See the [delta manifest format](./delta-manifest-format.md)
 for how the chunk list drives an incremental update.
 
-## Remote manifest (`<name>.xbin.manifest`)
+## Remote manifest (`<name>.ere.manifest`)
 
 The builder writes a self-contained, signed copy of the manifest next to the
 binary:
@@ -87,7 +87,7 @@ binary:
 
 The signature is over `merkle_root ‖ DeltaManifest` (identical to the embedded
 header), so the remote file can be served over HTTPS / a package registry and
-verified offline without touching the `.xbin`. `RemoteManifest::verify_signature`
+verified offline without touching the `.ere`. `RemoteManifest::verify_signature`
 and `verify_merkle` check both bindings.
 
 ## Security
@@ -102,7 +102,7 @@ over-allocation:
   count-derived sizes are computed with checked arithmetic **before** the
   chunk vector is allocated, so a forged `chunk_count` fails without
   allocating or over-reading.
-- Unknown schema versions are rejected (same rule as `.xbin` format
+- Unknown schema versions are rejected (same rule as `.ere` format
   versions).
 
 ## Performance
