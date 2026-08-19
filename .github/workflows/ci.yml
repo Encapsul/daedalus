@@ -52,7 +52,7 @@ jobs:
       - name: Test CLI build (smoke test)
         timeout-minutes: 10
         run: |
-          /tmp/erebus-stub-target/release/erebus-stub build examples/hello-web --isolation none -o /tmp/hello-web.ere
+          /tmp/erebus-stub-target/release/erebus build examples/hello-web --isolation none -o /tmp/hello-web.ere
           /tmp/hello-web.ere &
           PID=$!
           sleep 5
@@ -64,6 +64,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
 
