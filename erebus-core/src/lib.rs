@@ -14,6 +14,7 @@ pub mod detect;
 pub mod dotenv;
 pub mod embed;
 pub mod encrypt;
+pub mod flatpak;
 pub mod format;
 pub mod include;
 pub mod layer;
@@ -28,6 +29,7 @@ pub mod pkgmgr;
 pub mod sisr;
 pub mod sisr_header;
 pub mod sisr_stage;
+pub mod snap;
 pub mod tar;
 pub mod treeshake;
 

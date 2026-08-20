@@ -681,12 +681,24 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
         let prog_c = cstr(prog.as_os_str().as_bytes())?;
         let prog_path_bytes = prog.as_os_str().as_bytes();
 
-        if !entrypoint_is_executable(prog_path_bytes, &interpreter_name, rootfs) {
+        // For interpreted languages, check if the interpreter is executable;
+        // for direct_exec (compiled binaries), check the program itself.
+        let check_path = if direct_exec {
+            prog_path_bytes
+        } else {
+            interpreter_name.as_bytes()
+        };
+        let check_name = if direct_exec {
+            prog.display().to_string()
+        } else {
+            interpreter_name.clone()
+        };
+        if !entrypoint_is_executable(check_path, &interpreter_name, rootfs) {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 format!(
                     "[erebus] error: interpreter '{}' not found (tried: {})",
-                    interpreter_name,
+                    check_name,
                     prog.display()
                 ),
             ));
@@ -791,12 +803,16 @@ pub fn resolve_entrypoint(
 ) -> io::Result<(PathBuf, bool, String)> {
     // Extract runtime name and entrypoint from layers when available.
     let (runtime_str, entrypoint_vec) = if let Some(layer_name) = &meta.entrypoint_layer {
-        let layer = meta.layers.iter().find(|l| l.name() == layer_name).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("entrypoint layer '{}' not found in layers", layer_name),
-            )
-        })?;
+        let layer = meta
+            .layers
+            .iter()
+            .find(|l| l.name() == layer_name)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("entrypoint layer '{}' not found in layers", layer_name),
+                )
+            })?;
         match layer {
             erebus_core::layer::SerializableLayer::Runtime(rt) => {
                 (rt.name.clone(), rt.entrypoint.clone())
