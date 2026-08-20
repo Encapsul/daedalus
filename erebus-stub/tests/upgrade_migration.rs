@@ -100,7 +100,7 @@ fn upgraded_binary_gains_auto_update() {
     let staged = stage_update(&upgraded, BODY_V2, &shared, key());
     assert!(staged.changed_count > 0);
     let (server, base_url) = MockHttpServer::start();
-    server.route_manifest(&staged.remote.to_bytes());
+    server.route_manifest(&staged.remote.to_bytes().unwrap());
     for (path, bytes) in &staged.chunks {
         server.route(path, bytes.clone());
     }

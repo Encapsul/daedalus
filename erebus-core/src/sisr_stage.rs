@@ -67,8 +67,8 @@ impl SisrBuildConfig {
 
 impl RemoteManifest {
     /// Serializes the remote manifest into its standalone file form.
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let manifest_bytes = self.manifest.serialize();
+    pub fn to_bytes(&self) -> io::Result<Vec<u8>> {
+        let manifest_bytes = self.manifest.serialize()?;
         let mut out = Vec::with_capacity(REMOTE_HEADER_SIZE + manifest_bytes.len());
         out.extend_from_slice(REMOTE_MAGIC);
         out.push(REMOTE_VERSION);
@@ -76,7 +76,7 @@ impl RemoteManifest {
         out.extend_from_slice(&self.merkle_root);
         out.extend_from_slice(&self.signature);
         out.extend_from_slice(&manifest_bytes);
-        out
+        Ok(out)
     }
 
     /// Parses a remote manifest from a complete file buffer.
@@ -100,7 +100,9 @@ impl RemoteManifest {
 
     /// Verifies the Ed25519 signature against `public`.
     pub fn verify_signature(&self, public: &VerifyingKey) -> bool {
-        let manifest_bytes = self.manifest.serialize();
+        let Ok(manifest_bytes) = self.manifest.serialize() else {
+            return false;
+        };
         let msg = signing_message(&self.merkle_root, &manifest_bytes);
         let sig = Signature::from_bytes(&self.signature);
         public.verify(&msg, &sig).is_ok()
@@ -128,7 +130,7 @@ pub fn build_artifacts(payload: &[u8], config: &SisrBuildConfig) -> io::Result<S
         payload_len: payload.len() as u64,
         chunks,
     };
-    let manifest_bytes = manifest.serialize();
+    let manifest_bytes = manifest.serialize()?;
     let merkle_root = merkle_root_of(&manifest);
     let signature = match &config.signing_key {
         Some(key) => sign(&manifest_bytes, &merkle_root, key),
@@ -299,7 +301,7 @@ mod tests {
         let key = SigningKey::from_bytes(&[9u8; 32]);
         let public = key.verifying_key();
         let manifest = manifest_with(&[[1u8; 32], [2u8; 32]]);
-        let manifest_bytes = manifest.serialize();
+        let manifest_bytes = manifest.serialize().unwrap();
         let root = [3u8; 32];
         let sig = sign(&manifest_bytes, &root, &key);
         assert!(verify(&manifest_bytes, &root, &sig, &public));
@@ -353,7 +355,7 @@ mod tests {
             signature: artifacts.signature,
             manifest: artifacts.manifest,
         };
-        let bytes = remote.to_bytes();
+        let bytes = remote.to_bytes().unwrap();
         let parsed = RemoteManifest::from_bytes(&bytes).unwrap();
         assert_eq!(parsed, remote);
         assert!(parsed.verify_signature(&public));
@@ -396,7 +398,7 @@ mod tests {
             signature: artifacts.signature,
             manifest: artifacts.manifest,
         };
-        let mut bytes = remote.to_bytes();
+        let mut bytes = remote.to_bytes().unwrap();
         let last = bytes.len() - 1;
         bytes[last] ^= 0xFF;
         let parsed = RemoteManifest::from_bytes(&bytes).unwrap();

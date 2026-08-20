@@ -1,0 +1,12 @@
+*.gguf
+.deps/bin/
+.deps/*dist-info/
+.deps/blinker/
+.deps/click/
+.deps/flask/
+.deps/itsdangerous/
+.deps/jinja2/
+.deps/markupsafe/
+.deps/werkzeug/
+__pycache__/
+*.egg-info/

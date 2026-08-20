@@ -106,7 +106,7 @@ fn local_staging_path_still_applies() {
     let manifest_path = e.work.join("update.manifest");
     let chunks_dir = e.work.join("chunks");
     std::fs::create_dir_all(&chunks_dir).unwrap();
-    std::fs::write(&manifest_path, e.staged.remote.to_bytes()).unwrap();
+    std::fs::write(&manifest_path, e.staged.remote.to_bytes().unwrap()).unwrap();
     for (path, bytes) in &e.staged.chunks {
         std::fs::write(chunks_dir.join(path.trim_start_matches("/chunks/")), bytes).unwrap();
     }

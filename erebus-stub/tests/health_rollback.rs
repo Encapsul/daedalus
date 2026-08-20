@@ -149,7 +149,7 @@ fn stage_update(work: &Path, current: &Path, body: &str) -> (PathBuf, String) {
         },
     };
     let manifest_path = work.join("update.manifest");
-    fs::write(&manifest_path, remote.to_bytes()).unwrap();
+    fs::write(&manifest_path, remote.to_bytes().unwrap()).unwrap();
     (manifest_path, payload_sha(body))
 }
 

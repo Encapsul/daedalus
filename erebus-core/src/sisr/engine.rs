@@ -189,7 +189,7 @@ impl SisrEngine {
         let payload_sha256: [u8; 32] = hasher.finalize().into();
         w.file_mut().write_all(&meta_bytes)?;
 
-        let manifest_bytes = manifest.serialize();
+        let manifest_bytes = manifest.serialize()?;
         let manifest_offset = footer
             .payload_offset
             .checked_add(target_len)

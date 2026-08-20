@@ -120,7 +120,7 @@ pub fn upgrade_binary(
     };
     let mut manifest_path = output.to_path_buf();
     manifest_path.set_extension("erebus.manifest");
-    fs::write(manifest_path, remote.to_bytes())?;
+    fs::write(manifest_path, remote.to_bytes()?)?;
 
     Ok(UpgradeReport {
         input_size: data.len() as u64,

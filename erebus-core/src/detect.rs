@@ -71,31 +71,28 @@ impl Runtime {
 pub fn detect_runtime(app_dir: &Path) -> Option<Runtime> {
     let detected = detect_runtime_candidates(app_dir);
 
-    // Check for entry files and prefer runtimes that have them
-    let php_has_entry = detect_php(app_dir)
-        && (app_dir.join("index.php").is_file()
-            || app_dir.join("public/index.php").is_file()
-            || app_dir.join("artisan").is_file()
-            || app_dir.join("entry.php").is_file());
-    let node_has_entry = detect_node(app_dir) && find_node_entry(app_dir).is_some();
-    let electron_has_entry = detect_electron(app_dir)
-        && (find_first_file(app_dir, &["main.js", "main.ts", "index.js", "index.ts"]).is_some()
-            || app_dir.join("package.json").is_file());
-    let python_has_entry = detect_python(app_dir)
-        && find_first_file(app_dir, &["app.py", "main.py", "__main__.py", "server.py"]).is_some();
-
-    // Priority: prefer runtime with entry file, then fallback to detection order
-    if php_has_entry && detected.iter().any(|(r, _)| *r == Runtime::Php) {
-        return Some(Runtime::Php);
-    }
-    if electron_has_entry && detected.iter().any(|(r, _)| *r == Runtime::Electron) {
-        return Some(Runtime::Electron);
-    }
-    if node_has_entry && detected.iter().any(|(r, _)| *r == Runtime::Node) {
-        return Some(Runtime::Node);
-    }
-    if python_has_entry && detected.iter().any(|(r, _)| *r == Runtime::Python) {
-        return Some(Runtime::Python);
+    // Prefer a runtime that has an identifiable entry file.
+    for (runtime, _) in &detected {
+        let has_entry = match runtime {
+            Runtime::Php => {
+                app_dir.join("index.php").is_file()
+                    || app_dir.join("public/index.php").is_file()
+                    || app_dir.join("artisan").is_file()
+                    || app_dir.join("entry.php").is_file()
+            }
+            Runtime::Node => find_node_entry(app_dir).is_some(),
+            Runtime::Electron => {
+                find_first_file(app_dir, &["main.js", "main.ts", "index.js", "index.ts"]).is_some()
+            }
+            Runtime::Python => {
+                find_first_file(app_dir, &["app.py", "main.py", "__main__.py", "server.py"])
+                    .is_some()
+            }
+            _ => false,
+        };
+        if has_entry {
+            return Some(*runtime);
+        }
     }
 
     detected.into_iter().next().map(|(r, _)| r)
@@ -111,11 +108,11 @@ fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
     if detect_deno(dir) {
         candidates.push((Runtime::Deno, true));
     }
-    if detect_node(dir) {
-        candidates.push((Runtime::Node, true));
-    }
     if detect_electron(dir) {
         candidates.push((Runtime::Electron, true));
+    }
+    if detect_node(dir) {
+        candidates.push((Runtime::Node, true));
     }
     if detect_java(dir) {
         candidates.push((Runtime::Java, true));
@@ -155,7 +152,6 @@ fn detect_python(dir: &Path) -> bool {
         || dir.join("pyproject.toml").is_file()
         || dir.join("setup.py").is_file()
         || dir.join("requirements.txt").is_file()
-        || dir.join("__main__.py").is_file()
 }
 
 fn detect_deno(dir: &Path) -> bool {
@@ -176,10 +172,7 @@ fn detect_electron(dir: &Path) -> bool {
             return true;
         }
     }
-    dir.join("main.js").is_file()
-        || dir.join("main.ts").is_file()
-        || dir.join("index.js").is_file()
-        || dir.join("index.ts").is_file()
+    false
 }
 
 fn detect_java(dir: &Path) -> bool {
@@ -878,11 +871,12 @@ mod tests {
     }
 
     #[test]
-    fn detect_electron_main_js() {
+    fn detect_electron_requires_dep() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
         std::fs::write(dir.path().join("main.js"), "console.log('hello')").unwrap();
-        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Electron));
+        // Without "electron" in package.json, this is Node, not Electron.
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Node));
     }
 
     #[test]

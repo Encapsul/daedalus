@@ -263,7 +263,7 @@ mod tests {
                 length: 4096,
             }],
         };
-        let manifest_bytes = manifest.serialize();
+        let manifest_bytes = manifest.serialize().unwrap();
         let e = SisrFooterExt {
             sisr_version: SISR_VERSION,
             chunk_table_offset: 1000,
@@ -296,7 +296,7 @@ mod tests {
             payload_len: 0,
             chunks: vec![],
         };
-        let manifest_bytes = manifest.serialize();
+        let manifest_bytes = manifest.serialize().unwrap();
         let e = SisrFooterExt {
             sisr_version: SISR_VERSION,
             chunk_table_offset: 1000,

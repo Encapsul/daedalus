@@ -63,15 +63,27 @@ fn locate_splice(base: &[u8]) -> io::Result<(usize, usize)> {
         ));
     }
     let footer = &base[base.len() - FOOTER_SIZE..];
-    let footer_magic = u32::from_le_bytes(footer[88..92].try_into().unwrap());
+    let footer_magic = u32::from_le_bytes(
+        footer[88..92]
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "footer magic truncated"))?,
+    );
     if footer_magic != crate::format::FOOTER_MAGIC {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "base executable has no valid .erebus footer",
         ));
     }
-    let payload_offset = u64::from_le_bytes(footer[16..24].try_into().unwrap()) as usize;
-    let meta_offset = u64::from_le_bytes(footer[72..80].try_into().unwrap()) as usize;
+    let payload_offset = u64::from_le_bytes(
+        footer[16..24]
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "payload_offset truncated"))?,
+    ) as usize;
+    let meta_offset = u64::from_le_bytes(
+        footer[72..80]
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "meta_offset truncated"))?,
+    ) as usize;
     if payload_offset > meta_offset || meta_offset > base.len() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -152,6 +164,8 @@ mod tests {
         // Point meta_offset past the end of the file.
         corrupted[footer_start + 72..footer_start + 80].copy_from_slice(&(u64::MAX).to_le_bytes());
         let mut output = Vec::new();
-        assert!(ErebusStitcher.assemble(&corrupted, &[], &mut output).is_err());
+        assert!(ErebusStitcher
+            .assemble(&corrupted, &[], &mut output)
+            .is_err());
     }
 }
