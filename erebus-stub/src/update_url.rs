@@ -99,6 +99,8 @@ mod tests {
                 payload_format: String::new(),
                 health_check: None,
                 update_url: None,
+                layers: Vec::new(),
+                entrypoint_layer: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -128,6 +130,8 @@ mod tests {
                 payload_format: String::new(),
                 health_check: None,
                 update_url: None,
+                layers: Vec::new(),
+                entrypoint_layer: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -155,6 +159,8 @@ mod tests {
                 payload_format: String::new(),
                 health_check: None,
                 update_url: None,
+                layers: Vec::new(),
+                entrypoint_layer: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -182,6 +188,8 @@ mod tests {
                 payload_format: String::new(),
                 health_check: None,
                 update_url: None,
+                layers: Vec::new(),
+                entrypoint_layer: None,
             }
         };
         let err = resolve_update_url(&args, 0, &meta).unwrap_err();

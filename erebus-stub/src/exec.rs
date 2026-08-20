@@ -779,43 +779,71 @@ fn runtime_interpreter(runtime: &str) -> Option<&'static str> {
 /// the supported runtime list. `None` from `Runtime::from_name` means the
 /// metadata carries a runtime the stub never heard of — fail loudly instead of
 /// silently launching under bash (upstream fix for roadmap #40).
+///
+/// When `meta.entrypoint_layer` is set, the interpreter and argv template are
+/// extracted from the layer system instead of the flat `meta.runtime`/`meta.entrypoint`
+/// fields. This enables the core `RuntimeEntrypoint` abstraction while remaining
+/// backward-compatible with legacy binaries that have no layers.
 pub fn resolve_entrypoint(
     meta: &Metadata,
     rootfs: &Path,
     use_pivot: bool,
 ) -> io::Result<(PathBuf, bool, String)> {
-    if detect::Runtime::from_name(&meta.runtime).is_none() {
+    // Extract runtime name and entrypoint from layers when available.
+    let (runtime_str, entrypoint_vec) = if let Some(layer_name) = &meta.entrypoint_layer {
+        let layer = meta.layers.iter().find(|l| l.name() == layer_name).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("entrypoint layer '{}' not found in layers", layer_name),
+            )
+        })?;
+        match layer {
+            erebus_core::layer::SerializableLayer::Runtime(rt) => {
+                (rt.name.clone(), rt.entrypoint.clone())
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("entrypoint layer '{}' is not a runtime layer", layer_name),
+                ));
+            }
+        }
+    } else {
+        (meta.runtime.clone(), meta.entrypoint.clone())
+    };
+
+    if detect::Runtime::from_name(&runtime_str).is_none() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
                 "unsupported runtime '{}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, go, php, perl, hugo, wasm, binary",
-                meta.runtime
+                runtime_str
             ),
         ));
     }
     let resolve = make_resolve(rootfs, use_pivot);
-    let mut prog = resolve(&meta.entrypoint[0]);
+    let mut prog = resolve(&entrypoint_vec[0]);
 
     // Compiled binaries (go/binary) exec `entrypoint[0]` directly; interpreted
     // runtimes get their interpreter prepended to argv.
-    let direct_exec = matches!(meta.runtime.as_str(), "go" | "binary");
-    let interpreter_name = runtime_interpreter(&meta.runtime)
+    let direct_exec = matches!(runtime_str.as_str(), "go" | "binary");
+    let interpreter_name = runtime_interpreter(&runtime_str)
         .map(str::to_string)
         .unwrap_or_else(|| {
-            meta.entrypoint[0]
+            entrypoint_vec[0]
                 .rsplit('/')
                 .next()
-                .unwrap_or(&meta.entrypoint[0])
+                .unwrap_or(&entrypoint_vec[0])
                 .to_string()
         });
 
     // For bare interpreter names without pivot_root, search rootfs bin dirs
     // so embedded interpreters are found before namespace/pivot setup.
-    if !use_pivot && !meta.entrypoint[0].contains('/') {
+    if !use_pivot && !entrypoint_vec[0].contains('/') {
         let prog_str = prog.to_string_lossy();
         if !check_executable(&prog_str) {
             if let Some(found) = crate::BIN_PATHS.iter().find_map(|dir| {
-                let candidate = rootfs.join(dir).join(&meta.entrypoint[0]);
+                let candidate = rootfs.join(dir).join(&entrypoint_vec[0]);
                 if check_executable(&candidate.to_string_lossy()) {
                     Some(candidate)
                 } else {

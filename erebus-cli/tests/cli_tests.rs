@@ -245,6 +245,8 @@ fn test_inspect_reports_encrypted_v4() {
             rt_deps_hash: None,
             update_url: None,
             crypto: Some(crypto_value),
+            layers: None,
+            entrypoint_layer: None,
         },
         &BunFeatures::default(),
     )

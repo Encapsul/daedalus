@@ -146,6 +146,35 @@ pub struct Metadata {
     entrypoint_layer: Option<String>,
 }
 
+impl Metadata {
+    /// Returns the effective entrypoint argv template, preferring the layer
+    /// system when `entrypoint_layer` is set, falling back to the flat
+    /// `entrypoint` field for legacy binaries.
+    pub fn effective_entrypoint(&self) -> &[String] {
+        if let Some(layer_name) = &self.entrypoint_layer {
+            if let Some(layer) = self.layers.iter().find(|l| l.name() == layer_name) {
+                if let erebus_core::layer::SerializableLayer::Runtime(rt) = layer {
+                    return &rt.entrypoint;
+                }
+            }
+        }
+        &self.entrypoint
+    }
+
+    /// Returns the effective runtime name, preferring the layer system when
+    /// `entrypoint_layer` is set, falling back to the flat `runtime` field.
+    pub fn effective_runtime(&self) -> &str {
+        if let Some(layer_name) = &self.entrypoint_layer {
+            if let Some(layer) = self.layers.iter().find(|l| l.name() == layer_name) {
+                if let erebus_core::layer::SerializableLayer::Runtime(rt) = layer {
+                    return &rt.name;
+                }
+            }
+        }
+        &self.runtime
+    }
+}
+
 #[derive(Deserialize)]
 pub struct HealthCheckMeta {
     port: u16,

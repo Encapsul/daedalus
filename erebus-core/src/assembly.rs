@@ -544,6 +544,8 @@ mod tests {
             rt_deps_hash: None,
             update_url: None,
             crypto: None,
+            layers: None,
+            entrypoint_layer: None,
         };
         let bun_features = BunFeatures::default();
         let json = build_meta_json(
@@ -560,6 +562,14 @@ mod tests {
         assert_eq!(parsed["name"], "myapp");
         assert_eq!(parsed["runtime"], "python");
         assert_eq!(parsed["version"], "1.0");
+        // Layers should be populated with a default RuntimeLayer
+        assert!(parsed["layers"].is_array());
+        let layers = parsed["layers"].as_array().unwrap();
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0]["kind"], "runtime");
+        assert_eq!(layers[0]["name"], "python");
+        assert_eq!(layers[0]["interpreter"], "python");
+        assert_eq!(parsed["entrypoint_layer"], "python");
     }
 
     #[test]
