@@ -134,6 +134,38 @@ pub fn build_meta_json(
         );
     }
 
+    // Populate layers and entrypoint_layer. If explicit layers are provided,
+    // use them; otherwise construct a default RuntimeLayer from the flat fields.
+    let layers = match &options.layers {
+        Some(layers) => layers.clone(),
+        None => {
+            use crate::layer::{Capability, RuntimeLayer, SerializableLayer};
+            vec![SerializableLayer::Runtime(RuntimeLayer {
+                name: runtime.to_string(),
+                interpreter: runtime.to_string(),
+                entrypoint: entrypoint.to_vec(),
+                version: None,
+                env: env.to_vec(),
+                capabilities: vec![
+                    Capability::ReadFile,
+                    Capability::WriteFile,
+                    Capability::Network,
+                    Capability::Exec,
+                    Capability::Syscall,
+                    Capability::Env,
+                ],
+            })]
+        }
+    };
+    let entrypoint_layer_name = options
+        .entrypoint_layer
+        .clone()
+        .unwrap_or_else(|| runtime.to_string());
+
+    meta["layers"] = serde_json::to_value(&layers)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    meta["entrypoint_layer"] = serde_json::Value::String(entrypoint_layer_name);
+
     serde_json::to_vec(&meta).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
@@ -155,6 +187,12 @@ pub struct MetaOptions {
     /// the `crypto` meta field when `--encrypt` is enabled. `None` for plaintext
     /// builds so the field is omitted entirely.
     pub crypto: Option<serde_json::Value>,
+    /// Pre-built layers to embed in metadata. If `None`, a default `RuntimeLayer`
+    /// is constructed from the `runtime` + `entrypoint` parameters.
+    pub layers: Option<Vec<crate::layer::SerializableLayer>>,
+    /// Name of the entrypoint layer. Defaults to the runtime name when `layers`
+    /// is `None`.
+    pub entrypoint_layer: Option<String>,
 }
 
 /// Input to [`assemble_erebus`]: bundles every byte-slice and build flag that

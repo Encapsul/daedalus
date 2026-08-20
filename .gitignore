@@ -62,3 +62,8 @@ docs/INSTALL-OPENEMR.md
 
 # Editor / session scratch
 environment_details.txt
+*.gguf
+examples/*/.deps/
+examples/baguettotron/
+# gstack/opencode skills (managed externally)
+.opencode/

@@ -28,6 +28,7 @@ mod win;
 
 use erebus_core::detect;
 use erebus_core::format::{self as format, read_at, Footer};
+use erebus_core::layer::SerializableLayer;
 use erebus_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
 use erebus_core::sisr::resilience::{
     backup_path_for, create_backup, discard_backup, restore_backup,
@@ -137,6 +138,12 @@ pub struct Metadata {
     health_check: Option<HealthCheckMeta>,
     #[serde(default)]
     update_url: Option<String>,
+    /// Layers composing this artifact. Empty for legacy binaries.
+    #[serde(default)]
+    layers: Vec<SerializableLayer>,
+    /// Name of the layer containing the main entrypoint.
+    #[serde(default)]
+    entrypoint_layer: Option<String>,
 }
 
 #[derive(Deserialize)]
