@@ -938,9 +938,16 @@ fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
         .build()
         .call()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))?;
-    resp.into_body()
-        .read_to_vec()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))
+    // Use as_reader() + read_to_end() instead of read_to_vec() — the latter
+    // has a hardcoded 10 MB limit in ureq 3.x that prevents fetching large
+    // SISR chunks (16 MB with --embed-model).
+    let mut body = resp.into_body();
+    let mut reader = body.as_reader();
+    let mut buf = Vec::new();
+    reader
+        .read_to_end(&mut buf)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))?;
+    Ok(buf)
 }
 
 fn human_bytes(bytes: u64) -> String {

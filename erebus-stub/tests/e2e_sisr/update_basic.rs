@@ -97,7 +97,7 @@ fn updated_binary_runs_the_new_payload() {
     );
 }
 
-/// Non-regression: the local `$XBIN_SISR_MANIFEST` staging path (mission 6)
+/// Non-regression: the local `$ERE_SISR_MANIFEST` staging path (mission 6)
 /// still applies the delta and runs the new version.
 #[test]
 fn local_staging_path_still_applies() {
@@ -112,13 +112,13 @@ fn local_staging_path_still_applies() {
     }
 
     let out = std::process::Command::new(&e.app)
-        .env("XBIN_SISR_MANIFEST", &manifest_path)
-        .env("XBIN_TRUSTED_DIR", e.work.join("trusted"))
+        .env("ERE_SISR_MANIFEST", &manifest_path)
+        .env("ERE_TRUSTED_DIR", e.work.join("trusted"))
         .env("XDG_CACHE_HOME", e.work.join("cache"))
         .env("XDG_DATA_HOME", e.work.join("data"))
-        .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
+        .env("ERE_HEALTH_TIMEOUT_MS", "3000")
         .output()
-        .expect("failed to spawn erebus with XBIN_SISR_MANIFEST");
+        .expect("failed to spawn erebus with ERE_SISR_MANIFEST");
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     assert!(out.status.success(), "local update must run v2: {stderr}");

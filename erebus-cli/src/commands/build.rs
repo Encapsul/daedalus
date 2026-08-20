@@ -199,6 +199,9 @@ fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
     if let Some(ep) = &args.health_endpoint {
         canonical.push(format!("health_endpoint={ep}"));
     }
+    if args.embed_model.is_some() {
+        canonical.push("embed_model=true".to_string());
+    }
     if let Some(v) = &plan.version_info {
         canonical.push(format!("version={v}"));
     }
@@ -462,6 +465,11 @@ pub struct BuildArgs {
     /// Health check endpoint path (default: /health)
     #[arg(long)]
     pub health_endpoint: Option<String>,
+
+    /// Path to a large model file (e.g., .gguf). Tunes `FastCDC` chunk size to
+    /// 16 MiB for efficient SISR delta updates on multi-GB model payloads.
+    #[arg(long)]
+    pub embed_model: Option<PathBuf>,
 }
 
 pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
@@ -1112,7 +1120,7 @@ fn build_single_target(
         encryption_key.copy_from_slice(&erebus_core::encrypt::generate_encryption_key());
 
         if args.enable_sisr {
-            let sisr_config = build_sisr_config(&args.key)?;
+            let sisr_config = build_sisr_config(&args.key, args.embed_model.is_some())?;
             let artifacts = erebus_core::sisr_stage::build_artifacts(&payload, &sisr_config)
                 .context("SISR stage failed during encrypt+SISR build")?;
             let chunk_sizes: Vec<usize> = artifacts
@@ -1422,8 +1430,17 @@ fn build_single_target(
     // Assemble
     eprintln!("Assembling {}...", output.display());
 
+    // Save previous SISR manifest before assembly (for bandwidth reporting)
+    let prev_manifest_bytes: Option<Vec<u8>> = if args.update && args.enable_sisr {
+        let mut prev_manifest_path = output.clone();
+        prev_manifest_path.set_extension("erebus.manifest");
+        std::fs::read(&prev_manifest_path).ok()
+    } else {
+        None
+    };
+
     let size = if args.enable_sisr {
-        let sisr_config = build_sisr_config(&args.key)?;
+        let sisr_config = build_sisr_config(&args.key, args.embed_model.is_some())?;
         let artifacts = match sisr_artifacts_opt {
             Some(a) => a,
             None => erebus_core::sisr_stage::build_artifacts(&payload, &sisr_config)
@@ -1477,9 +1494,23 @@ fn build_single_target(
     }
 
     if args.enable_sisr {
-        let mut manifest = output.clone();
-        manifest.set_extension("erebus.manifest");
-        eprintln!("SISR manifest written: {}", manifest.display());
+        let mut manifest_path = output.clone();
+        manifest_path.set_extension("erebus.manifest");
+        eprintln!("SISR manifest written: {}", manifest_path.display());
+
+        // Bandwidth reporting: compare new chunk set against previous manifest
+        if let Some(prev_bytes) = &prev_manifest_bytes {
+            if let (Ok(prev), Ok(new_bytes)) = (
+                erebus_core::sisr_stage::RemoteManifest::from_bytes(prev_bytes),
+                std::fs::read(&manifest_path),
+            ) {
+                if let Ok(new_remote) =
+                    erebus_core::sisr_stage::RemoteManifest::from_bytes(&new_bytes)
+                {
+                    report_sisr_bandwidth(&prev, &new_remote);
+                }
+            }
+        }
     }
 
     // Binary signature is mutually exclusive with SISR in a single build:
@@ -1582,7 +1613,7 @@ fn sign_macos_binary(path: &Path, verbose: bool) -> Result<()> {
 /// Builds the SISR stage config from the CLI args. When `--key` is given the
 /// same 32-byte Ed25519 key that would sign the binary instead signs the SISR
 /// manifest; its bytes are never printed (only the path appears in warnings).
-fn build_sisr_config(key_path: &Option<PathBuf>) -> Result<SisrBuildConfig> {
+fn build_sisr_config(key_path: &Option<PathBuf>, embed_model: bool) -> Result<SisrBuildConfig> {
     let signing_key = match key_path {
         Some(path) => {
             warn_if_insecure_key_permissions(path);
@@ -1597,9 +1628,10 @@ fn build_sisr_config(key_path: &Option<PathBuf>) -> Result<SisrBuildConfig> {
         }
         None => None,
     };
+    let chunk_target_size = if embed_model { 16 << 20 } else { 64 << 10 };
     Ok(SisrBuildConfig {
         enabled: true,
-        chunk_target_size: 64 << 10,
+        chunk_target_size,
         signing_key,
     })
 }
@@ -2285,6 +2317,45 @@ fn read_existing_hashes(erebus_path: &Path) -> Option<(String, String)> {
     Some((app_hash, rt_hash))
 }
 
+/// Report SISR bandwidth savings by comparing old vs new chunk sets.
+fn report_sisr_bandwidth(
+    prev: &erebus_core::sisr_stage::RemoteManifest,
+    new: &erebus_core::sisr_stage::RemoteManifest,
+) {
+    let new_total: u64 = new
+        .manifest
+        .chunks
+        .iter()
+        .map(|c| u64::from(c.length))
+        .sum();
+    if new_total == 0 {
+        return;
+    }
+    let new_hashes: std::collections::HashSet<&[u8; 32]> =
+        new.manifest.chunks.iter().map(|c| &c.hash).collect();
+    let mut reused: u64 = 0;
+    for c in &prev.manifest.chunks {
+        if new_hashes.contains(&c.hash) {
+            reused += u64::from(c.length);
+        }
+    }
+    let delta = new_total.saturating_sub(reused);
+    if delta == 0 {
+        eprintln!(
+            "  SISR: no changes — 0 B delta vs {:.1} MB full (100% bandwidth saved)",
+            new_total as f64 / (1024.0 * 1024.0)
+        );
+    } else {
+        let pct = 100.0 - (delta as f64 / new_total as f64) * 100.0;
+        eprintln!(
+            "  SISR delta: {:.1} MB vs {:.1} MB full — {:.1}% bandwidth saved",
+            delta as f64 / (1024.0 * 1024.0),
+            new_total as f64 / (1024.0 * 1024.0),
+            pct
+        );
+    }
+}
+
 fn count_files(dir: &Path) -> usize {
     let mut count = 0;
     if let Ok(entries) = std::fs::read_dir(dir) {
@@ -2697,6 +2768,7 @@ mod tests {
             health_endpoint: None,
             json: false,
             quiet: false,
+            embed_model: None,
         }
     }
 
@@ -2846,7 +2918,7 @@ mod tests {
 
     #[test]
     fn build_sisr_config_defaults_to_64k_chunks_without_key() {
-        let config = build_sisr_config(&None).unwrap();
+        let config = build_sisr_config(&None, false).unwrap();
         assert!(config.enabled);
         assert_eq!(config.chunk_target_size, 64 << 10);
         assert!(config.signing_key.is_none());
@@ -2858,7 +2930,7 @@ mod tests {
         let key_path = dir.path().join("signing.key");
         let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
         std::fs::write(&key_path, key.to_bytes()).unwrap();
-        let config = build_sisr_config(&Some(key_path)).unwrap();
+        let config = build_sisr_config(&Some(key_path), false).unwrap();
         let loaded = config.signing_key.expect("key should be loaded");
         assert_eq!(loaded.to_bytes(), key.to_bytes());
     }
@@ -2868,16 +2940,25 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let key_path = dir.path().join("bad.key");
         std::fs::write(&key_path, [1u8; 16]).unwrap();
-        let err = build_sisr_config(&Some(key_path)).unwrap_err().to_string();
+        let err = build_sisr_config(&Some(key_path), false)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("32 bytes"), "error: {err}");
     }
 
     #[test]
     fn build_sisr_config_errors_on_missing_key() {
         let dir = tempfile::tempdir().unwrap();
-        let err = build_sisr_config(&Some(dir.path().join("nope.key")))
+        let err = build_sisr_config(&Some(dir.path().join("nope.key")), false)
             .unwrap_err()
             .to_string();
         assert!(err.contains("failed to read signing key"));
+    }
+
+    #[test]
+    fn build_sisr_config_uses_16mb_chunks_with_embed_model() {
+        let config = build_sisr_config(&None, true).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.chunk_target_size, 16 << 20);
     }
 }

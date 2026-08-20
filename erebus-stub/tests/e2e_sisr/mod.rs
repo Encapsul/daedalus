@@ -252,10 +252,10 @@ pub fn env(v1: &str, v2: &str) -> TestEnv {
 pub fn run_update(env: &TestEnv) -> Output {
     Command::new(&env.app)
         .arg(format!("--erebus-update={}", env.base_url))
-        .env("XBIN_TRUSTED_DIR", env.work.join("trusted"))
+        .env("ERE_TRUSTED_DIR", env.work.join("trusted"))
         .env("XDG_CACHE_HOME", env.work.join("cache"))
         .env("XDG_DATA_HOME", env.work.join("data"))
-        .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
+        .env("ERE_HEALTH_TIMEOUT_MS", "3000")
         .output()
         .expect("failed to spawn erebus --erebus-update")
 }
@@ -263,10 +263,10 @@ pub fn run_update(env: &TestEnv) -> Output {
 /// Runs the binary as a normal app in the isolated environment.
 pub fn run_app(env: &TestEnv) -> Output {
     Command::new(&env.app)
-        .env("XBIN_TRUSTED_DIR", env.work.join("trusted"))
+        .env("ERE_TRUSTED_DIR", env.work.join("trusted"))
         .env("XDG_CACHE_HOME", env.work.join("cache"))
         .env("XDG_DATA_HOME", env.work.join("data"))
-        .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
+        .env("ERE_HEALTH_TIMEOUT_MS", "3000")
         .output()
         .expect("failed to spawn the erebus app")
 }
