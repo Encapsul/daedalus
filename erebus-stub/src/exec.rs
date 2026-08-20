@@ -213,7 +213,9 @@ pub fn setup_env(
         } else {
             rootfs.join(dir.strip_prefix('/').unwrap_or(dir))
         };
-        let _ = std::fs::create_dir_all(&path);
+        if let Err(e) = std::fs::create_dir_all(&path) {
+            eprintln!("[erebus] warning: could not create {}: {e}", path.display());
+        }
     }
 
     Ok(env)
@@ -442,6 +444,132 @@ fn entrypoint_is_executable(prog: &[u8], interpreter_name: &str, rootfs: &Path) 
 // Single-service exec
 // ---------------------------------------------------------------------------
 
+/// Bind-mount X11, Wayland, and GPU devices into the rootfs before
+/// `pivot_root`. Each path is created with `mkdir -p` then `mount MS_BIND`.
+///
+/// Source paths are best-effort: non-existent sources (e.g. no Wayland
+/// socket) are silently skipped. This lets the same binary run on X11-only,
+/// Wayland-only, or mixed systems.
+#[cfg(target_os = "linux")]
+fn bind_mount_gui_devices(rootfs: &Path) -> io::Result<()> {
+    let uid = unsafe { libc::getuid() };
+    let run_user = format!("/run/user/{uid}");
+
+    // (host_path, rootfs_relative_dest) pairs to bind-mount.
+    let mounts: &[(&str, &str)] = &[("/tmp/.X11-unix", ".X11-unix"), ("/dev/dri", "dev/dri")];
+
+    for (src, dest_rel) in mounts {
+        let dest = rootfs.join(dest_rel);
+        if !Path::new(src).exists() {
+            continue;
+        }
+        std::fs::create_dir_all(&dest)?;
+        let src_c = crate::cstr(src.as_bytes())?;
+        let dest_c = crate::cstr(dest.as_os_str().as_bytes())?;
+        // SAFETY: mount(2) with MS_BIND makes a 1:1 bind mount of the host
+        // GUI socket/GPU device into the rootfs. Source and destination are
+        // valid paths; no data pointer needed for bind mounts.
+        let rc = unsafe {
+            libc::mount(
+                src_c.as_ptr(),
+                dest_c.as_ptr(),
+                std::ptr::null(),
+                libc::MS_BIND,
+                std::ptr::null(),
+            )
+        };
+        if rc != 0 {
+            eprintln!(
+                "[erebus] warning: failed to bind-mount {} → {}: {}",
+                src,
+                dest.display(),
+                io::Error::last_os_error()
+            );
+        }
+    }
+
+    // Wayland sockets glob /run/user/$UID/.wayland-*
+    if Path::new(&run_user).is_dir() {
+        let dest_dir = rootfs.join(&run_user);
+        if let Ok(entries) = std::fs::read_dir(&run_user) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if !name.starts_with("wayland-") && !name.starts_with(".wayland-") {
+                    continue;
+                }
+                let src = entry.path();
+                let dest = dest_dir.join(std::ffi::OsStr::new(&*name));
+                std::fs::create_dir_all(&dest)?;
+                let src_c = crate::cstr(src.to_string_lossy().as_bytes())?;
+                let dest_c = crate::cstr(dest.as_os_str().as_bytes())?;
+                // SAFETY: bind-mount a single Wayland socket into rootfs.
+                let rc = unsafe {
+                    libc::mount(
+                        src_c.as_ptr(),
+                        dest_c.as_ptr(),
+                        std::ptr::null(),
+                        libc::MS_BIND,
+                        std::ptr::null(),
+                    )
+                };
+                if rc != 0 {
+                    eprintln!(
+                        "[erebus] warning: failed to bind-mount {}: {}",
+                        src.display(),
+                        io::Error::last_os_error()
+                    );
+                }
+            }
+        }
+    }
+
+    // GPU render nodes (dri/card*)
+    if Path::new("/dev/dri").is_dir() {
+        let src_dir = "/dev/dri";
+        let dest_dir = rootfs.join("dev/dri");
+        std::fs::create_dir_all(&dest_dir)?;
+        if let Ok(entries) = std::fs::read_dir(src_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                // Only bind-mount render nodes and control nodes
+                if !name.starts_with("renderD") && !name.starts_with("card") {
+                    continue;
+                }
+                let src = format!("{src_dir}/{name}");
+                let dest = dest_dir.join(std::ffi::OsStr::new(&*name));
+                let src_c = crate::cstr(src.as_bytes())?;
+                let dest_c = crate::cstr(dest.as_os_str().as_bytes())?;
+                // SAFETY: bind-mount GPU device node into rootfs.
+                let rc = unsafe {
+                    libc::mount(
+                        src_c.as_ptr(),
+                        dest_c.as_ptr(),
+                        std::ptr::null(),
+                        libc::MS_BIND,
+                        std::ptr::null(),
+                    )
+                };
+                if rc != 0 {
+                    eprintln!(
+                        "[erebus] warning: failed to bind-mount GPU device {}: {}",
+                        src,
+                        io::Error::last_os_error()
+                    );
+                }
+            }
+        }
+    }
+
+    // Ensure /dev/shm is available for X11 shared memory
+    if !rootfs.join("dev/shm").is_dir() {
+        std::fs::create_dir_all(rootfs.join("dev/shm"))?;
+    }
+
+    Ok(())
+}
+
 /// Enters the `pivot_root` isolation and installs the requested sandboxes.
 ///
 /// Landlock rules anchor to the rootfs inode, so the `O_PATH` fd is opened
@@ -450,6 +578,11 @@ fn entrypoint_is_executable(prog: &[u8], interpreter_name: &str, rootfs: &Path) 
 /// Landlock failures are fatal (fail-closed): the filesystem sandbox is the
 /// last line of defense of the isolation level, and running the app without
 /// it would silently defeat the requested `--landlock` guarantee.
+///
+/// When `meta.gui` is set, X11/Wayland/GPU devices are bind-mounted into
+/// the rootfs **before** `pivot_root` so they remain accessible after the
+/// mount tree swap. Bind-mounting must happen before `pivot_root` because the
+/// host filesystem is unreachable afterwards.
 #[cfg(target_os = "linux")]
 fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
     let root_guard = if meta.landlock {
@@ -457,13 +590,19 @@ fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
     } else {
         None
     };
+
+    if meta.gui {
+        bind_mount_gui_devices(rootfs)?;
+    }
+
     crate::pivot_root_into(rootfs)?;
     if meta.seccomp {
-        if let Err(e) = crate::seccomp::install_seccomp_denylist() {
-            eprintln!(
-                "[erebus] warning: seccomp not available, running without syscall filter: {e}"
-            );
-        }
+        crate::seccomp::install_seccomp_denylist().map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("seccomp unavailable, refusing to run without syscall filter: {e}"),
+            )
+        })?;
     }
     if let Some(root) = root_guard {
         crate::landlock::sandbox(&root).map_err(|e| {
@@ -1192,6 +1331,7 @@ mod tests {
             cwd: None,
             isolation: 0,
             seccomp: false,
+            gui: false,
             landlock: false,
             services: Vec::new(),
             crypto: None,
@@ -1338,6 +1478,7 @@ mod tests {
             cwd: None,
             isolation: 0,
             seccomp: false,
+            gui: false,
             landlock: false,
             services: Vec::new(),
             crypto: None,
