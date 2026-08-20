@@ -898,15 +898,24 @@ fn install_missing_php_extensions(
 fn embed_python_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Result<usize> {
     let mut count = 0;
 
-    // Find Python stdlib path
-    let stdlib = run_cmd(interp_path, &["-c", "import sys; print(sys.prefix)"]);
+    // Find Python stdlib path using sysconfig (correct version-tagged directory)
+    let stdlib = run_cmd(
+        interp_path,
+        &[
+            "-c",
+            "import sysconfig; print(sysconfig.get_path('stdlib'))",
+        ],
+    );
     if stdlib.is_empty() {
         return Ok(0);
     }
 
-    let stdlib_path = PathBuf::from(&stdlib).join("lib").join("python3");
+    let stdlib_path = PathBuf::from(&stdlib);
     if stdlib_path.is_dir() {
-        let target = rootfs.join("usr").join("lib").join("python3");
+        let target = rootfs
+            .join("usr")
+            .join("lib")
+            .join(stdlib_path.file_name().unwrap_or(stdlib_path.as_os_str()));
         copy_dir_recursive(&stdlib_path, &target)?;
         count += count_dir_files(&target);
         if verbose {

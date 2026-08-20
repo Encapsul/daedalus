@@ -21,7 +21,7 @@ use e2e_sisr::*;
 
 fn isolated_env(work: &Path) -> Vec<(&str, PathBuf)> {
     vec![
-        ("XBIN_TRUSTED_DIR", work.join("trusted")),
+        ("ERE_TRUSTED_DIR", work.join("trusted")),
         ("XDG_CACHE_HOME", work.join("cache")),
         ("XDG_DATA_HOME", work.join("data")),
     ]
@@ -60,7 +60,7 @@ fn legacy_binary_runs_on_v2_runtime() {
 
     let out = Command::new(&app)
         .envs(isolated_env(&work))
-        .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
+        .env("ERE_HEALTH_TIMEOUT_MS", "3000")
         .output()
         .expect("failed to spawn legacy binary");
 
@@ -108,7 +108,7 @@ fn upgraded_binary_gains_auto_update() {
     let out = Command::new(&upgraded)
         .arg(format!("--erebus-update={base_url}"))
         .envs(isolated_env(&work))
-        .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
+        .env("ERE_HEALTH_TIMEOUT_MS", "3000")
         .output()
         .expect("failed to spawn upgraded binary --erebus-update");
     assert!(
@@ -132,7 +132,7 @@ fn upgraded_binary_gains_auto_update() {
     // The updated binary runs the new payload.
     let run = Command::new(&upgraded)
         .envs(isolated_env(&work))
-        .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
+        .env("ERE_HEALTH_TIMEOUT_MS", "3000")
         .output()
         .expect("failed to spawn updated binary");
     assert!(run.status.success());

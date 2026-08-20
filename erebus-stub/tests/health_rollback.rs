@@ -156,12 +156,12 @@ fn stage_update(work: &Path, current: &Path, body: &str) -> (PathBuf, String) {
 /// Runs the `.erebus` with the SISR manifest staged, in an isolated cache.
 fn run_erebus(work: &Path, app: &Path, manifest: &Path) -> Output {
     Command::new(app)
-        .env("XBIN_SISR_MANIFEST", manifest)
-        .env("XBIN_TRUSTED_DIR", work.join("trusted"))
+        .env("ERE_SISR_MANIFEST", manifest)
+        .env("ERE_TRUSTED_DIR", work.join("trusted"))
         .env("XDG_CACHE_HOME", work.join("cache"))
         .env("XDG_DATA_HOME", work.join("data"))
-        .env("XBIN_HEALTH_MAX_ATTEMPTS", "1")
-        .env("XBIN_HEALTH_TIMEOUT_MS", "3000")
+        .env("ERE_HEALTH_MAX_ATTEMPTS", "1")
+        .env("ERE_HEALTH_TIMEOUT_MS", "3000")
         .output()
         .expect("failed to spawn the erebus launcher")
 }
