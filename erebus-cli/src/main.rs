@@ -76,6 +76,9 @@ enum Commands {
     /// Clean erebus cache
     Clean(commands::clean::CleanArgs),
 
+    /// Interactive TUI dashboard showing SISR benchmark & cache status
+    Dashboard(commands::dashboard::DashboardArgs),
+
     /// Test a .erebus file in an ephemeral sandbox
     Selftest(commands::selftest::SelftestArgs),
 
@@ -159,6 +162,7 @@ fn main() -> ExitCode {
         Commands::Scan(args) => commands::scan::run(args),
         Commands::Doctor(args) => commands::doctor::run(args),
         Commands::Clean(args) => commands::clean::run(args),
+        Commands::Dashboard(args) => commands::dashboard::run(&args),
         Commands::Selftest(mut args) => {
             if cli.quiet {
                 args.verbose = false;
@@ -288,6 +292,7 @@ BUGS
         ("inspect", ""),
         ("scan", ""),
         ("clean", "FILES\n       ~/.cache/erebus/\n              The cache directory cleaned by this command.\n"),
+        ("dashboard", ""),
         ("env", ""),
         ("trust", "ENVIRONMENT\n       XDG_DATA_HOME\n              Base directory for trusted key storage.\n"),
         ("completion", ""),

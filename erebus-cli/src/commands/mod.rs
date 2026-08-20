@@ -1,5 +1,6 @@
 pub mod build;
 pub mod clean;
+pub mod dashboard;
 pub mod doctor;
 pub mod env;
 pub mod inspect;

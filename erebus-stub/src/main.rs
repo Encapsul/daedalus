@@ -124,6 +124,10 @@ pub struct Metadata {
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     landlock: bool,
     #[serde(default)]
+    // Read only in the Linux GUI bind-mount path (pivot_root isolation).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    gui: bool,
+    #[serde(default)]
     services: Vec<Service>,
     #[serde(default)]
     crypto: Option<CryptoMeta>,
