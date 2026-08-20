@@ -201,7 +201,7 @@ fn detect_java(dir: &Path) -> bool {
 }
 
 fn detect_ruby(dir: &Path) -> bool {
-    dir.join("Gemfile").is_file()
+    dir.join("Gemfile").is_file() || dir.join("_config.yml").is_file()
 }
 
 fn detect_dotnet(dir: &Path) -> bool {
@@ -462,7 +462,18 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             Some(cmd)
         }
         Runtime::Ruby => {
-            // 0. bin/rails (standard Rails)
+            // 0. Jekyll (static site generator)
+            if app_dir.join("_config.yml").is_file() {
+                return Some(vec![
+                    "bundle".into(),
+                    "exec".into(),
+                    "jekyll".into(),
+                    "serve".into(),
+                    "--host".into(),
+                    "0.0.0.0".into(),
+                ]);
+            }
+            // 1. bin/rails (standard Rails)
             if app_dir.join("bin").join("rails").is_file() {
                 return Some(vec![
                     "ruby".into(),
@@ -472,7 +483,7 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
                     "0.0.0.0".into(),
                 ]);
             }
-            // 1. Fallback
+            // 2. Fallback
             let entry = find_first_file(app_dir, &["config.ru", "app.rb", "main.rb"])?;
             Some(vec!["ruby".into(), format!("/app/{}", entry)])
         }
@@ -791,6 +802,7 @@ fn find_native_binary(dir: &Path) -> Option<String> {
 }
 
 /// Resolve Node.js entrypoint from package.json or fallback files.
+/// For monorepos, scans workspace sub-packages to find the actual entry.
 fn find_node_entry(dir: &Path) -> Option<String> {
     // Check package.json "main" or "scripts.start"
     let pkg_path = dir.join("package.json");
@@ -826,6 +838,10 @@ fn find_node_entry(dir: &Path) -> Option<String> {
                         }
                     }
                 }
+                // Monorepo: scan workspace sub-packages
+                if let Some(entry) = find_node_workspace_entry(dir, &pkg) {
+                    return Some(entry);
+                }
             }
         }
     }
@@ -843,6 +859,96 @@ fn find_node_entry(dir: &Path) -> Option<String> {
             "server/server.js",
         ],
     )
+}
+
+/// Find entry point in monorepo workspace sub-packages.
+/// Handles npm/yarn/pnpm workspaces, Lerna, and Turborepo patterns.
+fn find_node_workspace_entry(dir: &Path, pkg: &serde_json::Value) -> Option<String> {
+    let patterns: Vec<String> = match pkg.get("workspaces") {
+        Some(serde_json::Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect(),
+        Some(serde_json::Value::String(s)) => vec![s.clone()],
+        _ => return None,
+    };
+
+    for pattern in patterns {
+        // Handle glob patterns like "packages/*"
+        if pattern.contains('*') {
+            let prefix = pattern.split('*').next()?;
+            let search_dir = dir.join(prefix.trim_end_matches('/'));
+            if search_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&search_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            // Get relative path from root dir to sub-package
+                            let rel = path.strip_prefix(dir).ok()?;
+                            if let Some(ep) = find_node_entry_in_subpackage(&path, rel) {
+                                return Some(ep);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Direct path like "packages/api"
+            let sub_dir = dir.join(&pattern);
+            if sub_dir.is_dir() {
+                if let Some(ep) = find_node_entry_in_subpackage(&sub_dir, Path::new(&pattern)) {
+                    return Some(ep);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Find entry point in a single sub-package directory.
+/// `rel` is the relative path from root dir to this sub-package (e.g., "packages/api").
+fn find_node_entry_in_subpackage(sub_dir: &Path, rel: &Path) -> Option<String> {
+    let pkg_path = sub_dir.join("package.json");
+    if !pkg_path.is_file() {
+        return None;
+    }
+    let contents = std::fs::read_to_string(&pkg_path).ok()?;
+    let pkg: serde_json::Value = serde_json::from_str(&contents).ok()?;
+
+    let rel_str = rel.to_str()?;
+
+    // Check "main" field
+    if let Some(main) = pkg.get("main").and_then(|v| v.as_str()) {
+        let main_path = sub_dir.join(main);
+        if main_path.is_file() {
+            return Some(format!("{rel_str}/{main}"));
+        }
+    }
+
+    // Check "scripts.start" — rewrite command with sub-package prefix
+    if let Some(cmd) = pkg
+        .get("scripts")
+        .and_then(|s| s.get("start"))
+        .and_then(|v| v.as_str())
+    {
+        let first_word = cmd.split_whitespace().next()?;
+        let args: Vec<&str> = cmd.split_whitespace().collect();
+        if matches!(first_word, "node" | "tsx" | "ts-node" | "npx") && args.len() > 1 {
+            // "node dist/main.js" in packages/api → "node packages/api/dist/main.js"
+            let file_part = args[1..].join(" ");
+            let full_cmd = format!("{first_word} {rel_str}/{file_part}");
+            return Some(full_cmd);
+        }
+    }
+
+    // Fallback: common entry files
+    let candidates = ["index.js", "main.js", "src/index.js", "src/main.js"];
+    for name in candidates {
+        if sub_dir.join(name).is_file() {
+            return Some(format!("{rel_str}/{name}"));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -1157,6 +1263,41 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    fn detect_jekyll_entrypoint() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("_config.yml"), "title: My Site\n").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Ruby));
+        let ep = resolve_entrypoint(dir.path(), Runtime::Ruby);
+        assert_eq!(
+            ep,
+            Some(vec![
+                "bundle".into(),
+                "exec".into(),
+                "jekyll".into(),
+                "serve".into(),
+                "--host".into(),
+                "0.0.0.0".into(),
+            ])
+        );
+    }
+
+    #[test]
+    fn jekyll_beats_rails() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("Gemfile"), "gem 'jekyll'\n").unwrap();
+        std::fs::write(dir.path().join("_config.yml"), "title: Site\n").unwrap();
+        std::fs::create_dir(dir.path().join("bin")).unwrap();
+        std::fs::write(
+            dir.path().join("bin").join("rails"),
+            "#!/usr/bin/env ruby\n",
+        )
+        .unwrap();
+        // Jekyll should be preferred over Rails when _config.yml exists
+        let ep = resolve_entrypoint(dir.path(), Runtime::Ruby);
+        assert!(ep.unwrap().contains(&"jekyll".to_string()));
+    }
+
+    #[test]
     fn detect_php_frankenphp() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
@@ -1371,5 +1512,181 @@ start = "uvicorn main:app"
         }
         assert_eq!(Runtime::from_name("cobol"), None);
         assert_eq!(Runtime::from_name(""), None);
+    }
+
+    #[test]
+    fn node_monorepo_workspace_glob_pattern() {
+        let dir = TempDir::new().unwrap();
+        // Root package.json with workspaces glob
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"workspaces": ["packages/*"]}"#,
+        )
+        .unwrap();
+        // Create sub-package
+        std::fs::create_dir_all(dir.path().join("packages").join("api")).unwrap();
+        std::fs::write(
+            dir.path().join("packages").join("api").join("package.json"),
+            r#"{"main": "index.js"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("packages").join("api").join("index.js"),
+            "console.log('api')",
+        )
+        .unwrap();
+
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(
+            ep,
+            Some(vec!["node".into(), "/app/packages/api/index.js".into()])
+        );
+    }
+
+    #[test]
+    fn node_monorepo_workspace_direct_path() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"workspaces": ["apps/web"]}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("apps").join("web")).unwrap();
+        std::fs::write(
+            dir.path().join("apps").join("web").join("package.json"),
+            r#"{"main": "server.js"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("apps").join("web").join("server.js"),
+            "console.log('web')",
+        )
+        .unwrap();
+
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(
+            ep,
+            Some(vec!["node".into(), "/app/apps/web/server.js".into()])
+        );
+    }
+
+    #[test]
+    fn node_monorepo_workspace_script_start() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"workspaces": ["packages/*"]}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("packages").join("api")).unwrap();
+        std::fs::write(
+            dir.path().join("packages").join("api").join("package.json"),
+            r#"{"scripts": {"start": "node dist/main.js"}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("packages").join("api").join("dist")).unwrap();
+        std::fs::write(
+            dir.path()
+                .join("packages")
+                .join("api")
+                .join("dist")
+                .join("main.js"),
+            "console.log('api')",
+        )
+        .unwrap();
+
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(
+            ep,
+            Some(vec!["node".into(), "packages/api/dist/main.js".into()])
+        );
+    }
+
+    #[test]
+    fn node_monorepo_workspace_string_pattern() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"workspaces": "packages/*"}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("packages").join("cli")).unwrap();
+        std::fs::write(
+            dir.path().join("packages").join("cli").join("package.json"),
+            r#"{"main": "bin/cli.js"}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("packages").join("cli").join("bin")).unwrap();
+        std::fs::write(
+            dir.path()
+                .join("packages")
+                .join("cli")
+                .join("bin")
+                .join("cli.js"),
+            "console.log('cli')",
+        )
+        .unwrap();
+
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(
+            ep,
+            Some(vec!["node".into(), "/app/packages/cli/bin/cli.js".into()])
+        );
+    }
+
+    #[test]
+    fn node_monorepo_workspace_tsx_runner() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"workspaces": ["packages/*"]}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("packages").join("web")).unwrap();
+        std::fs::write(
+            dir.path().join("packages").join("web").join("package.json"),
+            r#"{"scripts": {"start": "tsx src/index.ts"}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("packages").join("web").join("src")).unwrap();
+        std::fs::write(
+            dir.path()
+                .join("packages")
+                .join("web")
+                .join("src")
+                .join("index.ts"),
+            "",
+        )
+        .unwrap();
+
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(
+            ep,
+            Some(vec![
+                "npx".into(),
+                "tsx".into(),
+                "packages/web/src/index.ts".into()
+            ])
+        );
+    }
+
+    #[test]
+    fn node_monorepo_no_workspaces_falls_through() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("index.js"), "console.log('hi')").unwrap();
+
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(ep, Some(vec!["node".into(), "/app/index.js".into()]));
+    }
+
+    #[test]
+    fn node_monorepo_empty_workspaces_falls_through() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("package.json"), r#"{"workspaces": []}"#).unwrap();
+        std::fs::write(dir.path().join("index.js"), "console.log('hi')").unwrap();
+
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(ep, Some(vec!["node".into(), "/app/index.js".into()]));
     }
 }

@@ -388,15 +388,18 @@ pub fn is_executable(prog: &[u8]) -> bool {
     if prog.is_empty() {
         return false;
     }
-    let path = String::from_utf8_lossy(prog);
+    let path = match std::str::from_utf8(prog) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
     // If it's an absolute or relative path with a directory component, check it directly.
     if path.contains('/') || path.contains('\\') {
-        return check_executable(&path);
+        return check_executable(path);
     }
     // Otherwise search PATH directories (mirrors execvp behavior).
     let paths = std::env::var_os("PATH").unwrap_or_default();
     for dir in std::env::split_paths(&paths) {
-        let candidate = dir.join(path.as_ref());
+        let candidate = dir.join(std::path::Path::new(path));
         if check_executable(&candidate.to_string_lossy()) {
             return true;
         }
@@ -452,6 +455,8 @@ fn entrypoint_is_executable(prog: &[u8], interpreter_name: &str, rootfs: &Path) 
 /// Wayland-only, or mixed systems.
 #[cfg(target_os = "linux")]
 fn bind_mount_gui_devices(rootfs: &Path) -> io::Result<()> {
+    // SAFETY: getuid(2) returns the real UID of the calling process. It
+    // cannot fail and has no invalid inputs.
     let uid = unsafe { libc::getuid() };
     let run_user = format!("/run/user/{uid}");
 
@@ -925,8 +930,6 @@ pub fn supervise_services(
     #[cfg(not(target_os = "linux"))]
     let use_pivot = false;
 
-    crate::health_gate::maybe_start_health(meta);
-
     enter_namespace_if_needed(meta.isolation)?;
     #[cfg(target_os = "linux")]
     if use_pivot {
@@ -944,6 +947,9 @@ pub fn supervise_services(
     let resolve = make_resolve(rootfs, use_pivot);
 
     let children = fork_services(meta, &base_env, &resolve, rootfs, verbose)?;
+    // Start health gate AFTER fork to avoid fork() while thread is running
+    // (fork in multithreaded process can deadlock child via held libc locks).
+    crate::health_gate::maybe_start_health(meta);
     wait_for_health(meta, verbose)?;
     install_signal_handler(&children);
     wait_for_children(&children, verbose)
@@ -1179,19 +1185,43 @@ pub fn wait_for_port(port: u16, timeout_secs: u64) -> io::Result<()> {
 }
 
 #[cfg(unix)]
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Maximum number of child PIDs the signal handler can forward to.
+/// Fixed-size array avoids heap allocation and Mutex in signal context.
+#[cfg(unix)]
+const MAX_CHILDREN: usize = 64;
 
 #[cfg(unix)]
-static CHILD_PIDS: OnceLock<Mutex<Vec<i32>>> = OnceLock::new();
+static CHILD_PID_COUNT: AtomicUsize = AtomicUsize::new(0);
 
+#[cfg(unix)]
+static mut CHILD_PIDS: [i32; MAX_CHILDREN] = [0; MAX_CHILDREN];
+
+/// Install SIGTERM/SIGINT forwarding to child processes.
+///
+/// # Safety precondition
+///
+/// This function registers a signal handler that reads `CHILD_PIDS` via
+/// `static mut` (safe only under the single-threaded invariant below).
+/// Callers MUST ensure the process is single-threaded at this point —
+/// no spawned threads, no concurrent mutable access to `CHILD_PIDS`.
 #[cfg(unix)]
 pub fn install_signal_handler(children: &[(String, i32)]) {
-    let pids: Vec<i32> = children.iter().map(|(_, p)| *p).collect();
-    CHILD_PIDS.set(Mutex::new(pids)).ok();
+    let count = children.len().min(MAX_CHILDREN);
+    // SAFETY: install_signal_handler is called from a single-threaded context
+    // (post-fork, no spawned threads). The loop writes [0..count] and the
+    // count is bounded by MAX_CHILDREN. No concurrent access exists.
+    unsafe {
+        for (i, (_, pid)) in children.iter().take(count).enumerate() {
+            CHILD_PIDS[i] = *pid;
+        }
+        CHILD_PID_COUNT.store(count, Ordering::Relaxed);
+    }
 
     // SAFETY: signal(2) registers a C function pointer as a signal handler.
-    // signal_forward only calls kill(2) (async-signal-safe) and reads CHILD_PIDS
-    // via OnceLock (initialized before signal handler registration).
+    // signal_forward only calls kill(2) (async-signal-safe) and reads
+    // CHILD_PIDS/CHILD_PID_COUNT which are initialized above.
     unsafe {
         libc::signal(libc::SIGTERM, signal_forward as *const () as usize);
         libc::signal(libc::SIGINT, signal_forward as *const () as usize);
@@ -1200,21 +1230,15 @@ pub fn install_signal_handler(children: &[(String, i32)]) {
 
 #[cfg(unix)]
 extern "C" fn signal_forward(sig: i32) {
-    // SAFETY: Called from a signal handler context. Only uses kill(2)
-    // (async-signal-safe) and reads CHILD_PIDS via OnceLock.
-    // OnceLock::get() is safe to call from signal handler after initialization.
-    // Mutex::lock() is async-signal-unsafe in general, but we only call it
-    // after the process has been single-threaded (post-fork) or during shutdown
-    // when no other threads exist. This is a best-effort cleanup.
-    if let Some(mutex) = CHILD_PIDS.get() {
-        if let Ok(pids) = mutex.lock() {
-            for &pid in pids.iter() {
-                // SAFETY: kill(2) with valid PID and signal is async-signal-safe.
-                // PID comes from our forked children, signal is from handler argument.
-                unsafe {
-                    libc::kill(pid, sig);
-                }
-            }
+    // SAFETY: signal_forward runs in signal handler context. All operations
+    // are async-signal-safe: Relaxed atomic load, libc::kill(2), and reading
+    // CHILD_PIDS/CHILD_PID_COUNT which are initialized before handler
+    // registration. Single-threaded invariant enforced by install_signal_handler.
+    let count = CHILD_PID_COUNT.load(Ordering::Relaxed);
+    unsafe {
+        let ptr = core::ptr::addr_of!(CHILD_PIDS);
+        for i in 0..count {
+            libc::kill((*ptr)[i], sig);
         }
     }
 }
@@ -1225,6 +1249,8 @@ mod tests {
     use crate::config::DatabaseConfig;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
+    use std::sync::Mutex;
 
     /// Serializes fork-based tests (see `wait_for_children` docs).
     static FORK_TEST_LOCK: Mutex<()> = Mutex::new(());
