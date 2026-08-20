@@ -93,20 +93,47 @@ Depot offers:
 - Multi-arch builds (x86_64 + aarch64 simultaneously)
 - Faster CI with warm cache (vs cold GitHub Actions)
 
-### Erebus integration
+### POC Results (verified on this machine)
 
-Add `--profile=depot` to `erebus build` that:
-1. Uploads source + deps to Depot's remote builder
-2. Builds native binary on remote (warm cache)
-3. Embeds the resulting binary as erebus payload
-4. Downloads .erebus back (single artifact)
+**Snap: lxd 5.0.8** (installed via snapd)
 
-This could cut build time from ~95s (local, 2-core Xeon) to ~15s (remote, 16-core).
+| Approach | `--isolation` | Size | Runs? | Notes |
+|----------|--------------|------|-------|-------|
+| Extract snap → `app` binary at top level | `none` (0) | 9.2 MB | ✅ `lxc --version` → `5.0.8` | libc from host; needs `--isolation none` |
+| Full snap tree → erebus binary | `sandbox` (2) | 186 MB | ❌ ENOENT | pivot_root cuts off `/lib64/ld-linux` + `libc.so.6` |
+| Snap tree + bundled libs | `sandbox` (2) | TBD | TODO | Copy libc + ld-linux into rootfs/app/lib |
+| Snap tree, `--isolation none` | `none` (0) | 186 MB | ✅ (lib path via `LD_LIBRARY_PATH`) | GUI apps: X11/Wayland pass through |
+
+**Key findings:**
+1. `--isolation none` allows snap/flatpak apps to run because host system libraries (libc, ld-linux) are accessible
+2. `--isolation sandbox` requires bundling system libraries into the rootfs (or symlinking `/lib64`, `/lib/x86_64-linux-gnu` from host)
+3. For **GUI apps** with `--isolation none`: `DISPLAY`/`WAYLAND_DISPLAY` env vars pass through to the app automatically — no extra work needed
+4. The erebus binary is 9.2 MB (just the lxc binary, no snap lib tree) vs 399 MB (extracted snap). Bundling the full snap increases to 186 MB (zstd compression vs squashfs+XZ)
+
+### GUI support gap
+
+The stub's `pivot_root_into()` (main.rs:1082) does a full filesystem isolation. For GUI apps, we'd need to add (before pivot_root):
+```c
+// bind-mount display server sockets
+mount("/tmp/.X11-unix", "rootfs/tmp/.X11-unix", "none", MS_BIND|MS_REC, NULL);
+mount("/run/user/0/wayland-0", "rootfs/run/user/0/wayland-0", "none", MS_BIND|MS_REC, NULL);
+// bind-mount GPU devices
+mount("/dev/dri", "rootfs/dev/dri", "none", MS_BIND|MS_REC, NULL);
+```
+
+Or use `--isolation none` (less secure but works immediately).
+
+### Wasmer
+
+`wasmer` not installed on this machine. The approach would be similar to Snap:
+1. Find `.wasm` files in `~/.wasmer/pkg/` or `~/.cache/wasmer/`
+2. Embed a WASM runtime (wasmtime/wasm3) as the payload alongside the `.wasm` file
+3. Entrypoint: `["/wasm-runtime/bin/wasmtime", "/app/app.wasm"]`
 
 ## 4. PostHog Features for Erebus
 
 | PostHog Feature | Erebus adaptation |
-|-----------------|--------------------|
+|-----------------|-------------------|
 | Feature flags | Conditional SISR updates (e.g., "roll to 50% of fleet") |
 | Session replay | Capture app stdout/stderr during failed updates |
 | A/B testing | Run two binary versions side-by-side |
