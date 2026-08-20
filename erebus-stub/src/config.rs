@@ -44,17 +44,19 @@ impl AppConfig {
         // 1. Load from CLI arguments (handled by main.rs)
         // 2. Load from local config file
         if let Some(local_config) = Self::find_local_config() {
-            Self::warn_if_unsafe_config(&local_config, "local");
-            if let Ok(cfg) = Self::load_from_file(&local_config) {
-                config.merge(cfg);
+            if !Self::warn_if_unsafe_config(&local_config, "local") {
+                if let Ok(cfg) = Self::load_from_file(&local_config) {
+                    config.merge(cfg);
+                }
             }
         }
 
         // 3. Load from global config
         if let Some(global_config) = Self::find_global_config() {
-            Self::warn_if_unsafe_config(&global_config, "global");
-            if let Ok(cfg) = Self::load_from_file(&global_config) {
-                config.merge(cfg);
+            if !Self::warn_if_unsafe_config(&global_config, "global") {
+                if let Ok(cfg) = Self::load_from_file(&global_config) {
+                    config.merge(cfg);
+                }
             }
         }
 
@@ -122,13 +124,15 @@ impl AppConfig {
         None
     }
 
-    fn warn_if_unsafe_config(path: &Path, role: &str) {
+    fn warn_if_unsafe_config(path: &Path, role: &str) -> bool {
         if let Some(reason) = Self::config_file_perilous(path) {
             eprintln!(
-                "[erebus] warning: {role} config {} is untrusted: {reason}",
+                "[erebus] warning: skipping {role} config {}: {reason}",
                 path.display()
             );
+            return true;
         }
+        false
     }
 
     fn merge(&mut self, other: Self) {

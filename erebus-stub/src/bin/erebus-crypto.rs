@@ -52,10 +52,19 @@ fn cmd_keygen(args: &[String]) -> i32 {
     });
 
     let seed = Zeroizing::new(signing_key.to_bytes());
-    fs::write(key_dir.join(format!("{fp_hex}.key")), &*seed).unwrap_or_else(|e| {
+    let key_path = key_dir.join(format!("{fp_hex}.key"));
+    fs::write(&key_path, &*seed).unwrap_or_else(|e| {
         eprintln!("error writing key file: {e}");
         std::process::exit(1);
     });
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600)).unwrap_or_else(|e| {
+            eprintln!("warning: could not set key permissions: {e}");
+        });
+    }
 
     fs::write(key_dir.join(format!("{fp_hex}.pub")), pubkey_bytes).unwrap_or_else(|e| {
         eprintln!("error writing pubkey file: {e}");

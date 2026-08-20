@@ -746,10 +746,11 @@ fn resolve_php_entrypoint(app_dir: &Path) -> Option<Vec<String>> {
 /// port at runtime.
 fn server_cmd(doc_root: &str) -> Vec<String> {
     let port = std::env::var("ERE_PHP_PORT").unwrap_or_else(|_| "8080".to_string());
+    let host = std::env::var("ERE_PHP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     vec![
         "php".into(),
         "-S".into(),
-        format!("0.0.0.0:{port}"),
+        format!("{host}:{port}"),
         "-t".into(),
         doc_root.into(),
     ]
@@ -1186,7 +1187,7 @@ start = "uvicorn main:app"
         assert_eq!(ep[0], "php");
         assert_eq!(ep[1], "-S");
         // `php -S addr -t doc_root`: the listen address carries the override.
-        assert_eq!(ep[2], "0.0.0.0:9090");
+        assert_eq!(ep[2], "127.0.0.1:9090");
     }
 
     #[test]
