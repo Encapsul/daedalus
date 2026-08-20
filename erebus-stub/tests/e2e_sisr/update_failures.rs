@@ -15,7 +15,7 @@ fn staged_remote_with_tampered_chunk(
     let mut manifest = e.staged.remote.manifest.clone();
     manifest.chunks[0].hash[0] ^= 0xFF;
     let signature = sign(
-        &manifest.serialize(),
+        &manifest.serialize().unwrap(),
         &e.staged.remote.merkle_root,
         &super::key(),
     );
@@ -48,7 +48,7 @@ fn untrusted_signature_is_refused() {
     let e = env(BODY_V1, BODY_V2);
     let rogue = SigningKey::from_bytes(&[9u8; 32]);
     let staged = super::stage_update(&e.app, BODY_V2, &super::random_buf(256 << 10, 42), rogue);
-    e.server.route_manifest(&staged.remote.to_bytes());
+    e.server.route_manifest(&staged.remote.to_bytes().unwrap());
 
     let out = run_update(&e);
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
@@ -116,7 +116,7 @@ fn corrupted_chunk_bytes_are_rejected() {
 fn merkle_root_mismatch_is_refused() {
     let e = env(BODY_V1, BODY_V2);
     let bad = staged_remote_with_tampered_chunk(&e);
-    e.server.route_manifest(&bad.to_bytes());
+    e.server.route_manifest(&bad.to_bytes().unwrap());
 
     let out = run_update(&e);
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();

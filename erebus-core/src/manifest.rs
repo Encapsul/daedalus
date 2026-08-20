@@ -50,18 +50,22 @@ impl DeltaManifest {
     }
 
     /// Serializes the manifest into its compact binary form.
-    pub fn serialize(&self) -> Vec<u8> {
+    ///
+    /// Returns an error if the chunk count exceeds `u32::MAX`.
+    pub fn serialize(&self) -> io::Result<Vec<u8>> {
+        let chunk_count =
+            u32::try_from(self.chunks.len()).map_err(|_| err("chunk count exceeds u32::MAX"))?;
         let mut out = Vec::with_capacity(self.encoded_len());
         out.extend_from_slice(MAGIC);
         out.push(VERSION);
         out.extend_from_slice(&[0u8; 3]);
-        out.extend_from_slice(&(self.chunks.len() as u32).to_le_bytes());
+        out.extend_from_slice(&chunk_count.to_le_bytes());
         out.extend_from_slice(&self.payload_len.to_le_bytes());
         for chunk in &self.chunks {
             out.extend_from_slice(&chunk.hash);
             out.extend_from_slice(&chunk.length.to_le_bytes());
         }
-        out
+        Ok(out)
     }
 
     /// Parses a manifest from a complete serialized buffer.
@@ -144,7 +148,7 @@ mod tests {
     #[test]
     fn serialize_parse_roundtrip_is_bit_exact() {
         let m = sample();
-        let parsed = DeltaManifest::parse(&m.serialize()).unwrap();
+        let parsed = DeltaManifest::parse(&m.serialize().unwrap()).unwrap();
         assert_eq!(parsed, m);
         assert_eq!(parsed.version, VERSION);
         assert_eq!(parsed.payload_len, 4096);
@@ -159,7 +163,7 @@ mod tests {
             payload_len: 0,
             chunks: vec![],
         };
-        let bytes = m.serialize();
+        let bytes = m.serialize().unwrap();
         assert_eq!(bytes.len(), HEADER_SIZE);
         assert_eq!(DeltaManifest::parse(&bytes).unwrap(), m);
     }
@@ -167,12 +171,12 @@ mod tests {
     #[test]
     fn encoded_len_matches_serialized_len() {
         let m = sample();
-        assert_eq!(m.encoded_len(), m.serialize().len());
+        assert_eq!(m.encoded_len(), m.serialize().unwrap().len());
     }
 
     #[test]
     fn parse_rejects_truncated_buffer() {
-        let bytes = sample().serialize();
+        let bytes = sample().serialize().unwrap();
         assert!(DeltaManifest::parse(&bytes[..bytes.len() - 1]).is_err());
         assert!(DeltaManifest::parse(&bytes[..HEADER_SIZE - 1]).is_err());
         assert!(DeltaManifest::parse(&[]).is_err());
@@ -180,21 +184,21 @@ mod tests {
 
     #[test]
     fn parse_rejects_bad_magic() {
-        let mut bytes = sample().serialize();
+        let mut bytes = sample().serialize().unwrap();
         bytes[0..4].copy_from_slice(b"XXXX");
         assert!(DeltaManifest::parse(&bytes).is_err());
     }
 
     #[test]
     fn parse_rejects_unsupported_version() {
-        let mut bytes = sample().serialize();
+        let mut bytes = sample().serialize().unwrap();
         bytes[4] = VERSION + 1;
         assert!(DeltaManifest::parse(&bytes).is_err());
     }
 
     #[test]
     fn parse_rejects_trailing_garbage() {
-        let mut bytes = sample().serialize();
+        let mut bytes = sample().serialize().unwrap();
         bytes.push(0x00);
         assert!(DeltaManifest::parse(&bytes).is_err());
     }
@@ -246,7 +250,7 @@ mod proptests {
                 payload_len,
                 chunks,
             };
-            let parsed = DeltaManifest::parse(&m.serialize()).unwrap();
+            let parsed = DeltaManifest::parse(&m.serialize().unwrap()).unwrap();
             prop_assert_eq!(&parsed, &m);
         }
     }

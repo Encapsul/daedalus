@@ -235,7 +235,7 @@ pub fn assemble_erebus(out_path: &Path, input: &AssemblyInput<'_>) -> std::io::R
         };
         let mut manifest_path = out_path.to_path_buf();
         manifest_path.set_extension("erebus.manifest");
-        fs::write(manifest_path, remote.to_bytes())?;
+        fs::write(manifest_path, remote.to_bytes()?)?;
     }
 
     Ok(std::fs::metadata(out_path)?.len())
@@ -616,7 +616,7 @@ mod tests {
 
         let mut msg = Vec::with_capacity(32 + manifest.encoded_len());
         msg.extend_from_slice(&parsed_ext.merkle_root);
-        msg.extend_from_slice(&manifest.serialize());
+        msg.extend_from_slice(&manifest.serialize().unwrap());
         assert_eq!(
             key.sign(&msg).to_bytes(),
             parsed_ext.signature,

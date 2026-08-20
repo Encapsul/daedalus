@@ -109,15 +109,15 @@ fn derive_chunk_key(
     encryption_key: &[u8; 32],
     salt: &[u8; 32],
     chunk_index: u64,
-) -> Zeroizing<[u8; 32]> {
+) -> io::Result<Zeroizing<[u8; 32]>> {
     let mut info = Vec::with_capacity(HKDF_INFO.len() + 8);
     info.extend_from_slice(HKDF_INFO);
     info.extend_from_slice(&chunk_index.to_be_bytes());
     let hkdf = Hkdf::<Sha256>::new(Some(salt), encryption_key);
     let mut key = Zeroizing::new([0u8; 32]);
     hkdf.expand(&info, &mut key[..])
-        .expect("HKDF expand must never fail for 32-byte output");
-    key
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("HKDF expand failed: {e}")))?;
+    Ok(key)
 }
 
 /// Build a per-chunk GCM nonce from `base_nonce` and `chunk_index`.
@@ -160,7 +160,7 @@ pub fn encrypt_chunks(
             ));
         }
         let chunk_plaintext = &plaintext[offset..offset + size];
-        let key = derive_chunk_key(encryption_key, salt, i as u64);
+        let key = derive_chunk_key(encryption_key, salt, i as u64)?;
         let cipher = Aes256Gcm::new_from_slice(&key[..])
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("aes init: {e}")))?;
         let nonce = Nonce::from(chunk_nonce(base_nonce, i as u64));
@@ -206,7 +206,7 @@ pub fn decrypt_chunks(
             ));
         }
         let chunk_ct = &ciphertext[offset..offset + ct_len];
-        let key = derive_chunk_key(encryption_key, salt, i as u64);
+        let key = derive_chunk_key(encryption_key, salt, i as u64)?;
         let cipher = Aes256Gcm::new_from_slice(&key[..])
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("aes init: {e}")))?;
         let nonce = Nonce::from(chunk_nonce(base_nonce, i as u64));

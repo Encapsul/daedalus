@@ -231,7 +231,7 @@ pub fn env(v1: &str, v2: &str) -> TestEnv {
     );
 
     let (server, base_url) = MockHttpServer::start();
-    server.route_manifest(&staged.remote.to_bytes());
+    server.route_manifest(&staged.remote.to_bytes().unwrap());
     for (path, bytes) in &staged.chunks {
         server.route(path, bytes.clone());
     }

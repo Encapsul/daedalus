@@ -73,7 +73,15 @@ const LD_PATHS: &[&str] = &["lib", "usr/lib", "usr/lib/arm-linux-gnueabihf"];
 /// / `LD_LIBRARY_PATH` entries against the current directory — with `cwd`
 /// set to `/app` that misses `/usr/bin`, so pivot mode must use `/`-prefixed
 /// entries (they resolve inside the new root).
-#[cfg(unix)]
+#[cfg(all(unix, target_arch = "x86_64"))]
+const LD_PATHS_ABS: &[&str] = &[
+    "/lib",
+    "/lib64",
+    "/usr/lib",
+    "/usr/lib64",
+    "/usr/lib/x86_64-linux-gnu",
+];
+#[cfg(all(unix, target_arch = "aarch64"))]
 const LD_PATHS_ABS: &[&str] = &[
     "/lib",
     "/lib64",
@@ -81,6 +89,8 @@ const LD_PATHS_ABS: &[&str] = &[
     "/usr/lib64",
     "/usr/lib/aarch64-linux-gnu",
 ];
+#[cfg(all(unix, not(any(target_arch = "x86_64", target_arch = "aarch64"))))]
+const LD_PATHS_ABS: &[&str] = &["/lib", "/lib64", "/usr/lib", "/usr/lib64"];
 
 /// Binary search paths for PATH, mirroring `LD_PATHS` for executables.
 /// Bundled binaries (e.g. ffmpeg, gitleaks) land here via the rootfs.
