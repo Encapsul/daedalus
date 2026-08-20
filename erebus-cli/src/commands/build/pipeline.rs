@@ -2,6 +2,7 @@ use crate::remote_cache::remote_cache_from_args;
 use anyhow::{Context, Result};
 use erebus_core::detect;
 use erebus_core::embed;
+use erebus_core::layer::SerializableLayer;
 use erebus_core::metadata::{BunFeatures, EmbeddedInterpreter};
 use erebus_core::paths::cache_dir;
 use erebus_core::pkgmgr;
@@ -668,8 +669,11 @@ pub(crate) fn build_single_target(
         .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
         .collect();
 
-    let entrypoint =
-        detect::resolve_entrypoint(app_dir, runtime).unwrap_or_else(|| vec!["run".to_string()]);
+    let entrypoint = if !args.entrypoint.is_empty() {
+        args.entrypoint.clone()
+    } else {
+        detect::resolve_entrypoint(app_dir, runtime).unwrap_or_else(|| vec!["run".to_string()])
+    };
 
     let entrypoint = if runtime == detect::Runtime::Wasm && (args.wasi || args.component_model) {
         let mut ep = entrypoint.clone();
@@ -844,6 +848,9 @@ pub(crate) fn build_single_target(
         size as f64 / (1024.0 * 1024.0)
     );
 
+    // Generate desktop packaging files if requested
+    generate_package_artifacts(&args.package_format, output, app_dir, runtime_name)?;
+
     if args.enable_sisr {
         eprintln!(
             "warning: SISR binaries are NOT signed at rest — authenticity is only guaranteed \
@@ -932,4 +939,59 @@ pub(crate) fn build_single_target(
         })));
     }
     Ok(None)
+}
+
+/// Generate desktop packaging manifests (Flatpak or Snap) next to the erebus bundle.
+fn generate_package_artifacts(
+    format: &str,
+    output: &std::path::Path,
+    _app_dir: &std::path::Path,
+    runtime_name: &str,
+) -> Result<()> {
+    let app_name = output.file_stem().and_then(|s| s.to_str()).unwrap_or("app");
+
+    match format {
+        "flatpak" => {
+            let layers: Vec<SerializableLayer> = vec![];
+            let entrypoint = vec![runtime_name.to_string()];
+            let manifest = erebus_core::flatpak::generate_manifest(
+                app_name,
+                runtime_name,
+                &entrypoint,
+                &layers,
+            )?;
+            let manifest_json = serde_json::to_string_pretty(&manifest)?;
+
+            let out_dir = output.parent().unwrap_or(std::path::Path::new("."));
+            let manifest_path = out_dir.join("flatpak-manifest.json");
+            std::fs::write(&manifest_path, manifest_json)?;
+
+            let desktop_content = erebus_core::flatpak::generate_desktop_file(app_name, app_name);
+            let desktop_path = out_dir.join(format!("{app_name}.desktop"));
+            std::fs::write(&desktop_path, desktop_content)?;
+
+            eprintln!("  Flatpak manifest: {}", manifest_path.display());
+            eprintln!("  Desktop file: {}", desktop_path.display());
+        }
+        "snap" => {
+            let snap_config = erebus_core::snap::generate_snapcraft_yaml(
+                app_name,
+                "1.0.0",
+                None,
+                runtime_name,
+                &[runtime_name.to_string()],
+                false,
+            )?;
+            let yaml = erebus_core::snap::generate_yaml_string(&snap_config)?;
+
+            let out_dir = output.parent().unwrap_or(std::path::Path::new("."));
+            let snap_path = out_dir.join("snapcraft.yaml");
+            std::fs::write(&snap_path, yaml)?;
+
+            eprintln!("  Snap manifest: {}", snap_path.display());
+        }
+        _ => {}
+    }
+
+    Ok(())
 }

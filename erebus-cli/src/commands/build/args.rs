@@ -418,6 +418,10 @@ pub struct BuildArgs {
     #[arg(long)]
     pub interpreter_path: Option<String>,
 
+    /// Override entrypoint command (repeatable): --entrypoint python3,main.py
+    #[arg(long = "entrypoint", action = clap::ArgAction::Append)]
+    pub entrypoint: Vec<String>,
+
     /// Enable WASM support with wasmtime (NOT YET IMPLEMENTED IN STUB)
     #[arg(long, hide = true)]
     pub wasm: bool,
@@ -466,6 +470,11 @@ pub struct BuildArgs {
     /// 16 MiB for efficient SISR delta updates on multi-GB model payloads.
     #[arg(long)]
     pub embed_model: Option<PathBuf>,
+
+    /// Generate desktop packaging files (flatpak: flatpak-manifest.json + .desktop,
+    /// snap: snapcraft.yaml) alongside the erebus bundle
+    #[arg(long, value_parser = ["erebus", "flatpak", "snap"], default_value = "erebus")]
+    pub package_format: String,
 }
 
 #[derive(Default, Deserialize)]
@@ -729,6 +738,8 @@ mod tests {
             json: false,
             quiet: false,
             embed_model: None,
+            package_format: "erebus".into(),
+            entrypoint: Vec::new(),
         }
     }
 
