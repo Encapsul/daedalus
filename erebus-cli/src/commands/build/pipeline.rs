@@ -950,6 +950,18 @@ fn generate_package_artifacts(
 ) -> Result<()> {
     let app_name = output.file_stem().and_then(|s| s.to_str()).unwrap_or("app");
 
+    // Detect desktop environment and whether this is a GUI app
+    let desktop_env = erebus_core::flatpak::DesktopEnv::from_env();
+    let runtime_lower = runtime_name.to_lowercase();
+    let is_desktop = runtime_lower == "python"
+        || runtime_lower == "python3"
+        || runtime_lower == "node"
+        || runtime_lower == "nodejs"
+        || runtime_lower == "ruby"
+        || runtime_lower.starts_with("binary:")
+        || runtime_lower == "rust"
+        || runtime_lower == "go";
+
     match format {
         "flatpak" => {
             let layers: Vec<SerializableLayer> = vec![];
@@ -959,6 +971,8 @@ fn generate_package_artifacts(
                 runtime_name,
                 &entrypoint,
                 &layers,
+                is_desktop,
+                desktop_env,
             )?;
             let manifest_json = serde_json::to_string_pretty(&manifest)?;
 
@@ -981,6 +995,7 @@ fn generate_package_artifacts(
                 runtime_name,
                 &[runtime_name.to_string()],
                 false,
+                is_desktop,
             )?;
             let yaml = erebus_core::snap::generate_yaml_string(&snap_config)?;
 
