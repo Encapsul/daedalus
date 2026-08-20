@@ -154,6 +154,25 @@ fn detect_python(dir: &Path) -> bool {
         || dir.join("requirements.txt").is_file()
 }
 
+fn has_python_dep(dir: &Path, dep: &str) -> bool {
+    if let Ok(content) = std::fs::read_to_string(dir.join("requirements.txt")) {
+        return content.lines().any(|line| {
+            let name = line.split_whitespace().next().unwrap_or("");
+            let name = name
+                .split(['>', '<', '=', '!'])
+                .next()
+                .unwrap_or(name)
+                .to_lowercase()
+                .replace('-', "_");
+            name == dep.replace('-', "_")
+        });
+    }
+    if let Ok(content) = std::fs::read_to_string(dir.join("pyproject.toml")) {
+        return content.contains(dep);
+    }
+    false
+}
+
 fn detect_deno(dir: &Path) -> bool {
     dir.join("deno.json").is_file() || dir.join("deno.jsonc").is_file()
 }
@@ -301,6 +320,20 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
                     "0.0.0.0:8000".into(),
                 ]);
             }
+            // 0b. Streamlit
+            if has_python_dep(app_dir, "streamlit") {
+                if let Some(entry) = find_first_file(app_dir, &["app.py", "main.py", "server.py"]) {
+                    return Some(vec![
+                        "streamlit".into(),
+                        "run".into(),
+                        format!("/app/{}", entry),
+                        "--server.port".into(),
+                        "8501".into(),
+                        "--server.address".into(),
+                        "0.0.0.0".into(),
+                    ]);
+                }
+            }
             // 1. FastAPI / ASGI: uvicorn or gunicorn with uvicorn worker
             if let Some(asgi) = detect_asgi_entrypoint(app_dir) {
                 return Some(asgi);
@@ -341,6 +374,24 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             if let Some(entry) = find_node_entry(app_dir) {
                 if let Some(sub) = entry.strip_prefix("bun ") {
                     return Some(vec!["bun".into(), "run".into(), sub.into()]);
+                }
+                if let Some(sub) = entry.strip_prefix("tsx ") {
+                    return Some(vec!["npx".into(), "tsx".into(), sub.into()]);
+                }
+                if let Some(sub) = entry.strip_prefix("ts-node-dev ") {
+                    return Some(vec!["npx".into(), "ts-node-dev".into(), sub.into()]);
+                }
+                if let Some(sub) = entry.strip_prefix("ts-node ") {
+                    return Some(vec!["npx".into(), "ts-node".into(), sub.into()]);
+                }
+                if let Some(rest) = entry.strip_prefix("node ") {
+                    // "node --import tsx src/index.ts" → keep node + args
+                    // "node server.js" → keep node + args (relative ok, CWD=/app)
+                    return Some(vec!["node".into(), rest.into()]);
+                }
+                if let Some(rest) = entry.strip_prefix("npx ") {
+                    // "npx tsx src/index.ts" → keep npx + args
+                    return Some(vec!["npx".into(), rest.into()]);
                 }
                 return Some(vec!["node".into(), format!("/app/{}", entry)]);
             }
@@ -571,8 +622,7 @@ fn detect_bun_entry(app_dir: &Path) -> Option<Vec<String>> {
                     .and_then(|s| s.get("start"))
                     .and_then(|v| v.as_str())
                 {
-                    if cmd.starts_with("bun ") {
-                        let sub = cmd.strip_prefix("bun ").unwrap();
+                    if let Some(sub) = cmd.strip_prefix("bun ") {
                         return Some(vec!["bun".into(), "run".into(), sub.into()]);
                     }
                     // cmd == "bun" (no args) falls through to file-based search below
@@ -756,6 +806,17 @@ fn find_node_entry(dir: &Path) -> Option<String> {
                     .and_then(|s| s.get("start"))
                     .and_then(|v| v.as_str())
                 {
+                    let first_word = cmd.split_whitespace().next().unwrap_or("");
+                    // Return full command for TS runners so resolve_entrypoint
+                    // can build the correct argv. Only when a file arg exists.
+                    let is_ts_runner = matches!(
+                        first_word,
+                        "tsx" | "ts-node" | "ts-node-dev" | "node" | "bun" | "npx"
+                    );
+                    let has_file_arg = cmd.split_whitespace().count() > 1;
+                    if is_ts_runner && has_file_arg {
+                        return Some(cmd.to_string());
+                    }
                     // Extract filename from "node app.js" style commands
                     if let Some(filename) = cmd.split_whitespace().last() {
                         let name = filename.trim_start_matches("./");
@@ -1187,6 +1248,104 @@ start = "uvicorn main:app"
         std::fs::write(dir.path().join("index.js"), "console.log('hi')").unwrap();
         let ep = resolve_entrypoint(dir.path(), Runtime::Node);
         assert_eq!(ep, Some(vec!["node".into(), "/app/index.js".into()]));
+    }
+
+    #[test]
+    fn node_tsx_script_start() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"scripts":{"start":"tsx src/index.ts"}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src").join("index.ts"), "").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(
+            ep,
+            Some(vec!["npx".into(), "tsx".into(), "src/index.ts".into()])
+        );
+    }
+
+    #[test]
+    fn node_ts_node_script_start() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"scripts":{"start":"ts-node src/index.ts"}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src").join("index.ts"), "").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(
+            ep,
+            Some(vec!["npx".into(), "ts-node".into(), "src/index.ts".into()])
+        );
+    }
+
+    #[test]
+    fn node_npx_tsx_script_start() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"scripts":{"start":"npx tsx src/index.ts"}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src").join("index.ts"), "").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(ep, Some(vec!["npx".into(), "tsx src/index.ts".into()]));
+    }
+
+    #[test]
+    fn node_node_ts_import_tsx() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"scripts":{"start":"node --import tsx src/index.ts"}}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+        std::fs::write(dir.path().join("src").join("index.ts"), "").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Node);
+        assert_eq!(
+            ep,
+            Some(vec!["node".into(), "--import tsx src/index.ts".into()])
+        );
+    }
+
+    #[test]
+    fn python_streamlit_entrypoint() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("app.py"), "").unwrap();
+        std::fs::write(dir.path().join("requirements.txt"), "streamlit==1.37.0\n").unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Python);
+        assert_eq!(
+            ep,
+            Some(vec![
+                "streamlit".into(),
+                "run".into(),
+                "/app/app.py".into(),
+                "--server.port".into(),
+                "8501".into(),
+                "--server.address".into(),
+                "0.0.0.0".into(),
+            ])
+        );
+    }
+
+    #[test]
+    fn python_streamlit_with_hyphen() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("main.py"), "").unwrap();
+        std::fs::write(
+            dir.path().join("requirements.txt"),
+            "streamlit>=1.0\nfastapi\n",
+        )
+        .unwrap();
+        let ep = resolve_entrypoint(dir.path(), Runtime::Python);
+        assert!(ep.unwrap().contains(&"streamlit".to_string()));
     }
 
     #[test]

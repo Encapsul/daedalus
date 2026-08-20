@@ -6,6 +6,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+use zeroize::Zeroizing;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -33,8 +34,8 @@ fn cmd_keygen(args: &[String]) -> i32 {
         return 1;
     };
 
-    let mut seed = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut seed);
+    let mut seed = Zeroizing::new([0u8; 32]);
+    rand::rngs::OsRng.fill_bytes(&mut *seed);
     let signing_key = SigningKey::from_bytes(&seed);
     let verifying_key = signing_key.verifying_key();
 
@@ -50,8 +51,8 @@ fn cmd_keygen(args: &[String]) -> i32 {
         std::process::exit(1);
     });
 
-    let seed = signing_key.to_bytes();
-    fs::write(key_dir.join(format!("{fp_hex}.key")), seed).unwrap_or_else(|e| {
+    let seed = Zeroizing::new(signing_key.to_bytes());
+    fs::write(key_dir.join(format!("{fp_hex}.key")), &*seed).unwrap_or_else(|e| {
         eprintln!("error writing key file: {e}");
         std::process::exit(1);
     });
@@ -74,7 +75,8 @@ fn cmd_sign(args: &[String]) -> i32 {
 
     let seed = match fs::read(&key_path) {
         Ok(b) if b.len() == 32 => {
-            let mut arr = [0u8; 32];
+            let b = Zeroizing::new(b);
+            let mut arr = Zeroizing::new([0u8; 32]);
             arr.copy_from_slice(&b);
             arr
         }

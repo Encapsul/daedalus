@@ -25,11 +25,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"            # config file parsing
 dirs = "5"              # standard directories (config, cache, home)
-ed25519-dalek = { version = "2.1", default-features = false, features = ["alloc"] }  # >= 2.1.0: CVE-2023-48022
+ed25519-dalek = { version = "2.1", default-features = false, features = ["alloc", "zeroize"] }  # >= 2.1.0: CVE-2023-48022
 rand = "0.8"
 libc = "0.2"
 aes-gcm = "0.10"        # AES-256-GCM payload decryption
 hkdf = "0.12"           # HKDF-SHA256 for AES key derivation from signing seed
+zeroize = "1"           # secure memory zeroization for keys and secrets
 backhand = { version = "0.25", default-features = false, features = ["gzip", "lz4", "zstd"] }  # squashfs extraction
 hex = "0.4"               # hex encoding for cache keys
 ureq = "3"                # HTTPS client for --erebus-update (rustls + ring, builds with plain cc)

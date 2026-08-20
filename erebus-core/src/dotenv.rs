@@ -13,8 +13,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 static SECRET_RE: LazyLock<Regex> = LazyLock::new(|| {
-    // SAFETY: regex is a compile-time constant, infallible
-    Regex::new(r"(?i)(secret|password|token|api[_-]?key|private[_-]?key|credentials)").unwrap()
+    Regex::new(r"(?i)(secret|password|token|api[_-]?key|private[_-]?key|credentials)")
+        .expect("valid regex")
 });
 
 pub fn parse_dotenv(path: &Path) -> io::Result<HashMap<String, String>> {

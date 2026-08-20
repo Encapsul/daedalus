@@ -4,6 +4,7 @@ use ed25519_dalek::SigningKey;
 use erebus_core::legacy::upgrade_binary;
 use erebus_core::sisr_stage::SisrBuildConfig;
 use std::path::{Path, PathBuf};
+use zeroize::Zeroizing;
 
 #[derive(Args)]
 pub struct UpgradeBinaryArgs {
@@ -48,12 +49,14 @@ pub fn run(args: UpgradeBinaryArgs) -> Result<()> {
     let signing_key = match &args.key {
         Some(path) => {
             warn_if_insecure_key_permissions(path);
-            let key_bytes = std::fs::read(path)
-                .with_context(|| format!("failed to read signing key at {}", path.display()))?;
+            let key_bytes =
+                Zeroizing::new(std::fs::read(path).with_context(|| {
+                    format!("failed to read signing key at {}", path.display())
+                })?);
             if key_bytes.len() != 32 {
                 anyhow::bail!("key must be 32 bytes, got {}", key_bytes.len());
             }
-            let mut key_arr = [0u8; 32];
+            let mut key_arr = Zeroizing::new([0u8; 32]);
             key_arr.copy_from_slice(&key_bytes);
             Some(SigningKey::from_bytes(&key_arr))
         }

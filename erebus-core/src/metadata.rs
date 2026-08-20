@@ -39,9 +39,12 @@ pub struct ArtifactMetadata {
     /// Seccomp sandbox enabled.
     #[serde(default)]
     pub seccomp: bool,
-    /// Landlock sandbox enabled.
+    /// Landlock LSM filesystem sandbox enabled.
     #[serde(default)]
     pub landlock: bool,
+    /// GUI app — bind-mount X11/Wayland/GPU before `pivot_root`.
+    #[serde(default)]
+    pub gui: bool,
     /// Payload format (zstd-tar, squashfs).
     #[serde(default)]
     pub payload_format: String,

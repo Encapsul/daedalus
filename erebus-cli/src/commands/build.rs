@@ -10,6 +10,7 @@ use erebus_core::pkgmgr;
 use erebus_core::sisr_stage::SisrBuildConfig;
 use sha2::Digest;
 use std::path::{Path, PathBuf};
+use zeroize::Zeroizing;
 
 /// Map an isolation spec to the numeric level stored in metadata.
 ///
@@ -78,6 +79,7 @@ struct BuildPlan {
     no_install: bool,
     seccomp: bool,
     landlock: bool,
+    gui: bool,
     encrypt: bool,
     squashfs: bool,
     version_info: Option<String>,
@@ -296,6 +298,10 @@ pub struct BuildArgs {
     /// Enable seccomp BPF filter
     #[arg(long)]
     pub seccomp: bool,
+
+    /// GUI app — bind-mount X11/Wayland/GPU before `pivot_root`
+    #[arg(long)]
+    pub gui: bool,
 
     /// Enable Landlock LSM filesystem sandbox
     #[arg(long)]
@@ -517,6 +523,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         no_install: args.no_install || config.build.no_install.unwrap_or(false),
         seccomp: args.seccomp || config.build.seccomp.unwrap_or(false),
         landlock: args.landlock || config.build.landlock.unwrap_or(false),
+        gui: args.gui || config.build.gui.unwrap_or(false),
         encrypt: args.encrypt || config.build.encrypt.unwrap_or(false),
         squashfs: args.squashfs || config.build.squashfs.unwrap_or(false),
         version_info: args.version_info.clone().or(config.package.version),
@@ -581,6 +588,7 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
     eprintln!("  Isolation: {}", plan.isolation);
     eprintln!("  Seccomp:   {}", plan.seccomp);
     eprintln!("  Landlock:  {}", plan.landlock);
+    eprintln!("  GUI:       {}", plan.gui);
     warn_sandbox_noops(plan.isolation_num, plan.seccomp, plan.landlock);
     eprintln!("  Encrypt:   {}", plan.encrypt);
     eprintln!("  SquashFS:  {}", plan.squashfs);
@@ -683,6 +691,7 @@ fn build_single_target(
     let no_install = plan.no_install;
     let seccomp = plan.seccomp;
     let landlock = plan.landlock;
+    let gui = plan.gui;
     let encrypt = plan.encrypt;
     let squashfs = plan.squashfs;
     let version_info = plan.version_info.clone();
@@ -1116,8 +1125,7 @@ fn build_single_target(
 
     if encrypt {
         // Generate a fresh random encryption key — never reuse the signing seed.
-        let mut encryption_key = [0u8; 32];
-        encryption_key.copy_from_slice(&erebus_core::encrypt::generate_encryption_key());
+        let encryption_key = erebus_core::encrypt::generate_encryption_key();
 
         if args.enable_sisr {
             let sisr_config = build_sisr_config(&args.key, args.embed_model.is_some())?;
@@ -1419,6 +1427,7 @@ fn build_single_target(
             payload_format: Some(if squashfs { "squashfs" } else { "zstd-tar" }.to_string()),
             seccomp,
             landlock,
+            gui,
             app_hash: Some(new_app_hash.clone()),
             rt_deps_hash: Some(new_rt_hash.clone()),
             update_url: args.update_url.clone(),
@@ -1617,12 +1626,14 @@ fn build_sisr_config(key_path: &Option<PathBuf>, embed_model: bool) -> Result<Si
     let signing_key = match key_path {
         Some(path) => {
             warn_if_insecure_key_permissions(path);
-            let key_bytes = std::fs::read(path)
-                .with_context(|| format!("failed to read signing key at {}", path.display()))?;
+            let key_bytes =
+                Zeroizing::new(std::fs::read(path).with_context(|| {
+                    format!("failed to read signing key at {}", path.display())
+                })?);
             if key_bytes.len() != 32 {
                 anyhow::bail!("key must be 32 bytes, got {}", key_bytes.len());
             }
-            let mut key_arr = [0u8; 32];
+            let mut key_arr = Zeroizing::new([0u8; 32]);
             key_arr.copy_from_slice(&key_bytes);
             Some(SigningKey::from_bytes(&key_arr))
         }
@@ -1668,6 +1679,7 @@ struct BuildConfig {
     pub isolation: Option<String>,
     pub seccomp: Option<bool>,
     pub landlock: Option<bool>,
+    pub gui: Option<bool>,
     pub encrypt: Option<bool>,
     pub squashfs: Option<bool>,
     pub target: Option<String>,
@@ -2728,6 +2740,7 @@ mod tests {
             target: None,
             isolation: "sandbox".into(),
             seccomp: false,
+            gui: false,
             landlock: false,
             encrypt: false,
             squashfs: false,
@@ -2784,6 +2797,7 @@ mod tests {
             isolation_num: 2,
             no_install: false,
             seccomp: false,
+            gui: false,
             landlock: false,
             encrypt,
             squashfs,

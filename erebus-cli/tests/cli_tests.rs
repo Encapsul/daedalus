@@ -240,6 +240,7 @@ fn test_inspect_reports_encrypted_v4() {
             payload_format: Some("raw".to_string()),
             seccomp: false,
             landlock: false,
+            gui: false,
             app_hash: None,
             rt_deps_hash: None,
             update_url: None,

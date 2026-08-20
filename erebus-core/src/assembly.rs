@@ -85,6 +85,9 @@ pub fn build_meta_json(
     if options.landlock {
         meta["landlock"] = serde_json::Value::Bool(true);
     }
+    if options.gui {
+        meta["gui"] = serde_json::Value::Bool(true);
+    }
     if let Some(c) = &options.app_hash {
         meta["app_hash"] = serde_json::Value::String(c.clone());
     }
@@ -143,6 +146,7 @@ pub struct MetaOptions {
     pub payload_format: Option<String>,
     pub seccomp: bool,
     pub landlock: bool,
+    pub gui: bool,
     pub app_hash: Option<String>,
     pub rt_deps_hash: Option<String>,
     /// Base URL of the SISR update channel (`{url}/manifest`, `{url}/chunks/<hex>`).
@@ -201,6 +205,7 @@ pub fn assemble_erebus(out_path: &Path, input: &AssemblyInput<'_>) -> std::io::R
     // handle dropped — racing an immediate exec (`ETXTBSY` in CI) and leaving
     // a half-written binary at the output path on a mid-write crash.
     let parent = out_path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
     let tag = out_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -496,6 +501,7 @@ mod tests {
             payload_format: None,
             seccomp: false,
             landlock: false,
+            gui: false,
             app_hash: None,
             rt_deps_hash: None,
             update_url: None,

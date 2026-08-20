@@ -46,7 +46,11 @@ pub struct DeltaManifest {
 impl DeltaManifest {
     /// Byte length of the serialized form.
     pub fn encoded_len(&self) -> usize {
-        HEADER_SIZE + self.chunks.len() * ENTRY_SIZE
+        self.chunks
+            .len()
+            .checked_mul(ENTRY_SIZE)
+            .and_then(|n| n.checked_add(HEADER_SIZE))
+            .expect("manifest size overflow")
     }
 
     /// Serializes the manifest into its compact binary form.

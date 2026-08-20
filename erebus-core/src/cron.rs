@@ -24,7 +24,7 @@ pub fn parse_schedule(schedule: &str) -> u64 {
         let minute_part = parts[0];
         if let Some(n) = minute_part.strip_prefix("*/") {
             if let Ok(val) = n.parse::<u64>() {
-                return val * 60;
+                return val.saturating_mul(60);
             }
         }
         return 60;
@@ -40,13 +40,13 @@ pub fn parse_interval(val: &str) -> u64 {
     }
     if let Some(n) = val.strip_suffix('m') {
         if let Ok(n_parsed) = n.parse::<u64>() {
-            return n_parsed * 60;
+            return n_parsed.saturating_mul(60);
         }
         return 3600;
     }
     if let Some(n) = val.strip_suffix('h') {
         if let Ok(n_parsed) = n.parse::<u64>() {
-            return n_parsed * 3600;
+            return n_parsed.saturating_mul(3600);
         }
         return 3600;
     }
