@@ -788,6 +788,8 @@ pub(crate) fn build_single_target(
             rt_deps_hash: Some(new_rt_hash.clone()),
             update_url: args.update_url.clone(),
             crypto: crypto_meta,
+            layers: None,
+            entrypoint_layer: None,
         },
         &bun_features,
     )?;
