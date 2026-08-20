@@ -5,12 +5,12 @@
 [![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](https://github.com/Tednoob17/erebus/releases)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)]()
-[![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)
+[![Runtimes](https://img.shields.io/badge/runtimes-13-purple.svg)](#supported-runtimes)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Tednoob17/erebus/pulls)
 
 **Package any app into a single self-extracting binary.**
 
-erebus compiles any web, server, or CLI application into a single self-contained executable. Supported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo.
+erebus compiles any web, server, or CLI application into a single self-contained executable. Supported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo, Electron, Wasm.
 
 The binary format (`[stub][payload][metadata][footer]`) is a universal executable artifact — capable of transporting an application, an AI agent, a microservice, or a plugin as a single portable unit.
 
@@ -48,6 +48,8 @@ The tool handles runtime detection, dependency installation, compression, and si
 | PHP | `composer.json` | Laravel, Symfony, WordPress |
 | Perl | `Makefile.PL`, `cpanfile` | Mojolicious, Dancer |
 | Hugo | `hugo.toml`, `hugo.yaml` | Static site generator |
+| Electron | Electron app directory | Electron apps |
+| Wasm | `index.wasm`, `app.wasm`, `main.wasm` | WebAssembly runtimes |
 | Binary | ELF executable | Any static or dynamic binary |
 
 Each runtime has specific detection logic and framework support that triggers when building.

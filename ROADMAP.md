@@ -46,7 +46,9 @@ Un agent IA est un binaire erebus qui contient :
 - ✅ Metadata riche — `metadata.rs` : `ArtifactMetadata` avec `Vec<SerializableLayer>`
 - ✅ Signature Ed25519 — `crypto.rs`
 - ✅ Chiffrement AES-256-GCM — `encrypt.rs`
-- ✅ Détection runtime — `detect.rs` : 11 runtimes, `EntrypointRegistry`
+- ✅ Détection runtime — `detect.rs` : 13 runtimes, `EntrypointRegistry`
+- ✅ Runtime Node.js — monorepo workspace sub-package scanning
+- ✅ Runtime Ruby — Jekyll entrypoint resolution
 
 ### Abstraction des couches (`layer.rs`)
 - ✅ Trait `Layer` : `name()`, `kind()`, `payload_sha256()`, `compression()`, `encryption()`, `capabilities()`
@@ -69,6 +71,7 @@ Un agent IA est un binaire erebus qui contient :
 ### CLI (`erebus-cli`)
 - ✅ `build`, `inspect`, `scan`, `sign`, `verify`, `keygen`, `trust`
 - ✅ `doctor`, `env`, `clean`, `completion`, `man`, `upgrade`
+- ✅ `build` module split : 2978 lignes → 8 modules (`args`, `deps`, `pipeline`, `payload`, `sign`, `sisr`, `stub`, `mod`)
 - ⚠️ `publish` — stub/placeholder, pas de vrai push/pull
 
 ### Stub launcher (`erebus-stub`)
@@ -77,11 +80,27 @@ Un agent IA est un binaire erebus qui contient :
 - ✅ Extraction zstd+tar ou squashfs
 - ✅ `execvp` entrypoint
 - ✅ SISR delta update
+- ✅ Seccomp BPF denylist (18 syscalls dangereux, KILL_PROCESS)
+- ✅ Landlock LSM sandbox (rootfs R/W, lecture seule ailleurs)
+- ✅ Health gate enforced — quarantaine + rollback automatique
+- ✅ Signal handler async-signal-safe (static mut + AtomicUsize, pas Mutex)
+- ✅ HTTP response 64 MiB limit (configurable via `ERE_HTTP_MAX_RESPONSE`)
+- ✅ Zeroize pour toutes les clés crypto (ed25519, AES-256, HKDF)
+- ✅ Clés privées en 0o600 (owner read/write only)
 - ❌ Ne parcourt PAS les couches dynamiquement (lit un Metadata plat)
 - ❌ N'utilise PAS le trait `Entrypoint` (a sa propre logique dans `exec.rs`)
-- ❌ N'applique PAS les `Capability` au runtime
+- ❌ N'applique PAS les `Capability` au runtime (seccomp/landlock sont des denylists hardcoded, pas capability-driven)
 - ❌ Pas de lazy loading — extrait tout le rootfs d'un coup
 - ❌ Pas de hot-swap — rebuild complet pour changement d'une couche
+
+### Sécurité
+- ✅ 35 findings review (17 true positives → tous fixés)
+- ✅ ANSSI-Rust compliance check — zero unsafe dans erebus-core et erebus-cli
+- ✅ PHP default bind 127.0.0.1 (pas 0.0.0.0), configurable via `ERE_PHP_HOST`
+
+### Build & DevX
+- ✅ `build` module split : 2978 lignes → 8 modules sous `commands/build/`
+- ✅ `.gitignore` fix : `build/` → `/build/` pour tracker le module directory
 
 ---
 
@@ -133,18 +152,34 @@ Un agent IA est un binaire erebus qui contient :
 3. **Intégrer au build** : `erebus build --publish` pousse les couches automatiquement
 4. **Use case agent** : partager le runtime python3 entre plusieurs agents (une seule couche runtime dans le registry, chaque agent référence le hash)
 
-### Phase 5 : Security audit + enforcement (2-3 jours)
+### Phase 5a : Security audit + enforcement de base ✅ FAIT
 
-**Objectif** : Les `Capability` doivent être vérifiées, pas juste déclarées.
+**Objectif** : Sécurité de base du stub. **Entièrement complété (août 2026).**
 
-1. **Créer `SECURITY-AUDIT.md`** — inventaire des surfaces d'attaque
+1. ✅ Seccomp BPF denylist — 18 syscalls dangereux bloqués (`seccomp.rs`)
+2. ✅ Landlock LSM — sandbox rootfs R/W, lecture seule ailleurs (`landlock.rs`)
+3. ✅ Health gate enforced — quarantaine + rollback automatique (`main.rs`)
+4. ✅ Signal handler async-signal-safe (static mut + AtomicUsize)
+5. ✅ HTTP response 64 MiB limit
+6. ✅ Zeroize pour toutes les clés crypto
+7. ✅ Clés privées en 0o600
+8. ✅ 35 findings review (17 true positives → tous fixés)
+
+### Phase 5b : Capability-driven security (3-4 jours) — À FAIRE
+
+**Objectif** : Les `Capability` doivent être vérifiées, pas juste déclarées. Le seccomp/landlock actuel est une denylist hardcoded — il faut le rendre capability-driven.
+
+1. **Lire les capabilities depuis le binaire** — le stub doit parser `ArtifactMetadata.layers[].capabilities` (nécessite Phase 1)
 2. **Enforcer les capabilities dans le stub** :
    - `Network` → Landlock LSM ou seccomp (deny `connect`)
    - `WriteFile` → Landlock (deny write hors rootfs)
    - `Exec` → seccomp (deny `execve` sauf entrypoint)
-   - `Syscall` → filter syscalls whitelist/blacklist
-3. **Tests de sandboxing** — vérifier que les capabilities restreintes bloquent réellement
-4. **Use case agent** : un agent IA ne doit PAS pouvoir écrire sur le filesystem hôte ni faire de réseau sauf vers ses APIs autorisées
+   - `Syscall` → filter syscalls whitelist/blacklist par couche
+3. **Remplacer les denylists hardcoded** par des filtres dynamiques basés sur les capabilities
+4. **Tests de sandboxing** — vérifier que les capabilities restreintes bloquent réellement
+5. **Use case agent** : un agent IA ne doit PAS pouvoir écrire sur le filesystem hôte ni faire de réseau sauf vers ses APIs autorisées
+
+> Bloqué par Phase 1 (le stub doit lire les couches pour connaître les capabilities).
 
 ### Phase 6 : Templates + multi-agent (2-3 jours)
 
@@ -171,11 +206,110 @@ Un agent IA est un binaire erebus qui contient :
 ## Priorité
 
 1. **Phase 1** (stub → couches) — **bloque tout**, le système de couches est du code mort
-2. **Phase 5** (security) — **nécessaire avant production**, capabilities sans enforcement = gimmick
+2. **Phase 5b** (capability-driven security) — **nécessaire avant production**, les denylists hardcoded ne suffisent pas ; bloqué par Phase 1
 3. **Phase 2** (hot-swap) — **différenciant agent IA**, remplacer un modèle sans rebuild
 4. **Phase 3** (lazy loading) — **performance agent IA**, ne pas charger 7 Go de modèle au démarrage
 5. **Phase 4** (registry) — **adoption**, partager des couches entre artefacts
 6. **Phase 6** (templates) — **storytelling**, prouve que le format est universel
+7. **Phase 7** (hardening) — **observability + rollback + risk mitigation**
+
+---
+
+## Single Points of Failure & Mitigations
+
+| SPOF | Risk | Mitigation | Status |
+|------|------|------------|--------|
+| SISR manifest server (remote `.erebus.manifest`) | Network outage → updates fail permanently | Manifest embedded in binary fallback + local cache with SHA-256 verification | ✅ Mitigé (cache + verify) |
+| Cache corruption (`~/.cache/erebus/<hash>/`) | Corrupted cache → wrong behavior | SHA-256 verification at cache check before use | ✅ Mitigé (sha256 verify) |
+| CI musl cross-compilation | musl toolchain unavailable → no ARM builds | CI matrix with fallback to GNU targets; experimental builds for non-amd64 | ✅ Mitigé (5 arches) |
+| Ed25519 signing key compromise | Attacker can forge binaries | Keys have Ed25519 bit set (CVE-2023-48022); key permissions checked at build | ✅ Mitigé (key check) |
+
+```
+  SISR UPDATE FLOW
+  ┌─────────────────┐
+  │ User runs:      │
+  │ ./myapp.ere    │
+  └────────┬────────┘
+           │
+           ▼
+  ┌──────────────────┐   NO   ┌──────────────┐
+  │ Footer.has_sisr()?├───────►│ Classic      │
+  └────────┬──────────┘        │ extraction   │
+           │ YES               └──────────────┘
+           ▼
+  ┌──────────────────┐
+  │ Fetch            │
+  │ .erebus.manifest │
+  └────────┬─────────┘
+           │
+    ┌──────▼──────┐
+    │ SHA-256     │
+    │ verify      │
+    └──────┬──────┘
+           │
+  ┌────────▼────────┐   ┌─────────────────┐
+  │ Chunk lookup    │◄──┤ Cache hits?     │
+  │ in cache        │   └─────────────────┘
+  └─────────────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │ Merge new+cached│
+  │ chunks          │
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │ Verify SHA-256  │
+  │ of merged       │
+  │ payload         │
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │ Atomic swap to  │
+  │ cache dir       │
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │ execvp entrypoint│
+  └─────────────────┘
+```
+
+---
+
+## Phase 7: Operational Hardening (3-4 jours)
+
+**Objectif** : Passer de "fonctionne" à "fiable en production" avec observability, rollback, et documentation des flux critiques.
+
+1. **Observability** : Logging structuré dans le stub
+   - Entrées/sorties de chaque phase (extraction, vérification SISR, exec)
+   - Métriques : `erebus_stub_extract_ms`, `erebus_sisr_chunk_fetch_ms`, `erebus_cache_hit_ratio`
+   - Export Prometheus endpoint optionnelle (`--metrics :9090`)
+
+2. **Rollback procedure** : Feature flag + rollback guide
+   - `--no-sisr` flag : désactiver SISR, extraction classique
+   - `--no-sign` flag : bypass Ed25519 verification (dev only)
+   - `erebus selftest <binary>` : valide intégrité + exécution dans sandbox
+   - Rollback guide dans `docs/runbooks/rollback-after-bad-deploy.md`
+
+3. **Data flow documentation** : ASCII diagrams dans le code source
+   - `erebus-stub/src/main.rs` : diagramme SISR happy/nil/error path
+   - `erebus-core/src/sisr_stage.rs` : state machine chunk lifecycle
+   - `erebus-core/src/exec.rs` : sandbox state transitions (none → pivot → exec)
+
+4. **Security audit deliverables** :
+   - `SECURITY-AUDIT.md` — inventaire des surfaces d'attaque (déjà partiellement fait)
+   - `docs/runbooks/` — incident response pour chaque failure path
+   - Tests de chaos : injection de faute réseau, corruption de chunk
+
+5. **Error rescue map** (from Section 2 CEO review) :
+   - `stub/main.rs` footer read → `io::Error` → rescued, "Corrupt binary"
+   - `stub/main.rs` SISR fetch → `ureq::Error` → rescued, retry then "Update failed"
+   - `stub/exec.rs` pivot_root → `Errno(EPERM)` → rescued, fallback extract-only
+   - `stub/exec.rs` seccomp → `ENOSYS` → rescued, warning + continue
+
 
 ---
 
