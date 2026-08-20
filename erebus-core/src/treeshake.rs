@@ -8,14 +8,11 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-static REQ_RE: LazyLock<Regex> = LazyLock::new(|| {
-    // SAFETY: regex is a compile-time constant, infallible
-    Regex::new(r#"require\s*\(\s*['"]([^'"]+)['"]\s*\)"#).unwrap()
-});
+static REQ_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"require\s*\(\s*['"]([^'"]+)['"]\s*\)"#).expect("valid regex"));
 static IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    // SAFETY: regex is a compile-time constant, infallible
     Regex::new(r#"import\s+(?:.*?\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)"#)
-        .unwrap()
+        .expect("valid regex")
 });
 
 const SKIP_DIRS: &[&str] = &[

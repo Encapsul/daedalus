@@ -810,6 +810,7 @@ dependencies = [
  "toml 0.8.23",
  "ureq",
  "walkdir",
+ "zeroize",
  "zstd",
  "zstd-sys",
 ]

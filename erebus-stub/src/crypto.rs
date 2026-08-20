@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use ed25519_dalek::{Signature, Verifier};
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
 
 use crate::{CryptoMeta, Footer};
 use erebus_core::encrypt::hkdf_derive_key as core_hkdf_derive_key;
@@ -143,13 +144,12 @@ fn ct_eq_sha256(got: &sha2::digest::Output<sha2::Sha256>, expected: &[u8; 32]) -
 // ---------------------------------------------------------------------------
 
 /// Derive a 32-byte AES key from the encryption key via HKDF-SHA256.
-pub fn hkdf_derive_key(encryption_key: &[u8], salt: &[u8; 32]) -> io::Result<[u8; 32]> {
+pub fn hkdf_derive_key(encryption_key: &[u8], salt: &[u8; 32]) -> io::Result<Zeroizing<[u8; 32]>> {
     let key: &[u8; 32] = encryption_key
         .try_into()
         .map_err(|_| crate::err("encryption key must be exactly 32 bytes"))?;
     core_hkdf_derive_key(key, salt)
         .map_err(|e| crate::err(&format!("HKDF key derivation failed: {e}")))
-        .map(|key| *key)
 }
 
 /// Decrypt an AES-256-GCM payload.
@@ -160,8 +160,10 @@ pub fn hkdf_derive_key(encryption_key: &[u8], salt: &[u8; 32]) -> io::Result<[u8
 /// does not protect authenticity (that is the signing key's job), so callers
 /// must verify the signature before trusting the plaintext.
 pub fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec<u8>> {
-    let encryption_key = hex_decode(&crypto.encryption_key_hex)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption key hex"))?;
+    let encryption_key = Zeroizing::new(
+        hex_decode(&crypto.encryption_key_hex)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption key hex"))?,
+    );
     if encryption_key.len() != 32 {
         return Err(crate::err("encryption key must be 32 bytes"));
     }
@@ -174,11 +176,13 @@ pub fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec
         .map_err(|_| crate::err("encryption salt must be exactly 32 bytes"))?;
 
     let aes_key = hkdf_derive_key(&encryption_key, &salt)?;
-    let cipher = Aes256Gcm::new_from_slice(&aes_key)
+    let cipher = Aes256Gcm::new_from_slice(&*aes_key)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("AES init: {e}")))?;
 
-    let nonce_bytes = hex_decode(&crypto.nonce_hex)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad nonce hex"))?;
+    let nonce_bytes = Zeroizing::new(
+        hex_decode(&crypto.nonce_hex)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad nonce hex"))?,
+    );
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     cipher

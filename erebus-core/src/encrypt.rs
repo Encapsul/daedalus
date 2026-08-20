@@ -90,8 +90,8 @@ pub fn generate_salt() -> [u8; 32] {
 /// This key is independent of the Ed25519 signing seed and is used only
 /// for HKDF key derivation + AES encryption.  It is safe to embed in the
 /// binary metadata; compromising it does not reveal the signing seed.
-pub fn generate_encryption_key() -> [u8; 32] {
-    generate_salt()
+pub fn generate_encryption_key() -> Zeroizing<[u8; 32]> {
+    generate_salt().into()
 }
 
 /// Generate a random 12-byte AES-GCM nonce.
@@ -150,16 +150,24 @@ pub fn encrypt_chunks(
     base_nonce: &[u8; NONCE_LEN],
     chunk_sizes: &[usize],
 ) -> io::Result<Vec<u8>> {
-    let mut ciphertext = Vec::with_capacity(plaintext.len() + chunk_sizes.len() * CHUNK_TAG_LEN);
-    let mut offset = 0;
+    let tag_bytes = chunk_sizes.len().saturating_mul(CHUNK_TAG_LEN);
+    let capacity = plaintext.len().saturating_add(tag_bytes);
+    let mut ciphertext = Vec::with_capacity(capacity);
+    let mut offset = 0usize;
     for (i, &size) in chunk_sizes.iter().enumerate() {
-        if offset + size > plaintext.len() {
+        let end = offset.checked_add(size).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("chunk {i} offset overflow"),
+            )
+        })?;
+        if end > plaintext.len() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("chunk {i} size {size} exceeds remaining plaintext"),
             ));
         }
-        let chunk_plaintext = &plaintext[offset..offset + size];
+        let chunk_plaintext = &plaintext[offset..end];
         let key = derive_chunk_key(encryption_key, salt, i as u64)?;
         let cipher = Aes256Gcm::new_from_slice(&key[..])
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("aes init: {e}")))?;
@@ -195,17 +203,24 @@ pub fn decrypt_chunks(
     base_nonce: &[u8; NONCE_LEN],
     chunk_sizes: &[usize],
 ) -> io::Result<Vec<u8>> {
-    let mut plaintext = Vec::with_capacity(chunk_sizes.iter().sum());
-    let mut offset = 0;
+    let total_pt: usize = chunk_sizes.iter().copied().sum();
+    let mut plaintext = Vec::with_capacity(total_pt);
+    let mut offset = 0usize;
     for (i, &plaintext_len) in chunk_sizes.iter().enumerate() {
-        let ct_len = plaintext_len + CHUNK_TAG_LEN;
-        if offset + ct_len > ciphertext.len() {
+        let ct_len = plaintext_len.saturating_add(CHUNK_TAG_LEN);
+        let end = offset.checked_add(ct_len).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("chunk {i}: offset overflow"),
+            )
+        })?;
+        if end > ciphertext.len() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("chunk {i}: ciphertext truncated (need {ct_len} bytes at offset {offset})"),
             ));
         }
-        let chunk_ct = &ciphertext[offset..offset + ct_len];
+        let chunk_ct = &ciphertext[offset..end];
         let key = derive_chunk_key(encryption_key, salt, i as u64)?;
         let cipher = Aes256Gcm::new_from_slice(&key[..])
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("aes init: {e}")))?;

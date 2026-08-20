@@ -1137,7 +1137,7 @@ fn embed_java_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Re
     let jvm_lib = java_home_path.join("lib/server/libjvm.so");
     if jvm_lib.is_file() {
         let dst = rootfs.join("usr/lib/jvm/java/lib/server/libjvm.so");
-        let _ = std::fs::create_dir_all(dst.parent().unwrap());
+        let _ = std::fs::create_dir_all(dst.parent().expect("path has parent"));
         let _ = std::fs::copy(&jvm_lib, &dst);
         count += 1;
     }
@@ -1145,7 +1145,7 @@ fn embed_java_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Re
     let jvm_lib_jre = java_home_path.join("jre/lib/amd64/server/libjvm.so");
     if jvm_lib_jre.is_file() {
         let dst = rootfs.join("usr/lib/jvm/java/jre/lib/amd64/server/libjvm.so");
-        let _ = std::fs::create_dir_all(dst.parent().unwrap());
+        let _ = std::fs::create_dir_all(dst.parent().expect("path has parent"));
         let _ = std::fs::copy(&jvm_lib_jre, &dst);
         count += 1;
     }

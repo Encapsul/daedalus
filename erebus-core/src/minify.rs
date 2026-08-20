@@ -9,13 +9,15 @@ use std::sync::LazyLock;
 use regex::Regex;
 use which::which;
 
-// SAFETY: all regexes below are compile-time constants, infallible
-static CSS_COMMENTS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)/\*.*?\*/").unwrap());
-static CSS_WS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
-static CSS_SEL_OPEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\{\s*").unwrap());
-static CSS_SEL_CLOSE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\}\s*").unwrap());
-static CSS_COLON: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*:\s*").unwrap());
-static CSS_SEMI: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*;\s*").unwrap());
+static CSS_COMMENTS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s)/\*.*?\*/").expect("valid regex"));
+static CSS_WS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").expect("valid regex"));
+static CSS_SEL_OPEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s*\{\s*").expect("valid regex"));
+static CSS_SEL_CLOSE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s*\}\s*").expect("valid regex"));
+static CSS_COLON: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*:\s*").expect("valid regex"));
+static CSS_SEMI: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*;\s*").expect("valid regex"));
 const SKIP_DIRS: &[&str] = &[
     ".git",
     "node_modules",
