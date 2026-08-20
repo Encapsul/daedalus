@@ -67,3 +67,4 @@ examples/*/.deps/
 examples/baguettotron/
 # gstack/opencode skills (managed externally)
 .opencode/
+yc
