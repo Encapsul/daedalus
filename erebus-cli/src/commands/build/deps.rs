@@ -1,0 +1,566 @@
+use anyhow::{Context, Result};
+use erebus_core::paths::cache_dir;
+use std::path::{Path, PathBuf};
+
+use super::args::parse_target;
+
+/// Check if a command is available on PATH.
+pub(crate) fn is_command_available(name: &str) -> bool {
+    std::process::Command::new("sh")
+        .args(["-c", &format!("command -v {name}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Ensure node + npm are available for the build.
+/// Downloads a static node to `~/.cache/erebus/build-tools/node/` (or a
+/// per-target subdir when `--target` requests a non-host platform) if not on
+/// PATH. The user-writable cache dir (0700) avoids the symlink attacks a
+/// predictable world-writable `/tmp` path would allow. Does NOT pollute the
+/// user's system PATH.
+pub(crate) fn ensure_node(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
+    let suffix = target
+        .map(|t| {
+            let (arch, os) = parse_target(t);
+            format!("{os}-{arch}")
+        })
+        .unwrap_or_else(|| "host".to_string());
+    let tools_dir = cache_dir()
+        .join("build-tools")
+        .join(format!("node-{suffix}"));
+    let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
+    let node_name = if is_windows { "node.exe" } else { "node" };
+    let npm_name = if is_windows { "npm.cmd" } else { "npm" };
+    let node_bin = tools_dir.join("bin").join(node_name);
+    let npm_bin = tools_dir.join("bin").join(npm_name);
+
+    if node_bin.exists() && npm_bin.exists() {
+        if verbose {
+            eprintln!("  using cached node from {}", tools_dir.display());
+        }
+        return Ok(tools_dir.join("bin"));
+    }
+
+    if verbose {
+        eprintln!("  downloading node to {}...", tools_dir.display());
+    }
+
+    std::fs::create_dir_all(&tools_dir).context("failed to create build tools directory")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            tools_dir.parent().unwrap_or(tools_dir.as_path()),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .ok();
+    }
+
+    ensure_node_download(tools_dir, target, verbose)
+}
+
+/// Download a specific Node.js version for a target architecture.
+///
+/// When `target_arch` is `None`, downloads for the host architecture.
+fn ensure_node_download(
+    tools_dir: PathBuf,
+    target_arch: Option<&str>,
+    verbose: bool,
+) -> Result<PathBuf> {
+    // Map the target to node's official `os-arch` tarball naming. Node ships
+    // static builds for linux (musl-compatible), darwin, and windows (`win`).
+    let (node_arch, node_os) = if let Some(target) = target_arch {
+        let (arch, os) = parse_target(target);
+        let node_arch = match arch.as_str() {
+            "x86_64" | "amd64" => "x64",
+            "aarch64" | "arm64" => "arm64",
+            _ => anyhow::bail!("unsupported cross-compile architecture: {arch}"),
+        };
+        let node_os = match os.as_str() {
+            "linux" => "linux",
+            "darwin" => "darwin",
+            "windows" => "win",
+            _ => anyhow::bail!("unsupported cross-compile OS: {os}"),
+        };
+        (node_arch.to_string(), node_os.to_string())
+    } else {
+        let node_arch = match std::env::consts::ARCH {
+            "x86_64" => "x64",
+            "aarch64" => "arm64",
+            arch => arch,
+        };
+        let node_os = match std::env::consts::OS {
+            "linux" => "linux",
+            "macos" => "darwin",
+            "windows" => "win",
+            os => os,
+        };
+        (node_arch.to_string(), node_os.to_string())
+    };
+
+    // Windows dists name the binaries `node.exe` / `npm.cmd`.
+    let node_bin = tools_dir
+        .join("bin")
+        .join(if node_os == "win" { "node.exe" } else { "node" });
+
+    #[cfg(unix)]
+    let npm_bin = tools_dir
+        .join("bin")
+        .join(if node_os == "win" { "npm.cmd" } else { "npm" });
+
+    let versions: Vec<serde_json::Value> =
+        reqwest::blocking::get("https://nodejs.org/dist/index.json")
+            .context("failed to reach nodejs.org")?
+            .json()
+            .context("failed to parse node version manifest")?;
+    let version = if let Ok(pinned) = std::env::var("ERE_NODE_VERSION") {
+        if verbose {
+            eprintln!("  using pinned node version {pinned} (ERE_NODE_VERSION)");
+        }
+        pinned
+    } else {
+        versions
+            .first()
+            .and_then(|v| v.get("version")?.as_str())
+            .and_then(|v| v.strip_prefix('v'))
+            .map(|v| v.to_string())
+            .ok_or_else(|| anyhow::anyhow!("no node version found in manifest"))?
+    };
+
+    // nodejs.org serves .tar.xz on Linux, .tar.gz on macOS, and .zip on Windows.
+    let ext = match node_os.as_str() {
+        "darwin" => "tar.gz",
+        "win" => "zip",
+        _ => "tar.xz",
+    };
+    let tarball = format!("node-v{version}-{node_os}-{node_arch}.{ext}");
+    let url = format!("https://nodejs.org/dist/v{version}/{tarball}");
+
+    if verbose {
+        eprintln!("  downloading node v{version} ({node_os}-{node_arch})...");
+    }
+
+    let response = reqwest::blocking::get(&url).context("failed to download node.js tarball")?;
+    if node_os == "win" {
+        // ZipArchive needs a seekable reader; buffer the ~30 MB dist in memory.
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut std::io::BufReader::new(response), &mut bytes)
+            .context("failed to read node.js zip")?;
+        extract_node_zip(std::io::Cursor::new(bytes), &tools_dir)?;
+    } else {
+        let reader = std::io::BufReader::new(response);
+        let decoder: Box<dyn std::io::Read> = if node_os == "darwin" {
+            Box::new(flate2::read::GzDecoder::new(reader))
+        } else {
+            Box::new(xz2::read::XzDecoder::new(reader))
+        };
+        let mut archive = tar::Archive::new(decoder);
+
+        for entry in archive
+            .entries()
+            .context("failed to read node tarball entries")?
+        {
+            let mut entry = entry.context("failed to read tarball entry")?;
+            let path = entry.path()?.into_owned();
+            let stripped: PathBuf = path.components().skip(1).collect();
+            if stripped.components().count() == 0 {
+                continue;
+            }
+            let target = tools_dir.join(&stripped);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create directory {}", parent.display()))?;
+            }
+            entry
+                .unpack(&target)
+                .with_context(|| format!("failed to unpack {}", stripped.display()))?;
+        }
+    }
+
+    if !node_bin.exists() {
+        anyhow::bail!(
+            "downloaded tarball missing node binary — install manually: https://nodejs.org"
+        );
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&node_bin, std::fs::Permissions::from_mode(0o755)).ok();
+        std::fs::set_permissions(&npm_bin, std::fs::Permissions::from_mode(0o755)).ok();
+    }
+
+    if verbose {
+        eprintln!("  node v{version} ready at {}", tools_dir.display());
+    }
+
+    Ok(tools_dir.join("bin"))
+}
+
+/// Extract the Windows node dist zip into `tools_dir/bin/`.
+///
+/// The zip layout is a single top-level `node-v<ver>-win-x64/` directory whose
+/// contents (`node.exe`, `npm.cmd`, `node_modules/`) we strip into `bin/` so
+/// the layout matches the linux/darwin tarballs. `npm.cmd` resolves `node.exe`
+/// and `node_modules/npm` relative to its own directory, so they must stay
+/// siblings. Entry names are validated against path traversal before use.
+fn extract_node_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Path) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(reader).context("failed to read node.js zip")?;
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .with_context(|| format!("failed to read zip entry {i}"))?;
+        let name = std::path::Path::new(entry.name());
+        // Zip-slip guard: reject absolute paths and any traversal component.
+        if name.is_absolute()
+            || name.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            })
+        {
+            continue;
+        }
+        let stripped: PathBuf = name.components().skip(1).collect();
+        if stripped.components().count() == 0 {
+            continue;
+        }
+        let target = tools_dir.join("bin").join(&stripped);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&target)
+                .with_context(|| format!("failed to create directory {}", target.display()))?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
+        }
+        let mut file = std::fs::File::create(&target)
+            .with_context(|| format!("failed to create {}", target.display()))?;
+        std::io::copy(&mut entry, &mut file)
+            .with_context(|| format!("failed to unpack {}", stripped.display()))?;
+    }
+    Ok(())
+}
+
+/// Check PHP platform requirements from composer.json against available extensions.
+pub(crate) fn check_php_platform_reqs(app_dir: &Path, verbose: bool) -> Result<()> {
+    let composer_path = app_dir.join("composer.json");
+    if !composer_path.is_file() {
+        return Ok(());
+    }
+
+    let content =
+        std::fs::read_to_string(&composer_path).context("failed to read composer.json")?;
+    let composer: serde_json::Value =
+        serde_json::from_str(&content).context("failed to parse composer.json")?;
+
+    let require = match composer.get("require").and_then(|r| r.as_object()) {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
+    // Check PHP version constraint from composer.json
+    if let Some(php_req) = require.get("php").and_then(|v| v.as_str()) {
+        let current_version = std::process::Command::new("php")
+            .args(["-v"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .next()
+                    .and_then(|l| l.split_whitespace().nth(1))
+                    .map(|s| s.to_string())
+            });
+
+        if let Some(ref cur) = current_version {
+            if !version_satisfies(cur, php_req) && verbose {
+                eprintln!(
+                    "[erebus] warning: composer.json requires PHP {}, but php {} is on PATH",
+                    php_req, cur
+                );
+                if let Some(alt) = find_php_binary(php_req) {
+                    eprintln!(
+                        "[erebus]   consider using --embed-interpreter {} or set PATH to use {}",
+                        alt, alt
+                    );
+                }
+            }
+        }
+    }
+
+    let mut required_exts: Vec<&str> = Vec::new();
+    for key in require.keys() {
+        if let Some(ext) = key.strip_prefix("ext-") {
+            required_exts.push(ext);
+        }
+    }
+
+    if required_exts.is_empty() {
+        return Ok(());
+    }
+
+    // Check which extensions are available
+    let php_output = std::process::Command::new("php")
+        .args(["-m"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+    let available: Vec<String> = php_output
+        .lines()
+        .map(|l| l.trim().to_lowercase())
+        .collect();
+
+    let mut missing: Vec<String> = Vec::new();
+    for ext in &required_exts {
+        if !available.contains(&ext.to_lowercase()) {
+            missing.push(ext.to_string());
+        }
+    }
+
+    if !missing.is_empty() {
+        eprintln!("[erebus] warning: PHP extensions required by composer but not installed:");
+        for ext in &missing {
+            eprintln!("  ext-{ext}");
+        }
+        eprintln!("  Run: sudo apt install php-{}", missing.join(" php-"));
+        eprintln!("  or: composer install --ignore-platform-reqs (will be used as fallback)");
+        if verbose {
+            eprintln!("  Proceeding with --ignore-platform-reqs — runtime may fail if extensions are needed.");
+        }
+    } else if verbose {
+        eprintln!(
+            "  PHP platform extensions: all {} required extension(s) available",
+            required_exts.len()
+        );
+    }
+
+    Ok(())
+}
+
+/// Simple PHP version constraint check — handles `^8.2`, `>=8.0`, `8.1`, `8.*`,
+/// `~8.1.0`, and `8.1 || 8.2` patterns. Returns true if the version satisfies.
+fn version_satisfies(version: &str, constraint: &str) -> bool {
+    let version_parts: Vec<u32> = version
+        .split('.')
+        .filter_map(|s| {
+            s.chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse()
+                .ok()
+        })
+        .collect();
+    if version_parts.is_empty() {
+        return false;
+    }
+
+    for part in constraint.split("||") {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        if satisfies_single(&version_parts, part) {
+            return true;
+        }
+    }
+    false
+}
+
+fn satisfies_single(version: &[u32], constraint: &str) -> bool {
+    let constraint = constraint.trim();
+    if constraint.starts_with('^') {
+        if let Some(rest) = constraint.strip_prefix('^') {
+            let target = parse_version(rest);
+            if target.is_empty() {
+                true
+            } else {
+                version >= &target && version.first() == target.first()
+            }
+        } else {
+            true
+        }
+    } else if constraint.starts_with('~') {
+        if let Some(rest) = constraint.strip_prefix('~') {
+            let target = parse_version(rest);
+            if target.len() < 2 {
+                true
+            } else {
+                version.len() >= 2
+                    && version[0] == target[0]
+                    && version[1] == target[1]
+                    && version >= &target
+            }
+        } else {
+            true
+        }
+    } else if constraint.ends_with('*') {
+        let prefix = constraint.trim_end_matches('*');
+        let prefix_parts: Vec<u32> = prefix.split('.').filter_map(|s| s.parse().ok()).collect();
+        version.starts_with(&prefix_parts)
+    } else if let Some(rest) = constraint.strip_prefix(">=") {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord != std::cmp::Ordering::Less)
+    } else if let Some(rest) = constraint.strip_prefix("<=") {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord != std::cmp::Ordering::Greater)
+    } else if let Some(rest) = constraint.strip_prefix('>') {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord == std::cmp::Ordering::Greater)
+    } else if let Some(rest) = constraint.strip_prefix('<') {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord == std::cmp::Ordering::Less)
+    } else if let Some(rest) = constraint.strip_prefix("==") {
+        let target = parse_version(rest.trim());
+        compare_versions(version, &target).map_or(false, |ord| ord == std::cmp::Ordering::Equal)
+    } else {
+        let target = parse_version(constraint);
+        version == target
+    }
+}
+
+fn parse_version(s: &str) -> Vec<u32> {
+    s.split('.').filter_map(|p| p.trim().parse().ok()).collect()
+}
+
+fn compare_versions(a: &[u32], b: &[u32]) -> Option<std::cmp::Ordering> {
+    for (x, y) in a.iter().zip(b.iter()) {
+        let ord = x.cmp(y);
+        if ord != std::cmp::Ordering::Equal {
+            return Some(ord);
+        }
+    }
+    a.len().cmp(&b.len()).into()
+}
+
+/// Look for alternative PHP binaries on PATH that might satisfy the version constraint.
+fn find_php_binary(constraint: &str) -> Option<String> {
+    let rest = constraint.strip_prefix('^')?;
+    let major = rest.split('.').next()?;
+    for candidate in ["php", &format!("php{major}")] {
+        if which::which(candidate).is_ok() {
+            return Some(candidate.to_string());
+        }
+    }
+    None
+}
+
+/// Check if package.json contains `workspace:*` protocol deps (pnpm-specific).
+pub(crate) fn has_workspace_protocol(dir: &Path) -> bool {
+    let pkg = match std::fs::read_to_string(dir.join("package.json")) {
+        Ok(c) => c,
+        _ => return false,
+    };
+    let json: serde_json::Value = match serde_json::from_str(&pkg) {
+        Ok(v) => v,
+        _ => return false,
+    };
+    for section in &[
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+    ] {
+        if let Some(deps) = json.get(*section).and_then(|d| d.as_object()) {
+            for val in deps.values() {
+                if let Some(v) = val.as_str() {
+                    if v.starts_with("workspace:") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Returns `(program, extra_args)` to prepend to the install command.
+pub(crate) fn ensure_composer(app_dir: &Path, verbose: bool) -> Result<(String, Vec<String>)> {
+    // Try system composer first
+    if std::process::Command::new("composer")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+    {
+        return Ok(("composer".into(), Vec::new()));
+    }
+
+    // Try php with system composer.phar
+    if std::process::Command::new("php")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+    {
+        let phar = app_dir.join("composer.phar");
+        if !phar.exists() {
+            if verbose {
+                eprintln!("  downloading composer.phar...");
+            }
+            let status = std::process::Command::new("php")
+                .args([
+                    "-r",
+                    "copy('https://getcomposer.org/download/latest-stable/composer.phar', 'composer.phar');",
+                ])
+                .current_dir(app_dir)
+                .status()
+                .context("failed to download composer.phar")?;
+            if !status.success() {
+                anyhow::bail!(
+                    "composer not found and failed to download composer.phar — \
+                     install composer: https://getcomposer.org/download"
+                );
+            }
+            // Make it executable
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&phar, std::fs::Permissions::from_mode(0o755)).ok();
+            }
+        }
+        return Ok(("php".into(), vec![phar.to_string_lossy().to_string()]));
+    }
+
+    anyhow::bail!(
+        "composer not found — install it: https://getcomposer.org/download \
+         or install php + composer"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_php_platform_reqs_no_composer_json() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(check_php_platform_reqs(dir.path(), false).is_ok());
+    }
+
+    #[test]
+    fn check_php_platform_reqs_no_require() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
+        assert!(check_php_platform_reqs(dir.path(), false).is_ok());
+    }
+
+    #[test]
+    fn check_php_platform_reqs_finds_extensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let composer = r#"{"require": {"php": ">=8.0", "ext-json": "*", "ext-mbstring": "*"}}"#;
+        std::fs::write(dir.path().join("composer.json"), composer).unwrap();
+        // Should not error even if php is not available
+        assert!(check_php_platform_reqs(dir.path(), false).is_ok());
+    }
+}

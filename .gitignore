@@ -9,7 +9,7 @@ __pycache__/
 *.pyc
 *.egg-info/
 .venv/
-build/
+/build/
 dist/
 
 # Artefacts xbin
