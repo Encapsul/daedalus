@@ -31,12 +31,17 @@ pub fn spawn_health_server(port: u16, endpoint: String) {
                 Ok((mut stream, _)) => {
                     let mut buf = [0u8; 1024];
                     let n = stream.read(&mut buf).unwrap_or(0);
-                    let request = String::from_utf8_lossy(&buf[..n]);
-                    let first_line = request.lines().next().unwrap_or("");
-                    if first_line.starts_with("GET") && first_line.contains(endpoint.as_str()) {
-                        let _ = stream.write_all(response_200);
-                    } else {
-                        let _ = stream.write_all(response_404);
+                    let first_line_bytes = buf[..n].split(|&b| b == b'\n').next().unwrap_or(&[]);
+                    if first_line_bytes.starts_with(b"GET")
+                        && first_line_bytes
+                            .windows(endpoint.len())
+                            .any(|w| w == endpoint.as_bytes())
+                    {
+                        if let Err(e) = stream.write_all(response_200) {
+                            eprintln!("[erebus] health: write failed: {e}");
+                        }
+                    } else if let Err(e) = stream.write_all(response_404) {
+                        eprintln!("[erebus] health: write failed: {e}");
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {

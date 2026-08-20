@@ -15,7 +15,7 @@ use std::process::ExitCode;
     name = "erebus",
     version,
     about = "Package any app into a single self-extracting binary",
-    long_about = "x.bin compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  erebus build ./myapp -o myapp.erebus\n  erebus run myapp.erebus\n  erebus inspect myapp.erebus\n  erebus keygen\n  erebus sign myapp.erebus --key ~/.erebus/keys/*.key\n  erebus verify myapp.erebus\n  erebus doctor\n  erebus scan .\n  erebus completion bash >> ~/.bashrc\n  erebus completion zsh >> ~/.zshrc\n  erebus completion fish > ~/.config/fish/completions/erebus.fish"
+    long_about = "x.bin compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  erebus build ./myapp -o myapp.erebus\n  erebus run myapp.erebus\n  erebus inspect myapp.erebus\n  erebus keygen\n  erebus sign myapp.erebus --key ~/.erebus/keys/*.key\n  erebus verify myapp.erebus\n  erebus doctor\n  erebus scan .\n  erebus dashboard\n  erebus completion bash >> ~/.bashrc\n  erebus completion zsh >> ~/.zshrc\n  erebus completion fish > ~/.config/fish/completions/erebus.fish"
 )]
 struct Cli {
     /// Enable verbose output

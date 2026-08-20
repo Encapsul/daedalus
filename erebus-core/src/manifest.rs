@@ -45,7 +45,17 @@ pub struct DeltaManifest {
 
 impl DeltaManifest {
     /// Byte length of the serialized form.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the computed length overflows `usize`. This is unreachable
+    /// in practice because `chunks.len()` is bounded by the buffer length
+    /// validated in `parse()`.
     pub fn encoded_len(&self) -> usize {
+        // SAFETY: `chunks.len()` is bounded by the buffer length validated in
+        // parse(). The maximum representable value is
+        // (usize::MAX - HEADER_SIZE) / ENTRY_SIZE, far larger than any buffer.
+        #[allow(clippy::expect_used)]
         self.chunks
             .len()
             .checked_mul(ENTRY_SIZE)

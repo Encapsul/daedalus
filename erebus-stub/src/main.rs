@@ -939,11 +939,14 @@ fn env_timeout_ms(name: &str, default_ms: u64) -> u64 {
 /// Minimal HTTPS GET returning the raw response body. Timeouts are tunable via
 /// `ERE_HTTP_TIMEOUT_CONNECT`, `ERE_HTTP_TIMEOUT_RESPONSE`, and
 /// `ERE_HTTP_TIMEOUT_BODY` (milliseconds; defaults 10s / 30s / 30s).
+/// `ERE_HTTP_MAX_RESPONSE` sets the max response body in bytes (default 64 MiB).
 ///
 /// Only caller-verified content is consumed (signed manifest, hash-checked
 /// chunks), so the transport is a convenience — never a trust anchor.
 fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
+    const DEFAULT_MAX: u64 = 64 * 1024 * 1024; // 64 MiB
     let ms = |name, default| std::time::Duration::from_millis(env_timeout_ms(name, default));
+    let max_bytes = env_timeout_ms("ERE_HTTP_MAX_RESPONSE", DEFAULT_MAX);
     let resp = ureq::get(url)
         .config()
         .timeout_connect(Some(ms("ERE_HTTP_TIMEOUT_CONNECT", 10_000)))
@@ -952,15 +955,19 @@ fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
         .build()
         .call()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))?;
-    // Use as_reader() + read_to_end() instead of read_to_vec() — the latter
-    // has a hardcoded 10 MB limit in ureq 3.x that prevents fetching large
-    // SISR chunks (16 MB with --embed-model).
     let mut body = resp.into_body();
-    let mut reader = body.as_reader();
+    let reader = body.as_reader();
     let mut buf = Vec::new();
     reader
+        .take(max_bytes)
         .read_to_end(&mut buf)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("GET {url}: {e}")))?;
+    if buf.len() as u64 >= max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("GET {url}: response exceeds {max_bytes} bytes"),
+        ));
+    }
     Ok(buf)
 }
 

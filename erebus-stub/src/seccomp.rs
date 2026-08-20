@@ -37,8 +37,10 @@ pub fn install_seccomp_denylist() -> io::Result<()> {
 
     // SAFETY: prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) installs
     // a BPF filter on the current process. The filter program and its data
-    // are stack-allocated Vec that outlive the prctl call. On success the
-    // filter is permanent — any blocked syscall kills the process with SIGSYS.
+    // are stack-allocated Vec that outlive the prctl call. The *mut cast on
+    // filter is required by sock_fprog's C ABI; prctl only reads the filter
+    // (no mutation through the pointer). On success the filter is permanent
+    // — any blocked syscall kills the process with SIGSYS.
     let rc = unsafe {
         libc::prctl(
             libc::PR_SET_SECCOMP,
