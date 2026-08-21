@@ -101,6 +101,10 @@ Un agent IA est un binaire erebus qui contient :
 ### Build & DevX
 - ✅ `build` module split : 2978 lignes → 8 modules sous `commands/build/`
 - ✅ `.gitignore` fix : `build/` → `/build/` pour tracker le module directory
+- ✅ **Phase 7b : Desktop packaging** — `--package-format flatpak|snap` generates
+  distribution-ready manifests with desktop-aware runtime mapping (GNOME/KDE/XFCE),
+  X11/Wayland/OpenGL finish_args, command-chain, desktop plugs, GPU layout
+  validation against real snaps (firefox, discord, vivaldi) + flatpak-builder
 
 ---
 
