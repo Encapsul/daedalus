@@ -110,10 +110,11 @@ pub fn make_launcher(slices: &[ArchSlice]) -> io::Result<Vec<u8>> {
 
     script.push_str(
         "if [ -z \"$_off\" ]; then\n  echo 'daedalus: unsupported architecture: '\"$_arch\"' on '\"$_os\" >&2\n  exit 1\nfi\n\
-         _tmpf=$(mktemp /tmp/daedalus.XXXXXX)\n\
-         dd if=\"$_self\" of=\"$_tmpf\" bs=1 skip=$_off count=$_sz 2>/dev/null\n\
-         chmod +x \"$_tmpf\"\n\
-         exec \"$_tmpf\" \"$@\"\n",
+        _tmpf=$(mktemp /tmp/daedalus.XXXXXX)\n\
+        dd if=\"$_self\" of=\"$_tmpf\" bs=1M skip=$((_off >> 20)) count=$(((_sz + 0xFFFFF) >> 20)) 2>/dev/null || \
+        dd if=\"$_self\" of=\"$_tmpf\" bs=1 skip=$_off count=$_sz 2>/dev/null\n\
+        chmod +x \"$_tmpf\"\n\
+        exec \"$_tmpf\" \"$@\"\n",
     );
 
     let mut launcher = script.into_bytes();
