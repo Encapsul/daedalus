@@ -695,6 +695,7 @@ fn build_rust_binary(
         cmd.env("RUSTFLAGS", flags.trim_start());
     }
     cmd.current_dir(app_dir);
+    cmd.env_remove("CARGO_TARGET_DIR");
     if verbose {
         eprintln!("  cargo build --release...");
     }
