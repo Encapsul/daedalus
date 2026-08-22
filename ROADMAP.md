@@ -210,3 +210,4 @@ Le `--to [oci|appimage|wasm]` est **déprécié**. Raisons :
 - **core/cli** : zero `unsafe`, ANSSI-Rust compliant
 - **CI** : `cargo zigbuild` cross-compile, `cargo clippy -p {crate}`, `cargo test --workspace`
 - **Tests** : 423 unit/integration/e2e, QEMU pour cross-arch validation
+- **Cross-arch chaos monkey** : aarch64 (musl → qemu-aarch64-static) ✅, RISC-V (nécessite `riscv64-linux-gnu-gcc` — pas installé), Docker `--platform linux/arm64` ✅
