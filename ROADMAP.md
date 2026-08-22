@@ -171,7 +171,7 @@ Ce n'est pas une question d'implémentation — c'est une limitation architectur
 | Gateway IoT | Linux embarqué + MCUs via UART/I2C/SPI/CAN | Agent protocol bridging (Modbus→MQTT, CAN→MQTT), fleet monitoring, logging | Isolation sandbox entre MCUs, signing pour intégrité |
 | Tools host-side | Laptop/serveur | esptool, openocd, fleet config, firmware audit/security scan | Sandbox pour outils dangereux, distro signée + delta updates |
 | Edge appliance | Pi/NAS + MCUs intégrés | Monitoring agricole/industriel, agent collecte données | Sandbox par composant, updates incrémentaux |
-| Security tooling | Host + MCU fleet | Firmware analysis, CVE detection, protocol audit | Distribution signée d'outils de pentest MCU, sandbox isolation |
+| Security tooling | Host + MCU fleet | Firmware analysis, CVE detection, protocol audit | Distribution signée d'outils de pentest MCU (Phrack/BH Europe creds), sandbox isolation |
 
 ### Ce qui NÉCESSITERAIT une approche différente
 

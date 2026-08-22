@@ -8,7 +8,7 @@ mod stub;
 
 pub(crate) use args::{load_config, BuildArgs, BuildPlan};
 use payload::{count_files, print_tree};
-use pipeline::{build_single_target, warn_sandbox_noops};
+use pipeline::{build_single_target, build_universal, warn_sandbox_noops};
 
 use anyhow::{Context, Result};
 use daedalus_core::detect;
@@ -79,6 +79,11 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             print_dry_run(&args, &plan, target.as_deref(), output);
         }
         return Ok(());
+    }
+
+    // Universal binary: build multi-arch slices and assemble into one file.
+    if args.universal {
+        return build_universal(&args, &plan, &args.output);
     }
 
     // Build one artifact per target; each gets its own output path.
