@@ -1861,6 +1861,73 @@ fn report_sisr_update_bandwidth(
     }
 }
 
+/// Build a universal `.daedalus` binary that works across multiple architectures.
+///
+/// Each architecture gets its own complete `.daedalus` slice (stub + payload +
+/// footer). The slices are concatenated behind a shell-script polyglot launcher
+/// that detects `uname -m` at runtime and extracts the correct slice.
+pub(crate) fn build_universal(args: &BuildArgs, plan: &BuildPlan, output: &Path) -> Result<()> {
+    let universal_targets: &[(&str, &str)] = &[
+        ("x86_64-unknown-linux-musl", "x86_64"),
+        ("aarch64-unknown-linux-musl", "aarch64"),
+    ];
+
+    let tmp_dir = tempfile::tempdir().context("failed to create temp dir for universal build")?;
+    let mut arch_slices: Vec<daedalus_core::universal::ArchSlice> = Vec::new();
+    let mut slice_data: Vec<Vec<u8>> = Vec::new();
+
+    for (target_triple, uname_machine) in universal_targets {
+        let slice_path = tmp_dir.path().join(format!("slice-{uname_machine}"));
+        let target_opt = if *target_triple == std::env::consts::ARCH {
+            None
+        } else {
+            Some(target_triple.to_string())
+        };
+
+        eprintln!("[daedalus] Building universal slice for {uname_machine}");
+        build_single_target(args, plan, target_opt.clone(), &slice_path)?;
+
+        let bytes = std::fs::read(&slice_path)
+            .with_context(|| format!("failed to read slice for {uname_machine}"))?;
+        let sha256 = daedalus_core::universal::hex_sha256(&bytes);
+        arch_slices.push(daedalus_core::universal::ArchSlice {
+            target: target_triple.to_string(),
+            uname_machine: uname_machine.to_string(),
+            uname_sys: "Linux".to_string(),
+            offset: 0,
+            size: bytes.len() as u64,
+            sha256,
+        });
+        slice_data.push(bytes);
+    }
+
+    let universal_binary =
+        daedalus_core::universal::assemble_universal_slices(&arch_slices, &slice_data)?;
+
+    let parent = output.parent().unwrap_or_else(|| std::path::Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let tmp_path = parent.join(format!(
+        ".{}.tmp",
+        output.file_name().unwrap().to_string_lossy()
+    ));
+    std::fs::write(&tmp_path, &universal_binary)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o755))?;
+    }
+    std::fs::rename(&tmp_path, output)?;
+
+    eprintln!(
+        "Built universal binary: {} ({:.1}MB, {} slices)",
+        output.display(),
+        universal_binary.len() as f64 / (1024.0 * 1024.0),
+        arch_slices.len(),
+    );
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

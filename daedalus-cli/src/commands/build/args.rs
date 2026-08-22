@@ -471,6 +471,12 @@ pub struct BuildArgs {
     /// Authentication token for the registry (when --publish uses HTTP/HTTPS)
     #[arg(long, env = "DAEDALUS_TOKEN")]
     pub token: Option<String>,
+
+    /// Build a universal binary with multiple arch slices (`x86_64` + `aarch64` Linux).
+    /// The output is a single `.daedalus` file with a polyglot shell-script
+    /// launcher that detects `uname -m` and extracts the correct slice at runtime.
+    #[arg(long)]
+    pub universal: bool,
 }
 
 #[derive(Default, Deserialize)]
@@ -569,6 +575,7 @@ pub(crate) fn default_build_args() -> BuildArgs {
         compression_level: 3,
         health_endpoint: None,
         token: None,
+        universal: false,
     }
 }
 

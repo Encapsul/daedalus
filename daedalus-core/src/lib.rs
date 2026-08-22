@@ -30,6 +30,7 @@ pub mod sisr_header;
 pub mod sisr_stage;
 pub mod tar;
 pub mod treeshake;
+pub mod universal;
 
 #[cfg(feature = "python")]
 pub mod python;
