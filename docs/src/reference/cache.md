@@ -1,12 +1,12 @@
 # Cache
 
-Extracting the rootfs on every launch would be slow. `erebus` extracts **once**
+Extracting the rootfs on every launch would be slow. `daedalus` extracts **once**
 and reuses.
 
 ## Layout
 
 ```
-~/.cache/erebus/
+~/.cache/daedalus/
   {sha256-of-payload}/
     rootfs/      ← extracted filesystem, ready to use
     .ready       ← marker: extraction is complete and valid
@@ -24,9 +24,9 @@ could inject content (Time Of Check To Time Of Use attack). The defense is
 to **never** expose an intermediate state:
 
 ```
-1. extract to  ~/.cache/erebus/.tmp-{pid}-{nanos}/   ← unique directory
+1. extract to  ~/.cache/daedalus/.tmp-{pid}-{nanos}/   ← unique directory
 2. write .ready once extraction is complete
-3. rename() to ~/.cache/erebus/{sha256}/              ← atomic on Linux
+3. rename() to ~/.cache/daedalus/{sha256}/              ← atomic on Linux
 4. if another instance won the race → discard our tmp
 ```
 
@@ -40,10 +40,10 @@ tmp directory is created in the **same** parent directory as the target.
 |---|---|---|
 | Cache | missing → extraction | present (`.ready`) → reused |
 | Message | `cold start: extracting...` | `warm start: cache hit {hash}` |
-| Cost | zstd decompression + disk write | near-zero from erebus side |
+| Cost | zstd decompression + disk write | near-zero from daedalus side |
 
 > Today, warm "time to first HTTP byte" is dominated by the **embedded
-> runtime boot** (Python interpreter startup, imports), not by `erebus`. The
+> runtime boot** (Python interpreter startup, imports), not by `daedalus`. The
 > launcher's own overhead is on the order of milliseconds. The < 100 ms
 > end-to-end goal will require squashfs+mmap (no extraction) in Phase 3.
 
@@ -51,7 +51,7 @@ tmp directory is created in the **same** parent directory as the target.
 
 | | Extraction cache | Build cache |
 |---|---|---|
-| Path | `~/.cache/erebus/{sha256}/` | `~/.cache/erebus/build/{hash}.zst` |
+| Path | `~/.cache/daedalus/{sha256}/` | `~/.cache/daedalus/build/{hash}.zst` |
 | Side | **target** machine (at `run`) | **build** machine (at `build`) |
 | Content | extracted rootfs, ready to use | **compressed** reusable layers |
 | Role | avoid re-extracting on every launch | avoid recompressing on rebuild |
@@ -71,6 +71,6 @@ build-time gain is already achieved.)
 ## Cleanup
 
 ```bash
-erebus clean        # clear extracted cache entries, KEEP build cache
-erebus clean --all  # wipe all ~/.cache/erebus (build cache included)
+daedalus clean        # clear extracted cache entries, KEEP build cache
+daedalus clean --all  # wipe all ~/.cache/daedalus (build cache included)
 ```

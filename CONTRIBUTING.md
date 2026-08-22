@@ -1,6 +1,6 @@
-# Contributing to erebus
+# Contributing to daedalus
 
-Thanks for your interest! erebus is a young project and contributions are
+Thanks for your interest! daedalus is a young project and contributions are
 welcome — whether it's code, docs, bug reports, or design discussion.
 
 ## Quick links
@@ -107,9 +107,9 @@ Bad: `fix stuff` or `updated code`
 - Machine-readable output: offer `--json` flag where applicable (inspect, doctor)
 - XDG compliance: use `_util.keys_dir()` / `_util.trusted_dir()` for config paths
 
-### Rust (`erebus-core/`, `erebus-cli/`, `stub/`)
+### Rust (`daedalus-core/`, `daedalus-cli/`, `stub/`)
 
-- **No `unsafe` in `erebus-core`** — all unsafe is confined to `stub/src/main.rs`
+- **No `unsafe` in `daedalus-core`** — all unsafe is confined to `stub/src/main.rs`
 - `stub/` unsafe requires a `SAFETY` comment explaining soundness
 - Pure Rust dependencies only (no C toolchain required)
 - Comments in English, doc comments (`///`) on public items
@@ -127,7 +127,7 @@ Bad: `fix stuff` or `updated code`
 2. CI must pass (lint, clippy, build, end-to-end test).
 3. At least one review from a maintainer.
 4. New features should include a demo example or test where practical.
-5. PRs that change the `.ere` format must update `erebus-core/src/format.rs`.
+5. PRs that change the `.ere` format must update `daedalus-core/src/format.rs`.
 6. Squash or rebase — no merge commits on `dev`.
 
 ### Release process
@@ -136,13 +136,13 @@ Bad: `fix stuff` or `updated code`
 ./scripts/release.sh 0.3.2    # creates v0.3.2 tag, pushes, CI builds binaries
 ```
 
-The release CI builds `erebus-stub` for:
+The release CI builds `daedalus-stub` for:
 - Linux x86_64 (`x86_64-unknown-linux-musl`)
 - Linux aarch64 (`aarch64-unknown-linux-gnu`)
 
-Each archive contains `bin/erebus-stub` (statically linked, no dependencies). A GitHub Release is created with binaries + SHA-256 checksums.
+Each archive contains `bin/daedalus-stub` (statically linked, no dependencies). A GitHub Release is created with binaries + SHA-256 checksums.
 
 ## Questions?
 
-Open a [Discussion](https://github.com/Tednoob17/erebus/discussions) or tag
+Open a [Discussion](https://github.com/Tednoob17/daedalus/discussions) or tag
 `@Tednoob17` in your issue.

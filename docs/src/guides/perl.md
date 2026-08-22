@@ -1,10 +1,10 @@
 # Perl Applications
 
-Package Perl applications into self-extracting binaries. erebus supports Perl apps using Makefile.PL or cpanfile.
+Package Perl applications into self-extracting binaries. daedalus supports Perl apps using Makefile.PL or cpanfile.
 
 ## Detection
 
-erebus detects Perl applications by looking for `Makefile.PL` or `cpanfile` in the project root.
+daedalus detects Perl applications by looking for `Makefile.PL` or `cpanfile` in the project root.
 
 ## Supported Patterns
 
@@ -12,21 +12,21 @@ erebus detects Perl applications by looking for `Makefile.PL` or `cpanfile` in t
 
 ```bash
 # Perl apps with app.pl (PSGI)
-erebus build my-perl-app -o my-perl-app.ere
+daedalus build my-perl-app -o my-perl-app.ere
 ```
 
 ### CGI Scripts
 
 ```bash
 # Traditional CGI scripts
-erebus build my-cgi-app -o my-cgi-app.ere
+daedalus build my-cgi-app -o my-cgi-app.ere
 ```
 
 ### CLI Tools
 
 ```bash
 # Perl CLI tools with bin/app
-erebus build my-perl-tool -o my-perl-tool.ere
+daedalus build my-perl-tool -o my-perl-tool.ere
 ```
 
 ## Requirements
@@ -57,7 +57,7 @@ My::App->new->start;
 EOF
 
 # Build the .ere
-erebus build . -o my-perl-app.ere
+daedalus build . -o my-perl-app.ere
 
 # Run it
 ./my-perl-app.ere

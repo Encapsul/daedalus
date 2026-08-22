@@ -1,18 +1,18 @@
 # Self-Incremental Sovereign Reconstruction (SISR)
 
-> **Advanced, opt-in.** SISR is an *extension* of erebus — it is not the core
-> value proposition. A default `erebus build` produces a simple, static,
+> **Advanced, opt-in.** SISR is an *extension* of daedalus — it is not the core
+> value proposition. A default `daedalus build` produces a simple, static,
 > self-contained binary with **no** reconstruction machinery. SISR is
 > documented here so the two models are easy to tell apart.
 
-## The two erebus models
+## The two daedalus models
 
-erebus ships in two shapes. They look alike (same `./app.ere`), but only one
+daedalus ships in two shapes. They look alike (same `./app.ere`), but only one
 can update itself.
 
 | | **Classic .ere** (default) | **SISR .ere** (opt-in) |
 |---|---|---|
-| Build | `erebus build ./app -o app.ere` | `erebus build ./app -o app.ere --self-update` |
+| Build | `daedalus build ./app -o app.ere` | `daedalus build ./app -o app.ere --self-update` |
 | Contents | launcher + payload (SquashFS) | launcher + payload + **embedded SISR engine** |
 | Update | rebuild + redistribute | `./app.ere update` — self-rebuilds from signed deltas |
 | Toolchain on target | none | **still none** (engine is embedded) |
@@ -29,7 +29,7 @@ explicitly (invariant I-2 of the [SISR spec](../architecture/sisr-spec.md)).
 A classic `.ere` is immutable. Shipping a fix means:
 
 ```
-[dev machine] erebus build  →  [v1.1 .ere]  →  redistribute  →  [target]
+[dev machine] daedalus build  →  [v1.1 .ere]  →  redistribute  →  [target]
 ```
 
 For a handful of servers that's acceptable. For fleets behind slow links, or
@@ -94,12 +94,12 @@ responsibility inside the binary (next to the launcher and the payload):
 ## What a developer needs to remember
 
 - SISR is **opt-in at build time** and **explicit at run time**.
-- The target machine never needs the `erebus` CLI, a compiler, or a system
+- The target machine never needs the `daedalus` CLI, a compiler, or a system
   runtime — the engine is compiled statically into the binary.
 - Every update is **signed, monotonic (anti-rollback), and atomic**. An
   unsigned, replayed, or tampered update is rejected before any byte is
   written.
-- The cryptographic guarantees are identical to the ones erebus already
+- The cryptographic guarantees are identical to the ones daedalus already
   provides at launch — SISR extends the *same* trust chain to updates, it
   does not create a weaker one.
 

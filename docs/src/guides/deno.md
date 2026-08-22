@@ -1,6 +1,6 @@
 # Building a Deno App
 
-`erebus` supports Deno apps. It detects a Deno project by the presence of
+`daedalus` supports Deno apps. It detects a Deno project by the presence of
 `deno.json` or `deno.jsonc`.
 
 ## Detection
@@ -12,12 +12,12 @@
 
 ## Prerequisites
 
-- Deno installed (`deno` on PATH), or erebus will download a vendored binary automatically
+- Deno installed (`deno` on PATH), or daedalus will download a vendored binary automatically
 
 ## Build
 
 ```bash
-erebus build ./my-deno-app -o my-deno-app.ere
+daedalus build ./my-deno-app -o my-deno-app.ere
 ```
 
 The builder:
@@ -40,12 +40,12 @@ If no tasks are defined, it falls back to common entry files:
 
 ## Vendored Deno
 
-If Deno is not on your PATH, `erebus` automatically downloads a prebuilt Deno
-binary from GitHub Releases and caches it at `~/.cache/erebus/cross/deno/`.
+If Deno is not on your PATH, `daedalus` automatically downloads a prebuilt Deno
+binary from GitHub Releases and caches it at `~/.cache/daedalus/cross/deno/`.
 
 ```bash
-# No deno on PATH — erebus downloads it automatically
-erebus build ./my-deno-app -o my-deno-app.ere
+# No deno on PATH — daedalus downloads it automatically
+daedalus build ./my-deno-app -o my-deno-app.ere
 ```
 
 ## Environment variables

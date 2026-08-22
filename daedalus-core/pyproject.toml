@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "daedalus-core"
+version = "0.1.0"
+description = "daedalus core library — format, compression, runtime detection, package manager detection"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[tool.maturin]
+features = ["python"]
+module-name = "daedalus_core"

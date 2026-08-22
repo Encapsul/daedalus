@@ -672,7 +672,7 @@ main() {
     cleanup 2>/dev/null || true
 
     # Ensure stub is built
-    local stub_path="/tmp/erebus-stub-target/x86_64-unknown-linux-musl/release/erebus-stub"
+    local stub_path="/tmp/daedalus-stub-target/x86_64-unknown-linux-musl/release/daedalus-stub"
     if [ ! -f "$stub_path" ]; then
         log "Building xbin stub..."
         cd "$REPO_ROOT/stub" && cargo build --release --target x86_64-unknown-linux-musl 2>&1 | tail -5

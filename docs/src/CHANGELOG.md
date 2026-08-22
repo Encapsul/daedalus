@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to erebus are documented here.
+All notable changes to daedalus are documented here.
 
 ## [1.0.0] — 2026-08-03 — SISR
 
@@ -10,9 +10,9 @@ Reconstruction) end to end.
 ### Added
 
 - **SISR delta self-updates** — binaries embed a content-addressed chunk
-  manifest; `./app --erebus-update <url>` fetches only the changed chunks from
+  manifest; `./app --daedalus-update <url>` fetches only the changed chunks from
   the update channel and rebuilds the binary in place.
-- **`erebus upgrade-binary`** — promote a legacy (v1, SISR-less) `.ere` to the
+- **`daedalus upgrade-binary`** — promote a legacy (v1, SISR-less) `.ere` to the
   v2 format by injecting the delta manifest and `SISR` header, preserving
   every payload byte and the integrity hash.
 - **Post-update health gate + automatic rollback** — a newly updated binary
@@ -31,7 +31,7 @@ Reconstruction) end to end.
 ### Testing
 
 - End-to-end suite against a mock HTTP update channel (`cargo test -p
-  erebus-stub --test e2e_sisr_main`), network fault injection on the
+  daedalus-stub --test e2e_sisr_main`), network fault injection on the
   reconstruction engine, and property-based parser fuzzing via proptest.
 - Cross-version tests prove legacy binaries load on the v2 runtime and that
   upgraded binaries gain auto-update.

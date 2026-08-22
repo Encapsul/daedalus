@@ -27,7 +27,7 @@ Docker solves part of the problem but introduces significant friction:
 Docker remains excellent for orchestration, multi-container, Kubernetes.
 But for *"here, run this server"*, it's overkill.
 
-## The erebus idea
+## The daedalus idea
 
 A single self-contained binary file that contains absolutely everything the
 app needs, and runs like a normal program.

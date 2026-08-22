@@ -20,7 +20,7 @@
 # Spec
 
 - [Delta Manifest Format](./spec/delta-manifest-format.md)
-- [`.ere` Format v2 — SISR extension](./spec/erebus-format-v2.md)
+- [`.ere` Format v2 — SISR extension](./spec/daedalus-format-v2.md)
 
 # Technical Reference
 
@@ -53,7 +53,7 @@
 
 # CLI Reference
 
-- [`erebus build`](./cli/erebus-build.md)
+- [`daedalus build`](./cli/daedalus-build.md)
 
 # Project
 

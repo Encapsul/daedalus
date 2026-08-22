@@ -1,5 +1,5 @@
 [book]
-title = "erebus"
+title = "daedalus"
 description = "Ship your web app like a binary. Run anywhere."
 authors = ["Tednoob17"]
 language = "en"
@@ -8,8 +8,8 @@ src = "src"
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/Tednoob17/erebus"
-edit-url-template = "https://github.com/Tednoob17/erebus/edit/main/docs/src/{path}"
+git-repository-url = "https://github.com/Tednoob17/daedalus"
+edit-url-template = "https://github.com/Tednoob17/daedalus/edit/main/docs/src/{path}"
 
 
 [output.html.fold]

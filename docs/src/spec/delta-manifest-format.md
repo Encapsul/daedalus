@@ -183,7 +183,7 @@ The engine keeps a content-addressed cache, so reused blocks are validated by
 construction:
 
 ```
-~/.cache/erebus/self/{hash}/
+~/.cache/daedalus/self/{hash}/
   blocks/<content_sha256>     ← immutable by key; tampering ⇒ different key
   applied.index               ← highest applied monotonic index (protected)
   reconstruct/<target_hash>/  ← staged candidate assembly (never live)
@@ -207,17 +207,17 @@ This manifest is an **update artifact**, not a new `.ere` layout:
 
 The manifest's `target_sha256` is exactly the hash the rebuilt `.ere`'s
 footer must contain. SISR reconstructs a **valid, standard `.ere`** — the
-result is indistinguishable from one produced by `erebus build`.
+result is indistinguishable from one produced by `daedalus build`.
 
 > This page describes the *external update artifact* (JSON). The `.ere`
 > file additionally embeds a compact **binary** chunk index — the same block
 > list serialized as `DeltaManifest` — so the runtime can verify the embedded
 > content before it is ever assembled. See
-> [`.ere` Format v2 — SISR extension](./erebus-format-v2.md).
+> [`.ere` Format v2 — SISR extension](./daedalus-format-v2.md).
 
 ## References
 
-- [SISR overview](../concepts/sisr-overview.md) — the two erebus models and the
+- [SISR overview](../concepts/sisr-overview.md) — the two daedalus models and the
   full reconstruction flow.
 - [SISR conceptual specification](../architecture/sisr-spec.md) — invariants
   and trust model (this spec derives from it).

@@ -1,88 +1,97 @@
 # Positioning
 
-`erebus`'s positioning is its most important decision. It defines what we
-build — and more importantly, what we don't.
+## Customer profile
 
-## erebus targets web/server headless, not desktop
+Un **développeur (solo ou petite équipe)** qui construit une **application web, serveur,
+ou CLI** et veut la **distribuer** à des utilisateurs ou collègues qui n'ont rien installé —
+ni Docker, ni Python, ni Node, ni quoi que ce soit. Il veut un fichier unique,
+auto-extractible, qu'il peut signer pour prouver son origine, et mettre à jour
+de manière incrémentale.
 
-| | Desktop GUI | Web / Server Headless |
-|---|---|---|
-| Examples | VLC, Inkscape, GIMP | Next.js, FastAPI, CLI build tool |
-| Needs | X11/Wayland, desktop integration, icons | a network port, stdout/stderr |
-| Existing solution | **AppImage, Snap, Flatpak** | **nothing clean and language-agnostic** |
+## Le segment : universal application packaging
 
-AppImage and friends spent years solving desktop integration. This is not
-the territory nor the ambition of `erebus`. `erebus`'s niche is what those tools
-don't target: *"I launch the binary, a server starts, I open my browser."*
+| | Docker | PyInstaller/pkg | llamafile | **daedalus** |
+|---|---|---|---|---|
+| Runtime | Container daemon | Mono-language | C++ only | **Multi-runtime** |
+| Delta updates | Layer cache (partial) | None | None | **SISR content-defined** |
+| Sandbox | Namespace | None | None | **seccomp + Landlock** |
+| Portable format | Image OCI | Executable | Single file | **Single .daedalus file** |
+| Self-contained | Needs daemon | Runtime bundled | All-in-one binary | **Stub + rootfs + app** |
 
-## Why not pkg / nexe / PyInstaller?
+### Qui a ce problème aujourd'hui?
 
-These exist but are **mono-language**:
+1. **Développeurs d'apps web multi-runtime** : publient un repo avec `requirements.txt` + `package.json`,
+   mais leurs utilisateurs doivent installer Python + Node + toutes les dépendances. Setup : 30+ minutes.
 
-- `vercel/pkg`, `nexe` → Node only;
-- `PyInstaller`, `Nuitka`, `PyOxidizer` → Python only;
-- `GraalVM native-image` → JVM only.
+2. **Startups SaaS** : construisent une API avec Python + un serveur FastAPI, mais le déploiement sur
+   des serveurs edge heterogènes (x64/ARM64, Linux/macOS/Windows) nécessite des builds par architecture.
 
-`erebus` is **language-agnostic** by design: it packages a *rootfs* (a
-mini-filesystem), not a specific language. The same tool packages a Python
-app, a Node app, or a native binary.
+3. **Équipes de prototypage** : veulent partager une app expérimentale entre collègues sans créer
+   une image Docker (trop lourd), sans PyInstaller (mono-language), sans setup manuel.
 
-## What erebus is not
+## Pourquoi maintenant?
 
-- **Not a Docker killer.** Docker remains for orchestration and
-  multi-container.
-- **Not a VM.** We don't virtualize the kernel; the app runs on the host
-  kernel.
-- **Not a package manager.** No central registry (for now).
-- **Not "one standard to rule them all".** See [XKCD 927](#xkcd-927) below.
+- **Multi-language apps sont la norme** : un projet moderne combine Python backend + Node frontend.
+  PyInstaller gère Python seulement, Bun gère JS/TS seulement — il faut deux outils.
+- **llamafile (Mozilla-Ocho, 25k★)** : le concurrent direct, mais C++ only, pas de delta updates,
+  pas de sandbox, pas de multi-runtime.
+- **Docker est trop lourd pour le laptop** : daemon, root, ressources. Une app devrait démarrer
+  en 2 secondes, pas nécessiter un container engine.
+- **Déploiement multi-arch** : cross-compilation fragile, gestion manuelle des runtimes par architecture.
 
-## XKCD 927: we know the trap
+## Pourquoi daedalus?
 
-> *"There are 14 competing standards."*
-> *"14?! Ridiculous! We need to develop one universal standard that covers all
-> use cases."*
-> *"There are 15 competing standards."*
+### Against llamafile
+llamafile = un binaire C++ qui package un modèle + runtime llama.cpp. C'est fait pour tourner
+un modèle, pas pour packager une application complète avec serveur web + API + runtime.
 
-— [XKCD 927: Standards](https://xkcd.com/927/)
+daedalus = packager **n'importe quel runtime** (Python, Node, Go, Binary) + code + config
+dans un format unifié, avec **delta updates Sisir** (llamafile télécharge le fichier entier à
+chaque mise à jour) et **sandbox seccomp+Landlock** (llamafile n'a pas d'isolation).
 
-We are **aware** that every "universal format" proposal risks becoming one
-more incompatible format. erebus is itself a packaging format standing next to
-AppImage, Snap, Flatpak, deb, rpm, Docker, pkg, PyInstaller... A naive
-reaction would be "build a universal packaging format" — and that is exactly
-how you end up with a 15th (or 12th) format.
+### Against Docker
+Docker est fait pour l'orchestration, pas pour la distribution locale. Besoin d'un daemon,
+de root (ou de user namespaces), de network pour pull l'image.
 
-### How we avoid becoming "the 12th format"
+daedalus = un fichier exécutable (`./app.daedalus`), extraction atomique, fonctionne sans daemon
+et sans privilèges root (user namespaces).
 
-1. **Narrow scope, not universal.** erebus explicitly targets **headless
-   web/server apps**, the niche AppImage/Snap/Flatpak don't serve. It does
-   not try to replace desktop packaging or container orchestration. Scope
-   discipline is our anti-XKCD measure.
-2. **Reuse existing standards.** The `.ere` file is a valid ELF (runs with
-   `chmod +x`), the payload is standard `tar`/`zstd`/SquashFS, signatures are
-   standard Ed25519, and the rootfs is a plain POSIX filesystem — no
-   proprietary kernel features, no new archive format. What is novel is the
-   packaging pipeline, not a new on-disk container standard.
-3. **One evolving format, not many.** New features extend the existing
-   `.ere` format backward-compatibly (v2 → v3 → v4 → v5), never a fresh
-   incompatible format. See [`reference/format.md`](../reference/format.md).
-4. **Eat our own dogfood.** erebus packages apps *without* requiring a daemon,
-   root, or installation — reducing the incentive to switch to a
-   "new standard" that "fixes" a deployment pain.
-5. **Interop over lock-in.** A `.ere` can be unpacked with standard tools
-   (`tar`, `unsquashfs`, `zstd`); no proprietary reader required to access
-   the payload.
+### Against PyInstaller/pkg
+Mono-language : PyInstaller marche pour Python, pkg pour Node. Mais une app moderne a souvent
+besoin de **plusieurs langages** : un backend Python/Node, un worker Go, un binaire natif.
 
-If a future feature cannot be added without breaking the format, we bump the
-version *and* keep reading older versions — we never fork the format or
-introduce a parallel one.
+daedalus = multi-runtime dans un seul format. Une app peut avoir un runtime Python pour l'API,
+un binaire C++ pour un moteur, et un script Node pour un worker — le tout dans un `.daedalus`.
 
-> The right positioning: **"for cases where Docker is too heavy and where
-> AppImage doesn't apply, erebus is the answer."**
+## Ce daedalus n'est PAS un nouveau format
+
+Nous ne créons pas un nouveau standard. Le format `.daedalus` est :
+- Un **ELF valide** (Linux) — `chmod +x && ./app.daedalus` fonctionne
+- Un **payload tar/zstd ou SquashFS** — décompressible avec `tar`/`unsquashfs`
+- Des **signatures Ed25519 standards** — vérifiables avec la librarie crypto standard
+- Un **rootfs POSIX** — pas de kernel features propriétaires
+
+Le format existe depuis v2 (plain) → v3 (signed) → v4 (encrypted) → v5 (squashfs),
+et lit les versions anciennes. Nous ne forkons jamais le format.
+
+## Ce daedalus n'est PAS
+
+- **Pas un Docker killer** : Docker reste pour l'orchestration et multi-container.
+- **Pas une VM** : on ne virtualise pas le kernel; l'app tourne sur le kernel host.
+- **Pas un package manager** : pas de registry centrale requise (optionnelle).
+- **Pas desktop packaging** : AppImage/Snap/Flatpak gèrent l'intégration desktop (icônes,
+  menus, X11/Wayland). daedalus cible **headless web/server apps** — "je lance le binaire,
+  un serveur démarre, j'ouvre mon navigateur."
+- **Pas un format inter-language bridge** : daedalus ne compile pas du Python vers du WASM.
+  Chaque runtime marche dans son propre environnement (Python/venv, Node/node_modules, Go/binary).
 
 ## The most promising use case
 
-Distributing **local AI models**: packaging `llama.cpp` + a multi-GB model +
-an inference server + a web UI, in a single file that launches with
-`./my_llm`. Today this case has no clean solution (Docker is heavy, AppImage
-is not designed for multi-GB payloads, PyInstaller can't handle C binaries).
-`erebus`'s architecture is naturally suited for it.
+Distributing **multi-runtime web applications** : packager un serveur FastAPI (Python) +
+un bundler Node (frontend) + un binaire Go (worker), dans un seul fichier qui démarre
+avec `./app.daedalus` et qui se met à jour via Sisir delta updates (15MB au lieu de 80MB).
+
+Aujourd'hui ce cas a pas de solution clean :
+- Docker : trop lourd, daemon requis, pas fait pour laptop
+- AppImage : pas fait pour serveur headless
+- PyInstaller/pkg : mono-language, ne gère pas multi-runtime

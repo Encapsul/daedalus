@@ -8,14 +8,14 @@
 
 ## Reporting a Vulnerability
 
-**erebus is currently in Phase 3.** Security is a first-class design
+**daedalus is currently in Phase 3.** Security is a first-class design
 concern, not an afterthought.
 
 If you discover a vulnerability:
 
 1. **Do not** open a public GitHub issue.
 2. Email the maintainer directly or open a
-   [confidential advisory](https://github.com/tedsig42/erebus/security/advisories).
+   [confidential advisory](https://github.com/tedsig42/daedalus/security/advisories).
 
 You should receive a response within 48 hours. If you don't, please follow up.
 
@@ -42,7 +42,7 @@ from an untrusted source.
 
 ## Scope
 
-All code under `erebus-core/`, `erebus-cli/`, `stub/`, and the `.ere` format
+All code under `daedalus-core/`, `daedalus-cli/`, `stub/`, and the `.ere` format
 specification in `docs/src/reference/format.md` is in scope. The example
 apps in `examples/` are for demonstration only and not considered
 security-critical. The legacy Python CLI in `cli/` is deprecated.

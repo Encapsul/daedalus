@@ -1,6 +1,6 @@
 # Rollback & Resilience (SISR health gate)
 
-> Status: **implemented** (Mission 8). `erebus-core` `sisr::health` +
+> Status: **implemented** (Mission 8). `daedalus-core` `sisr::health` +
 > `sisr::resilience`, wired into `stub/src/main.rs`, verified end-to-end by
 > `stub/tests/health_rollback.rs`.
 
@@ -22,7 +22,7 @@ version"* — "valid" now includes *verified to start*.
 ## Flow
 
 ```
-./app.ere --erebus-update …   (or $EREBUS_SISR_MANIFEST=…)
+./app.ere --daedalus-update …   (or $DAEDALUS_SISR_MANIFEST=…)
    │
    1. SISR update requested?   ──no──►  normal run
    2. refuse_quarantined_target?  yes ►  error: update refused (target quarantined)
@@ -34,7 +34,7 @@ version"* — "valid" now includes *verified to start*.
         Pending      ► supervised_launch:
              fork →
                  child: exec new app (or supervise_services)
-             parent: wait up to EREBUS_HEALTH_TIMEOUT_MS
+             parent: wait up to DAEDALUS_HEALTH_TIMEOUT_MS
                  exited 0, or still running  ► confirm + discard .bak → supervise to exit
                  crashed / non-zero         ► record_failure
                                               attempts < max ► run app as-is
@@ -58,7 +58,7 @@ executable bit.
 
 ## Health store
 
-Per-version records live in `~/.cache/erebus/health/<version>.json`
+Per-version records live in `~/.cache/daedalus/health/<version>.json`
 (`XDG_CACHE_HOME`-relative), versioned by the footer content hash
 `SHA-256(payload ‖ metadata)`.
 
@@ -74,7 +74,7 @@ Rules:
   counter** — repeated installs of the same broken version accumulate.
 - `confirm` marks the version healthy (exit 0 or survived the startup window).
 - `record_failure` increments `attempts`; the version is quarantined once
-  `attempts >= EREBUS_HEALTH_MAX_ATTEMPTS`.
+  `attempts >= DAEDALUS_HEALTH_MAX_ATTEMPTS`.
 - a quarantined version is **never re-armed** by `begin` — it stays
   quarantined until manually cleared by deleting its record.
 
@@ -82,8 +82,8 @@ Rules:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `EREBUS_HEALTH_TIMEOUT_MS` | `10000` | startup window the app must survive |
-| `EREBUS_HEALTH_MAX_ATTEMPTS` | `3` | installs before quarantine (`0` = never quarantine) |
+| `DAEDALUS_HEALTH_TIMEOUT_MS` | `10000` | startup window the app must survive |
+| `DAEDALUS_HEALTH_MAX_ATTEMPTS` | `3` | installs before quarantine (`0` = never quarantine) |
 
 ## Failure table
 

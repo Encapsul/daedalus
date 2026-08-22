@@ -1,1 +1,0 @@
-/home/ubuntu/.config/kilo/skills/gstack/gstack-qa/SKILL.md

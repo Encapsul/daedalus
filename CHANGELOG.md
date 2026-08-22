@@ -8,14 +8,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - **SISR self-update engine**: a `.ere` can update itself from signed deltas
-  - `erebus build --self-update` enables the engine; `erebus upgrade-binary`
+  - `daedalus build --self-update` enables the engine; `daedalus upgrade-binary`
     migrates existing binaries
   - Incremental updates: manifests list changed chunks with Ed25519 signatures
     and a Merkle root; the launcher fetches, verifies, rebuilds and atomically
     swaps the binary in place
   - Health gate with automatic rollback: a crashing new version is quarantined
     and the previous one is re-executed
-  - Update URL resolution: `--erebus-update <URL>` > `$ERE_UPDATE_URL` >
+  - Update URL resolution: `--daedalus-update <URL>` > `$DAEDALUS_UPDATE_URL` >
     embedded `meta.update_url`
 - Transparent v1 → v2 runtime migration for legacy binaries
 - Cross-compilation support (`--target aarch64`, ...) with per-arch Node.js
@@ -25,7 +25,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Ruby native gem `.so` dependencies embedded via `ldd` scan
 - PHP version constraint checking in `composer.json`
 - pnpm `.pnpm` store excluded during copy (avoids massive duplication)
-- `erebus publish` command; pip retry/timeout for proxy resilience
+- `daedalus publish` command; pip retry/timeout for proxy resilience
 - Clean remote cache design + single app-hash cache key
 - E2E SISR tests, network fault injection, and property-based fuzzing
 
@@ -42,12 +42,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Shared library bundling for downloaded PHP binaries (libssl, libgd, etc.)
 - `make dist` target for multi-arch release builds (x86_64, aarch64)
 - `make release` target for GitHub release creation
-- Node.js auto-download now caches in `~/.cache/erebus/build-tools` (mode 0700)
+- Node.js auto-download now caches in `~/.cache/daedalus/build-tools` (mode 0700)
   instead of a world-writable `/tmp` directory
 
 ### Changed
 - Standardized release asset naming (glow-style):
-  `erebus_<version>_<os>_<arch>.<ext>` with `checksums.txt`
+  `daedalus_<version>_<os>_<arch>.<ext>` with `checksums.txt`
 - Launcher hardened: all remaining `unwrap()`/`expect()` calls in the stub
   converted to `Result` handling — the launcher never panics on malicious input
 
@@ -93,20 +93,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - **Full Rust CLI** — zero Python dependency at runtime
-  - `erebus build` — package any app into self-extracting ELF
-  - `erebus inspect` — read metadata from .ere
-  - `erebus scan` — find .ere files recursively
-  - `erebus sign` / `erebus verify` — Ed25519 signing & verification
-  - `erebus keygen` — generate signing keypairs
-  - `erebus trust` — manage trusted public keys
-  - `erebus doctor` — system health checks (`--strict` for CI)
-  - `erebus env` — show environment & build config
-  - `erebus clean` — remove cache
-  - `erebus completion <shell>` — shell completions (bash, zsh, fish, elvish, powershell)
-  - `erebus man [dir]` — generate man pages
+  - `daedalus build` — package any app into self-extracting ELF
+  - `daedalus inspect` — read metadata from .ere
+  - `daedalus scan` — find .ere files recursively
+  - `daedalus sign` / `daedalus verify` — Ed25519 signing & verification
+  - `daedalus keygen` — generate signing keypairs
+  - `daedalus trust` — manage trusted public keys
+  - `daedalus doctor` — system health checks (`--strict` for CI)
+  - `daedalus env` — show environment & build config
+  - `daedalus clean` — remove cache
+  - `daedalus completion <shell>` — shell completions (bash, zsh, fish, elvish, powershell)
+  - `daedalus man [dir]` — generate man pages
 - **`.ere.toml` config file** — defaults for all build flags
-- **Shell completions** — `erebus completion bash/zsh/fish > file`
-- **Man pages** — `erebus man /usr/local/share/man/man1/` (pre-generated in release tarballs)
+- **Shell completions** — `daedalus completion bash/zsh/fish > file`
+- **Man pages** — `daedalus man /usr/local/share/man/man1/` (pre-generated in release tarballs)
   - Full Unix man(7) sections: EXIT STATUS, ENVIRONMENT, FILES, SEE ALSO, AUTHORS, HISTORY, BUGS
 - **`--env KEY=VALUE`** — repeatable flag to bake environment variables into the binary
 - **`--env-file`** — load KEY=VALUE pairs from a file (now actually works)
@@ -116,8 +116,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 - Bumped version from 0.2.9 → 0.3.0
-- erebus-stub cross-compile target: `aarch64-unknown-linux-musl` → `aarch64-unknown-linux-gnu`
-- erebus doctor non-fatal by default, use `--strict` for CI
+- daedalus-stub cross-compile target: `aarch64-unknown-linux-musl` → `aarch64-unknown-linux-gnu`
+- daedalus doctor non-fatal by default, use `--strict` for CI
 - Release workflow rewritten to match toboggan working pattern
 - find_binary now searches workspace-level `target/` directory
 - Single-service exec uses `execvp` (PATH lookup) instead of `execve`
@@ -140,7 +140,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.2.9] - 2026-07-21
 ### Fixed
-- erebus-stub and erebus-crypto marked optional in doctor checks
+- daedalus-stub and daedalus-crypto marked optional in doctor checks
 
 ## [0.2.8] - 2026-07-21
 ### Added
@@ -153,5 +153,5 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Multi-arch GitHub releases (Linux x64/arm64, macOS x64/arm64)
 - Release workflow triggered on GitHub release publish
 - SSH signing for all commits/tags
-- `erebus doctor` health check command
-- `erebus env` environment info command
+- `daedalus doctor` health check command
+- `daedalus env` environment info command

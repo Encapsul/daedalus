@@ -1,4 +1,4 @@
-# CODE_STYLE.md — erebus coding conventions
+# CODE_STYLE.md — daedalus coding conventions
 
 ## References
 
@@ -36,15 +36,15 @@ coding style — adapted for Rust and Python, not copied from C.
 
 ---
 
-## Rust (erebus-core/, erebus-cli/, stub/)
+## Rust (daedalus-core/, daedalus-cli/, stub/)
 
 ### Build target
 
-Repo lives on vfat (no exec bit). Build artifacts go to `/tmp/erebus-stub-target`.
+Repo lives on vfat (no exec bit). Build artifacts go to `/tmp/daedalus-stub-target`.
 After `cargo build --release`, install manually:
 ```bash
-cp /tmp/erebus-stub-target/release/erebus ~/.local/bin/erebus
-cp /tmp/erebus-stub-target/release/erebus-stub ~/.local/bin/erebus-stub
+cp /tmp/daedalus-stub-target/release/daedalus ~/.local/bin/daedalus
+cp /tmp/daedalus-stub-target/release/daedalus-stub ~/.local/bin/daedalus-stub
 ```
 
 ### Formatting
@@ -60,7 +60,7 @@ We use `rustfmt` defaults otherwise. No nightly-only options.
 ### Clippy
 
 We enable a pedantic subset, not the full `clippy::pedantic` (too many false
-positives on a small codebase). Run via `cargo clippy -p erebus-core --all-targets -- -D warnings`.
+positives on a small codebase). Run via `cargo clippy -p daedalus-core --all-targets -- -D warnings`.
 
 ```toml
 # In stub/Cargo.toml, add:
@@ -97,7 +97,7 @@ flag.
 
 ### Unsafe rules
 
-`erebus-core/` and `erebus-cli/` have **zero** `unsafe` — memory safety is
+`daedalus-core/` and `daedalus-cli/` have **zero** `unsafe` — memory safety is
 guaranteed by Rust's type system and borrow checker.
 
 `stub/src/main.rs` is the only crate with `unsafe`. Every `unsafe` block
@@ -167,7 +167,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["erebus"]
+known-first-party = ["daedalus"]
 ```
 
 **Why these categories:**
@@ -242,7 +242,7 @@ make preflight  # verify prerequisites
 
 `.github/workflows/ci.yml` runs on every push/PR to `main`:
 1. **preflight** — verify system prerequisites
-2. **rust** — `cargo build` + `cargo clippy -p erebus-core --all-targets -- -D warnings`
+2. **rust** — `cargo build` + `cargo clippy -p daedalus-core --all-targets -- -D warnings`
 3. **python** — `ruff check` + `black --check`
 4. **build** — full end-to-end: build → inspect → keygen → sign → verify
 

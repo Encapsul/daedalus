@@ -8,7 +8,7 @@
 SISR ("Self-Incremental Sovereign Reconstruction") turns a `.ere` from a
 static container into an autonomous, modular system: the binary can receive a
 signed delta, verify it, and re-assemble a new version of itself locally —
-without the `erebus` CLI, without a compiler, and without any system runtime.
+without the `daedalus` CLI, without a compiler, and without any system runtime.
 
 The purpose of this document is to fix the **absolute invariants**, the
 **cryptographic trust model**, and the **conceptual boundaries** *before* any
@@ -45,7 +45,7 @@ and absolute**.
 
 A `.ere` that reconstructs itself must never require, on the target machine:
 
-- the `erebus` CLI,
+- the `daedalus` CLI,
 - a compiler (Rust, C, Go),
 - any system runtime (node, python, docker),
 - any packaging tool (tar, squashfs-tools, zstd).
@@ -234,9 +234,9 @@ makes the local cache content-addressed and safe: a block is reused from cache
 The engine maintains a content-addressed local cache:
 
 ```
-~/.cache/erebus/self/{hash}/blocks/<content_sha256>   ← immutable by key
-~/.cache/erebus/self/{hash}/applied.index             ← monotonic counter
-~/.cache/erebus/self/{hash}/reconstruct/<version>     ← staged candidates
+~/.cache/daedalus/self/{hash}/blocks/<content_sha256>   ← immutable by key
+~/.cache/daedalus/self/{hash}/applied.index             ← monotonic counter
+~/.cache/daedalus/self/{hash}/reconstruct/<version>     ← staged candidates
 ```
 
 A cache block is keyed by its content hash, so **injecting a malicious block**

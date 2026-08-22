@@ -22,7 +22,7 @@
 # Aggregate multiple machines: bash benchmarks/comparison/aggregate.sh
 #
 # Environment:
-#   EREBUS_BIN      path to the erebus CLI (default: /tmp/erebus-stub-target/release/erebus)
+#   DAEDALUS_BIN      path to the daedalus CLI (default: /tmp/daedalus-stub-target/release/daedalus)
 #   XBIN_STUB_PATH path to a freshly built stub (default: make stub)
 #   PORT_BASE      first port of the measurement range (default: 21300)
 
@@ -33,7 +33,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_DIR="${1:-$SCRIPT_DIR/apps/hello-node}"
 MACHINE="${MACHINE:-$(hostname)}"
 OUT_DIR="$SCRIPT_DIR/results/$MACHINE"
-EREBUS_BIN="${EREBUS_BIN:-/tmp/erebus-stub-target/release/erebus}"
+DAEDALUS_BIN="${DAEDALUS_BIN:-/tmp/daedalus-stub-target/release/daedalus}"
 PORT_BASE="${PORT_BASE:-21300}"
 
 WORK="$SCRIPT_DIR/work"

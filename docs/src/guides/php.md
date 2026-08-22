@@ -1,10 +1,10 @@
 # PHP Applications
 
-Package PHP applications into self-extracting binaries. erebus supports PHP apps using Composer, including Symfony, Laravel, and WordPress.
+Package PHP applications into self-extracting binaries. daedalus supports PHP apps using Composer, including Symfony, Laravel, and WordPress.
 
 ## Detection
 
-erebus detects PHP applications by looking for `composer.json` in the project root.
+daedalus detects PHP applications by looking for `composer.json` in the project root.
 
 ## Supported Frameworks
 
@@ -12,32 +12,32 @@ erebus detects PHP applications by looking for `composer.json` in the project ro
 
 ```bash
 # Laravel projects with artisan
-erebus build my-laravel-app -o my-laravel-app.ere
+daedalus build my-laravel-app -o my-laravel-app.ere
 ```
 
-erebus detects Laravel by the presence of the `artisan` file and uses it as the entry point.
+daedalus detects Laravel by the presence of the `artisan` file and uses it as the entry point.
 
 ### Symfony
 
 ```bash
 # Symfony projects with symfony.lock
-erebus build my-symfony-app -o my-symfony-app.ere
+daedalus build my-symfony-app -o my-symfony-app.ere
 ```
 
-erebus detects Symfony by `symfony.lock` or `config/bundles.php` and uses `bin/console` as the entry point.
+daedalus detects Symfony by `symfony.lock` or `config/bundles.php` and uses `bin/console` as the entry point.
 
 ### WordPress
 
 ```bash
 # WordPress with wp-config.php
-erebus build my-wordpress-site -o my-wordpress-site.ere
+daedalus build my-wordpress-site -o my-wordpress-site.ere
 ```
 
 ### Generic PHP Apps
 
 ```bash
 # Apps with public/index.php or index.php
-erebus build my-php-app -o my-php-app.ere
+daedalus build my-php-app -o my-php-app.ere
 ```
 
 ## Requirements
@@ -65,7 +65,7 @@ echo "Hello from PHP " . PHP_VERSION . "\n";
 EOF
 
 # Build the .ere
-erebus build . -o my-php-app.ere
+daedalus build . -o my-php-app.ere
 
 # Run it
 ./my-php-app.ere

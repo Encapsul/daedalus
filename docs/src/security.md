@@ -12,16 +12,16 @@ Status: SHA-256 integrity, atomic extraction, Ed25519 signatures, user namespace
 
 ```bash
 # Generate a keypair
-$ erebus keygen --key-dir $XDG_DATA_HOME/erebus/keys
+$ daedalus keygen --key-dir $XDG_DATA_HOME/daedalus/keys
 a1b2c3d4e5f6...
 
 # Sign a .ere (in-place, writes v3 footer)
-$ erebus sign my_app.ere --key $XDG_DATA_HOME/erebus/keys/a1b2c3d4e5f6.key
-[erebus] signed my_app.ere
+$ daedalus sign my_app.ere --key $XDG_DATA_HOME/daedalus/keys/a1b2c3d4e5f6.key
+[daedalus] signed my_app.ere
 
 # Verify before running
-$ erebus verify my_app.ere --trusted-dir $XDG_DATA_HOME/erebus/trusted-keys
-[erebus] signature verified for /path/to/my_app.ere
+$ daedalus verify my_app.ere --trusted-dir $XDG_DATA_HOME/daedalus/trusted-keys
+[daedalus] signature verified for /path/to/my_app.ere
 ```
 
 **Why Ed25519 over RSA:**
@@ -29,12 +29,12 @@ $ erebus verify my_app.ere --trusted-dir $XDG_DATA_HOME/erebus/trusted-keys
 - Timing-attack resistant by design (constant-time scalar multiplication).
 - Standard in modern protocols (SSH, TLS 1.3, Signal, WireGuard).
 
-**Trust model:** Trusted public keys live in `$XDG_DATA_HOME/erebus/trusted-keys/`. The launcher accepts the file if any trusted key verifies the signature. There is no central authority — trust is local and explicit.
+**Trust model:** Trusted public keys live in `$XDG_DATA_HOME/daedalus/trusted-keys/`. The launcher accepts the file if any trusted key verifies the signature. There is no central authority — trust is local and explicit.
 
 ```bash
 # Trust a key
-$ erebus trust $XDG_DATA_HOME/erebus/keys/a1b2c3d4e5f6.pub
-[erebus] trusted key a1b2c3d4e5f6...
+$ daedalus trust $XDG_DATA_HOME/daedalus/keys/a1b2c3d4e5f6.pub
+[daedalus] trusted key a1b2c3d4e5f6...
 ```
 
 ## 1b. Chain of Trust for Local Rebuilding
@@ -106,9 +106,9 @@ the full contract.
 **Defense:** Extraction writes to a unique temp directory, then atomically renames it to the final cache path. No intermediate state is ever visible to other processes.
 
 ```
-1. extract to ~/.cache/erebus/.tmp-{pid}-{nanos}/   ← unique, private
+1. extract to ~/.cache/daedalus/.tmp-{pid}-{nanos}/   ← unique, private
 2. write .ready marker
-3. rename() to ~/.cache/erebus/{sha256}/              ← atomic on Linux
+3. rename() to ~/.cache/daedalus/{sha256}/              ← atomic on Linux
 4. if another instance won the race → discard our tmp
 ```
 
@@ -123,8 +123,8 @@ the full contract.
 ```bash
 # Corrupt one byte of a signed .ere
 $ dd if=/dev/urandom of=my_app.ere bs=1 seek=688788 count=1
-$ erebus verify my_app.ere
-[erebus] error: signature verification FAILED for /path/to/my_app.ere
+$ daedalus verify my_app.ere
+[daedalus] error: signature verification FAILED for /path/to/my_app.ere
 ```
 
 SHA-256 alone protects against corruption, not against an attacker who modifies the payload and recomputes the hash. This is why signatures exist — the hash is signed:
@@ -178,9 +178,9 @@ Blocked: ptrace, mount, umount2, pivot_root, reboot, kexec_load,
 
 ```bash
 # Build with encryption
-$ erebus build my_app/ --key $XDG_DATA_HOME/erebus/keys/a1b2c3d4.key --encrypt
-[erebus] encrypted: 12.3MB -> 12.3MB (AES-256-GCM)
-[erebus] wrote my_app.ere (12.5MB, signed+encrypted)
+$ daedalus build my_app/ --key $XDG_DATA_HOME/daedalus/keys/a1b2c3d4.key --encrypt
+[daedalus] encrypted: 12.3MB -> 12.3MB (AES-256-GCM)
+[daedalus] wrote my_app.ere (12.5MB, signed+encrypted)
 ```
 
 **Security model:**

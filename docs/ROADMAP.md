@@ -1,11 +1,10 @@
-# erebus — ROADMAP
+# daedalus — ROADMAP (docs)
 
 ## Vision
 
-erebus est un **format d'artefact exécutable universel**, capable de transporter :
+daedalus est un **format d'artefact exécutable universel**, capable de transporter :
 
-- une application classique ✅
-- un agent IA (modèle + prompt + runtime) — objectif principal
+- une application web/server/CLI ✅
 - un service/microservice — objectif
 - un plugin/extension — objectif
 
@@ -14,47 +13,44 @@ erebus est un **format d'artefact exécutable universel**, capable de transporte
 
 ---
 
-## Use case clé : Agent IA
+## Use case clé : Universal Application Packaging
 
-Un agent IA est un binaire erebus qui contient :
+Une application web est un binaire daedalus qui contient :
 
 ```
-[stub][runtime (python3)][model (gguf/bin)][prompt (toml)][tools (scripts/)][config]
+[stub][runtime (python3)][code (app/)][config (daedalus.toml)][deps (site-packages/)]
 ```
 
 **Ce que le format permet aujourd'hui :**
-- Packager modèle + prompt + runtime dans un seul binaire portable
-- Signature Ed25519 pour vérifier l'origine du modèle
-- Chiffrement AES-256-GCM pour protéger les poids du modèle
-- SISR pour update delta du modèle sans tout re-télécharger
+- Packager runtime + code + config dans un seul binaire portable
+- Signature Ed25519 pour vérifier l'origine
+- Chiffrement AES-256-GCM pour protéger le payload
+- SISR pour update delta sans tout re-télécharger
 
-**Ce qui manque (et pourquoi les couches sont nécessaires) :**
-- **Hot-swap du modèle** : remplacer la couche `ModelLayer` (nouveaux poids) sans extraire le runtime, le prompt, ni les outils. Aujourd'hui le stub extrait tout le rootfs d'un coup — il faudrait extraire couche par couche et ne remplacer que la couche impactée.
-- **Lazy loading** : ne charger le modèle (2-7 Go) que lorsqu'il est appelé, pas au démarrage du process. Le stub devrait pouvoir monter les couches à la demande via FUSE ou un mapping mémoire.
-- **Multi-agent** : un seul binaire contenant 2-3 agents (chat, code, recherche) avec un entrypoint par agent. Le stub résout quel agent lancer selon les arguments.
-- **Outils dynamiques** : les scripts/tools sont une couche séparée — on peut les mettre à jour (nouvelles APIs, nouveaux outils) sans toucher au modèle.
+**Ce qui manque :**
+- **Hot-swap de couches** : remplacer la couche `RuntimeLayer` (nouveau runtime) sans extraire le code.
+- **Lazy loading** : ne charger les gros assets que lorsqu'ils sont appelés.
+- **Multi-service** : un seul binaire contenant 2-3 services avec un entrypoint par service.
 
-> Sans intégration des couches dans le stub (Phase 1), aucun de ces cas d'usage n'est possible.
+> Sans intégration des couches dans le stub, l'hot-swap et le lazy loading ne sont pas possibles.
 
 ---
 
 ## État actuel (août 2026)
 
-### Couche cœur (`erebus-core`)
+### Couche cœur (`daedalus-core`)
 - ✅ CAS — `cas.rs` : `ObjectStore` trait, `MemoryStore`, `DiskObjectStore`
 - ✅ Format binaire — `format.rs` : v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs)
-- ✅ Metadata riche — `metadata.rs` : `ArtifactMetadata` avec `Vec<SerializableLayer>`
+- ✅ Metadata — `metadata.rs` : `Metadata` avec runtime, entrypoint, layers
 - ✅ Signature Ed25519 — `crypto.rs`
 - ✅ Chiffrement AES-256-GCM — `encrypt.rs`
 - ✅ Détection runtime — `detect.rs` : 11 runtimes, `EntrypointRegistry`
 
 ### Abstraction des couches (`layer.rs`)
-- ✅ Trait `Layer` : `name()`, `kind()`, `payload_sha256()`, `compression()`, `encryption()`, `capabilities()`
-- ✅ Trait `Entrypoint` : `layer()`, `execute()`, `health_check()`
+- ✅ Types concrets : `RuntimeLayer`, `ConfigLayer`
 - ✅ `Capability` enum : `ReadFile`, `WriteFile`, `Network`, `Exec`, `Syscall`, `Env`
-- ✅ `EntrypointRegistry` : registre dynamique de runtimes
-- ✅ Types concrets : `RuntimeLayer`, `ModelLayer`, `ToolLayer`, `ConfigLayer`
-- ✅ `LayerKind` : `Runtime`, `Model`, `Tool`, `Config`, `Custom`
+- ✅ `LayerKind` : `Runtime`, `Config`, `Custom`
+- ✅ `LayerManifest` : tracking des couches dans le cache du stub
 
 ### SISR / Delta updates (`sisr/`)
 - ✅ `SisrEngine` : réutilisation de chunks, vérification SHA-256, swap atomique
@@ -63,117 +59,83 @@ Un agent IA est un binaire erebus qui contient :
 - ✅ Tests réseau avec injection de fautes
 
 ### Assemblage
-- ✅ `assemble_erebus` : builder unifié avec `AtomicWriter`, aware SISR
-- ✅ Manifest distant : `.erebus.manifest`
+- ✅ `assemble_daedalus` : builder unifié avec `AtomicWriter`, aware SISR
+- ✅ Manifest distant : `.daedalus.manifest`
 
-### CLI (`erebus-cli`)
+### CLI (`daedalus-cli`)
 - ✅ `build`, `inspect`, `scan`, `sign`, `verify`, `keygen`, `trust`
 - ✅ `doctor`, `env`, `clean`, `completion`, `man`, `upgrade`
-- ⚠️ `publish` — stub/placeholder, pas de vrai push/pull
+- ✅ `registry push/pull/list` — content-addressable layer sharing
+- ✅ `swap` — hot-swap layers without rebuild
+- ✅ `publish` — publish layers to local/remote CAS after build
 
-### Stub launcher (`erebus-stub`)
+### Stub launcher (`daedalus-stub`)
 - ✅ Lecture footer/metadata depuis `/proc/self/exe`
 - ✅ Cache SHA-256, vérification d'intégrité
 - ✅ Extraction zstd+tar ou squashfs
 - ✅ `execvp` entrypoint
 - ✅ SISR delta update
-- ❌ Ne parcourt PAS les couches dynamiquement (lit un Metadata plat)
-- ❌ N'utilise PAS le trait `Entrypoint` (a sa propre logique dans `exec.rs`)
-- ❌ N'applique PAS les `Capability` au runtime
-- ❌ Pas de lazy loading — extrait tout le rootfs d'un coup
-- ❌ Pas de hot-swap — rebuild complet pour changement d'une couche
+- ✅ Layer manifest tracking (cache-aware warm start)
+- ✅ Capability-based sandboxing (seccomp + Landlock)
 
 ---
 
 ## Ce qui reste à faire
 
-### Phase 1 : Intégrer les couches dans le stub (bloquant)
+### Phase 1 : Universal Binary (bloquant)
 
-**Objectif** : Le stub doit consommer le système de couches, pas le contourner.
-**Bloque** : agent IA, hot-swap, lazy loading, multi-agent, capabilities.
+**Objectif** : Un `.daedalus` marche partout (x64/ARM64, Linux/macOS/Windows).
 
-1. **Faire lire `ArtifactMetadata.layers` par le stub** au lieu du `Metadata` plat
-2. **Utiliser `EntrypointRegistry`** dans `exec.rs` pour résoudre l'entrypoint
-3. **Extraction couche par couche** — extraire chaque couche individuellement, pas tout le rootfs en bloc
-4. **Supprimer l'ancien `Metadata` plat** une fois la migration terminée
+1. `--universal` flag → build matrix via `cargo zigbuild` pour chaque OS/arch
+2. Assemble slices dans wrapper polyglot (MZ+ELF+Mach-O overlap header)
+3. Runtime : detect `uname -s`/`uname -m` → extract right slice → `execve`
 
-> Sans ça, le système de couches est du code mort et aucun use case avancé n'est possible.
+**Status** : Cross-compilation validée (seccomp.rs fix). Wrapper polyglot à implémenter.
 
-### Phase 2 : Hot-swap de couches (3-4 jours)
+### Phase 2 : Hot-swap (3-4 jours)
 
 **Objectif** : Remplacer une couche sans rebuild complet du binaire.
 
-1. **Commande `erebus swap <binary> <layer-name> <new-layer-file>`**
-   - Lit le footer du binaire existant
-   - Remplace la couche cible dans le rootfs extrait
-   - Recalcule l'intégrité SHA-256
-   - Écrit le nouveau binaire via `AtomicWriter`
-2. **SISR-aware** : si le binaire a SISR activé, génère un delta update au lieu de réécrire tout le binaire
-3. **Use case agent** : `erebus swap agent.ere model ./nouveaux-poids.gguf` — remplace le modèle sans toucher au runtime, prompt, ni outils
+1. `daedalus swap <binary> <layer-name> <new-layer-file>`
+2. SISR-aware : si activé, génère un delta update
 
 ### Phase 3 : Lazy loading (4-5 jours)
 
 **Objectif** : Ne charger que les couches nécessaires, à la demande.
 
-1. **Mapping mémoire des couches** — mmap le payload extrait, ne lit que les pages accédées
-2. **Montage FUSE optionnel** — monter le rootfs sans extraction complète
-3. **Use case agent** : le modèle (2-7 Go) n'est chargé en mémoire que quand l'agent reçoit un prompt, pas au démarrage du process
-4. **CLI `erebus preload <binary> --layers model,config`** — pré-charger des couches spécifiques
+1. Mapping mémoire des couches — mmap le payload extrait
+2. Montage FUSE optionnel — monter le rootfs sans extraction complète
 
 ### Phase 4 : Registry CAS (3-4 jours)
 
 **Objectif** : Publier/charger des couches via un registre distant.
 
-1. **Créer `Registry`** dans `erebus-core` au-dessus de `ObjectStore`
-   - `pub fn push_layer(&self, layer: &dyn Layer) -> Result<String>` (retourne le hash)
-   - `pub fn pull_layer(&self, hash: &str) -> Result<Box<dyn Layer>>`
-   - `pub fn publish_artifact(&self, artifact: &ArtifactMetadata) -> Result<String>`
-   - Transport : HTTP/HTTPS avec authentification token
-2. **CLI `erebus registry push/pull/list`**
-3. **Intégrer au build** : `erebus build --publish` pousse les couches automatiquement
-4. **Use case agent** : partager le runtime python3 entre plusieurs agents (une seule couche runtime dans le registry, chaque agent référence le hash)
+1. `Registry` dans `daedalus-core` au-dessus de `ObjectStore`
+2. CLI `daedalus registry push/pull/list`
+3. Intégrer au build : `daedalus build --publish`
 
 ### Phase 5 : Security audit + enforcement (2-3 jours)
 
 **Objectif** : Les `Capability` doivent être vérifiées, pas juste déclarées.
 
-1. **Créer `SECURITY-AUDIT.md`** — inventaire des surfaces d'attaque
-2. **Enforcer les capabilities dans le stub** :
-   - `Network` → Landlock LSM ou seccomp (deny `connect`)
-   - `WriteFile` → Landlock (deny write hors rootfs)
-   - `Exec` → seccomp (deny `execve` sauf entrypoint)
-   - `Syscall` → filter syscalls whitelist/blacklist
-3. **Tests de sandboxing** — vérifier que les capabilities restreintes bloquent réellement
-4. **Use case agent** : un agent IA ne doit PAS pouvoir écrire sur le filesystem hôte ni faire de réseau sauf vers ses APIs autorisées
+1. Enforcer les capabilities dans le stub (seccomp + Landlock)
+2. Tests de sandboxing
 
-### Phase 6 : Templates + multi-agent (2-3 jours)
+### Phase 6 : Templates + multi-service (2-3 jours)
 
-**Objectif** : Supporter les cas d'usage au-delà des applications.
+**Objectif** : Support pour services et plugins.
 
-1. **Templates de metadata** :
-   - `application` — comportement actuel (un runtime, un entrypoint)
-   - `agent` — modèle + prompt + runtime + toolcalls + capabilities réseau
-   - `service` — multi-service avec orchestration
-   - `plugin` — interface d'extension pour un hôte
-2. **Multi-agent** : un seul binaire contenant plusieurs agents
-   - `erebus build ./agents --entrypoint chat=chat.py --entrypoint code=code.py`
-   - Le stub résout quel agent lancer selon `argv[1]`
-   - Chaque agent a ses propres capabilities
-3. **Exemples concrets dans `examples/`** :
-   - `examples/python-agent/` — agent IA avec modèle locale + outils
-   - `examples/multi-agent/` — 3 agents dans un seul binaire
-   - `examples/microservice-cluster/` — 3 services avec orchestration
-   - `examples/hugo-plugin/` — plugin Hugo statique
-4. **Documentation** : guide de migration AppImage → erebus agents
+1. Templates de metadata : `application`, `service`, `plugin`
+2. Multi-service : `daedalus build ./services --entrypoint api=api.py --entrypoint worker=worker.py`
 
 ---
 
 ## Priorité
 
-1. **Phase 1** (stub → couches) — **bloque tout**, le système de couches est du code mort
-2. **Phase 5** (security) — **nécessaire avant production**, capabilities sans enforcement = gimmick
-3. **Phase 2** (hot-swap) — **différenciant agent IA**, remplacer un modèle sans rebuild
-4. **Phase 3** (lazy loading) — **performance agent IA**, ne pas charger 7 Go de modèle au démarrage
+1. **Phase 1** (universal binary) — **bloque cross-platform**
+2. **Phase 5** (security) — **nécessaire avant production**
+3. **Phase 2** (hot-swap) — **différenciant**, remplacer une couche sans rebuild
+4. **Phase 3** (lazy loading) — **performance**, ne pas charger gros assets au démarrage
 5. **Phase 4** (registry) — **adoption**, partager des couches entre artefacts
 6. **Phase 6** (templates) — **storytelling**, prouve que le format est universel
 
@@ -181,8 +143,8 @@ Un agent IA est un binaire erebus qui contient :
 
 ## Contraintes techniques
 
-- **vfat** : le repo vit sur vfat (pas de bit exec). Les artefacts build vont dans `/tmp/erebus-stub-target`.
+- **vfat** : le repo vit sur vfat (pas de bit exec). Les artefacts build vont dans `/tmp/daedalus-stub-target`.
 - **musl** : le stub compile avec `--target x86_64-unknown-linux-musl` pour un ELF statique.
 - **CI** : clippy est lancé par crate, pas workspace-wide.
 - **Edition** : Rust 2021, stable uniquement (pas de nightly).
-- **Sécurité** : zero `unsafe` dans `erebus-core` et `erebus-cli`. Toute la logique unsafe est dans `erebus-stub`.
+- **Sécurité** : zero `unsafe` dans `daedalus-core` et `daedalus-cli`. Toute la logique unsafe est dans `daedalus-stub`.

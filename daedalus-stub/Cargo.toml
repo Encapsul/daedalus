@@ -1,0 +1,86 @@
+[package]
+name = "daedalus-stub"
+version = "0.5.0"
+edition = "2021"
+description = "daedalus launcher stub — self-extracting ELF that runs the embedded app"
+
+[[bin]]
+name = "daedalus-stub"
+path = "src/main.rs"
+
+[[bin]]
+name = "daedalus-crypto"
+path = "src/bin/daedalus-crypto.rs"
+
+[dependencies]
+# Shared core library (format parsing, constants).
+daedalus-core = { path = "../daedalus-core" }
+# Mostly pure-Rust: tar, sha2, serde, ed25519-dalek, aes-gcm, hkdf
+# are all pure Rust.  backhand (squashfs) pulls in zstd-sys which requires
+# a C compiler (cc crate) at build time.  A C toolchain (gcc/musl-gcc) and
+# pkg-config are therefore needed alongside the Rust toolchain.
+tar = "0.4"             # tar extraction
+sha2 = "0.10"           # SHA-256 integrity check
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"            # config file parsing
+dirs = "5"              # standard directories (config, cache, home)
+ed25519-dalek = { version = "2.1", default-features = false, features = ["alloc", "zeroize"] }  # >= 2.1.0: CVE-2023-48022
+rand = "0.8"
+libc = "0.2"
+aes-gcm = "0.10"        # AES-256-GCM payload decryption
+hkdf = "0.12"           # HKDF-SHA256 for AES key derivation from signing seed
+zeroize = "1"           # secure memory zeroization for keys and secrets
+backhand = { version = "0.25", default-features = false, features = ["gzip", "lz4", "zstd"] }  # squashfs extraction
+hex = "0.4"               # hex encoding for cache keys
+ureq = "3"                # HTTPS client for --daedalus-update (rustls + ring, builds with plain cc)
+tempfile = "3"            # temp files for macOS sandbox profiles
+zstd = { version = "0.13", features = ["zstdmt"] }  # multithreaded zstd decompression for cold start
+walkdir = "2"               # recursive directory scan for native libs
+
+[dev-dependencies]
+daedalus-core = { path = "../daedalus-core" }
+tempfile = "3"
+tar = "0.4"
+zstd = { version = "0.13", features = ["zstdmt"] }
+hex = "0.4"
+sha2 = "0.10"
+ed25519-dalek = { version = "2.1", default-features = false, features = ["alloc", "std", "rand_core"] }  # >= 2.1.0: CVE-2023-48022
+
+# zstd-sys 2.0.x compiles an x86_64-only assembly file unconditionally
+# (zstd-sys build.rs:144). Disable it on every other arch so cross-builds
+# (aarch64, arm, riscv64, ppc64le, …) can link. Scalar decompression path only.
+[target.'cfg(not(target_arch = "x86_64"))'.dependencies]
+zstd-sys = { version = "2.0.16", features = ["no_asm"] }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Allow style lints that are too noisy for a binary crate
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "deny"
+missing_panics_doc = "deny"
+doc_markdown = "warn"
+# Binary crate: process exits on error, unwrap/expect are acceptable
+unwrap_used = "allow"
+expect_used = "allow"
+# 64-bit only target: u64→usize casts are always safe
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+# Style lints that don't improve correctness
+items_after_statements = "allow"
+format_push_string = "allow"
+uninlined_format_args = "allow"
+if_not_else = "allow"
+manual_let_else = "allow"
+io_other_error = "allow"
+map_unwrap_or = "allow"
+unnecessary_wraps = "allow"
+borrow_as_ptr = "allow"
+elidable_lifetime_names = "allow"
+manual_is_multiple_of = "allow"
+needless_borrows_for_generic_args = "allow"
+format_collect = "allow"
+single_match_else = "allow"
+similar_names = "allow"
+too_many_lines = "allow"

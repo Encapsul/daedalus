@@ -6,10 +6,10 @@
 > network, and are independent of the host filesystem layout. Their only
 > contract is bytes in, bytes out, verified.
 
-The internal modules of `erebus-core` that power SISR:
+The internal modules of `daedalus-core` that power SISR:
 
 ```
-erebus_core
+daedalus_core
  ├── chunker      --> trait Chunker & FastCDC implementation
  ├── cas          --> trait ObjectStore (Content-Addressable Storage)
  ├── assembler    --> trait BinaryAssembler (binary stitching)
@@ -102,10 +102,10 @@ pub trait BinaryAssembler {
 
 Reassembles a complete executable from a base binary and the reconstructed
 payload blocks, preserving the `.ere` layout
-`[stub][payload][metadata][footer]`. The concrete `ErebusStitcher` reads the
+`[stub][payload][metadata][footer]`. The concrete `DaedalusStitcher` reads the
 payload/metadata offsets from the footer and splices the new blocks into the
 payload region — the output is a valid `.ere` indistinguishable from one
-produced by `erebus build`.
+produced by `daedalus build`.
 
 This trait exists so that format-specific splicing (ELF/PE/Mach-O, squashfs
 images) can evolve behind one stable contract.
@@ -185,5 +185,5 @@ entry; the engine never trusts a source. See
   invariants and trust model these primitives serve.
 - [Delta manifest format](../spec/delta-manifest-format.md) — the structure
   that references chunks and drives the assembler.
-- [`.ere` Format v2 — SISR extension](../spec/erebus-format-v2.md) — where the
+- [`.ere` Format v2 — SISR extension](../spec/daedalus-format-v2.md) — where the
   binary `DeltaManifest` and `SisrFooterExt` live inside the file.
