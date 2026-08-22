@@ -103,7 +103,7 @@ ni Docker, ni Python, ni Node, ni quoi que ce soit.
 - ✅ Persistent storage + data files + tree-shaking + minification
 - ✅ Content-addressable layer registry (push/pull/list, local + remote)
 - ✅ Layer manifest tracking in stub (cache-aware warm start)
-- ✅ 423 tests passent ✅, fmt/clippy clean, Rust 2021 stable, zero unsafe en dehors du stub
+- ✅ 423 tests passent + 5 chaos monkey tests (symlink traversal, env var leakage, crypto rejection) ✅, fmt/clippy clean, Rust 2021 stable, zero unsafe en dehors du stub
 
 ## Ce qui reste — PRIORITÉ ABSOLUE
 
@@ -154,6 +154,32 @@ mmap/FUSE pour ne pas charger les gros assets au démarrage. Chargé à la deman
 - ❌ 50 repos GitHub trending — integration testing, pas un feature produit
 - ❌ Edge/IoT OTA channels — SISR le couvre déjà (delta updates + signatures)
 - ❌ IA agents / AI agent marketplace — DEGACER'd, le packaging universel couvre le besoin
+
+## §7 — MCU companion systems (edge/IoT)
+
+### Limitation fondamentale
+
+Un `.daedalus` est un ELF Linux (ou Mach-O / PE). Il ne peut **pas** s'exécuter directement
+sur un MCU (ESP32, STM32, Arduino, etc.) : pas de noyau POSIX, pas de filesystem, RAM en Ko.
+Ce n'est pas une question d'implémentation — c'est une limitation architecturale.
+
+### Ce qui est possible : .ere comme composant d'un système MCU
+
+| Cas | Setup | Use case | Valeur |
+|---|---|---|---|
+| Companion computer + MCU | Pi/Linux + ESP32/STM32 | Agent communication (MQTT/Modbus), agent IA edge, firmware config tool | Packaging + sandbox + delta updates pour le companion |
+| Gateway IoT | Linux embarqué + MCUs via UART/I2C/SPI/CAN | Agent protocol bridging (Modbus→MQTT, CAN→MQTT), fleet monitoring, logging | Isolation sandbox entre MCUs, signing pour intégrité |
+| Tools host-side | Laptop/serveur | esptool, openocd, fleet config, firmware audit/security scan | Sandbox pour outils dangereux, distro signée + delta updates |
+| Edge appliance | Pi/NAS + MCUs intégrés | Monitoring agricole/industriel, agent collecte données | Sandbox par composant, updates incrémentaux |
+| Security tooling | Host + MCU fleet | Firmware analysis, CVE detection, protocol audit | Distribution signée d'outils de pentest MCU, sandbox isolation |
+
+### Ce qui NÉCESSITERAIT une approche différente
+
+| Besoin | Pourquoi ce n'est pas .ere | Alternative |
+|---|---|---|
+| Exécuter code sandboxé sur ESP32 | Pas de Linux, pas d'ELF | MicroPython / VM légère / microkernel |
+| Packager firmware MCU dans .ere | Format userspace, pas bare-metal | Firmware image + metadata + checksum (format dédié) |
+| Sandbox sur MCU | Pas de mécanismes comparables | MPU (memory protection unit), hardware isolation |
 
 ## §5 — Position B dépréciée (`--to family`)
 
