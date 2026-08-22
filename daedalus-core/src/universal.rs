@@ -192,17 +192,22 @@ pub fn assemble_universal_slices(
     }
 
     let mut out = Vec::new();
-    let launcher = make_launcher(slices)?;
+    let launcher_size = 64u64 * 1_024;
+
+    // Fix up offsets BEFORE generating launcher (launcher bakes in offsets)
+    let mut arch_slices = slices.to_vec();
+    for (i, bytes) in slice_data.iter().enumerate() {
+        arch_slices[i].offset =
+            launcher_size + slice_data[..i].iter().map(|b| b.len() as u64).sum::<u64>();
+        arch_slices[i].size = bytes.len() as u64;
+    }
+
+    let launcher = make_launcher(&arch_slices)?;
     out.write_all(&launcher)?;
 
-    // Write each slice, fixing up the offset
-    let mut arch_slices = slices.to_vec();
-    let mut acc: u64 = out.len() as u64;
-    for (i, bytes) in slice_data.iter().enumerate() {
-        arch_slices[i].offset = acc;
-        arch_slices[i].size = bytes.len() as u64;
+    // Write each slice
+    for bytes in slice_data {
         out.write_all(bytes)?;
-        acc += bytes.len() as u64;
     }
 
     // Write manifest (JSON)
