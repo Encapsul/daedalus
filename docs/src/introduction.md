@@ -1,20 +1,20 @@
-# erebus
+# daedalus
 
 > **Ship your web app as a binary. Run it anywhere.** No runtime, no Docker,
 > no install step on the target machine — one file that runs.
 
-**erebus** packages any web, server, or headless app into a single
-self-extracting ELF binary. The CLI is `erebus`; its output files use the
+**daedalus** packages any web, server, or headless app into a single
+self-extracting ELF binary. The CLI is `daedalus`; its output files use the
 `.ere` extension (a dot can't appear in a shell command name).
 
-erebus is to a server app what a Go static binary is to a compiled program:
+daedalus is to a server app what a Go static binary is to a compiled program:
 everything lives inside the file, and it runs with `./my_app.ere`.
 
-## What erebus does
+## What daedalus does
 
 ```bash
 # Build once — bundles the runtime, the app, and its libraries
-$ erebus build ./my-app -o my-app.ere
+$ daedalus build ./my-app -o my-app.ere
 
 # Run anywhere — the end user installs nothing
 $ ./my-app.ere
@@ -23,7 +23,7 @@ $ ./my-app.ere
 
 | Step | What happens | Who does it |
 |---|---|---|
-| `erebus build` | detects the runtime, resolves dependencies, compresses a rootfs | the developer |
+| `daedalus build` | detects the runtime, resolves dependencies, compresses a rootfs | the developer |
 | `./my_app.ere` | verifies integrity, extracts to cache, launches | the end user |
 
 ## Key features
@@ -40,7 +40,7 @@ $ ./my-app.ere
 - **Sandboxing without root** — user namespaces, mount namespaces,
   `pivot_root`, and a seccomp denylist for the strongest isolation level.
 
-## When to use erebus
+## When to use daedalus
 
 | Use case | Example |
 |---|---|
@@ -49,12 +49,12 @@ $ ./my-app.ere
 | Bundle a dependency-heavy app into one artifact | Python with `requirements.txt`, Node with `node_modules` |
 | Version-pin the runtime with the app | app written against a specific Python/Node release |
 
-erebus targets **web, server, and headless** apps. It is not a fit for:
+daedalus targets **web, server, and headless** apps. It is not a fit for:
 
 - **Desktop GUI apps** — AppImage, Snap, and Flatpak already target those
   (X11/Wayland integration, icons, desktop entry).
 - **Per-process isolation you don't control** — use containers when you want
-  the *host* to remain completely untouched; erebus's sandbox is opt-in per app.
+  the *host* to remain completely untouched; daedalus's sandbox is opt-in per app.
 
 ## How it differs
 
@@ -63,7 +63,7 @@ erebus targets **web, server, and headless** apps. It is not a fit for:
 | `vercel/pkg` / `nexe` | Node.js only | embeds Node |
 | PyInstaller | Python only | embeds CPython |
 | AppImage / Snap / Flatpak | desktop GUI apps | needs desktop integration |
-| **erebus** | **any language, server apps** | **self-contained, no install** |
+| **daedalus** | **any language, server apps** | **self-contained, no install** |
 
 ## Get started
 
@@ -73,7 +73,7 @@ make preflight
 
 # Build the launcher, then package your first app
 make stub
-erebus build ./examples/hello-web -o hello-web.ere
+daedalus build ./examples/hello-web -o hello-web.ere
 ./hello-web.ere
 ```
 
@@ -90,7 +90,7 @@ Ed25519 signatures, SquashFS support, and multi-arch builds
 
 ## Optional extension: SISR (self-updates)
 
-By default a `.ere` is a simple, static container — no update machinery, nothing to configure. As an **opt-in, advanced extension**, erebus supports the **SISR** engine: a binary that can update *itself* from signed deltas, with no toolchain on the target machine.
+By default a `.ere` is a simple, static container — no update machinery, nothing to configure. As an **opt-in, advanced extension**, daedalus supports the **SISR** engine: a binary that can update *itself* from signed deltas, with no toolchain on the target machine.
 
 ```
 [ v1.0 ] ── ./app.ere update ──▶ fetch manifest ──▶ verify Ed25519
@@ -98,7 +98,7 @@ By default a `.ere` is a simple, static container — no update machinery, nothi
                 ──▶ rebuild & atomic swap ──▶ [ v1.1 ]
 ```
 
-- Static containers: `erebus build ./app -o app.ere`
-- Self-updating binaries: `erebus build ./app -o app.ere --self-update`
+- Static containers: `daedalus build ./app -o app.ere`
+- Self-updating binaries: `daedalus build ./app -o app.ere --self-update`
 
 Both run identically by default; SISR is only engaged on an explicit update. See the [SISR overview](./concepts/sisr-overview.md), the [delta manifest spec](./spec/delta-manifest-format.md), and the [incremental updates guide](./guides/incremental-updates.md).

@@ -1,12 +1,12 @@
 # Architecture
 
-`erebus` is split into 4 layers with clear interfaces between them, allowing
+`daedalus` is split into 4 layers with clear interfaces between them, allowing
 each layer to evolve independently (e.g. switching from tar extraction to
 squashfs+mmap) without rewriting everything.
 
 ```
 ┌──────────────────────────────────────┐
-│            CLI (erebus)                │  build · run · inspect · clean
+│            CLI (daedalus)                │  build · run · inspect · clean
 ├──────────────────────────────────────┤
 │            Builder                    │  Analyzer + Packager
 │   ┌──────────────┬──────────────┐     │
@@ -31,13 +31,13 @@ long as the format is respected, both sides evolve independently.
 The diagram below is the **target architecture** envisioned for end of
 Phase 2/3, not the current MVP state.
 
-![erebus Architecture](../images/architecture.png)
+![daedalus Architecture](../images/architecture.png)
 
 ### Reading the diagram
 
 The diagram flows top to bottom:
 
-1. **CLI** (`erebus ./my_app`) — four commands: *Build · Run · Inspect ·
+1. **CLI** (`daedalus ./my_app`) — four commands: *Build · Run · Inspect ·
    Clean*. This is the user surface.
 
 2. **Builder** — two sub-components:
@@ -56,7 +56,7 @@ The diagram flows top to bottom:
    [reference](../reference/format.md).
 
 4. **Runtime** — two sub-components:
-   - **Cache**: `~/.cache/erebus/{sha256}/`, single extraction, `flock()` for
+   - **Cache**: `~/.cache/daedalus/{sha256}/`, single extraction, `flock()` for
      concurrent access, LRU cleanup.
    - **Executor**: *Linux user namespaces · pivot_root (isolation) · seccomp
      filter · LD_LIBRARY_PATH fallback*.
@@ -82,7 +82,7 @@ The diagram describes the **ambition**. Here is the honest current state:
 | Level 0 executor (`LD_LIBRARY_PATH` + `PATH`) | ✅ | ✅ implemented |
 | User namespaces + pivot_root + seccomp | ✅ | ✅ implemented (Phase 2) |
 | Ed25519 signatures | ✅ | ✅ implemented (Phase 2) |
-| warm start < 100 ms | ✅ | ⏳ (currently limited by embedded runtime boot, not by erebus) |
+| warm start < 100 ms | ✅ | ⏳ (currently limited by embedded runtime boot, not by daedalus) |
 
 > **Design note.** The diagram places isolation (namespaces, seccomp) at the
 > core of the runtime. In practice we chose to **start at level 0**
@@ -97,12 +97,12 @@ DEV MACHINE                          TARGET MACHINE
 
 my_app/
   app.py
-  requirements.txt   →  erebus build  →   my_app.ere   →  ./my_app.ere  →  it runs
+  requirements.txt   →  daedalus build  →   my_app.ere   →  ./my_app.ere  →  it runs
 + python3                              (1 file)
 + .so libs
 ```
 
-`erebus build` does the hard work **once**. The end user only sees a single
+`daedalus build` does the hard work **once**. The end user only sees a single
 file.
 
 ## Self-reconstruction (SISR, opt-in)

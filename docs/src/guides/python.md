@@ -2,7 +2,7 @@
 
 ## Expected structure
 
-`erebus` detects a Python app by the presence of an entry point at the root:
+`daedalus` detects a Python app by the presence of an entry point at the root:
 `app.py`, `main.py`, `server.py` or `__main__.py`.
 
 ```
@@ -14,7 +14,7 @@ my_app/
 ## Build
 
 ```bash
-erebus build ./my_app -o my_app.ere
+daedalus build ./my_app -o my_app.ere
 ```
 
 The builder:
@@ -41,7 +41,7 @@ PORT=9000 ./my_app.ere
 
 ## Third-party dependencies (site-packages)
 
-`erebus` automatically embeds third-party dependencies. It looks, in order:
+`daedalus` automatically embeds third-party dependencies. It looks, in order:
 
 1. a virtualenv `.venv/` or `venv/` at the app root → its
    `lib/pythonX.Y/site-packages`;
@@ -67,8 +67,8 @@ The example `examples/bottle-web` demonstrates this: it serves HTTP with
 `bottle`, a web framework **not** in the stdlib.
 
 ```bash
-erebus build ./examples/bottle-web -o bottle-web.ere
-./bottle-web.ere   # → Hello from bottle, packaged by erebus
+daedalus build ./examples/bottle-web -o bottle-web.ere
+./bottle-web.ere   # → Hello from bottle, packaged by daedalus
 ```
 
 ## Requirements.txt → pip install at build time
@@ -78,8 +78,8 @@ automatically creates a temporary venv, pip-installs the dependencies, and
 embeds them:
 
 ```bash
-erebus build ./my_app -o my_app.ere
-# [erebus] pip install: ./my_app/requirements.txt → /app/site-packages
+daedalus build ./my_app -o my_app.ere
+# [daedalus] pip install: ./my_app/requirements.txt → /app/site-packages
 ```
 
 ## Current limitations

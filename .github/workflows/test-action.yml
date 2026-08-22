@@ -1,18 +1,18 @@
-name: Test erebus Action
+name: Test daedalus Action
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - '.github/actions/erebus-build/**'
+      - '.github/actions/daedalus-build/**'
 
 jobs:
   test-action:
-    name: Test erebus-build action
+    name: Test daedalus-build action
     runs-on: ubuntu-latest
     env:
-      CARGO_TARGET_DIR: /tmp/erebus-stub-target
+      CARGO_TARGET_DIR: /tmp/daedalus-stub-target
     steps:
       - uses: actions/checkout@v6
 
@@ -27,11 +27,11 @@ jobs:
       - name: Build stub (musl static ELF)
         run: make stub
 
-      # Build and install erebus so the action can find it
-      - name: Build erebus from source
+      # Build and install daedalus so the action can find it
+      - name: Build daedalus from source
         run: |
-          cargo build --release -p erebus-cli
-          /tmp/erebus-stub-target/release/erebus --version
+          cargo build --release -p daedalus-cli
+          /tmp/daedalus-stub-target/release/daedalus --version
 
       # Create a minimal test app
       - name: Create test app
@@ -41,14 +41,14 @@ jobs:
           <!DOCTYPE html>
           <html>
           <head><title>Test</title></head>
-          <body><h1>Hello from erebus action!</h1></body>
+          <body><h1>Hello from daedalus action!</h1></body>
           </html>
           EOF
 
       # Test the action
       - name: Build test binary with action
-        uses: ./.github/actions/erebus-build
-        id: erebus
+        uses: ./.github/actions/daedalus-build
+        id: daedalus
         with:
           app-path: '/tmp/test-app'
           output: '/tmp/test-app.ere'
@@ -56,11 +56,11 @@ jobs:
       # Verify output
       - name: Verify output
         run: |
-          echo "Binary path: ${{ steps.erebus.outputs.binary-path }}"
-          echo "Runtime: ${{ steps.erebus.outputs.runtime }}"
-          echo "Size: ${{ steps.erebus.outputs.size }}"
+          echo "Binary path: ${{ steps.daedalus.outputs.binary-path }}"
+          echo "Runtime: ${{ steps.daedalus.outputs.runtime }}"
+          echo "Size: ${{ steps.daedalus.outputs.size }}"
 
-          test -f "${{ steps.erebus.outputs.binary-path }}" || {
+          test -f "${{ steps.daedalus.outputs.binary-path }}" || {
             echo "ERROR: binary not found"
             exit 1
           }

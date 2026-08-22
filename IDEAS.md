@@ -1,182 +1,171 @@
 # IDEES — Compilation complete
 
-## 1. Position A : Format artefact universel (DEAD CODE)
-**Description** : SISR comme moat + layer graph (RuntimeLayer, AppLayer, ModelLayer, ToolLayer, ConfigLayer) → un format `.ere` extensible a tout type d'artefact
+## 1. Position A : Universal Application Packaging (PRINCIPALE)
 
-### Code analysis findings
-- `layer.rs` = DEAD CODE : `Layer` trait, `SerializableLayer`, `Capability`, `Entrypoint` — exists mais jamais branches dans le pipeline production
-- `ArtifactMetadata` = DEAD CODE : importe seulement par `metadata.rs` tests, jamais par pipeline
-- `Cas.rs` (CAS trait) = DEAD CODE : defini mais pas utilise par le stub/runtime
-- `Metadata { runtime: String, entrypoint: Vec<String>, services }` = format PLAT, utilisé par vrai pipeline
+**Description** : daedalus packages any web, server, or CLI application into a single
+self-extracting binary. The `.daedalus` format (`[stub][payload][metadata][footer]`)
+contains the runtime + dependencies + code, signed Ed25519, with Sisir delta
+updates and sandbox isolation (seccomp + Landlock). Supports 11 runtimes
+(Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Hugo, Binary) across
+Linux, macOS, and Windows.
 
-### Status du code (verifié)
-- `layer.rs` : 100 matches grep, mais imports only in `metadata.rs` tests (lignes 7, 358, 393)
-- `ArtifactMetadata` : zero imports en dehors de `metadata.rs` tests
-- `CAS trait` : defini mais jamais importe par le stub ou CLI production path
-- Stub et CLI utilisent `build_meta_json()` → `AssemblyInput` → `assemble_erebus()` — format plat
-- `cargo check` + `cargo clippy` + `cargo test` tous passes, zéro warnings
+### Pourquoi c'est le bon angle
 
-## 2. Position B : Compilateur vers formats existants (--to flag)
-**Description** : `erebus build . --to [oci|appimage|wasm]` → single build, sortie multiple formats
+- **Problème réel** : déployer une application nécessite Docker (daemon), un runtime
+  installé (Python, Node, Go, etc.), ou un gestionnaire de paquets — l'installateur
+  est souvent la source de bugs.
+- **Solution** : un seul fichier exécutable. `cp app.daedalus /target/ && ./app.daedalus`
+  → extraction en 2s, serveur prêt. Aucun runtime à installer sur la cible.
+- **SISR** : les mises à jour ne téléchargent que les chunks modifiés (FastCDC),
+  pas l'artefact complet — essentiel pour les grosses applications.
+- Le concurrent direct (PyInstaller, Bun, AppImage) est mono-langage ou
+  desktop-only ; daedalus est multi-runtime et multi-OS.
 
-### Formats cibles
-- **OCI/Docker** : stub → Dockerfile equivalent, payload squashfs → couche OCI
-- **AppImage** : stub .erebus (ELF statique, musl) → AppImage runtime, payload squashfs → AppDir  
-- **WASM** : runtime → WASM via Pyodide/Node WASM, payload → WASI preopen
+---
 
-### Usage
-```bash
-# Multi-format : un seul build → 3 formats
-erebus build ./myapp --to oci,appimage,wasm --target linux-x64,linux-arm64 -o out/
+## 2. Position B : Compilateur vers formats existants (--to flag) — DEPRECATED
 
-# SISR cross-format : meme chunk engine pour tous
-erebus build ./myapp --to oci,appimage,wasm --enable-sisr --update-url https://updates.example.com
-```
+**Statut** : **Déprécié.** Abandonné au profit du format `.daedalus` universel.
 
-### Valeur unique
-- SISR qui traverse tous les formats (OCI + AppImage + WASM)
-- Build once, deploy everywhere
-- Pas d'outil existant ne fait ça (voir analyse concurrentielle)
+**Raisons** :
+- Dilution : le format `.daedalus` existant répond déjà au besoin de distribution
+- L'OCI n'est concurrent qu'au-delà du réseau (pas dans le segment desktop/local)
+- WASM/AppImage = features qui ne sont pas dans le segment prioritaire
+- Le marché valorise la simplicité (single-file) + delta updates + multi-runtime
 
-## 3. Analyse concurrentielle (recherche web 2025-2026)
+---
 
-### Tools existants
-| Outil | Format | SISR | SaaS | Business model |
-|---|---|---|---|---|
-| **Docker/BuildKit** | OCI only | zstd:chunked (partial) | ❌ local | Infra existante |
-| **AppImageTool** | AppImage only | zsync delta | ❌ local | Communauté |
-| **Wasmer + WAPM** | WASM only | WASM layer cache | ✅ (Wasmer Edge) | SaaS + OSS |
-| **Nix/Flox/Determinate** | Multiple | Narhash deltas | ✅ (Flox Teams) | SaaS Enterprise |
-| **Bazel remote cache** | Multiple | Remote cache | ❌ local | Google |
-| **pkgforge/soar** | Package manager | zsync deltas | ❌ | OSS |
-| **ocx** | OCI only | Content-addressed | ❌ | OSS |
-| **Afterburner** | WASM | N/A | ✅ planned | WASM runtime |
-| **adipo** | Fat binaries | N/A | ❌ | OSS |
-| **Depot (YC W22)** | OCI only | Layer cache NVMe | ✅ SaaS | $15M+ ARR |
-| **D4C/diffah** | OCI deltas | layer-level deltas | ❌ | OSS |
-| **chunkah** | OCI content layers | N/A | ❌ | OSS |
+## 3. Analyse concurrencelle — segment application packaging
 
-### Le GAP (rien n'existe)
-**Personne ne fait** : build-once → OCI + AppImage + WASM + SISR cross-format
+### Outils existants dans le segment universal packaging
 
-- Docker/BuildKit → OCI only
-- AppImageTool → AppImage only  
-- Wasmer/WAPM → WASM only
-- Nix → peut faire multi mais complexité Nix lang + pas SISR cross-format
-- D4C/diffah → delta updates OCI only
-- Depot → remote build acceleration, OCI only
+| Outil | Format | Multi-runtime | SISR | Sandbox | Cross-OS |
+|---|---|---|---|---|---|
+| **PyInstaller** | Executable | Python only | None | None | Cross-OS |
+| **Bun** | Single binary | JS/TS only | None | None | Cross-OS |
+| **AppImage** | AppImage | Any (desktop) | zsync delta | None | Linux only |
+| **Docker/BuildKit** | OCI image | Yes (any runtime) | zstd:chunked (partial) | Namespace | Cross-OS (w/ daemon) |
+| **Nix** | Store | Yes | NAR deltas | Namespace | Cross-OS |
+| **llamafile** | Fat C++ binary | C++ only | None | None | Cross-OS |
+| **pkg** | Executable | Node only | None | None | Cross-OS |
 
-### Depot comparison (YC W22, valué $1.5B+)
-**Positionnement** : "40x faster Docker builds" via remote BuildKit VMs (16 CPU, 32GB RAM, NVMe cache)
+## 4. Pourquoi daedalus contre les concurrents
 
-**Business model** : SaaS subscription
-**Clients** : PostHog, Wistia, Appsmith, Secoda
-**ARR** : $15M+ est.
+**PyInstaller / Bun / pkg** = mono-langage. Un projet full-stack (Python backend +
+Node frontend) nécessite deux outils. daedalus gère tout dans un seul.
 
-**xbin vs Depot** :
-| Aspect | Depot | xbin |
+| Aspect | PyInstaller + Bun + pkg | **daedalus** |
 |---|---|---|
-| Probleme | Docker build lent | Deploy multi-format avec updates minces |
-| Solution | Remote BuildKit VMs | OSS tool + multi-format + SISR |
-| Formats | OCI only | OCI + AppImage + WASM + .erebus |
-| Model | SaaS only | OSS tool + SaaS registry |
-| SISR | Layer cache NVMe | Chunk-level delta across formats |
-| Deploy | Cloud/SaaS | Local tool, self-contained |
+| Langues supportées | Python, JS/TS (separate tools) | **11 runtimes, un seul outil** |
+| Runtime à installer | Oui (Python, Node, Go) | **Non — runtime embeddable** |
+| Delta updates | None | **SISR content-defined delta** |
+| Single file | Oui (mais mono-langue) | **Oui — multi-language** |
+| Sandbox | None | **seccomp + Landlock** |
+| Cross-arch | Rebuild | Cross-compilation via cargo zigbuild |
+| Daemon requis | Non | **Non** |
 
-**Conclusion** : complementaire, pas concurrent. Depot = build fast. xbin = deploy smart.
+---
 
-## 4. Angle MLOps (recherche validee)
+## 5. Cas d'usage prioritaire : application universelle
 
-### Le probleme
-- Un modele IA fait 5-50 GB
-- Besoin de deployer sur :
-  - Cloud GPU (OCI containers)
-  - Laptop (WASM inference)
-  - Edge device (native binary)
+Packager une application typique :
 
-### xbin value proposition
+```
+my-app/
+  app.py            ← Flask/FastAPI/Django server (Python)
+  requirements.txt  ← flask, requests, sqlalchemy
+  package.json      ← frontend assets (Node frontend build)
+  static/           ← assets
+```
+
 ```bash
-erebus build ./ai-model --to oci,wasm,app --target linux-x64,aarch64
-# → OCI image for cloud, WASM module for browser, native binary for edge
-# → next update: SISR cross-format, ne telecharge que ce qui a change
+# Build une fois → un seul fichier
+daedalus build ./my-app --embed-interpreter python3,nodejs -o myapp.daedalus
+
+# Distribution → un seul fichier, marche partout
+chmod +x myapp.daedalus && ./myapp.daedalus
+# → Python runtime + deps + code + static assets extractés en 2s, server ready
+
+# Mise à jour incrémentale → 15MB au lieu de 80MB
+daedalus build ./my-app --update --enable-sisr
+# → SISR delta : seuls les chunks modifiés sont téléchargés
 ```
 
-### Concurrent
-- Docker : trop lourd pour edge/WASM
-- AppImage : pas fait pour gros fichiers (50GB)
-- PyInstaller : mono-language, pas de container/WASM
+---
 
-### Business model
-- OSS tool gratis
-- SaaS registry pour versioning de modeles + SISR
-- Target : teams MLOps, ML startups
+## 6. Modèle économique — Plan cohérent 3 phases
 
-## 5. Angle Edge/IoT OTA
+### Phase 0 (0-3 mois) — Consulting + preuve de marché
 
-### Problem
-- Bandwidth cellulaire $$$ pour fleets
-- Devices heterogenes (ARM/x86/WASM)
-- Updates doivent etre deltas
+- **Produit** : CLI open source (gratis) — `daedalus build`, `daedalus run`, `daedalus swap`
+- **Service** : Consulting packaging + hardening sécurité (sécurité par background, pas par features)
+- **Security testing sandbox** : distraire des PoCs/pentest dans un binary signé + sandboxé
+- Chaque mission = feedback sur les features enterprise réellement valorisées
+- Objectif : 2-3 clients payants → data pour productiser
 
-### xbin value proposition
-- SISR cross-format + signatures Ed25519 + single-file
-- Un artefact → tous device types
+### Phase 1 (3-9 mois) — Open core
 
-### Concurrent
-- Mender, Foundries.io, Esolutions (embedded Linux OTA)
-- Aucun ne gere WASM + native + container ensemble
+Based on consulting feedback, ship enterprise features as paid tier:
 
-### Business model
-- SaaS OTA platform ($0.10/device/mois)
-- Enterprise licensing
-
-## 6. Business Models discutes
-
-### OSS + SaaS (recommande)
-```
-erebus build . -o app.ere     # OSS gratis
-erebus push registry/app:v1   # SaaS registry
-```
-
-### Tiered pricing
 | Tier | Price | Features |
 |---|---|---|
-| Free | $0 | Local build, single-file |
-| Pro | $7/user/mois | Private registry, SISR |
-| Team | $29/team/mois | SSO, collaboration, analytics |
-| Enterprise | Custom | Airgap, compliance, support |
+| Free | $0 | Local build, single-file, sandbox basique |
+| Pro | $7/user/mois | Private registry, SISR, Ed25519 signing |
+| Enterprise | Sur mesure | Airgap, AES-256-GCM encryption, Landlock avancé, attestations, CI/CD plugins, support + SLA |
 
-### Alternative pricing
-- Per-build : $0.01/build (GitHub Actions style)
-- Per-device : $0.10/device/mois (IoT fleet)
+### Phase 2 (9-18 mois) — Scale
 
-## 7. Recommendation finale
+- Universal packaging = angle principal (YC positioning)
+- Marketplace/registry **seulement si** la phase 1 prouve la demande
+- IoT/embedded licensing **seulement si** le produit est adopté par des vendors
 
-### Angle principal : "Bun for polyglot apps"  
-**Positionnement** : xbin = Bun mais pour tout langage. Build n'importe quelle stack, package en single file, run partout.
+### Ce qu'on ne fait PAS
 
-### Angle secondaire : MLOps/Edge
-**Valeur differentielle** : SISR cross-format pour gros artefacts (modeles IA 5-50GB)
+- **IA agents edge** — DEGACER'd, le packaging universel couvre déjà le besoin
+- **Marketplace/registry** — chicken-and-egg, trop tôt
+- **OCI/AppImage/WASM export** — deprecated (voir §2)
 
-### Pitch YC
-> "Erebus is the universal application packager — build once, deploy to containers, laptops, web, and edge as a single self-extracting file. While Docker needs a daemon and Depot only does containers, Erebus packages any runtime into one file that runs anywhere, with 95% smaller updates via SISR."
+---
 
-### Business model gagnant
-- **Produit** : OSS tool (gratis, dev adoption)
-- **Monetisation** : SaaS registry (SISR + signatures + private repos)
-- **Target ARR** : $20M/year
-  - 10K devs pro (Team plan $29) = $3.5M ARR
-  - 100 MLOps/Edge startups = $15M ARR
-  - 5 Enterprise deals (custom $1M) = $5M ARR
+## 7. IoT / Edge Opportunity
 
-### Roadmap priorite
-1. **Phase 1** : Completer `--to [oci|appimage|wasm]` (multi-format output)
-2. **Phase 2** : SaaS registry publique (push/pull/sign + SISR)
-3. **Phase 3** : Enterprise features (airgap, compliance, custom runtimes)
+Source: panorama terrain (cameras IP, Pi/SBC, routeurs, drones, edge AI, systèmes industriels, NAS/NVR).
 
-### Competitive moat
-1. **SISR cross-format** — technologiquement unique
-2. **Single-file self-extracting** — plus simple que Docker
-3. **Multi-runtime** — pas besoin d'installer Python/Node/Go
-4. **Open format** — interoperability (peut decompiler avec tar/unsquashfs)
-```
+### Où daedalus a du leverage
+
+| Capacité actuelle | Problème IoT/edge résolu |
+|---|---|
+| Packager + runtime unique | Déployer apps sur Pi, edge devices, routeurs sans Docker |
+| SHA-256 + Ed25519 signing | Intégrité pour devices à distance, audit, compliance |
+| Delta updates (SISR) | Mise à jour de modèles/apps sur fleets avec connexions lentes |
+| Seccomp + Landlock | Sandbox léger — apps isolées, pas de daemon requis |
+| Multi-runtimes (Python/Node/Go/Binary) | Packaging d'outils variés (monitoring, agents, inference) |
+| Cross-OS | Déployer sur Linux/macOS/Windows x64+ARM64 |
+
+### Cas d'usage concrets (Phase 0 consulting)
+
+1. **Edge appliance de remplacement** — Pi avec `.daedalus` apps qui remplacent
+   les fonctions d'un routeur/switch/camera obsolète (VPN, firewall, NAT, monitoring).
+2. **Outils de diagnostic/maintenance** — `.daedalus` tools packagés, sandboxés,
+   signés, pour scanner des cameras (CVEs/config faibles), monitorer des routeurs
+   dépréciés, backup des configs.
+3. **Security tooling** — Avec ton background (Phrack/BH), packager des security tools
+   en `.daedalus` signés : network scanners, firmware analyzers, config audit tools.
+   Distribution fiable via signing + intégrité.
+
+### Limite fondamentale — firmware ≠ application
+
+`.daedalus` package des **applications** qui s'exécutent sur un OS existant, pas du firmware.
+Flasher un firmware Cisco obsolète = impossible via daedalus. Solutions :
+- Packager un **edge appliance** (Pi) qui remplace les fonctions du device deprecated
+- Packager des **tools de diagnostic** qui tournent sur un OS adjacent
+- Pour devices Linux embarqué (OpenWRT) : packager des apps qui s'exécutent dessus
+
+### Features potentiellement à ajouter
+
+| Problème | Feature | Effort |
+|---|---|---|
+| Fleet management (deploy, health, rollback) | Agent ou protocole léger | Moyen |
+| Transfert USB / LAN sans internet | Support offline transfert (binary déjà autonome) | Faible |
+| Capability templates par type de device | Templates prédéfinis (ex: "camera processing", "MQTT gateway") | Faible |
+| Runtimes pré-compilés pour edge AI (Coral, Jetson) | Bundled runtimes spécialisés | Moyen |

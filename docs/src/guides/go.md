@@ -1,10 +1,10 @@
 # Go Applications
 
-Package Go applications into self-extracting binaries. erebus builds your Go code into a static binary and packages it.
+Package Go applications into self-extracting binaries. daedalus builds your Go code into a static binary and packages it.
 
 ## Detection
 
-erebus detects Go applications by looking for `go.mod` in the project root.
+daedalus detects Go applications by looking for `go.mod` in the project root.
 
 ## How It Works
 
@@ -43,7 +43,7 @@ func main() {
 EOF
 
 # Build the .ere
-erebus build . -o my-go-app.ere
+daedalus build . -o my-go-app.ere
 
 # Run it
 ./my-go-app.ere
@@ -55,10 +55,10 @@ Go has excellent cross-compilation support. You can build for different architec
 
 ```bash
 # Build for Linux aarch64 from x86_64
-GOOS=linux GOARCH=arm64 erebus build . -o my-go-app-arm64.ere
+GOOS=linux GOARCH=arm64 daedalus build . -o my-go-app-arm64.ere
 
 # Build for macOS from Linux
-GOOS=darwin GOARCH=arm64 erebus build . -o my-go-app-macos.ere
+GOOS=darwin GOARCH=arm64 daedalus build . -o my-go-app-macos.ere
 ```
 
 ## Notes

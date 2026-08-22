@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# install.sh — install or upgrade erebus
-# Usage: curl -fsSL https://raw.githubusercontent.com/Tednoob17/erebus/main/scripts/install.sh | bash
+# install.sh — install or upgrade daedalus
+# Usage: curl -fsSL https://raw.githubusercontent.com/Tednoob17/daedalus/main/scripts/install.sh | bash
 set -euo pipefail
 
-REPO="Tednoob17/erebus"
-INSTALL_DIR="${EREBUS_INSTALL_DIR:-/usr/local/bin}"
+REPO="Tednoob17/daedalus"
+INSTALL_DIR="${DAEDALUS_INSTALL_DIR:-/usr/local/bin}"
 GITHUB="https://github.com/${REPO}"
 
 # ── Helpers ────────────────────────────────────────────────────────────
-info()  { printf "\033[1;34m[erebus]\033[0m %s\n" "$*"; }
-ok()    { printf "\033[1;32m[erebus]\033[0m %s\n" "$*"; }
-warn()  { printf "\033[1;33m[erebus]\033[0m %s\n" "$*"; }
-err()   { printf "\033[1;31m[erebus]\033[0m %s\n" "$*" >&2; exit 1; }
+info()  { printf "\033[1;34m[daedalus]\033[0m %s\n" "$*"; }
+ok()    { printf "\033[1;32m[daedalus]\033[0m %s\n" "$*"; }
+warn()  { printf "\033[1;33m[daedalus]\033[0m %s\n" "$*"; }
+err()   { printf "\033[1;31m[daedalus]\033[0m %s\n" "$*" >&2; exit 1; }
 
 detect_platform() {
   local os arch
@@ -90,11 +90,11 @@ main() {
   info "latest version: ${version}"
 
   # Check if already installed and up-to-date
-  if command -v erebus &>/dev/null; then
+  if command -v daedalus &>/dev/null; then
     local current
-    current="$(erebus --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")"
+    current="$(daedalus --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")"
     if [ "$current" = "$version" ]; then
-      ok "erebus ${version} is already installed"
+      ok "daedalus ${version} is already installed"
       return 0
     fi
     [ -n "$current" ] && info "upgrading from ${current} to ${version}"
@@ -104,7 +104,7 @@ main() {
   tmpdir="$(mktemp -d)"
   trap 'rm -rf "${tmpdir}"' EXIT
 
-  asset="erebus-${platform}.tar.gz"
+  asset="daedalus-${platform}.tar.gz"
   url="${GITHUB}/releases/download/${tag}/${asset}"
 
   info "downloading ${asset}..."
@@ -131,9 +131,9 @@ main() {
   info "extracting..."
   tar xzf "${tmpdir}/${asset}" -C "${tmpdir}"
 
-  local extracted_dir="${tmpdir}/erebus-${platform}"
+  local extracted_dir="${tmpdir}/daedalus-${platform}"
   if [ ! -d "$extracted_dir" ]; then
-    extracted_dir="$(find "${tmpdir}" -maxdepth 1 -type d -name 'erebus-*' | head -1)"
+    extracted_dir="$(find "${tmpdir}" -maxdepth 1 -type d -name 'daedalus-*' | head -1)"
   fi
 
   if [ ! -d "$extracted_dir" ]; then
@@ -148,8 +148,8 @@ main() {
     sudo cp "${extracted_dir}/"* "$INSTALL_DIR/"
   fi
 
-  ok "installed erebus ${version} to ${INSTALL_DIR}"
-  info "run 'erebus --version' to verify"
+  ok "installed daedalus ${version} to ${INSTALL_DIR}"
+  info "run 'daedalus --version' to verify"
 }
 
 main "$@"

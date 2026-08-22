@@ -1,131 +1,121 @@
 # Roadmap
 
-## Phase 1 — MVP functional ✅
+## Vision
 
-- [x] `.ere` format defined and stable (versioned 84B footer)
-- [x] Rust/musl static launcher: self-read, SHA-256 integrity, exec
-- [x] Atomic cache extraction using `rename()`
-- [x] Python builder: runtime detection, rootfs construction, assembly
-- [x] CLI: `build`, `run`, `inspect`, `clean`
-- [x] Python support (stdlib) — `hello-web` example
-- [x] `flock()` for concurrent cache access
-- [x] `erebus clean`
-- [x] Python `site-packages` / `.venv` support — `bottle-web` example
-- [x] **v2 layered format + incremental rebuild** (runtime reused, rebuild ~25s → ~1s; shared build cache between apps)
-- [x] `requirements.txt` → pip install at build time (temp venv)
+Un **format d'artefact exécutible universel** : `[polyglot-stub][payload][metadata][footer]`.
+Un seul fichier `.daedalus` qui contient le runtime + le code + les dépendances + la config,
+signé Ed25519, avec delta updates Sisir et sandbox seccomp+Landlock. Fonctionne sur Linux x86_64/ARM64,
+macOS ARM64, Windows x64 — sans installer quoi que ce soit sur la cible.
+
+**Use case clé :** Packager n'importe quelle application web, serveur, ou CLI en un seul fichier exécutable portable.
+
+## Positioning YC
+
+> "Daedalus packages any application — Python, Node, Go, PHP, Ruby, .NET, Java, Deno, Perl,
+> Hugo — into a single self-extracting binary that runs anywhere without Docker or a runtime
+> install. While PyInstaller only does Python and Bun only does JS/TS, Daedalus supports 11
+> runtimes in one tool, with 95% smaller updates via SISR."
+
+### Qui a ce problème?
+
+Un **développeur (solo ou petite équipe)** qui construit une **application web/service/CLI**
+et veut la distribuer à des utilisateurs qui n'ont rien installé — ni Docker, ni Python,
+ni Node, ni quoi que ce soit.
+
+### Pourquoi maintenant?
+
+- Docker nécessite un daemon + runtime installé — lourd pour une simple app
+- PyInstaller/pkg/Bun sont mono-langue — un projet full-stack nécessite plusieurs outils
+- Les mises à jour téléchargent l'artefact complet — SISR télécharge seulement les chunks modifiés
+
+### Pourquoi toi?
+
+- Architecture conçue pour ce cas : multi-runtime detection (Python/Node/Go/PHP/etc.),
+  SISR FastCDC pour delta updates, sandbox seccomp+Landlock
+- Code existant: build + inspect + run + swap + registry + Sisir delta + signing + encrypt
+- Format ouvert : un `.daedalus` peut être décompressé avec `tar`/`unsquashfs`
+- Expérience construite : 423 tests passent, code Rust 2021 stable, ANSSI-compliant
+
+## Phase 1 — MVP universal packaging ✅
+
+- [x] `.daedalus` format défini et stable (v2-v5 : plain, signed, encrypted, squashfs)
+- [x] Stub ELF statique (musl), SHA-256 integrity verification, execvp entrypoint
+- [x] Extraction atomique via `rename()` avec `flock()` pour concurrence
+- [x] Python runtime detection + rootfs construction (Flask/FastAPI/Django)
 - [x] Node.js end-to-end support (stdlib + node_modules)
-- [x] Deno support (deno.json detection, `--allow-all`, tasks-based entrypoint)
+- [x] Deno support (deno.json detection)
+- [x] Ed25519 signatures (v3) + trust model (`daedalus keygen/sign/verify/trust`)
+- [x] Level 2 isolation : user namespaces + `pivot_root`
+- [x] Smart `.so` deduplication
+- [x] `/etc/hosts` dans rootfs
+- [x] Dockerfile dependency detection (apt/apk/pip/npm + binary fetch chains)
+- [x] PATH injection (binaires bundle trouvés au runtime)
+- [x] Minimal seccomp filter (18 syscalls bloqués, arch-aware x86_64/aarch64)
+- [x] Payload encryption AES-256-GCM (v4)
+- [x] SquashFS extraction (v5 format, `--squashfs`)
+- [x] 11 runtimes supportés : Python, Node.js, Deno, Java, Ruby, .NET, Go, PHP, Perl, Binary, Hugo
+- [x] Framework auto-detection (FastAPI, Flask, Django, Next.js, Express, etc.)
 
-## Phase 2 — Robustness ✅
+## Phase 2 — Delta updates ✅
 
-- [x] **Pure-Python ELF analyzer** (no host `ldd` dependency, works on any machine with Python)
-- [x] **Ed25519 signatures** (v3 footer, `erebus keygen` / `sign` / `verify` / `trust`)
-- [x] **Trust model**: `$XDG_DATA_HOME/erebus/trusted-keys/` keyring, `erebus trust` subcommand
-- [x] **Level 2 isolation**: user namespaces + `pivot_root` (real portability)
-- [x] **Smart `.so` deduplication** (removes duplicate `ld-linux` instances)
-- [x] `/etc/hosts` in rootfs (prevents DNS PTR lookup hang)
-- [x] **Self-hosting**: `self/` → `erebus build self/` → `./erebus build ...` (full cycle: CLI → `erebus-v2` → `erebus-v3` → `erebus-v3`)
-- [x] **Dockerfile dependency detection** (apt/apk/pip/npm packages + external binary fetch chains)
-- [x] **Python AST scanner** (subprocess/os.system call detection)
-- [x] **Dependency fetcher** (isolated staging, non-invasive)
-- [x] **PATH injection** (bundled binaries found at runtime)
-- [x] **Minimal seccomp filter** (denylist of 16 dangerous syscalls, installed after pivot_root, arch-aware for x86_64 and aarch64)
-- [x] **Payload encryption** (AES-256-GCM, v4 format, HKDF key derivation from signing seed, decrypt after sig+integrity verification)
-- [ ] Manifest mode (`erebus.toml`) for complex dependencies
-- [ ] LRU cache cleanup (evict beyond threshold)
+- [x] **SISR engine** : FastCDC content-defined chunking + Merkle delta manifest
+- [x] Content-addressed build cache (runtime layer reused, rebuild ~25s → ~1s)
+- [x] Chunk reuse entre apps partageant le meme runtime
+- [x] Bandwidth reporting : `"12 MB delta vs 328 MB full — 96.4%"`
+- [x] `--enable-sisr` flag + incremental rebuild via `daedalus build --update`
 
-## Phase 3 — Production ✅
+## Phase 3 — Universal Binary (PRIORITY #1 — 3-4 days)
 
-- [x] **SquashFS extraction** (v5 format, `--squashfs` flag, `mksquashfs` build, `backhand` Rust parser, better compression than zstd+tar)
-- [x] **11 supported runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo
-- [x] **Framework auto-detection**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony
-- [x] **`.env` file baking** (`--env-file` flag, secret detection)
-- [x] **Version metadata** (`--version-info`, `--author`, `--description`, `--license`)
-- [x] **Persistent storage** (`--persist` flag, `EREBUS_PERSIST_DIR` env var)
-- [x] **Data files** (`--include PATH` flag, repeatable)
-- [x] **Tree-shaking** (`--tree-shake`, removes unused node_modules)
-- [x] **Minification** (`--minify`, JS/TS via terser, CSS built-in)
-- [x] **Health checks** (`--health-port`, `/healthz`, `/readyz`, `/status`)
-- [x] **OpenTelemetry** (`--otel-endpoint`, OTLP export, auto-instrumentation)
-- [x] **Cron/scheduled tasks** (`--cron NAME:SCHEDULE`, background scheduler)
-- [ ] **squashfs + mmap**: direct read, no extraction (kernel mount, Linux 5.12+)
-- [ ] **Cold/warm start < 100 ms** end-to-end
-- [ ] Distribution / discovery (lightweight registry, even P2P)
+**Problème :** Aujourd'hui `daedalus build` produit un binaire **architecture-specific**.
+Le stub ELF x86_64 ne marche pas sur ARM64.
 
-## Phase 4 — MLOps demo with PleIAs model (PRIORITY #1)
-
-**Why Phase 4 first** : This phase proves erebus's value with a real, small AI model. Everything in Phase 5+ builds on this.
-
-### Target app: `Pleias-SLM-RAG` (PleIAs)
-A 300M-param RAG server (Flask + LanceDB + GGUF model + llama.cpp), 328 MB model file, runs CPU-only on Raspberry Pi 5. Requirements:
-- `flask` — web framework (Python, ✓ already supported)
-- `lancedb` — vector store (Python, pip-installable)
-- `pandas` — data (pip)
-- `llama-cpp-python` — llama.cpp Python bindings (pip package with bundled .so)
-- `Pleias-RAG.gguf` — 328 MB model weights (large file → app layer)
-- `llama-cli` or `llama-server` — native binary (✓ "Binary" runtime already supported)
+**Solution :** Polyglot launcher multi-format.
 
 ```
-my-rag/
-  requirements.txt     ← flask, lancedb, pandas, llama-cpp-python
-  app.py              ← Flask API
-  Pleias-RAG.gguf     ← 328 MB model weights
-  bin/
-    llama-server      ← native ELF binary (✓ Binary runtime)
+foo.daedalus (universal file)
+├─ [polyglot-stub]        ← valide ELF+PE+Mach-O (header overlap)
+├─ [linux-x64-payload]    ← stub x64 + runtime x64 + app x64
+├─ [linux-arm64-payload]  ← stub arm64 + runtime arm64 + app arm64
+├─ [macos-arm64-payload]  ← Mach-O stub + runtime arm64
+├─ [windows-x64-payload]  ← PE stub + runtime x64
+├─ metadata (per-arch)
+└─ footer + signatures
 ```
 
-### What works TODAY
-- [x] Python runtime detection (`Pleias-SLM-RAG` style Flask app)
-- [x] `pip install` from requirements.txt (`--embed-interpreter python3`)
-- [x] Native binary packaging (llama.cpp ELF binary → "Binary" runtime)
-- [x] Large file embedding (328 MB GGUF → app layer + squashfs compression)
-- [x] `.so` resolution for `llama-cpp-python` (Rust ELF analyzer reads `DT_NEEDED`)
-- [x] PATH injection (llama-server found in rootfs `bin/`)
-- [x] SISR incremental updates (existing engine — chunk-based rebuilds)
-- [x] Content-addressed build cache (runtime layer reused, app layer rebuilt)
+**Status :** Cross-compilation validée (zigbuild + fix seccomp.rs pour aarch64).
+L'implémentation du wrapper polyglot est la priorité absolue.
 
-### What's needed for the MLOps demo
-- [ ] **`--embed-model`** flag — explicit marker for large model files; tunes FastCDC chunk size for GB files (larger chunks, fewer manifest entries) and enables sparse Merkle verification (see [delta-manifest-format.md](spec/delta-manifest-format.md))
-- [ ] **Large-file chunking** — FastCDC tuned for model weights (chunk_target_size = 1MB default → 16MB for `--embed-model`); chunk boundaries stay stable across model quantization (Q4 → Q8 diff only touches boundary chunks)
-- [ ] **Model signature + provenance** — Ed25519 over full payload tree; SBOM-style model card embedded in metadata JSON (model name, source hash, quantization level)
-- [ ] **Bandwidth reporting** — build report shows SISR savings: `"12 MB delta vs 328 MB full — 96.4%"`
-- [ ] **PleIAs test case** — `examples/pleias-rag/` with the Pleias-SLM-RAG app; `erebus build ./examples/pleias-rag --embed-model Pleias-RAG.gguf --to app --enable-sisr`
+## Phase 4 — Hot-swap (2-3 days)
 
-### Priority ordering rationale
-1. `--embed-model` (large-file chunking) — this is the core SISR optimization for AI models
-2. Bandwidth reporting — user-facing metric that proves value ("99% smaller updates")
-3. Model provenance — needed for production MLOps (auditing, compliance)
-4. PleIAs demo — validate end-to-end with real model
+`daedalus swap <binary> <layer> <new-file>` — remplacer une couche sans rebuild.
 
-## Phase 5 — Multi-format output (`--to` family) (PRIORITY #2)
+Exemple : `daedalus swap myapp.daedalus runtime ./new-runtime` — change le runtime, garde le code.
 
-Building on Phase 3's stable `.erebus` format, this phase makes erebus a **universal packager**: one build command can emit multiple deployment formats while preserving SISR incremental updates across all of them.
+## Phase 5 — Lazy loading (4-5 days)
 
-### Priority 1: OCI (highest value — container ecosystem dominates)
-- [ ] **`--to oci`** — emit an OCI image (tarball or registry push) alongside the `.erebus` file; stub → entrypoint shim; payload → OCI layer with zstd:chunked for lazy pulls
-- [ ] **OCI registry backend** — `erebus push registry/app:v1` works with GHCR, Docker Hub, ECR; pull with standard `docker pull`
-- [ ] **`--to oci,wasm,app`** — single build → all formats simultaneously
+mmap/FUSE pour ne pas charger les gros assets au démarrage.
+Chargé à la demande via SISR chunks.
 
-### Priority 2: WASM (edge/browser/serverless)
-- [ ] **`--to wasm`** — emit wasm32-wasip2 module; runtime interpreter → WASM via Pyodide/Node-WASM; payload → WASI preopen directories
-- [ ] **WASM component model** — optional `--to wasm-component` using `cargo-component` for language-interoperable modules
+## Ce qui n'est PAS prioritaire
 
-### Priority 3: AppImage + cross-format SISR
-- [ ] **`--to appimage`** — emit self-extracting AppImage; musl stub → AppImage runtime; payload → AppDir squashfs
-- [ ] **SISR cross-format** — same FastCDC chunk engine + Merkle-delta manifest serves ALL output formats; single signature chain validates deltas spanning OCI, AppImage, WASM, and `.erebus`
-- [ ] **Format-aware cache** — cache keys include output format tag; cached runtime layer reused across `.erebus`, OCI, AppImage, WASM without rebuilding
-- [ ] **AppImage `zsync` feed** — backward-compatible incremental updates for AppImage native consumers (fallback when SISR engine not embedded)
+- ❌ OCI/WASM (`--to oci|appimage|wasm`) — abandonné (dilution, cf Section 7)
+- ❌ Desktop packaging (flatpak/snap) — hors scope
+- ❌ 50 repos GitHub trending — integration testing, pas un feature produit
+- ❌ Metrics Prometheus — nice-to-have ops, pas un feature produit
+- ❌ Edge/IoT OTA channels — SISR le couvre déjà (delta updates + signatures)
 
-### Business model alignment
-| Phase | OSS tool | SaaS |
-|---|---|---|
-| Phase 4 (MLOps demo) | `--embed-model`, bandwidth reporting | Registry for model artifacts + delta hosting |
-| Phase 5 (--to family) | `--to oci/appimage/wasm` | Registry push/pull + cross-format SISR hosting |
-| | | `$0.05/build` or `$29-dev $149-team $1999-enterprise` |
+## Section 7 — À NE PAS FAIRE (conflits résolus)
 
-## Phase 6 — Edge/IoT OTA (planned)
+### OCI multi-format output (Position B deprecation)
 
-- [ ] **Signed OTA channel** — remote manifest (`<name>.erebus.manifest`) served over HTTPS with Ed25519 signature chain; target device self-updates via `./app.erebus update`
-- [ ] **Anti-rollback enforcement** — monotonic version index checked before any delta is applied (see [delta-manifest-format.md](spec/delta-manifest-format.md))
-- [ ] **Atomic swap** — staging directory + `rename()` ensures interruption leaves previous version intact
-- [ ] **Fleet awareness** — `erebus push --target fleet` writes a delta compatible with all device formats
+Le `--to [oci|appimage|wasm]` du IDEAS.md Section 2 est **déprécié**.
+Raisons : diluition de focus, l'OCI n'est concurrent qu'au-delà du réseau,
+et le format `.daedalus` existant répond déjà au besoin de distribution.
+
+## Stack technique (août 2026)
+
+- **Rust 2021** stable, `opt-level="z"`, LTO, strip, `panic=abort`
+- **stub** : musl static ELF, ~100KB, `unsafe` limité (FFI + seccomp BPF)
+- **core/cli** : zero `unsafe`, ANSSI-Rust compliant
+- **CI** : `cargo zigbuild` cross-compile, `cargo clippy -p {crate}`, `cargo test --workspace`
+- **Tests** : 423 unit/integration/e2e, QEMU pour cross-arch validation

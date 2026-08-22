@@ -1,5 +1,5 @@
 [workspace]
-members = ["erebus-core", "erebus-stub", "erebus-cli"]
+members = ["daedalus-core", "daedalus-stub", "daedalus-cli"]
 resolver = "2"
 
 [profile.release]

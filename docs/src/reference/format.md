@@ -42,7 +42,7 @@ prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
 | `meta_size`      | 80     | u64   | 8    | metadata size in bytes                       |
 | `footer_magic`   | 88     | u32   | 4    | `0xBEEFCAFE` end sentinel                    |
 
-The spec is implemented in `erebus-core/src/format.rs` — the single source of
+The spec is implemented in `daedalus-core/src/format.rs` — the single source of
 truth, shared by the launcher (stub) and the CLI. There is no separate
 `stub/src/format.rs`.
 
@@ -135,7 +135,7 @@ The footer's `sig_offset` field points to the start of this block.
 ```json
 {
   "name": "hello-web",
-  "erebus_version": "0.1.0",
+  "daedalus_version": "0.1.0",
   "created": "2026-06-23T12:00:00Z",
   "runtime": "python",
   "isolation": 0,
@@ -188,17 +188,17 @@ change, its extraction is reusable.
 
 The runtime layer (interpreter + stdlib + `.so`) is independent of app code.
 Editing `app.py` doesn't change it. On rebuild, the builder reuses it from
-the build cache (`~/.cache/erebus/build/`) — no recompression. Only the app
+the build cache (`~/.cache/daedalus/build/`) — no recompression. Only the app
 layer is rebuilt.
 
 ```bash
 # First build: ~25s (compressing runtime layer, ~54 MB)
-$ erebus build ./my_app
-[erebus] wrote my_app.ere (7.1MB) in 25.1s
+$ daedalus build ./my_app
+[daedalus] wrote my_app.ere (7.1MB) in 25.1s
 
 # Rebuild after code change: ~1s (runtime layer reused)
-$ erebus build ./my_app
-[erebus] wrote my_app.ere (7.1MB) in 1.2s
+$ daedalus build ./my_app
+[daedalus] wrote my_app.ere (7.1MB) in 1.2s
 ```
 
 Two apps sharing the same runtime share the same runtime layer in the build
@@ -210,8 +210,8 @@ The footer is versioned (`format_version`). A launcher rejects a file with
 a version higher than it understands:
 
 ```bash
-$ ./old-erebus new-format.ere
-[erebus] error: unsupported .ere format version (binary newer than launcher)
+$ ./old-daedalus new-format.ere
+[daedalus] error: unsupported .ere format version (binary newer than launcher)
 ```
 
 | Version | Changes                                            |

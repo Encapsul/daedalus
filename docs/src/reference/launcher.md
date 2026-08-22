@@ -4,7 +4,7 @@ The launcher ("stub") is the small program embedded at the head of every
 `.ere`. It's the ELF the kernel runs when the user executes
 `./my_app.ere`.
 
-- **Code**: `stub/src/main.rs` + `erebus-core/src/format.rs` (shared format parser)
+- **Code**: `stub/src/main.rs` + `daedalus-core/src/format.rs` (shared format parser)
 - **Language**: Rust, statically compiled for `x86_64-unknown-linux-musl` →
   zero dynamic dependencies, runs everywhere.
 - **Size**: ~600 KB (musl static, opt-level=z, LTO, strip, panic=abort).
@@ -18,11 +18,11 @@ construction, with no runtime or GC.
 
 **musl**: `glibc` is dynamically linked and its versions vary between distros
 (`GLIBC_2.35 not found`...). A static musl binary has **zero** dynamic
-dependencies — it runs on any Linux kernel ≥ 3.8. This is exactly what `erebus`
+dependencies — it runs on any Linux kernel ≥ 3.8. This is exactly what `daedalus`
 must guarantee for its own launcher.
 
 ```bash
-ldd stub/target/x86_64-unknown-linux-musl/release/erebus-stub
+ldd stub/target/x86_64-unknown-linux-musl/release/daedalus-stub
 # → statically linked
 ```
 
@@ -35,7 +35,7 @@ ldd stub/target/x86_64-unknown-linux-musl/release/erebus-stub
    2. read footer (last 92 bytes for v3), validate magic
    3. read JSON metadata
    4. read payload, verify SHA-256         ← integrity
-   5. cache hit? → ~/.cache/erebus/{sha256}/.ready
+   5. cache hit? → ~/.cache/daedalus/{sha256}/.ready
         yes → reuse
         no  → extract (zstd → tar) to tmp, atomic rename()
    6. build argv + env (inject LD_LIBRARY_PATH + PATH)
@@ -60,13 +60,13 @@ on the builder side via the `zstd` CLI.
 ## The `${ROOTFS}` token in the environment
 
 The builder doesn't know in advance where the cache will be materialized
-(`~/.cache/erebus/{sha256}/rootfs`). To still declare paths (e.g. `PYTHONPATH`),
+(`~/.cache/daedalus/{sha256}/rootfs`). To still declare paths (e.g. `PYTHONPATH`),
 it writes the `${ROOTFS}` token in the manifest's environment variables, and
 the launcher replaces it with the real path at `exec` time:
 
 ```
 manifest :  PYTHONPATH = ${ROOTFS}/app/site-packages
-execution:  PYTHONPATH = /home/user/.cache/erebus/f342.../rootfs/app/site-packages
+execution:  PYTHONPATH = /home/user/.cache/daedalus/f342.../rootfs/app/site-packages
 ```
 
 `LD_LIBRARY_PATH` doesn't need this token: the launcher computes it directly
@@ -96,7 +96,7 @@ relative paths and symlinks.
 ## Concurrent access: `flock()`
 
 If two instances of the same `.ere` start simultaneously on a cold cache,
-an exclusive `flock()` (on `~/.cache/erebus/{hash}.lock`) guarantees only one
+an exclusive `flock()` (on `~/.cache/daedalus/{hash}.lock`) guarantees only one
 performs the extraction; the other waits and then finds the cache ready.
 Extraction is already atomic via `rename()` — `flock` simply avoids duplicated
 work.

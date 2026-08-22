@@ -1,6 +1,6 @@
 # Building a .NET / C# App
 
-`erebus` supports .NET apps. It detects a .NET project by the presence of a
+`daedalus` supports .NET apps. It detects a .NET project by the presence of a
 `*.csproj` or `*.sln` file.
 
 ## Detection
@@ -22,10 +22,10 @@
 # Published app (recommended)
 cd my-dotnet-app
 dotnet publish -c Release
-erebus build . -o my-app.ere
+daedalus build . -o my-app.ere
 
 # Dev project (uses dotnet run, slower startup)
-erebus build . -o my-app.ere
+daedalus build . -o my-app.ere
 ```
 
 The builder:
@@ -65,7 +65,7 @@ This requires the SDK in the runtime layer (larger binary, slower startup).
 - **Framework-dependent** (`dotnet publish`): requires .NET runtime on the target.
   Smaller binary but the runtime must match.
 
-`erebus` works with both. Self-contained is recommended for maximum portability.
+`daedalus` works with both. Self-contained is recommended for maximum portability.
 
 ## Environment variables
 

@@ -1,6 +1,6 @@
 # Migrating from v1 to v2 (SISR)
 
-erebus v1 packages an app as `[stub][payload][metadata][footer]`. The v2
+daedalus v1 packages an app as `[stub][payload][metadata][footer]`. The v2
 release introduces **SISR** (Self-Incremental Sovereign Reconstruction):
 the same layout with a delta manifest and a fixed access block injected
 before the footer, plus **content-addressed delta self-updates**.
@@ -29,8 +29,8 @@ on a single flag in the footer, never on the file predating it.
 
 The v2 runtime decides at load time:
 
-- **`FLAG_SISR` set** → the file embeds a delta manifest; `--erebus-update`
-  and the `EREBUS_SISR_MANIFEST` path are available.
+- **`FLAG_SISR` set** → the file embeds a delta manifest; `--daedalus-update`
+  and the `DAEDALUS_SISR_MANIFEST` path are available.
 - **`FLAG_SISR` clear** → classic extraction. Cache keying, integrity
   verification (SHA-256 over `payload ‖ metadata`), and signature checks are
   identical to v1.
@@ -39,7 +39,7 @@ Deployment scripts written against v1 remain 100 % valid against v2.
 
 ## What an upgrade actually changes
 
-`erebus upgrade-binary <input_v1.ere> <output_v2.ere>` performs an **in-place
+`daedalus upgrade-binary <input_v1.ere> <output_v2.ere>` performs an **in-place
 format promotion**:
 
 ```
@@ -59,14 +59,14 @@ after:  [stub][payload][metadata][manifest][SisrFooterExt][footer]
 
 `upgrade-binary` refuses to touch a file that already has SISR, and refuses
 **signed** binaries (their signature block sits exactly where the manifest
-must be inserted — rebuild those with `erebus build --enable-sisr`).
+must be inserted — rebuild those with `daedalus build --enable-sisr`).
 
 ## Migration paths
 
 ### Option A — full rebuild (recommended for new releases)
 
 ```bash
-erebus build ./app --enable-sisr \
+daedalus build ./app --enable-sisr \
   --update-url https://updates.example.com/app \
   --key ~/.ere/keys/update.key
 ```
@@ -77,7 +77,7 @@ signed manifest, and an embedded update URL in one step.
 ### Option B — promote an existing v1 binary
 
 ```bash
-erebus upgrade-binary ./app-old.ere ./app-new.ere \
+daedalus upgrade-binary ./app-old.ere ./app-new.ere \
   --key ~/.ere/keys/update.key
 ```
 
@@ -87,7 +87,7 @@ launcher as well, rebuild (Option A). The promoted binary can be updated
 immediately:
 
 ```bash
-./app-new.ere --erebus-update https://updates.example.com/app
+./app-new.ere --daedalus-update https://updates.example.com/app
 ```
 
 ## Deprecation governance
@@ -102,11 +102,11 @@ immediately:
 ## Verifying a migration
 
 ```bash
-erebus inspect ./app-new.ere          # flags show SISR
-erebus upgrade-binary ./app-new.ere ./again.ere
+daedalus inspect ./app-new.ere          # flags show SISR
+daedalus upgrade-binary ./app-new.ere ./again.ere
 #   → error: input is already SISR-enabled  (expected)
 ```
 
 The test suite enforces the invariant end-to-end: a legacy binary built with
-the current toolchain runs on the v2 launcher with no `[erebus]` output, and an
+the current toolchain runs on the v2 launcher with no `[daedalus]` output, and an
 upgraded binary applies a real delta through a mock update channel.

@@ -1,6 +1,6 @@
 # Building a Java App
 
-`erebus` supports Java apps via Maven and Gradle. It detects a Java project by the
+`daedalus` supports Java apps via Maven and Gradle. It detects a Java project by the
 presence of `pom.xml` (Maven) or `build.gradle` / `build.gradle.kts` (Gradle).
 
 ## Detection
@@ -28,10 +28,10 @@ The builder parses `<mainClass>` from:
 
 ```bash
 # Maven project
-erebus build ./my-java-app -o my-java-app.ere
+daedalus build ./my-java-app -o my-java-app.ere
 
 # Gradle project
-erebus build ./my-gradle-app -o my-gradle-app.ere
+daedalus build ./my-gradle-app -o my-gradle-app.ere
 ```
 
 The builder:
@@ -65,7 +65,7 @@ configuration.
 ```bash
 cd my-spring-app
 mvn package
-erebus build . -o my-spring-app.ere
+daedalus build . -o my-spring-app.ere
 ./my-spring-app.ere
 ```
 

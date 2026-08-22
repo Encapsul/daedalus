@@ -1,6 +1,6 @@
 # Building a Ruby App
 
-`erebus` supports Ruby apps with or without Bundler. It detects a Ruby project by
+`daedalus` supports Ruby apps with or without Bundler. It detects a Ruby project by
 the presence of a `Gemfile` or a single `.rb` file.
 
 ## Detection
@@ -19,10 +19,10 @@ the presence of a `Gemfile` or a single `.rb` file.
 
 ```bash
 # Bundler project
-erebus build ./my-ruby-app -o my-ruby-app.ere
+daedalus build ./my-ruby-app -o my-ruby-app.ere
 
 # Single file
-erebus build ./my-script -o my-script.ere
+daedalus build ./my-script -o my-script.ere
 ```
 
 The builder:
@@ -51,7 +51,7 @@ If none found, defaults to `main.rb`.
 ```bash
 cd my-ruby-app
 bundle install --deployment    # installs to vendor/bundle
-erebus build . -o my-app.ere
+daedalus build . -o my-app.ere
 ```
 
 The builder reads `BUNDLE_PATH` from `.bundle/config` and embeds the gem
@@ -65,7 +65,7 @@ Rails projects are detected by the presence of `config/ru`. The builder uses
 ```bash
 cd my-rails-app
 bundle install --deployment
-erebus build . -o my-rails-app.ere
+daedalus build . -o my-rails-app.ere
 ```
 
 ## Environment variables
@@ -80,4 +80,4 @@ PORT=3000 ./my-rails-app.ere
 - Only Ruby MRI is supported (not JRuby, TruffleRuby, or mruby).
 - Native C extensions (gems with `.so` files) require their system dependencies
   to be available on the build machine. The ELF analyzer resolves these.
-- Rails asset pipeline compilation must happen before `erebus build`.
+- Rails asset pipeline compilation must happen before `daedalus build`.

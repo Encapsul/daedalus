@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  CARGO_TARGET_DIR: /tmp/erebus-stub-target
+  CARGO_TARGET_DIR: /tmp/daedalus-stub-target
   RUSTFLAGS: "-D warnings"
 
 jobs:
@@ -37,14 +37,14 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            /tmp/erebus-stub-target/
+            /tmp/daedalus-stub-target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build stub (musl static ELF)
         run: make stub
 
       - name: Build CLI
-        run: cargo build --release -p erebus-cli
+        run: cargo build --release -p daedalus-cli
 
       - name: Run tests
         run: cargo test --workspace
@@ -52,7 +52,7 @@ jobs:
       - name: Test CLI build (smoke test)
         timeout-minutes: 10
         run: |
-          /tmp/erebus-stub-target/release/erebus build examples/hello-web --isolation none -o /tmp/hello-web.ere
+          /tmp/daedalus-stub-target/release/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.ere
           /tmp/hello-web.ere &
           PID=$!
           sleep 5
@@ -103,7 +103,7 @@ jobs:
           - x86_64-apple-darwin
           - aarch64-apple-darwin
     env:
-      CARGO_TARGET_DIR: /tmp/erebus-stub-target
+      CARGO_TARGET_DIR: /tmp/daedalus-stub-target
     steps:
       - uses: actions/checkout@v4
 
@@ -127,10 +127,10 @@ jobs:
           echo "SDKROOT=/tmp/macos-sdk/MacOSX13.1.sdk" >> "$GITHUB_ENV"
 
       - name: Build stub (cross)
-        run: cargo zigbuild --release -p erebus-stub --target ${{ matrix.target }}
+        run: cargo zigbuild --release -p daedalus-stub --target ${{ matrix.target }}
 
       - name: Build CLI (cross)
-        run: cargo zigbuild --release -p erebus-cli --target ${{ matrix.target }}
+        run: cargo zigbuild --release -p daedalus-cli --target ${{ matrix.target }}
 
       - name: Verify artifact format
         shell: bash
@@ -138,10 +138,10 @@ jobs:
           set -euxo pipefail
           T="${{ matrix.target }}"
           if [[ "$T" == *pc-windows-gnu ]]; then
-            file "$CARGO_TARGET_DIR/$T/release/erebus.exe" | grep -q "PE32+"
-            file "$CARGO_TARGET_DIR/$T/release/erebus-stub.exe" | grep -q "PE32+"
+            file "$CARGO_TARGET_DIR/$T/release/daedalus.exe" | grep -q "PE32+"
+            file "$CARGO_TARGET_DIR/$T/release/daedalus-stub.exe" | grep -q "PE32+"
           else
-            file "$CARGO_TARGET_DIR/$T/release/erebus" | grep -q "Mach-O"
-            file "$CARGO_TARGET_DIR/$T/release/erebus-stub" | grep -q "Mach-O"
+            file "$CARGO_TARGET_DIR/$T/release/daedalus" | grep -q "Mach-O"
+            file "$CARGO_TARGET_DIR/$T/release/daedalus-stub" | grep -q "Mach-O"
           fi
           echo "artifact OK: $T"

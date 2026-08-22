@@ -1,17 +1,22 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with the x.bin codebase.
+This file provides guidance when working with the daedalus codebase.
 
 ## Project Overview
 
-x.bin packages any application into a single self-extracting ELF binary. Detects runtime (Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Hugo, Binary), bundles with your code, produces standalone executable.
+**daedalus packages any application into a single self-extracting binary.**
+
+daedalus compiles any web, server, or CLI application into a single self-contained
+executable. The binary format (`[stub][payload][metadata][footer]`) is a universal
+executable artifact — capable of transporting an application, a microservice, or a
+plugin as a single portable unit. Supported runtimes: Python, Node.js, Deno, Java,
+Ruby, .NET/C#, Go, PHP, Perl, Hugo, Binary.
 
 ## Architecture
 
-- `erebus-core/` — Core library (format, detect, compress, encrypt, integrity, verify, assembly)
-- `erebus-cli/` — CLI tool (clap-based, 12 commands)
-- `erebus-stub/` — ELF launcher (unsafe FFI, mmap, fork, exec)
-- `cli/` — Legacy Python CLI (being replaced by Rust)
+- `daedalus-core/` — Core library (format, detect, compress, encrypt, integrity, verify, assembly, tar, SISR)
+- `daedalus-cli/` — Rust CLI tool (clap-based, all commands)
+- `daedalus-stub/` — Self-extracting launcher (Linux ELF, macOS Mach-O, Windows PE)
 
 ## Build Commands
 
@@ -19,8 +24,8 @@ x.bin packages any application into a single self-extracting ELF binary. Detects
 make preflight    # Check toolchain
 make stub         # Build stub for current arch
 make build        # Full pipeline: preflight + stub + cargo build
-make test         # Full verification: lint + fmt + clippy + cargo test + python test
-make lint         # Run all linters (cargo fmt + clippy + ruff + black)
+make test         # Full verification: lint + fmt + clippy + cargo test
+make lint         # Run all linters (cargo fmt + clippy)
 make fmt          # Auto-format all code
 ```
 
@@ -28,69 +33,15 @@ make fmt          # Auto-format all code
 
 Before finishing any code change, run:
 1. `cargo fmt --check`
-2. `cargo clippy --all-targets -- -D warnings`
-3. `cargo test --workspace`
-4. `cd cli && ruff check erebus/ && black --check erebus/ && python3 -m pytest tests/ -q`
-5. `erebus build examples/hello-web -o /tmp/test.ere && erebus inspect /tmp/test.ere`
-
-## Claude Code Architecture (Command → Agent → Skill)
-
-This project uses the **Command → Agent → Skill** orchestration pattern from the reference architecture:
-
-### Commands (Entry Points)
-| Command | Purpose |
-|---------|---------|
-| `/erebus-build` | Build a .ere binary |
-| `/erebus-verify` | Verify integrity |
-| `/erebus-new-runtime` | Add new runtime |
-| `/erebus-new-command` | Add new CLI command |
-| `/erebus-security-audit` | Security audit |
-| `/erebus-benchmark` | Performance benchmark |
-| `/erebus-full-build` | Full build orchestration (Command → Agent → Skill) |
-| `/erebus-test-app` | Test app from GitHub |
-| `/erebus-new-runtime-full` | Add runtime with full orchestration |
-
-### Agents (Specialized Workers)
-| Agent | Purpose | Skills | Memory |
-|-------|---------|--------|--------|
-| `security-auditor` | ANSSI-Rust compliance | anssi-rust, security-audit | project |
-| `runtime-detector` | Runtime detection logic | runtime-detection | project |
-| `build-pipeline` | Build pipeline | erebus-format, verification-loop | project |
-| `cli-command` | CLI command design | clig-conventions | project |
-| `test-runner` | Verification loop | verification-loop | project |
-
-### Skills (Knowledge Bundles)
-| Skill | Purpose |
-|-------|---------|
-| `anssi-rust` | 41 ANSSI rules |
-| `erebus-format` | Binary format specification |
-| `runtime-detection` | Runtime detection rules |
-| `verification-loop` | Verification checklist |
-| `security-audit` | Security audit checklist |
-| `clig-conventions` | CLI design conventions |
-| `python-security` | Python security rules |
-
-### Hooks (Automation)
-- **PreToolUse**: Validates file edits for ANSSI-Rust compliance
-- **PostToolUse**: Logs tool execution results
-- **UserPromptSubmit**: Logs user prompts for audit trail
-- **Stop**: Logs session stops
-- **SubagentStart/SubagentStop**: Logs subagent invocations
-- **SessionStart/SessionEnd**: Logs session lifecycle
-
-### Agent Memory (Persistent)
-All agents have `memory: project` — they remember findings across sessions:
-- Security audit history
-- Runtime detection accuracy
-- Build performance trends
-- CLI command evolution
-
-### Context Forking
-Use `context: fork` for isolated subagent contexts when running parallel tasks.
+2. `cargo clippy -p daedalus-core --all-targets -- -D warnings`
+3. `cargo clippy -p daedalus-stub --all-targets -- -D warnings`
+4. `cargo clippy -p daedalus-cli --all-targets -- -D warnings`
+5. `cargo test --workspace`
+6. `cargo build --release && ./target/release/daedalus build examples/hello-web -o /tmp/test.ere && ./target/release/daedalus inspect /tmp/test.ere`
 
 ## Security Rules
 
-- No `unsafe` in `erebus-core/` (only `stub/src/main.rs`)
+- No `unsafe` in `daedalus-core/` (only `stub/src/main.rs`)
 - All `unsafe` blocks must have `SAFETY` comments
 - Ed25519 keys must have the Ed25519 bit set (CVE-2023-48022)
 - No hardcoded secrets anywhere in the codebase
@@ -103,15 +54,9 @@ Use `context: fork` for isolated subagent contexts when running parallel tasks.
 - `cargo clippy --all-targets -- -D warnings` — linting
 - Edition 2021, `opt-level = "z"`, LTO, strip, `panic = "abort"`
 
-### Python (legacy CLI)
-- `ruff check erebus/` — linting (E/W/F/I/UP/B/SIM/RUF)
-- `black --check erebus/` — formatting (88-char line length)
-- Type hints mandatory on all functions
-- Function length ≤ 40 lines
-
 ### CI (GitHub Actions)
 - `.github/workflows/ci.yml` runs on push/PR to main
-- Jobs: preflight, rust, python, build (end-to-end)
+- Jobs: preflight, rust (fmt + clippy per crate), test (cargo test --workspace), build (end-to-end)
 - PRs that fail CI cannot be merged
 
 ## Benchmarking
@@ -121,7 +66,7 @@ Benchmarks in `benchmarks/` measure:
 - Output size (MB)
 - Peak RSS (MB)
 - Cold/warm start time
-- Native vs erebus comparison
+- Native vs daedalus comparison
 
 Run: `bash benchmarks/run.sh`
 

@@ -1,31 +1,33 @@
-# erebus
+# daedalus
 
-[![CI](https://img.shields.io/github/actions/workflow/status/Tednoob17/erebus/ci.yml?branch=main&label=build)](https://github.com/Tednoob17/erebus/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/Tednoob17/daedalus/ci.yml?branch=main&label=build)](https://github.com/Tednoob17/daedalus/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](https://github.com/Tednoob17/erebus/releases)
+[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](https://github.com/Tednoob17/daedalus/releases)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)]()
-[![Runtimes](https://img.shields.io/badge/runtimes-13-purple.svg)](#supported-runtimes)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Tednoob17/erebus/pulls)
+[![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Tednoob17/daedalus/pulls)
 
 **Package any app into a single self-extracting binary.**
 
-erebus compiles any web, server, or CLI application into a single self-contained executable. Supported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Binary, Hugo, Electron, Wasm.
+daedalus compiles any web, server, or CLI application into a single self-contained executable. Supported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Hugo, Binary.
 
-The binary format (`[stub][payload][metadata][footer]`) is a universal executable artifact — capable of transporting an application, an AI agent, a microservice, or a plugin as a single portable unit.
+The binary format (`[stub][payload][metadata][footer]`) is a universal
+executable artifact — capable of transporting any application, microservice,
+or plugin as a single portable unit.
 
 ## Quick start
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Tednoob17/erebus/main/scripts/install.sh | bash
-erebus doctor
-cd your-app && erebus build . -o myapp.ere
-./myapp.ere
+curl -fsSL https://raw.githubusercontent.com/Tednoob17/daedalus/main/scripts/install.sh | bash
+daedalus doctor
+cd your-app && daedalus build . -o myapp.daedalus
+./myapp.daedalus
 ```
 
 ## Overview
 
-erebus transforms any application directory into a portable, self-extracting binary that can run on target machines without requiring the host runtime. This includes:
+daedalus transforms any application directory into a portable, self-extracting binary that can run on target machines without requiring the host runtime. This includes:
 
 - **Python applications** — Django, FastAPI, Flask
 - **Node.js applications** — Next.js, Express, Fastify
@@ -48,21 +50,19 @@ The tool handles runtime detection, dependency installation, compression, and si
 | PHP | `composer.json` | Laravel, Symfony, WordPress |
 | Perl | `Makefile.PL`, `cpanfile` | Mojolicious, Dancer |
 | Hugo | `hugo.toml`, `hugo.yaml` | Static site generator |
-| Electron | Electron app directory | Electron apps |
-| Wasm | `index.wasm`, `app.wasm`, `main.wasm` | WebAssembly runtimes |
 | Binary | ELF executable | Any static or dynamic binary |
 
 Each runtime has specific detection logic and framework support that triggers when building.
 
 ## Binary format
 
-The `.ere` binary is structured as:
+The `.daedalus` binary is structured as:
 
 ```
 [stub][payload][metadata][footer]
 ```
 
-- **Stub**: statically-linked launcher (musl ELF on Linux) that reads its own binary, verifies integrity, extracts the payload, and `execvp`s the entrypoint
+- **Stub**: statically-linked launcher — Mach-O on macOS, PE on Windows, musl ELF on Linux — that reads its own binary, verifies integrity, extracts the payload, and `execvp`s the entrypoint
 - **Payload**: zstd-compressed tar archive (or squashfs) of the application + runtime
 - **Metadata**: JSON with runtime info, entrypoint, layers, capabilities, version
 - **Footer**: 4-byte magic `0xBEEF_CAFE`, format version, integrity SHA-256 hash
@@ -71,8 +71,8 @@ Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs).
 
 ## Target & host support
 
-`erebus build --target <list>` packages one artifact **per target**. A comma-separated
-list emits one `<name>-<target>.ere` per target into the output directory. The
+`daedalus build --target <list>` packages one artifact **per target**. A comma-separated
+list emits one `<name>-<target>.daedalus` per target into the output directory. The
 stubs and (where available) embedded runtimes are cross-selected by target.
 
 | `--target` short form | Resolved triple | Stub | Runtime arch | Notes |
@@ -94,60 +94,65 @@ stubs and (where available) embedded runtimes are cross-selected by target.
 
 | Command | Description |
 |---------|-------------|
-| `erebus build <dir>` | Package an app directory into a `.ere` file |
-| `erebus inspect <file>` | Read metadata from a `.ere` file |
-| `erebus scan [dir]` | Find `.ere` files recursively and display metadata |
-| `erebus sign <file>` | Sign a `.ere` with an Ed25519 private key |
-| `erebus verify <file>` | Verify the signature of a `.ere` against trusted keys |
-| `erebus keygen` | Generate an Ed25519 keypair for signing |
-| `erebus trust <keyfile>` | Add a public key to the trusted keys directory |
-| `erebus doctor` | Check system prerequisites and report missing dependencies |
-| `erebus upgrade` | Self-update the erebus binary |
-| `erebus env` | Show erebus environment and build configuration |
-| `erebus clean` | Remove erebus cache and build artifacts |
-| `erebus completion <shell>` | Generate shell completions for bash, zsh, fish, elvish, or powershell |
-| `erebus man [dir]` | Generate man pages to the specified directory |
+| `daedalus build <dir>` | Package an app directory into a `.daedalus` file |
+| `daedalus inspect <file>` | Read metadata from a `.daedalus` file |
+| `daedalus scan [dir]` | Find `.daedalus` files recursively and display metadata |
+| `daedalus sign <file>` | Sign a `.daedalus` with an Ed25519 private key |
+| `daedalus verify <file>` | Verify the signature of a `.daedalus` against trusted keys |
+| `daedalus keygen` | Generate an Ed25519 keypair for signing |
+| `daedalus trust <keyfile>` | Add a public key to the trusted keys directory |
+| `daedalus doctor` | Check system prerequisites and report missing dependencies |
+| `daedalus upgrade` | Self-update the daedalus binary |
+| `daedalus env` | Show daedalus environment and build configuration |
+| `daedalus clean` | Remove daedalus cache and build artifacts |
+| `daedalus completion <shell>` | Generate shell completions for bash, zsh, fish, elvish, or powershell |
+| `daedalus man [dir]` | Generate man pages to the specified directory |
 
 ### Key features
 - **Global `--verbose`** flag for detailed output on any command
-- **`--strict`** mode on `erebus doctor` for strict validation
+- **`--strict`** mode on `daedalus doctor` for strict validation
 - **`--dry-run`** flag on build, inspect, scan for preview operations
-- **`.ere.toml`** configuration file support
+- **`.daedalus.toml`** configuration file support
 - **Rust-based CLI** with zero Python dependency at runtime
-- **Self-updating** via `erebus upgrade`
+- **Self-updating** via `daedalus upgrade`
 
 ### Advanced build options
 
 ```bash
 # Basic build
-erebus build ./myapp -o myapp.ere
+daedalus build ./myapp -o myapp.daedalus
 
 # Embed interpreter for self-contained binaries
-erebus build ./myapp --embed-interpreter python3 -o myapp.ere
+daedalus build ./myapp --embed-interpreter python3 -o myapp.daedalus
 
 # Multi-arch packaging: one artifact per target
-erebus build ./myapp --target linux-x64,linux-arm64 -o out/app.ere
-#  -> out/app-linux-x64.ere, out/app-linux-arm64.ere
+daedalus build ./myapp --target linux-x64,linux-arm64 -o out/app.daedalus
+#  -> out/app-linux-x64.daedalus, out/app-linux-arm64.daedalus
 
 # Cross-OS packaging: Windows artifact built on Linux/macOS
-erebus build ./myapp --target win-x64 -o out/app.ere
+daedalus build ./myapp --target win-x64 -o out/app.daedalus
 #  -> out/app-win-x64.exe (stubs+runtime selected for the target OS)
 
 # Sign and encrypt
-erebus keygen --key-dir ~/.ere/keys
-erebus build ./myapp --sign --key ~/.ere/keys/*.key -o myapp.ere
-erebus build ./myapp --encrypt --key ~/.ere/keys/*.key -o myapp-secure.ere
+# `--encrypt` is obfuscation only (AES key lives in the file metadata —
+# possession of the binary decrypts it). Use `--sign` for authenticity.
+# `--encrypt` and `--enable-sisr` are mutually exclusive.
+daedalus keygen --key-dir ~/.daedalus/keys
+daedalus build ./myapp --sign --key ~/.daedalus/keys/*.key -o myapp.daedalus
+daedalus build ./myapp --encrypt --key ~/.daedalus/keys/*.key -o myapp-secure.daedalus
 
 # Self-updating binary with SISR (delta updates)
-erebus build ./myapp --enable-sisr --update-url https://updates.example.com -o myapp.ere
-#  -> myapp.ere + myapp.ere.manifest
+# `--enable-sisr` and `--encrypt` cannot be combined (Sisir chunking is
+# incompatible with full-payload AES-GCM). Use one or the other.
+daedalus build ./myapp --enable-sisr --update-url https://updates.example.com -o myapp.daedalus
+#  -> myapp.daedalus + myapp.daedalus.manifest
 
 # Persistent storage
-erebus build ./myapp --persist -o myapp.ere
-#  -> ERE_PERSIST_DIR injected into app environment
+daedalus build ./myapp --persist -o myapp.daedalus
+#  -> DAEDALUS_PERSIST_DIR injected into app environment
 
 # Environment injection
-erebus build ./myapp --env-file .env --env KEY=VALUE -o myapp.ere
+daedalus build ./myapp --env-file .env --env KEY=VALUE -o myapp.daedalus
 ```
 
 ### Embedded Runtime Options
@@ -171,10 +176,10 @@ Intelligent caching skips extraction when the app hash matches:
 
 ```bash
 # Use cache for faster rebuilds
-erebus build ./myapp --use-cache
+daedalus build ./myapp --use-cache
 
 # Clear cache before building
-erebus build ./myapp --clear-cache
+daedalus build ./myapp --clear-cache
 ```
 
 ## Support matrix
@@ -193,7 +198,7 @@ erebus build ./myapp --clear-cache
 
 ## Configuration
 
-Place a `.ere.toml` in your app directory. CLI flags override config file values.
+Place a `.daedalus.toml` in your app directory. CLI flags override config file values.
 
 ```toml
 [package]
@@ -216,19 +221,19 @@ env_file = ".env"
 
 ```bash
 # Bash
-erebus completion bash >> ~/.bashrc
+daedalus completion bash >> ~/.bashrc
 
 # Zsh
-erebus completion zsh >> ~/.zshrc
+daedalus completion zsh >> ~/.zshrc
 
 # Fish
-erebus completion fish > ~/.config/fish/completions/erebus.fish
+daedalus completion fish > ~/.config/fish/completions/daedalus.fish
 ```
 
 ### Man pages
 
 ```bash
-erebus man /usr/local/share/man/man1/
+daedalus man /usr/local/share/man/man1/
 ```
 
 ## Build from source
@@ -236,26 +241,27 @@ erebus man /usr/local/share/man/man1/
 Requires Rust toolchain and `cargo`.
 
 ```bash
-git clone https://github.com/Tednoob17/erebus.git
-cd erebus
+git clone https://github.com/Tednoob17/daedalus.git
+cd daedalus
 cargo build --release
-# Binary at target/release/erebus
+# Binary at target/release/daedalus
 ```
 
 ### Cargo workspace
 
 | Crate | Purpose |
 |-------|---------|
-| `erebus-core` | Shared library: format, compression, detection, signing, assembly, CAS, SISR |
-| `erebus-stub` | Self-extracting launcher (Linux ELF / macOS Mach-O / Windows PE) |
-| `erebus-cli` | CLI tool (cross-platform) |
+| `daedalus-core` | Shared library: format, compression, detection, signing, assembly, CAS, SISR |
+| `daedalus-stub` | Self-extracting launcher (Linux ELF / macOS Mach-O / Windows PE) |
+| `daedalus-cli` | CLI tool (cross-platform) |
 
 ## Security
 
-- **Ed25519 signing**: binaries can be signed and verified against trusted keys
-- **Encryption**: AES-256-GCM payload encryption with key derivation
+- **Ed25519 signing**: binaries can be signed and verified against trusted keys (`~/.daedalus/trusted-keys/`, or `$DAEDALUS_TRUSTED_DIR`)
+- **Encryption (obfuscation only)**: `--encrypt` uses AES-256-GCM on the payload, but the key is stored in the file's own metadata — possession of the binary is sufficient to decrypt it. It deters casual inspection, **not** an attacker who holds the file. Byte authenticity is governed by `FLAG_SIGNED` + the trusted-keys directory; `--encrypt` and `--enable-sisr` are mutually exclusive.
 - **SHA-256 integrity**: footer hash verifies payload tampering at runtime
-- **Namespace isolation**: Linux builds use user/mount namespaces + optional seccomp
+- **Namespace isolation**: Linux builds use user/mount namespaces + optional seccomp (fail-closed); macOS uses App Sandbox (`macos_sandbox`); Windows uses process isolation (`win`/supervisor). `--isolation sandbox` must not silently degrade.
+- **Delta updates (Sisir)**: the stub verifies an embedded Ed25519 `SisirFooterExt.signature` (of the delta manifest) at cold start — fail-closed, with `DAEDALUS_SISR_ALLOW_UNSIGNED=1` as an explicit escape hatch for air-gapped/untrusted-update scenarios.
 - **CVE-2023-48022**: ed25519-dalek pinned to >= 2.1.0 to ensure Ed25519 bit is set
 
 ## Contributing

@@ -1,18 +1,18 @@
 HOST_ARCH ?= $(shell uname -m)
 HOST_OS  ?= linux
 TARGET   ?= $(HOST_ARCH)-unknown-linux-musl
-TOOLS    := /tmp/erebus-stub-target
-VERSION  ?= $(shell cargo pkgid -p erebus-core 2>/dev/null | awk -F'#' '{print $$2}' || echo "0.5.0")
+TOOLS    := /tmp/daedalus-stub-target
+VERSION  ?= $(shell cargo pkgid -p daedalus-core 2>/dev/null | awk -F'#' '{print $$2}' || echo "0.5.0")
 DIST_DIR := dist
 # Cargo target dir — override to keep builds off a full root fs, e.g.
-#   make dist CARGO_TARGET_DIR=/tmp/erebus-release-target
+#   make dist CARGO_TARGET_DIR=/tmp/daedalus-release-target
 export CARGO_TARGET_DIR := $(or $(CARGO_TARGET_DIR),$(CURDIR)/target)
 
-STUB    := $(TOOLS)/$(TARGET)/release/erebus-stub
-CRYPTO  := $(TOOLS)/$(TARGET)/release/erebus-crypto
-CLI     := target/release/erebus
-STUB_ALT := target/$(TARGET)/release/erebus-stub
-CRYPTO_ALT := target/$(TARGET)/release/erebus-crypto
+STUB    := $(TOOLS)/$(TARGET)/release/daedalus-stub
+CRYPTO  := $(TOOLS)/$(TARGET)/release/daedalus-crypto
+CLI     := target/release/daedalus
+STUB_ALT := target/$(TARGET)/release/daedalus-stub
+CRYPTO_ALT := target/$(TARGET)/release/daedalus-crypto
 
 # Architectures to build for in `dist` target
 ARCHS := x86_64 aarch64
@@ -32,7 +32,7 @@ preflight:
 
 # Build the Rust stub (statically linked musl ELF).
 stub:
-	cargo build --release -p erebus-stub --target $(TARGET)
+	cargo build --release -p daedalus-stub --target $(TARGET)
 	@if [ -f $(STUB) ]; then \
 		echo "stub:   $$(ls -la $(STUB) | awk '{print $$5}') bytes"; \
 	elif [ -f $(STUB_ALT) ]; then \
@@ -50,7 +50,7 @@ stub:
 
 # Build the Rust CLI.
 cli:
-	cargo build --release -p erebus-cli
+	cargo build --release -p daedalus-cli
 	@if [ -f $(CLI) ]; then \
 		echo "cli:    $$(ls -la $(CLI) | awk '{print $$5}') bytes"; \
 	else \
@@ -60,24 +60,24 @@ cli:
 # Hybrid install: tries system-wide, falls back to user-level
 install:
 	@printf "\nBuilding x.bin (this may take a minute)...\n"
-	cargo build --release -p erebus-cli
+	cargo build --release -p daedalus-cli
 	@if sudo test -w /usr/local/bin 2>/dev/null; then \
 		printf "\nInstalling to /usr/local/bin...\n"; \
-		sudo cp target/release/erebus /usr/local/bin/erebus; \
-		sudo chmod +x /usr/local/bin/erebus; \
-		printf "\n✅ Installed to /usr/local/bin/erebus\n"; \
-		printf "   Verify: erebus --version\n"; \
+		sudo cp target/release/daedalus /usr/local/bin/daedalus; \
+		sudo chmod +x /usr/local/bin/daedalus; \
+		printf "\n✅ Installed to /usr/local/bin/daedalus\n"; \
+		printf "   Verify: daedalus --version\n"; \
 		printf "   You can now remove the x.bin repo!\n"; \
 	else \
 		printf "\nInstalling to ~/.local/bin (no admin required)...\n"; \
 		mkdir -p ~/.local/bin; \
-		cp target/release/erebus ~/.local/bin/erebus; \
-		chmod +x ~/.local/bin/erebus; \
-		printf "\n✅ Installed to ~/.local/bin/erebus\n"; \
+		cp target/release/daedalus ~/.local/bin/daedalus; \
+		chmod +x ~/.local/bin/daedalus; \
+		printf "\n✅ Installed to ~/.local/bin/daedalus\n"; \
 		printf "   Add ~/.local/bin to your PATH:\n"; \
 		printf "   echo 'export PATH=\"\$$HOME/.local/bin:\$$PATH\"' >> \$$HOME/.bashrc\n"; \
 		printf "   source \$$HOME/.bashrc\n"; \
-		printf "   Then verify: erebus --version\n"; \
+		printf "   Then verify: daedalus --version\n"; \
 		printf "   You can remove the x.bin repo when done.\n"; \
 	fi
 
@@ -101,9 +101,9 @@ docs-serve:
 	cd docs && mdbook serve --open
 
 lint:
-	cargo clippy -p erebus-core --all-targets -- -D warnings
-	cargo clippy -p erebus-stub -- -D warnings
-	cargo clippy -p erebus-cli -- -D warnings
+	cargo clippy -p daedalus-core --all-targets -- -D warnings
+	cargo clippy -p daedalus-stub -- -D warnings
+	cargo clippy -p daedalus-cli -- -D warnings
 
 fmt:
 	cargo fmt --all
@@ -113,29 +113,29 @@ clean:
 	cd stub && cargo clean
 	rm -rf docs/book
 	rm -f *.ere
-	rm -rf ~/.cache/erebus $(DIST_DIR)
+	rm -rf ~/.cache/daedalus $(DIST_DIR)
 
 # ═══════════════════════════════════════════════════════════════════
 # Release / Distribution Targets
 # ═══════════════════════════════════════════════════════════════════
 #
 # Naming convention for release assets (glow-style):
-#   erebus_<version>_<os>_<arch>.<ext>
+#   daedalus_<version>_<os>_<arch>.<ext>
 #
 # Each Linux archive bundles the three binaries produced by this
 # workspace for that platform:
-#   erebus          — the CLI tool
-#   erebus-stub     — the statically linked launcher (musl ELF)
-#   erebus-crypto   — the signing/inspection utility (musl ELF)
+#   daedalus          — the CLI tool
+#   daedalus-stub     — the statically linked launcher (musl ELF)
+#   daedalus-crypto   — the signing/inspection utility (musl ELF)
 #
 # Components are Linux-only today (the stub launcher is Linux-only and
-# erebus-core uses std::os::unix APIs), so this release ships Linux
+# daedalus-core uses std::os::unix APIs), so this release ships Linux
 # amd64 and arm64. macOS and Windows can be added once the workspace
 # builds without those Unix dependencies and a macOS SDK is available.
 #
 # Examples:
-#   erebus_0.5.0_linux_amd64.tar.gz   (erebus + erebus-stub + erebus-crypto)
-#   erebus_0.5.0_linux_arm64.tar.gz
+#   daedalus_0.5.0_linux_amd64.tar.gz   (daedalus + daedalus-stub + daedalus-crypto)
+#   daedalus_0.5.0_linux_arm64.tar.gz
 #   checksums.txt
 #
 # `dist` uses cargo-zigbuild so the musl artifacts are produced via the
@@ -154,21 +154,21 @@ dist: preflight
 		target="$$arch-unknown-linux-musl"; \
 		case "$$arch" in x86_64) glowarch=amd64;; aarch64) glowarch=arm64;; *) glowarch=$$arch;; esac; \
 		printf "\n── $$arch (musl, static) ──\n"; \
-		$(ZIGBUILD) --release -p erebus-stub --target "$$target"; \
-		$(ZIGBUILD) --release -p erebus-cli --target "$$target"; \
-		dir="erebus_$(VERSION)_linux_$$glowarch"; \
+		$(ZIGBUILD) --release -p daedalus-stub --target "$$target"; \
+		$(ZIGBUILD) --release -p daedalus-cli --target "$$target"; \
+		dir="daedalus_$(VERSION)_linux_$$glowarch"; \
 		rm -rf "$(DIST_DIR)/$$dir"; \
 		mkdir -p "$(DIST_DIR)/$$dir"; \
-		cp -f "$(CARGO_TARGET_DIR)/$$target/release/erebus" "$(DIST_DIR)/$$dir/erebus"; \
-		cp -f "$(CARGO_TARGET_DIR)/$$target/release/erebus-stub" "$(DIST_DIR)/$$dir/erebus-stub"; \
-		cp -f "$(CARGO_TARGET_DIR)/$$target/release/erebus-crypto" "$(DIST_DIR)/$$dir/erebus-crypto"; \
+		cp -f "$(CARGO_TARGET_DIR)/$$target/release/daedalus" "$(DIST_DIR)/$$dir/daedalus"; \
+		cp -f "$(CARGO_TARGET_DIR)/$$target/release/daedalus-stub" "$(DIST_DIR)/$$dir/daedalus-stub"; \
+		cp -f "$(CARGO_TARGET_DIR)/$$target/release/daedalus-crypto" "$(DIST_DIR)/$$dir/daedalus-crypto"; \
 		chmod +x "$(DIST_DIR)/$$dir"/*; \
-		tar -czf "$(DIST_DIR)/erebus_$(VERSION)_linux_$$glowarch.tar.gz" -C "$(DIST_DIR)" "$$dir"; \
+		tar -czf "$(DIST_DIR)/daedalus_$(VERSION)_linux_$$glowarch.tar.gz" -C "$(DIST_DIR)" "$$dir"; \
 		rm -rf "$(DIST_DIR)/$$dir"; \
-		echo "  erebus_$(VERSION)_linux_$$glowarch.tar.gz"; \
+		echo "  daedalus_$(VERSION)_linux_$$glowarch.tar.gz"; \
 	done
 	@printf "\n── Checksums ──\n"
-	@cd $(DIST_DIR) && sha256sum erebus_*.tar.gz > checksums.txt && cat checksums.txt
+	@cd $(DIST_DIR) && sha256sum daedalus_*.tar.gz > checksums.txt && cat checksums.txt
 
 # Create a GitHub release and upload all dist artifacts.
 # Usage: make release VERSION=0.5.0   (tag becomes v0.5.0)
@@ -178,11 +178,11 @@ release: dist
 	@git tag "v$(VERSION)" 2>/dev/null || true
 	@git push origin "v$(VERSION)" 2>/dev/null || true
 	@gh release create "v$(VERSION)" \
-		--repo Tednoob17/erebus \
+		--repo Tednoob17/daedalus \
 		--title "x.bin v$(VERSION)" \
 		--notes-file CHANGELOG.md \
 		$(DIST_DIR)/*
-	@echo "Release v$(VERSION) created: https://github.com/Tednoob17/erebus/releases/tag/v$(VERSION)"
+	@echo "Release v$(VERSION) created: https://github.com/Tednoob17/daedalus/releases/tag/v$(VERSION)"
 
 help:
 	@echo "x.bin — package any app into a single self-extracting ELF binary"
@@ -201,10 +201,10 @@ help:
 	@echo "  make clean       Clean build artifacts"
 	@echo ""
 	@echo "Naming convention for release assets:"
-	@echo "  erebus_<version>_<os>_<arch>.<ext>"
+	@echo "  daedalus_<version>_<os>_<arch>.<ext>"
 	@echo ""
-	@echo "  linux amd64: erebus_0.5.0_linux_amd64.tar.gz"
-	@echo "  linux arm64: erebus_0.5.0_linux_arm64.tar.gz"
+	@echo "  linux amd64: daedalus_0.5.0_linux_amd64.tar.gz"
+	@echo "  linux arm64: daedalus_0.5.0_linux_arm64.tar.gz"
 	@echo "  checksums:   checksums.txt"
 	@echo ""
 	@echo "Example: make release VERSION=0.5.0"

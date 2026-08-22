@@ -1,6 +1,6 @@
 # Packaging a Native Binary
 
-`erebus` can package a pre-compiled ELF binary into a self-extracting executable.
+`daedalus` can package a pre-compiled ELF binary into a self-extracting executable.
 No runtime embedding is needed — just the binary and its shared libraries.
 
 ## Detection
@@ -17,7 +17,7 @@ my-binary/
 ## Build
 
 ```bash
-erebus build ./my-binary -o my-binary.ere
+daedalus build ./my-binary -o my-binary.ere
 ```
 
 The builder:
@@ -42,15 +42,15 @@ entries from the ELF header to find all transitive shared library dependencies.
 No host `ldd` is required.
 
 ```bash
-erebus inspect my-binary.ere
+daedalus inspect my-binary.ere
 # layers:
 #   - app    2.1MB compressed / 8.4MB raw  (binary + .so files)
 ```
 
 ## Cross-compilation
 
-Native binaries cannot be cross-compiled by `erebus` — the binary must already be
-built for the target architecture. Use `erebus build --target aarch64` only for
+Native binaries cannot be cross-compiled by `daedalus` — the binary must already be
+built for the target architecture. Use `daedalus build --target aarch64` only for
 interpreted runtimes (Python, etc.) where the interpreter can be downloaded for
 the target arch.
 

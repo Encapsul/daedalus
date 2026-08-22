@@ -2,11 +2,11 @@
 
 > **Advanced, opt-in.** This guide covers the SISR extension: making a `.ere`
 > able to update itself from signed deltas. If you don't need self-updates,
-> ignore this page — a plain `erebus build` already gives you a static,
+> ignore this page — a plain `daedalus build` already gives you a static,
 > self-contained binary.
 >
-> Status: **implemented** — `erebus build --enable-sisr` produces an updatable
-> binary and its signed manifest, and `./app.ere --erebus-update` applies the
+> Status: **implemented** — `daedalus build --enable-sisr` produces an updatable
+> binary and its signed manifest, and `./app.ere --daedalus-update` applies the
 > delta on the target (see [User-updates](./user-updates.md) for the
 > end-to-end workflow).
 
@@ -26,9 +26,9 @@ default static `.ere` remains the right choice.
 
 ```
 DEV MACHINE                          TARGET MACHINE
-                                     (no toolchain, no erebus CLI)
+                                     (no toolchain, no daedalus CLI)
 
-build + sign v1.0  ──────────────►   ./app.ere --erebus-update
+build + sign v1.0  ──────────────►   ./app.ere --daedalus-update
 build + sign v1.1                     │  fetch manifest (HTTPS)
    │                                  │  verify signature + anti-rollback
    │                                  │  download changed chunks
@@ -47,12 +47,12 @@ runs inside the binary.
 
 ```bash
 # Static container — no SISR
-erebus build ./my_app -o my_app.ere
+daedalus build ./my_app -o my_app.ere
 
 # Updatable binary — enables SISR and embeds the update channel
-erebus build ./my_app -o my_app.ere \
+daedalus build ./my_app -o my_app.ere \
     --enable-sisr \
-    --key $XDG_DATA_HOME/erebus/keys/<fingerprint>.key \
+    --key $XDG_DATA_HOME/daedalus/keys/<fingerprint>.key \
     --update-url https://updates.example.com/my_app
 ```
 
@@ -63,17 +63,17 @@ manifest that gets published.
 
 ## 2. Sign the release
 
-Signing a release uses the same Ed25519 keys as erebus's existing signing
+Signing a release uses the same Ed25519 keys as daedalus's existing signing
 support, but the **object** signed differs when SISR is on:
 
 ```bash
-erebus keygen --key-dir $XDG_DATA_HOME/erebus/keys
-erebus build ./my_app --enable-sisr --key $XDG_DATA_HOME/erebus/keys/<fingerprint>.key --update-url https://…
+daedalus keygen --key-dir $XDG_DATA_HOME/daedalus/keys
+daedalus build ./my_app --enable-sisr --key $XDG_DATA_HOME/daedalus/keys/<fingerprint>.key --update-url https://…
 ```
 
 With `--enable-sisr` the `--key` argument signs the **manifest**, not the
 binary (the SISR section would be truncated by the binary signature block).
-Without `--enable-sisr`, `erebus sign` still signs the binary as before. The
+Without `--enable-sisr`, `daedalus sign` still signs the binary as before. The
 trust chain is fixed at build time: a `.ere` only applies updates signed by
 the same key, or by a delegated key recorded in its header.
 
@@ -91,22 +91,22 @@ updates.example.com/
 The chunk names are **content-addressed** (see the
 [delta manifest spec](../spec/delta-manifest-format.md)), so a chunk fetched
 by name can be verified against its hash before use. `manifest` is the file
-`erebus build` writes next to the binary (`<output>.manifest`). Publish it
+`daedalus build` writes next to the binary (`<output>.manifest`). Publish it
 under the base URL you passed to `--update-url`, with the `chunks/` directory
 beside it.
 
 ## 4. Update on the target
 
 ```bash
-# Check for and apply an update (URL from --update-url, $EREBUS_UPDATE_URL,
+# Check for and apply an update (URL from --update-url, $DAEDALUS_UPDATE_URL,
 # or an explicit argument — in that order)
-./my_app.ere --erebus-update
+./my_app.ere --daedalus-update
 
 # Point at a different channel explicitly
-./my_app.ere --erebus-update https://updates.example.com/my_app
+./my_app.ere --daedalus-update https://updates.example.com/my_app
 
 # Inspect versions without updating
-./my_app.ere --erebus-version
+./my_app.ere --daedalus-version
 ```
 
 What happens under the hood — and what cannot be skipped:
@@ -126,7 +126,7 @@ A `.ere` produced by SISR is a **standard, valid `.ere`**. Existing
 verification works unchanged:
 
 ```bash
-erebus verify my_app.ere --trusted-dir $XDG_DATA_HOME/erebus/trusted-keys
+daedalus verify my_app.ere --trusted-dir $XDG_DATA_HOME/daedalus/trusted-keys
 ```
 
 There is no separate "SISR format" to verify.
