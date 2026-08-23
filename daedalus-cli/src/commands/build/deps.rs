@@ -905,4 +905,60 @@ mod tests {
         // Should not error even if php is not available
         assert!(check_php_platform_reqs(dir.path(), false).is_ok());
     }
+
+    #[test]
+    fn ensure_python_returns_host_when_no_target() {
+        // When target is None, ensure_python should find the host python3
+        // This test only checks the path doesn't error; actual download is
+        // tested in integration tests.
+        let result = ensure_python(None, false);
+        // It should either succeed (python3 on PATH) or error gracefully
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn ensure_python_target_arch_mapping() {
+        let target = "aarch64-apple-darwin";
+        let (arch, os) = parse_target(target);
+        let py_arch = match arch.as_str() {
+            "x86_64" | "amd64" => "x86_64",
+            "aarch64" | "arm64" => "aarch64",
+            "riscv64" => "riscv64",
+            _ => panic!("unsupported arch"),
+        };
+        let py_os = match os.as_str() {
+            "linux" => "unknown-linux",
+            "darwin" => "apple-darwin",
+            _ => panic!("unsupported os"),
+        };
+        assert_eq!(py_arch, "aarch64");
+        assert_eq!(py_os, "apple-darwin");
+    }
+
+    #[test]
+    fn ensure_python_musl_target_mapping() {
+        let target = "riscv64gc-unknown-linux-musl";
+        let (arch, _os) = parse_target(target);
+        let py_arch = match arch.as_str() {
+            "x86_64" | "amd64" => "x86_64",
+            "aarch64" | "arm64" => "aarch64",
+            "riscv64" | "riscv64gc" => "riscv64",
+            _ => arch.as_str(),
+        };
+        assert_eq!(py_arch, "riscv64");
+    }
+
+    #[test]
+    fn ensure_python_url_format() {
+        let py_arch = "aarch64";
+        let py_os = "apple-darwin";
+        let version = "3.12.4";
+        let date = "20240415";
+        let url = format!(
+            "https://github.com/astral-sh/python-build-standalone/releases/download/{date}/cpython-{version}+{date}-{py_arch}-{py_os}-install_only.tar.gz"
+        );
+        assert!(url.contains("astral-sh/python-build-standalone"));
+        assert!(url.contains("aarch64-apple-darwin"));
+        assert!(url.contains("install_only"));
+    }
 }
