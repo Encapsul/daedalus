@@ -346,4 +346,59 @@ mod tests {
         assert!(script.contains("x86_64 Linux"));
         assert!(script.contains("aarch64 Linux"));
     }
+
+    #[test]
+    fn launcher_includes_darwin_cases() {
+        let launcher = make_launcher(&[
+            ArchSlice {
+                target: "x86_64-apple-darwin".to_string(),
+                uname_machine: "x86_64".to_string(),
+                uname_sys: "Darwin".to_string(),
+                offset: 65_536,
+                size: 100,
+                sha256: String::new(),
+            },
+            ArchSlice {
+                target: "aarch64-apple-darwin".to_string(),
+                uname_machine: "arm64".to_string(),
+                uname_sys: "Darwin".to_string(),
+                offset: 65_636,
+                size: 100,
+                sha256: String::new(),
+            },
+        ])
+        .unwrap();
+        let script = std::str::from_utf8(&launcher).unwrap();
+        assert!(script.contains("x86_64 Darwin"));
+        assert!(script.contains("arm64 Darwin"));
+        assert!(script.contains("tail -c"));
+        assert!(script.contains("head -c"));
+    }
+
+    #[test]
+    fn assemble_universal_with_macos_slices() {
+        let slices: Vec<(&str, &str, &str, &[u8])> = vec![
+            (
+                "x86_64-unknown-linux-musl",
+                "x86_64",
+                "Linux",
+                &[0u8; 100][..],
+            ),
+            ("aarch64-apple-darwin", "arm64", "Darwin", &[1u8; 200][..]),
+        ];
+        let binary = assemble_universal(&slices).unwrap();
+
+        assert!(binary.starts_with(b"#!/bin/sh"));
+        let footer =
+            UniversalFooter::parse(&binary[binary.len() - UniversalFooter::SIZE..]).unwrap();
+        assert_eq!(footer.magic, UNIV_FOOTER_MAGIC);
+        assert_eq!(footer.num_slices, 2);
+
+        let manifest_bytes = &binary[footer.manifest_offset as usize
+            ..(footer.manifest_offset + u64::from(footer.manifest_size)) as usize];
+        let manifest = UniversalManifest::from_json(manifest_bytes).unwrap();
+        assert_eq!(manifest.slices.len(), 2);
+        assert_eq!(manifest.slices[1].uname_sys, "Darwin");
+        assert_eq!(manifest.slices[1].uname_machine, "arm64");
+    }
 }
