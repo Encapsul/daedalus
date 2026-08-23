@@ -20,6 +20,8 @@ mod arch_consts {
     pub const AUDIT_ARCH: u32 = 0x4000_0003;
     #[cfg(target_arch = "arm")]
     pub const AUDIT_ARCH: u32 = 0x4000_0028;
+    #[cfg(target_arch = "riscv64")]
+    pub const AUDIT_ARCH: u32 = 0xC000_00F3;
 }
 
 #[cfg(target_os = "linux")]
@@ -145,7 +147,7 @@ fn network_syscalls() -> &'static [u32] {
 /// internally calls `execve`/`clone`, so it is covered transitively.
 #[cfg(target_os = "linux")]
 fn exec_syscalls() -> &'static [u32] {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
     {
         &[
             libc::SYS_execve as u32,
@@ -154,7 +156,7 @@ fn exec_syscalls() -> &'static [u32] {
             libc::SYS_clone3 as u32,
         ]
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "riscv64")))]
     {
         &[
             libc::SYS_execve as u32,

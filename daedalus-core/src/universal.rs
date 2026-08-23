@@ -97,7 +97,7 @@ pub fn make_launcher(slices: &[ArchSlice]) -> io::Result<Vec<u8>> {
     let mut script = String::from(
         "#!/bin/sh\n# daedalus universal binary — auto-generated launcher\n\
          _arch=$(uname -m)\n_os=$(uname -s 2>/dev/null || echo Linux)\n\
-         _self=$0\n_off=\n",
+         _self=$0\n_off=_sz=\n",
     );
 
     for s in slices {
@@ -110,11 +110,11 @@ pub fn make_launcher(slices: &[ArchSlice]) -> io::Result<Vec<u8>> {
 
     script.push_str(
         "if [ -z \"$_off\" ]; then\n  echo 'daedalus: unsupported architecture: '\"$_arch\"' on '\"$_os\" >&2\n  exit 1\nfi\n\
-        _tmpf=$(mktemp /tmp/daedalus.XXXXXX)\n\
-        dd if=\"$_self\" of=\"$_tmpf\" bs=1M skip=$((_off >> 20)) count=$(((_sz + 0xFFFFF) >> 20)) 2>/dev/null || \
-        dd if=\"$_self\" of=\"$_tmpf\" bs=1 skip=$_off count=$_sz 2>/dev/null\n\
-        chmod +x \"$_tmpf\"\n\
-        exec \"$_tmpf\" \"$@\"\n",
+         _tmpf=$(mktemp /tmp/daedalus.XXXXXX)\n\
+         tail -c +$((_off + 1)) \"$_self\" 2>/dev/null | head -c $_sz > \"$_tmpf\" || \\\n\
+         dd if=\"$_self\" of=\"$_tmpf\" bs=1 skip=$_off count=$_sz 2>/dev/null\n\
+         chmod +x \"$_tmpf\"\n\
+         exec \"$_tmpf\" \"$@\"\n",
     );
 
     let mut launcher = script.into_bytes();

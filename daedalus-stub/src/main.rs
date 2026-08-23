@@ -22,6 +22,7 @@ mod macos_sandbox;
 mod namespace;
 mod seccomp;
 mod squashfs_extract;
+#[cfg(target_os = "linux")]
 mod update_url;
 #[cfg(target_os = "windows")]
 mod win;
@@ -68,6 +69,14 @@ const LD_PATHS: &[&str] = &[
 const LD_PATHS: &[&str] = &["lib", "usr/lib", "usr/lib/i386-linux-gnu"];
 #[cfg(all(unix, target_arch = "arm"))]
 const LD_PATHS: &[&str] = &["lib", "usr/lib", "usr/lib/arm-linux-gnueabihf"];
+#[cfg(all(unix, target_arch = "riscv64"))]
+const LD_PATHS: &[&str] = &[
+    "lib",
+    "lib64",
+    "usr/lib",
+    "usr/lib64",
+    "usr/lib/riscv64-linux-gnu",
+];
 
 /// Absolute forms of `LD_PATHS`, used after `pivot_root` where the process
 /// root is the rootfs. `execvp` and the dynamic loader resolve relative PATH
@@ -1002,6 +1011,7 @@ fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
         exit(0);
     }
 
+    #[cfg(target_os = "linux")]
     if let Some(idx) = args.iter().position(|a| {
         let s = a.to_string_lossy();
         s == "--daedalus-update" || s.starts_with("--daedalus-update=")
@@ -1014,6 +1024,7 @@ fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 /// Resolves the update channel base URL:
 /// `--daedalus-update=<URL>` argument > `$DAEDALUS_UPDATE_URL` > embedded `meta.update_url`.
 fn resolve_update_url(
@@ -1024,6 +1035,7 @@ fn resolve_update_url(
     update_url::resolve_update_url(args, idx, meta)
 }
 
+#[cfg(target_os = "linux")]
 /// Fetches `<base>/manifest` (XBMR), authenticates it against the trusted
 /// keys + Merkle root, then streams the changed chunks from `<base>/chunks/<hex>`
 /// through the engine. Progress and reuse/fetch stats go to stderr; the
@@ -1077,6 +1089,7 @@ fn remote_update(base: &str) -> io::Result<()> {
 /// Content-addressability is the security anchor: every chunk the engine
 /// writes must SHA-256 to its manifest entry, so the transport cannot smuggle
 /// a wrong chunk in. The fetcher only counts + reports progress.
+#[cfg(target_os = "linux")]
 struct HttpChunkFetcher {
     base: String,
     total: usize,
@@ -1084,6 +1097,7 @@ struct HttpChunkFetcher {
     bytes: std::cell::Cell<u64>,
 }
 
+#[cfg(target_os = "linux")]
 impl HttpChunkFetcher {
     fn new(base: &str, total: usize) -> Self {
         Self {
@@ -1095,6 +1109,7 @@ impl HttpChunkFetcher {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl daedalus_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
     fn fetch(&self, hash: &[u8; 32], length: usize) -> io::Result<Vec<u8>> {
         let url = format!("{}/{}", self.base, hex::encode(hash));
@@ -1119,6 +1134,7 @@ impl daedalus_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
     }
 }
 
+#[cfg(target_os = "linux")]
 /// Integer duration in milliseconds from the env, falling back to `default_ms`
 /// when unset or unparsable.
 fn env_timeout_ms(name: &str, default_ms: u64) -> u64 {
@@ -1135,6 +1151,7 @@ fn env_timeout_ms(name: &str, default_ms: u64) -> u64 {
 ///
 /// Only caller-verified content is consumed (signed manifest, hash-checked
 /// chunks), so the transport is a convenience — never a trust anchor.
+#[cfg(target_os = "linux")]
 fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
     const DEFAULT_MAX: u64 = 64 * 1024 * 1024; // 64 MiB
     let ms = |name, default| std::time::Duration::from_millis(env_timeout_ms(name, default));
