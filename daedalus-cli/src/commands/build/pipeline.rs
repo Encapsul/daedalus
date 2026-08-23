@@ -1914,6 +1914,19 @@ pub(crate) fn build_universal(args: &BuildArgs, plan: &BuildPlan, output: &Path)
             Some(target_triple.to_string())
         };
 
+        // Skip architectures whose pre-built stub binary is missing. This
+        // allows partial universal builds when stubs are unavailable (e.g.
+        // macOS stubs in a Linux-only CI environment).
+        match find_stub(&target_opt) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!(
+                    "[daedalus] warning: skipping {uname_machine} ({uname_sys}) — stub not built: {e}"
+                );
+                continue;
+            }
+        }
+
         eprintln!("[daedalus] Building universal slice for {uname_machine} ({uname_sys})");
         build_single_target(args, plan, target_opt.clone(), &slice_path)?;
 

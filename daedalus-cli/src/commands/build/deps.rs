@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use daedalus_core::paths::cache_dir;
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 use super::args::parse_target;
@@ -240,11 +241,11 @@ pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathB
         let pa = match arch.as_str() {
             "x86_64" | "amd64" => "x86_64",
             "aarch64" | "arm64" => "aarch64",
-            "riscv64" => "riscv64",
+            "riscv64" | "riscv64gc" => "riscv64",
             _ => anyhow::bail!("unsupported cross-compile architecture: {arch}"),
         };
         let po = match os.as_str() {
-            "linux" => "unknown-linux",
+            "linux" => "unknown-linux-musl",
             "darwin" => "apple-darwin",
             _ => anyhow::bail!("unsupported cross-compile OS: {os}"),
         };
@@ -258,7 +259,7 @@ pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathB
                 a => a,
             },
             match std::env::consts::OS {
-                "linux" => "unknown-linux",
+                "linux" => "unknown-linux-musl",
                 "macos" => "apple-darwin",
                 o => o,
             },
@@ -292,25 +293,39 @@ pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathB
 }
 
 /// Download and extract a cross-compiled Python from python-build-standalone.
+///
+/// Fetches the latest release metadata from GitHub to discover the actual
+/// version/date rather than hardcoding a specific release that may not exist.
 fn ensure_python_download(
     tools_dir: &Path,
     py_arch: &str,
     py_os: &str,
     verbose: bool,
 ) -> Result<()> {
-    let version = "3.12.4";
-    let date = "20240415";
+    // Discover the latest release from GitHub API to avoid hardcoding dates
+    // that may not have a matching asset set.
+    let release_api =
+        "https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest";
+    let release_json: Value = reqwest::blocking::get(release_api)
+        .context("failed to reach python-build-standalone releases")?
+        .json()
+        .context("failed to parse release manifest")?;
+    let tag = release_json
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("no tag_name in python-build-standalone release"))?;
+    let (version, date) = parse_python_tag(tag)?;
     let url_tag = format!("cpython-{version}+{date}-{py_arch}-{py_os}");
-    let suffix = "install_only";
     let url = format!(
-        "https://github.com/astral-sh/python-build-standalone/releases/download/{date}/{url_tag}-{suffix}.tar.gz"
+        "https://github.com/astral-sh/python-build-standalone/releases/download/{date}/{url_tag}-install_only.tar.gz"
     );
 
     if verbose {
-        eprintln!("  downloading python {version} ({py_arch}-{py_os})...");
+        eprintln!("  downloading python {version} ({py_arch}-{py_os}) from release {date}...");
     }
 
-    let response = reqwest::blocking::get(&url).context("failed to download python tarball")?;
+    let response = reqwest::blocking::get(&url)
+        .with_context(|| format!("failed to download python tarball from {url}"))?;
     let reader = std::io::BufReader::new(response);
     let decoder = flate2::read::GzDecoder::new(reader);
     let mut archive = tar::Archive::new(decoder);
@@ -336,6 +351,17 @@ fn ensure_python_download(
     }
 
     Ok(())
+}
+
+/// Parse a python-build-standalone release tag like `3.12.4+20240415` into
+/// `(version, date)`. Falls back to `(tag, tag)` when the format is unexpected.
+fn parse_python_tag(tag: &str) -> Result<(&str, &str)> {
+    if let Some((version, date)) = tag.rsplit_once('+') {
+        if !date.is_empty() && !version.is_empty() {
+            return Ok((version, date));
+        }
+    }
+    Ok((tag, tag))
 }
 
 /// Extract the Windows node dist zip into `tools_dir/bin/`.
@@ -923,11 +949,11 @@ mod tests {
         let py_arch = match arch.as_str() {
             "x86_64" | "amd64" => "x86_64",
             "aarch64" | "arm64" => "aarch64",
-            "riscv64" => "riscv64",
+            "riscv64" | "riscv64gc" => "riscv64",
             _ => panic!("unsupported arch"),
         };
         let py_os = match os.as_str() {
-            "linux" => "unknown-linux",
+            "linux" => "unknown-linux-musl",
             "darwin" => "apple-darwin",
             _ => panic!("unsupported os"),
         };
@@ -951,14 +977,28 @@ mod tests {
     #[test]
     fn ensure_python_url_format() {
         let py_arch = "aarch64";
-        let py_os = "apple-darwin";
-        let version = "3.12.4";
-        let date = "20240415";
+        let py_os = "unknown-linux-musl";
+        let version = "3.10.21";
+        let date = "20260814";
         let url = format!(
             "https://github.com/astral-sh/python-build-standalone/releases/download/{date}/cpython-{version}+{date}-{py_arch}-{py_os}-install_only.tar.gz"
         );
         assert!(url.contains("astral-sh/python-build-standalone"));
-        assert!(url.contains("aarch64-apple-darwin"));
+        assert!(url.contains("aarch64-unknown-linux-musl"));
         assert!(url.contains("install_only"));
+    }
+
+    #[test]
+    fn parse_python_tag_valid() {
+        let (v, d) = parse_python_tag("3.12.4+20240415").unwrap();
+        assert_eq!(v, "3.12.4");
+        assert_eq!(d, "20240415");
+    }
+
+    #[test]
+    fn parse_python_tag_fallback() {
+        let (v, d) = parse_python_tag("20260814").unwrap();
+        assert_eq!(v, "20260814");
+        assert_eq!(d, "20260814");
     }
 }
