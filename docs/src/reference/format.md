@@ -225,3 +225,174 @@ $ ./old-daedalus new-format.ere
 Reserved fields (`flags`, `sig_offset`) allow extension without breaking
 compatibility. Ed25519 signatures are inserted between metadata and footer
 with a `flags` bit and a dedicated offset — v2 files remain readable.
+
+---
+
+# Universal Polyglot Binary Format
+
+A **universal** `.daedalus` file bundles multiple architecture-specific
+`.ere` slices behind a polyglot shell-script launcher. At runtime, the
+launcher detects the host OS/architecture via `uname`, extracts the
+matching slice to a temp file, and `exec`s it. Each slice is a complete,
+independent `.ere` binary.
+
+## Motivation
+
+A single self-contained binary that runs unmodified on:
+
+- **Linux**: x86_64, aarch64, riscv64
+- **macOS**: x86_64 (Intel), arm64 (Apple Silicon)
+
+is achieved by concatenating self-extracting `.ere` slices and prepending
+a POSIX-compliant shell script that knows where each slice lives.
+
+## Layout
+
+```
+offset 0        ┌──────────────────────────┐
+                │  shell-script launcher    │  64 KiB (fixed), null-padded
+                │  (polyglot with ELF header│                      )
+                ├──────────────────────────┤
+slice_1_off     │  linux-x86_64 .ere slice │
+                ├──────────────────────────┤
+slice_2_off     │  linux-aarch64 .ere slice│
+                ├──────────────────────────┤
+  ...           │  ...                     │
+                ├──────────────────────────┤
+manifest_off    │  JSON manifest (4 KiB)   │  fixed-size, null-padded
+                ├──────────────────────────┤
+EOF - 26        │  universal footer (26 B) │
+                └──────────────────────────┘
+```
+
+### Polyglot trick
+
+The first 64 KiB is simultaneously:
+
+1. **A valid shell script** — the kernel's `#!` handler treats `#!/bin/sh`
+   at offset 0 as a directive to invoke `/bin/sh`. The shell reads and
+   executes the script, which extracts the matching slice and `exec`s it.
+2. **A valid ELF/PE/Mach-O file** (when the slice is extracted alone) —
+   each slice is a standalone `.ere` binary that the kernel can load
+   directly.
+
+The shell script occupies exactly `64 * 1024` bytes. Bytes after the
+script's `exec` line are unused padding (zeros), so the shell never
+parses them. When a slice is extracted to a temp file, the file begins
+with the slice's own binary header (ELF magic, PE, or Mach-O magic).
+
+## Universal footer (26 bytes)
+
+```
+Offset  Type   Field             Description
+0       u32le  magic             0xBEEFCABE (little-endian)
+4       u32le  num_slices        Number of ArchSlices
+8       u64le  manifest_offset   Absolute offset of JSON manifest
+16      u32le  manifest_size     Size of the JSON manifest (before padding)
+20      u32le  reserved          Must be 0
+```
+
+## JSON manifest
+
+Immediately before the footer, padded to 4 KiB:
+
+```json
+{
+  "slices": [
+    {
+      "target": "x86_64-unknown-linux-musl",
+      "uname_machine": "x86_64",
+      "uname_sys": "Linux",
+      "offset": 65536,
+      "size": 2956757,
+      "sha256": "a1b2c3..."
+    },
+    {
+      "target": "aarch64-apple-darwin",
+      "uname_machine": "arm64",
+      "uname_sys": "Darwin",
+      "offset": 3022293,
+      "size": 2476949,
+      "sha256": "d4e5f6..."
+    }
+  ]
+}
+```
+
+The manifest is human-readable and allows tools to inspect a universal
+binary without executing it. Tools reading the footer can locate the
+manifest, parse the slice table, and verify SHA-256 checksums.
+
+## Launcher script
+
+The shell script (first 64 KiB) looks like:
+
+```sh
+#!/bin/sh
+# daedalus universal binary — auto-generated launcher
+_arch=$(uname -m)
+_os=$(uname -s 2>/dev/null || echo Linux)
+_self=$0
+_off=_sz=
+
+case "$_arch $_os" in
+  "x86_64 Linux") _off=65536; _sz=2956757 ;;
+esac
+case "$_arch $_os" in
+  "aarch64 Linux") _off=3022293; _sz=2476949 ;;
+esac
+case "$_arch $_os" in
+  "riscv64 Linux") _off=5499242; _sz=2362661 ;;
+esac
+case "$_arch $_os" in
+  "x86_64 Darwin") _off=7861903; _sz=1524141 ;;
+esac
+case "$_arch $_os" in
+  "arm64 Darwin") _off=9386044; _sz=1287101 ;;
+esac
+
+if [ -z "$_off" ]; then
+  echo 'daedalus: unsupported architecture: '"$_arch"' on '"_os" >&2
+  exit 1
+fi
+
+_tmpf=$(mktemp /tmp/daedalus.XXXXXX)
+tail -c +$((_off + 1)) "$_self" 2>/dev/null | head -c $_sz > "$_tmpf" || \
+dd if="$_self" of="$_tmpf" bs=1 skip=$_off count=$_sz 2>/dev/null
+chmod +x "$_tmpf"
+exec "$_tmpf" "$@"
+```
+
+### Extraction strategy
+
+The launcher uses `tail -c +N` piped to `head -c M` for fast extraction.
+This is much faster than `dd bs=1` (which reads byte-by-byte) and
+correctly handles non-block-aligned offsets. The `dd bs=1` fallback is
+used if `tail`/`head` are unavailable or fail.
+
+## Supported targets
+
+| uname -m   | uname -s | target triple                | notes          |
+|------------|----------|------------------------------|----------------|
+| x86_64     | Linux    | x86_64-unknown-linux-musl    | static ELF     |
+| aarch64    | Linux    | aarch64-unknown-linux-musl   | static ELF     |
+| riscv64    | Linux    | riscv64gc-unknown-linux-musl | static ELF     |
+| x86_64     | Darwin   | x86_64-apple-darwin          | Mach-O         |
+| arm64      | Darwin   | aarch64-apple-darwin         | Mach-O         |
+
+Linux slices use musl for static linking (no glibc dependency). macOS
+slices use the system dynamic linker but the stub itself is
+freestanding (minimal libc with `-undefined dynamic_lookup`).
+
+## Building
+
+```bash
+# Build a universal binary for all 5 supported targets
+daedalus build ./app --universal --isolation 0 -o app.daedalus
+
+# The CLI builds each slice individually via cargo zigbuild/musl/cargo
+# cross-compiler, then assembles them with the polyglot launcher.
+```
+
+Implementation lives in `daedalus-core/src/universal.rs` (shared by
+the CLI builder and any inspection tools).
