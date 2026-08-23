@@ -200,6 +200,144 @@ fn ensure_node_download(
     Ok(tools_dir.join("bin"))
 }
 
+/// Ensure a Python interpreter is available for the requested target.
+/// Downloads a static Python from `python-build-standalone` (astral-sh) to
+/// `~/.cache/daedalus/build-tools/python-<os>-<arch>/` when `target` differs
+/// from the host, or uses the host `python3` when `target` is `None`.
+pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
+    if target.is_none() {
+        if let Ok(p) = std::process::Command::new("which").arg("python3").output() {
+            if p.status.success() {
+                let path = String::from_utf8_lossy(&p.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Ok(PathBuf::from(path));
+                }
+            }
+        }
+    }
+
+    let suffix = target
+        .map(|t| {
+            let (arch, os) = parse_target(t);
+            format!("{os}-{arch}")
+        })
+        .unwrap_or_else(|| "host".to_string());
+
+    let tools_dir = cache_dir()
+        .join("build-tools")
+        .join(format!("python-{suffix}"));
+
+    let python_bin = tools_dir.join("bin").join("python3");
+    if python_bin.exists() {
+        if verbose {
+            eprintln!("  using cached python from {}", tools_dir.display());
+        }
+        return Ok(python_bin);
+    }
+
+    let (py_arch, py_os) = if let Some(t) = target {
+        let (arch, os) = parse_target(t);
+        let pa = match arch.as_str() {
+            "x86_64" | "amd64" => "x86_64",
+            "aarch64" | "arm64" => "aarch64",
+            "riscv64" => "riscv64",
+            _ => anyhow::bail!("unsupported cross-compile architecture: {arch}"),
+        };
+        let po = match os.as_str() {
+            "linux" => "unknown-linux",
+            "darwin" => "apple-darwin",
+            _ => anyhow::bail!("unsupported cross-compile OS: {os}"),
+        };
+        (pa, po)
+    } else {
+        (
+            match std::env::consts::ARCH {
+                "x86_64" => "x86_64",
+                "aarch64" => "aarch64",
+                "riscv64" => "riscv64",
+                a => a,
+            },
+            match std::env::consts::OS {
+                "linux" => "unknown-linux",
+                "macos" => "apple-darwin",
+                o => o,
+            },
+        )
+    };
+
+    std::fs::create_dir_all(&tools_dir).context("failed to create build tools directory")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            tools_dir.parent().unwrap_or(&tools_dir),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .ok();
+    }
+
+    ensure_python_download(&tools_dir, py_arch, py_os, verbose)?;
+
+    if !python_bin.exists() {
+        anyhow::bail!("downloaded tarball missing python binary");
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&python_bin, std::fs::Permissions::from_mode(0o755)).ok();
+    }
+
+    Ok(python_bin)
+}
+
+/// Download and extract a cross-compiled Python from python-build-standalone.
+fn ensure_python_download(
+    tools_dir: &Path,
+    py_arch: &str,
+    py_os: &str,
+    verbose: bool,
+) -> Result<()> {
+    let version = "3.12.4";
+    let date = "20240415";
+    let url_tag = format!("cpython-{version}+{date}-{py_arch}-{py_os}");
+    let suffix = "install_only";
+    let url = format!(
+        "https://github.com/astral-sh/python-build-standalone/releases/download/{date}/{url_tag}-{suffix}.tar.gz"
+    );
+
+    if verbose {
+        eprintln!("  downloading python {version} ({py_arch}-{py_os})...");
+    }
+
+    let response = reqwest::blocking::get(&url).context("failed to download python tarball")?;
+    let reader = std::io::BufReader::new(response);
+    let decoder = flate2::read::GzDecoder::new(reader);
+    let mut archive = tar::Archive::new(decoder);
+
+    for entry in archive
+        .entries()
+        .context("failed to read python tarball entries")?
+    {
+        let mut entry = entry.context("failed to read tarball entry")?;
+        let path = entry.path()?.into_owned();
+        let stripped: PathBuf = path.components().skip(1).collect();
+        if stripped.components().count() == 0 {
+            continue;
+        }
+        let target = tools_dir.join(&stripped);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
+        }
+        entry
+            .unpack(&target)
+            .with_context(|| format!("failed to unpack {}", stripped.display()))?;
+    }
+
+    Ok(())
+}
+
 /// Extract the Windows node dist zip into `tools_dir/bin/`.
 ///
 /// The zip layout is a single top-level `node-v<ver>-win-x64/` directory whose

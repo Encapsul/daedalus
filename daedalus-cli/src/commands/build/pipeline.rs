@@ -11,8 +11,8 @@ use zeroize::Zeroizing;
 
 use super::args::{config_fingerprint, parse_target, BuildArgs, BuildPlan};
 use super::deps::{
-    check_php_platform_reqs, ensure_composer, ensure_go, ensure_node, has_workspace_protocol,
-    is_command_available,
+    check_php_platform_reqs, ensure_composer, ensure_go, ensure_node, ensure_python,
+    has_workspace_protocol, is_command_available,
 };
 use super::payload::{copy_dir_recursive_with, create_squashfs_payload, include_points_to_env};
 use super::sign::sign_macos_binary;
@@ -183,7 +183,7 @@ pub(crate) fn build_single_target(
     let dotnet_binary_name = build_dotnet_binary(plan, target.as_deref(), &rootfs)?;
 
     // ── Embed interpreter / N-API addons / RoadRunner into the rootfs ──
-    embed_interpreters(args, plan, &rootfs);
+    embed_interpreters(args, plan, &rootfs, target.as_deref());
 
     // ── Payload: compress (tar+zstd or squashfs) then encrypt (v4) ────
     let PreparedPayload {
@@ -1172,37 +1172,61 @@ fn strip_compiled_sources(rootfs: &Path, bin_name: &str) {
 
 /// Embed the interpreter, `N-API` addons and `RoadRunner` into the staged rootfs.
 ///
-/// NOTE: `ensure_node()` may have downloaded the target runtime to
-/// `<cache_dir>/build-tools/<target>/bin` and added it to PATH —
-/// `embed::embed_interpreter` picks it up from there (`.exe` first for
-/// cross-OS builds).
-fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path) {
+/// When `target` is set and differs from the host architecture, downloads a
+/// target-specific interpreter (Python via `python-build-standalone`, Node.js
+/// via official binaries) and embeds that. Otherwise uses the host's
+/// interpreter from PATH.
+fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target: Option<&str>) {
     let app_dir = &plan.app_dir;
     let verbose = plan.verbose;
 
-    // Warn when the target architecture differs from the host: the embedded
-    // interpreter is always the host's native binary, so cross-arch builds
-    // produce binaries whose runtime won't execute on the target architecture.
-    // Universal binary (per-arch payload slices) is the proper fix.
-    if let Some(ref target_str) = args.target {
-        let host_arch = std::env::consts::ARCH;
-        let target_arch = parse_target(target_str).0;
-        if target_arch != host_arch {
-            eprintln!(
-                "[daedalus] warning: cross-compile target={} but host={} — \
-                 embedded interpreter will be {host_arch}, which won't run on {target_arch}. \
-                 Use native builds per-arch or wait for --universal support.",
-                target_str, host_arch
-            );
-        }
-    }
+    let host_arch = std::env::consts::ARCH;
+    let target_arch = target.map(|t| parse_target(t).0);
+    let is_cross = target_arch.as_deref() != Some(host_arch);
 
     let embedded_interpreter_str = resolve_embed_interpreter(args, &plan.runtime_name);
 
     let mut interpreter_embedded = false;
     if let Some(ref interpreter_name) = embedded_interpreter_str {
-        interpreter_embedded =
-            embed_primary_interpreter(interpreter_name, rootfs, app_dir, verbose);
+        let interp_path = if is_cross {
+            match interpreter_name.as_str() {
+                "python3" => match ensure_python(target, verbose) {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        eprintln!(
+                            "[daedalus] warning: failed to download cross-compiled python: {e}"
+                        );
+                        None
+                    }
+                },
+                "node" => match ensure_node(target, verbose) {
+                    Ok(p) => Some(p.join("node")),
+                    Err(e) => {
+                        eprintln!(
+                            "[daedalus] warning: failed to download cross-compiled node: {e}"
+                        );
+                        None
+                    }
+                },
+                other => {
+                    eprintln!("[daedalus] warning: no cross-compiled {other} available, falling back to host");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        if let Some(path) = interp_path {
+            interpreter_embedded = embed_primary_interpreter(&path, rootfs, app_dir, verbose);
+        } else {
+            let host_path = which::which(interpreter_name)
+                .ok()
+                .or_else(|| embed::find_interpreter_host(interpreter_name));
+            if let Some(path) = host_path {
+                interpreter_embedded = embed_primary_interpreter(&path, rootfs, app_dir, verbose);
+            }
+        }
     }
 
     compile_python_bytecode(&plan.runtime_name, rootfs, verbose);
@@ -1236,15 +1260,15 @@ fn resolve_embed_interpreter(args: &BuildArgs, runtime_name: &str) -> Option<Str
 
 /// Embed the requested interpreter; returns whether embedding succeeded.
 fn embed_primary_interpreter(
-    interpreter_name: &str,
+    interpreter_path: &Path,
     rootfs: &Path,
     app_dir: &Path,
     verbose: bool,
 ) -> bool {
     if verbose {
-        eprintln!("Embedding interpreter: {}...", interpreter_name);
+        eprintln!("Embedding interpreter: {}...", interpreter_path.display());
     }
-    match embed::embed_interpreter(interpreter_name, rootfs, Some(app_dir), verbose) {
+    match embed::embed_interpreter_from_path(interpreter_path, rootfs, Some(app_dir), verbose) {
         Ok(count) => {
             if verbose {
                 eprintln!("Embedded interpreter ({} files copied)", count);

@@ -53,13 +53,25 @@ pub fn embed_interpreter(
     app_dir: Option<&Path>,
     verbose: bool,
 ) -> io::Result<usize> {
-    let interp_path = find_interpreter(interpreter).ok_or_else(|| {
+    let interp_path = find_interpreter_host(interpreter).ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
             format!("interpreter '{interpreter}' not found on PATH"),
         )
     })?;
+    embed_interpreter_from_path(&interp_path, rootfs, app_dir, verbose)
+}
 
+/// Embed an interpreter from an explicit binary path (cross-compile support).
+/// `interp_path` points to a target-compatible interpreter (e.g. from a
+/// downloaded `python-build-standalone` or Node.js tarball). The binary and
+/// its shared-library dependencies are copied into `rootfs/`.
+pub fn embed_interpreter_from_path(
+    interp_path: &Path,
+    rootfs: &Path,
+    app_dir: Option<&Path>,
+    verbose: bool,
+) -> io::Result<usize> {
     if verbose {
         eprintln!("  embed: interpreter found at {}", interp_path.display());
     }
@@ -73,9 +85,9 @@ pub fn embed_interpreter(
     fs::create_dir_all(&bin_dir)?;
     let dest_name = interp_path
         .file_name()
-        .unwrap_or_else(|| std::ffi::OsStr::new(interpreter));
+        .unwrap_or_else(|| std::ffi::OsStr::new("interpreter"));
     let dest_bin = bin_dir.join(dest_name);
-    fs::copy(&interp_path, &dest_bin)?;
+    fs::copy(interp_path, &dest_bin)?;
     count += 1;
 
     // Set executable permission
@@ -86,11 +98,15 @@ pub fn embed_interpreter(
     }
 
     if verbose {
-        eprintln!("  embed: copied {interpreter} to {}", dest_bin.display());
+        eprintln!(
+            "  embed: copied {} to {}",
+            interp_path.display(),
+            dest_bin.display()
+        );
     }
 
     // Find and copy shared library dependencies via ldd
-    let deps = ldd_deps(&interp_path)?;
+    let deps = ldd_deps(interp_path)?;
     let mut seen = HashSet::new();
     let lib_dirs = resolve_lib_dirs(rootfs);
 
@@ -126,7 +142,7 @@ pub fn embed_interpreter(
 
     // Copy the ELF interpreter (dynamic loader) so the embedded binary can
     // be exec'd under `pivot_root` isolation, where the host /lib64 is gone.
-    if let Some(loader) = elf_interpreter_path(&interp_path)? {
+    if let Some(loader) = elf_interpreter_path(interp_path)? {
         let dest = rootfs.join(loader.strip_prefix("/").unwrap_or(&loader));
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent)?;
@@ -143,13 +159,18 @@ pub fn embed_interpreter(
     }
 
     // Copy runtime-specific config (php.ini, extensions, etc.)
-    count += embed_runtime_config(interpreter, &interp_path, rootfs, app_dir, verbose)?;
+    // Infer interpreter name from the binary filename for config matching.
+    let interp_name = interp_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+    count += embed_runtime_config(interp_name, interp_path, rootfs, app_dir, verbose)?;
 
     Ok(count)
 }
 
-/// Find the interpreter binary on the system PATH.
-fn find_interpreter(name: &str) -> Option<PathBuf> {
+/// Find an interpreter binary on the system PATH (host fallback).
+pub fn find_interpreter_host(name: &str) -> Option<PathBuf> {
     // Cross-compilation: the target runtime is staged as `<name>.exe` in a
     // tools dir prepended to PATH (e.g. `node.exe` for a win-x64 build), so
     // try the suffixed form first — it wins over any host interpreter and is
