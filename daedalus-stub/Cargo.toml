@@ -33,10 +33,15 @@ hkdf = "0.12"           # HKDF-SHA256 for AES key derivation from signing seed
 zeroize = "1"           # secure memory zeroization for keys and secrets
 backhand = { version = "0.25", default-features = false, features = ["gzip", "lz4", "zstd"] }  # squashfs extraction
 hex = "0.4"               # hex encoding for cache keys
-ureq = "3"                # HTTPS client for --daedalus-update (rustls + ring, builds with plain cc)
+# ureq moved to target-specific section below (Linux-only)
 tempfile = "3"            # temp files for macOS sandbox profiles
 zstd = { version = "0.13", features = ["zstdmt"] }  # multithreaded zstd decompression for cold start
 walkdir = "2"               # recursive directory scan for native libs
+
+# HTTP client for --daedalus-update: Linux-only (macOS lacks cross-compiled
+# ring/rustls without SDK). Update feature falls back to disabled on macOS.
+[target.'cfg(target_os = "linux")'.dependencies]
+ureq = "3"
 
 [dev-dependencies]
 daedalus-core = { path = "../daedalus-core" }

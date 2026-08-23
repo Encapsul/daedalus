@@ -98,6 +98,13 @@ mod sys {
     pub const LANDLOCK_RESTRICT_SELF: libc::c_long = 446;
 }
 
+#[cfg(target_arch = "riscv64")]
+mod sys {
+    pub const LANDLOCK_CREATE_RULESET: libc::c_long = 444;
+    pub const LANDLOCK_ADD_RULE: libc::c_long = 445;
+    pub const LANDLOCK_RESTRICT_SELF: libc::c_long = 446;
+}
+
 const LANDLOCK_RULE_PATH_BENEATH: u32 = 1;
 
 #[repr(C)]

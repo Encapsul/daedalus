@@ -1868,24 +1868,29 @@ fn report_sisr_update_bandwidth(
 /// footer). The slices are concatenated behind a shell-script polyglot launcher
 /// that detects `uname -m` at runtime and extracts the correct slice.
 pub(crate) fn build_universal(args: &BuildArgs, plan: &BuildPlan, output: &Path) -> Result<()> {
-    let universal_targets: &[(&str, &str)] = &[
-        ("x86_64-unknown-linux-musl", "x86_64"),
-        ("aarch64-unknown-linux-musl", "aarch64"),
+    let universal_targets: &[(&str, &str, &str)] = &[
+        ("x86_64-unknown-linux-musl", "x86_64", "Linux"),
+        ("aarch64-unknown-linux-musl", "aarch64", "Linux"),
+        ("riscv64gc-unknown-linux-musl", "riscv64", "Linux"),
+        ("x86_64-apple-darwin", "x86_64", "Darwin"),
+        ("aarch64-apple-darwin", "arm64", "Darwin"),
     ];
 
     let tmp_dir = tempfile::tempdir().context("failed to create temp dir for universal build")?;
     let mut arch_slices: Vec<daedalus_core::universal::ArchSlice> = Vec::new();
     let mut slice_data: Vec<Vec<u8>> = Vec::new();
 
-    for (target_triple, uname_machine) in universal_targets {
-        let slice_path = tmp_dir.path().join(format!("slice-{uname_machine}"));
+    for (target_triple, uname_machine, uname_sys) in universal_targets {
+        let slice_path = tmp_dir
+            .path()
+            .join(format!("slice-{uname_machine}-{uname_sys}"));
         let target_opt = if *target_triple == std::env::consts::ARCH {
             None
         } else {
             Some(target_triple.to_string())
         };
 
-        eprintln!("[daedalus] Building universal slice for {uname_machine}");
+        eprintln!("[daedalus] Building universal slice for {uname_machine} ({uname_sys})");
         build_single_target(args, plan, target_opt.clone(), &slice_path)?;
 
         let bytes = std::fs::read(&slice_path)
@@ -1894,7 +1899,7 @@ pub(crate) fn build_universal(args: &BuildArgs, plan: &BuildPlan, output: &Path)
         arch_slices.push(daedalus_core::universal::ArchSlice {
             target: target_triple.to_string(),
             uname_machine: uname_machine.to_string(),
-            uname_sys: "Linux".to_string(),
+            uname_sys: uname_sys.to_string(),
             offset: 0,
             size: bytes.len() as u64,
             sha256,
