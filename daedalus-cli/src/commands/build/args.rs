@@ -205,6 +205,12 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
     if let Some(ep) = &args.health_endpoint {
         canonical.push(format!("health_endpoint={ep}"));
     }
+    canonical.push(format!("wasm={}", args.wasm));
+    if let Some(p) = &args.wasmtime_path {
+        canonical.push(format!("wasmtime_path={}", p.display()));
+    }
+    canonical.push(format!("wasi={}", args.wasi));
+    canonical.push(format!("component_model={}", args.component_model));
     if let Some(v) = &plan.version_info {
         canonical.push(format!("version={v}"));
     }
@@ -442,20 +448,20 @@ pub struct BuildArgs {
     #[arg(long = "entrypoint", action = clap::ArgAction::Append)]
     pub entrypoint: Vec<String>,
 
-    /// Enable WASM support with wasmtime (NOT YET IMPLEMENTED IN STUB)
-    #[arg(long, hide = true)]
+    /// Enable WASM support with wasmtime
+    #[arg(long)]
     pub wasm: bool,
 
-    /// Path to wasmtime binary (NOT YET IMPLEMENTED IN STUB)
-    #[arg(long, hide = true)]
+    /// Path to wasmtime binary
+    #[arg(long)]
     pub wasmtime_path: Option<PathBuf>,
 
-    /// Enable WASI for WASM modules (WebAssembly System Interface) (NOT YET IMPLEMENTED IN STUB)
-    #[arg(long, hide = true)]
+    /// Enable WASI for WASM modules (WebAssembly System Interface)
+    #[arg(long)]
     pub wasi: bool,
 
-    /// Enable WASM component model support (NOT YET IMPLEMENTED IN STUB)
-    #[arg(long, hide = true)]
+    /// Enable WASM component model support
+    #[arg(long)]
     pub component_model: bool,
 
     /// Cross-compile for target architectures (comma-separated, e.g., aarch64,arm64) (NOT YET IMPLEMENTED IN STUB)
