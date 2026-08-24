@@ -326,28 +326,61 @@ fn ensure_python_download(
 
     let response = reqwest::blocking::get(&url)
         .with_context(|| format!("failed to download python tarball from {url}"))?;
-    let reader = std::io::BufReader::new(response);
-    let decoder = flate2::read::GzDecoder::new(reader);
-    let mut archive = tar::Archive::new(decoder);
 
-    for entry in archive
-        .entries()
-        .context("failed to read python tarball entries")?
-    {
-        let mut entry = entry.context("failed to read tarball entry")?;
-        let path = entry.path()?.into_owned();
-        let stripped: PathBuf = path.components().skip(1).collect();
-        if stripped.components().count() == 0 {
-            continue;
+    // Buffer the full tarball so we can both inspect its top-level directory
+    // name and extract it.  `reqwest::blocking::Response` is not seekable,
+    // which `tar::Archive` needs for reliable entry unpacking.
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut std::io::BufReader::new(response), &mut bytes)
+        .context("failed to read python tarball body")?;
+
+    // Derive the top-level directory (e.g. `python`) so we can strip it.
+    let top_level = {
+        let mut probe = tar::Archive::new(std::io::Cursor::new(&bytes));
+        let first = probe
+            .entries()
+            .context("failed to inspect python tarball entries")?
+            .next()
+            .transpose()
+            .context("failed to read first tarball entry")?
+            .ok_or_else(|| anyhow::anyhow!("python tarball is empty"))?;
+        let path = first.path()?.into_owned();
+        let first_component = path
+            .components()
+            .next()
+            .map(|c| c.as_os_str().to_os_string())
+            .unwrap_or_default();
+        drop(probe);
+        std::ffi::OsString::from(first_component)
+    };
+
+    if top_level.is_empty() {
+        anyhow::bail!("python tarball has no top-level directory");
+    }
+
+    // Extract to a temp dir, then move the stripped contents into `tools_dir`.
+    let extract_dir =
+        tempfile::tempdir().context("failed to create temp dir for python extraction")?;
+    let mut archive = tar::Archive::new(std::io::Cursor::new(&bytes));
+    archive
+        .unpack(extract_dir.path())
+        .context("failed to unpack python tarball")?;
+
+    let src = extract_dir.path().join(&top_level);
+    if !src.is_dir() {
+        anyhow::bail!(
+            "python tarball top-level `{}` is not a directory",
+            top_level.to_string_lossy()
+        );
+    }
+
+    for entry in std::fs::read_dir(&src)? {
+        let entry = entry?;
+        let dest = tools_dir.join(entry.file_name());
+        if dest.exists() {
+            std::fs::remove_dir_all(&dest)?;
         }
-        let target = tools_dir.join(&stripped);
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create directory {}", parent.display()))?;
-        }
-        entry
-            .unpack(&target)
-            .with_context(|| format!("failed to unpack {}", stripped.display()))?;
+        std::fs::rename(entry.path(), &dest)?;
     }
 
     Ok(())
