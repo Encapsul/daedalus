@@ -97,6 +97,9 @@ enum Commands {
     /// Push/Pull/List layers in a content-addressable registry
     Registry(commands::registry::RegistryArgs),
 
+    /// Start a local registry server
+    Serve(commands::serve::ServeArgs),
+
     /// Show daedalus environment info
     Env(commands::env::EnvArgs),
 
@@ -189,6 +192,7 @@ fn main() -> ExitCode {
         }
         Commands::Publish(args) => commands::publish::run(args),
         Commands::Registry(args) => commands::registry::run(args),
+        Commands::Serve(args) => commands::serve::run(args),
         Commands::Env(args) => commands::env::run(args),
         Commands::Completion { shell } => {
             let mut cmd = Cli::command();
