@@ -225,3 +225,43 @@ Le `--to [oci|appimage|wasm]` est **déprécié**. Raisons :
 - **CI** : `cargo zigbuild` cross-compile, `cargo clippy -p {crate}`, `cargo test --workspace`
 - **Tests** : 423 unit/integration/e2e, QEMU pour cross-arch validation
 - **Cross-arch chaos monkey** : aarch64 (musl → qemu-aarch64-static) ✅, RISC-V (nécessite `riscv64-linux-gnu-gcc` — pas installé), Docker `--platform linux/arm64` ✅
+
+## §8 — Refonte en crates publishables (post-MVP)
+
+### Constat
+
+`daedalus-cli` et `daedalus-stub` sont des binaires purs (pas de `[lib]`).
+`daedalus-core` est la seule crate publishable aujourd'hui.
+
+### Architecture cible
+
+```
+daedalus-core       ← déjà bon, pas toucher (format + crypto + SISR + layers)
+daedalus-build      ← extrait la logique de build de daedalus-cli
+daedalus-runtime    ← extrait le stub en lib (extraction + exec + sandbox)
+daedalus-cli        ← shell CLI au-dessus de daedalus-build
+daedalus-stub       ← shell binaire au-dessus de daedalus-runtime
+daedalus-server     ← API HTTP au-dessus de daedalus-build (optionnel)
+daedalus-py         ← PyO3 au-dessus de daedalus-build (optionnel)
+```
+
+### Principe de migration
+
+Chaque étape est indépendante. Les binaires existants restent fonctionnels
+à chaque étape. Pas de breaking change pour les users du CLI.
+
+### Bénéfices
+
+- `daedalus-build` : permet de builder des `.ere` depuis du code Rust (serveur CI,
+  IDE plugin, pipeline custom) sans invoquer un binaire
+- `daedalus-runtime` : permet d'embedder le runtime daedalus dans un launcher custom,
+  ou d'inspecter/patcher un `.ere` sans exécuter le stub
+- `daedalus-server` : déporte les builds cross-arch lourds sur une machine dédiée
+- `daedalus-py` : `daedalus.build("myapp/")` depuis un setup.py ou Makefile
+
+### Ce qu'on ne fait PAS
+
+- Pas de `[lib]` ajouté aux binaires existants : ça mélange les responsabilités
+- Pas de fusion cli+stub : cycles de vie différents, tailles différentes,
+  contraintes de sécurité opposées
+- Pas de SDK avant d'avoir la demande utilisateur
