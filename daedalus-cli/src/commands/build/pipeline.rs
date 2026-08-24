@@ -1783,7 +1783,7 @@ fn apply_wasm_features(args: &BuildArgs, bun_features: &mut BunFeatures, verbose
     if !args.wasm {
         return;
     }
-    eprintln!("[daedalus] warning: --wasm is experimental/alpha — not yet implemented in the stub (hidden flag); metadata is recorded but the runtime currently ignores it");
+    eprintln!("[daedalus] warning: --wasm is experimental/alpha — requires wasmtime binary in rootfs or on PATH");
     bun_features.wasm.enabled = true;
     if let Some(ref path) = args.wasmtime_path {
         bun_features.wasm.wasmtime_path = Some(path.display().to_string());
