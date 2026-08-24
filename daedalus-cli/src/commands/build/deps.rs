@@ -245,7 +245,7 @@ pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathB
             _ => anyhow::bail!("unsupported cross-compile architecture: {arch}"),
         };
         let po = match os.as_str() {
-            "linux" => "unknown-linux-musl",
+            "linux" => "unknown-linux",
             "darwin" => "apple-darwin",
             _ => anyhow::bail!("unsupported cross-compile OS: {os}"),
         };
@@ -306,74 +306,115 @@ fn ensure_python_download(
     // that may not have a matching asset set.
     let release_api =
         "https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest";
-    let release_json: Value = reqwest::blocking::get(release_api)
-        .context("failed to reach python-build-standalone releases")?
-        .json()
-        .context("failed to parse release manifest")?;
-    let tag = release_json
+    let release_body = std::process::Command::new("curl")
+        .args(["-sL", release_api])
+        .output()
+        .context("failed to run curl for python-build-standalone release manifest")?;
+    if !release_body.status.success() {
+        anyhow::bail!(
+            "curl failed for python-build-standalone release: {}",
+            String::from_utf8_lossy(&release_body.stderr)
+        );
+    }
+    let release_json: Value = serde_json::from_slice(&release_body.stdout).with_context(|| {
+        let preview = String::from_utf8_lossy(&release_body.stdout)
+            .chars()
+            .take(200)
+            .collect::<String>();
+        format!(
+            "failed to parse python-build-standalone release manifest (first 200 chars: {preview})"
+        )
+    })?;
+    let date = release_json
         .get("tag_name")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("no tag_name in python-build-standalone release"))?;
-    let (version, date) = parse_python_tag(tag)?;
-    let url_tag = format!("cpython-{version}+{date}-{py_arch}-{py_os}");
-    let url = format!(
-        "https://github.com/astral-sh/python-build-standalone/releases/download/{date}/{url_tag}-install_only.tar.gz"
-    );
-
-    if verbose {
-        eprintln!("  downloading python {version} ({py_arch}-{py_os}) from release {date}...");
-    }
-
-    let response = reqwest::blocking::get(&url)
-        .with_context(|| format!("failed to download python tarball from {url}"))?;
-
-    // Buffer the full tarball so we can both inspect its top-level directory
-    // name and extract it.  `reqwest::blocking::Response` is not seekable,
-    // which `tar::Archive` needs for reliable entry unpacking.
-    let mut bytes = Vec::new();
-    std::io::Read::read_to_end(&mut std::io::BufReader::new(response), &mut bytes)
-        .context("failed to read python tarball body")?;
-
-    // Derive the top-level directory (e.g. `python`) so we can strip it.
-    let top_level = {
-        let mut probe = tar::Archive::new(std::io::Cursor::new(&bytes));
-        let first = probe
-            .entries()
-            .context("failed to inspect python tarball entries")?
-            .next()
-            .transpose()
-            .context("failed to read first tarball entry")?
-            .ok_or_else(|| anyhow::anyhow!("python tarball is empty"))?;
-        let path = first.path()?.into_owned();
-        let first_component = path
-            .components()
-            .next()
-            .map(|c| c.as_os_str().to_os_string())
-            .unwrap_or_default();
-        drop(probe);
-        std::ffi::OsString::from(first_component)
+    let assets = release_json
+        .get("assets")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow::anyhow!("no assets in python-build-standalone release"))?;
+    let version_from_asset = assets
+        .iter()
+        .find_map(|asset| {
+            let name = asset.get("name")?.as_str()?;
+            let cap = name.strip_prefix("cpython-")?.split('+').next()?;
+            Some(cap)
+        })
+        .ok_or_else(|| anyhow::anyhow!("no cpython asset found in release"))?;
+    let version = version_from_asset;
+    let libc_suffixes = if py_os == "unknown-linux" {
+        vec!["musl", "gnu"]
+    } else {
+        vec![""]
     };
-
-    if top_level.is_empty() {
-        anyhow::bail!("python tarball has no top-level directory");
+    let mut tarball_bytes = None;
+    let mut download_url = String::new();
+    for suffix in &libc_suffixes {
+        let os_tag = if suffix.is_empty() {
+            py_os.to_string()
+        } else {
+            format!("{}-{}", py_os, suffix)
+        };
+        let url_tag = format!("cpython-{version}+{date}-{py_arch}-{os_tag}");
+        let encoded_url_tag = url_tag.replace('+', "%2B");
+        let url = format!(
+            "https://github.com/astral-sh/python-build-standalone/releases/download/{date}/{encoded_url_tag}-install_only.tar.gz"
+        );
+        download_url.clone_from(&url);
+        if verbose {
+            eprintln!("  downloading python {version} ({py_arch}-{os_tag}) from release {date}...");
+        }
+        let result = std::process::Command::new("curl")
+            .args(["-sL", "-o", "-", &url])
+            .output()
+            .with_context(|| format!("failed to download python tarball from {url}"))?;
+        if result.status.success() && result.stdout.len() > 100_000 {
+            tarball_bytes = Some(result.stdout);
+            break;
+        }
     }
+    let tarball_bytes = tarball_bytes.ok_or_else(|| {
+        anyhow::anyhow!(
+            "failed to download python tarball from any known suffix (tried {download_url})"
+        )
+    })?;
 
-    // Extract to a temp dir, then move the stripped contents into `tools_dir`.
     let extract_dir =
         tempfile::tempdir().context("failed to create temp dir for python extraction")?;
-    let mut archive = tar::Archive::new(std::io::Cursor::new(&bytes));
-    archive
-        .unpack(extract_dir.path())
-        .context("failed to unpack python tarball")?;
+    let tarball_path = extract_dir.path().join("..").join("python.tar.gz");
+    std::fs::write(&tarball_path, &tarball_bytes)
+        .context("failed to write python tarball to disk")?;
 
-    let src = extract_dir.path().join(&top_level);
-    if !src.is_dir() {
+    let output = std::process::Command::new("python3")
+        .args([
+            "-c",
+            "import tarfile,sys; \
+            t=tarfile.open(sys.argv[1],'r:gz'); \
+            t.extractall(sys.argv[2]); \
+            print('extracted', len(t.getmembers()), 'members')",
+            tarball_path.to_str().unwrap(),
+            extract_dir.path().to_str().unwrap(),
+        ])
+        .output()
+        .context("failed to run python3 for python tarball extraction")?;
+    if !output.status.success() {
         anyhow::bail!(
-            "python tarball top-level `{}` is not a directory",
-            top_level.to_string_lossy()
+            "python3 extraction failed: {}",
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 
+    let top_level = std::fs::read_dir(extract_dir.path())?
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("python tarball extracted to empty directory"))??;
+    if !top_level.file_type()?.is_dir() {
+        anyhow::bail!(
+            "python tarball top-level `{}` is not a directory",
+            top_level.file_name().to_string_lossy()
+        );
+    }
+
+    let src = extract_dir.path().join(top_level.file_name());
     for entry in std::fs::read_dir(&src)? {
         let entry = entry?;
         let dest = tools_dir.join(entry.file_name());
@@ -384,17 +425,6 @@ fn ensure_python_download(
     }
 
     Ok(())
-}
-
-/// Parse a python-build-standalone release tag like `3.12.4+20240415` into
-/// `(version, date)`. Falls back to `(tag, tag)` when the format is unexpected.
-fn parse_python_tag(tag: &str) -> Result<(&str, &str)> {
-    if let Some((version, date)) = tag.rsplit_once('+') {
-        if !date.is_empty() && !version.is_empty() {
-            return Ok((version, date));
-        }
-    }
-    Ok((tag, tag))
 }
 
 /// Extract the Windows node dist zip into `tools_dir/bin/`.
@@ -1019,19 +1049,5 @@ mod tests {
         assert!(url.contains("astral-sh/python-build-standalone"));
         assert!(url.contains("aarch64-unknown-linux-musl"));
         assert!(url.contains("install_only"));
-    }
-
-    #[test]
-    fn parse_python_tag_valid() {
-        let (v, d) = parse_python_tag("3.12.4+20240415").unwrap();
-        assert_eq!(v, "3.12.4");
-        assert_eq!(d, "20240415");
-    }
-
-    #[test]
-    fn parse_python_tag_fallback() {
-        let (v, d) = parse_python_tag("20260814").unwrap();
-        assert_eq!(v, "20260814");
-        assert_eq!(d, "20260814");
     }
 }
