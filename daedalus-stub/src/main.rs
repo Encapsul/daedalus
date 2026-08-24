@@ -123,11 +123,19 @@ pub struct Metadata {
     #[serde(default)]
     cwd: Option<String>,
     #[serde(default)]
-    isolation: u8,
+    pub isolation: u8,
     #[serde(default)]
-    // Read only in the Linux seccomp/landlock setup path; unused elsewhere.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-    seccomp: bool,
+    pub cpu_limit: Option<u32>,
+    #[serde(default)]
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub memory_limit_mb: Option<u32>,
+    #[serde(default)]
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub pid_limit: Option<u32>,
+    #[serde(default)]
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub seccomp: bool,
     #[serde(default)]
     // Read only in the Linux landlock setup path; unused elsewhere.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -1569,6 +1577,9 @@ mod tests {
             seccomp: false,
             landlock: false,
             gui: false,
+            cpu_limit: None,
+            memory_limit_mb: None,
+            pid_limit: None,
             services: vec![],
             crypto: None,
             payload_format: "zstd+tar".into(),
@@ -1609,6 +1620,9 @@ mod tests {
             seccomp: false,
             landlock: false,
             gui: false,
+            cpu_limit: None,
+            memory_limit_mb: None,
+            pid_limit: None,
             services: vec![],
             crypto: None,
             payload_format: "zstd+tar".into(),
