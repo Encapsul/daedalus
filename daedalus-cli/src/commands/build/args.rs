@@ -70,6 +70,8 @@ pub(crate) struct BuildPlan {
     pub(crate) cpu_limit: Option<u32>,
     pub(crate) memory_limit_mb: Option<u32>,
     pub(crate) pid_limit: Option<u32>,
+    pub(crate) pre_hooks: Option<String>,
+    pub(crate) post_hooks: Option<String>,
     pub(crate) encrypt: bool,
     pub(crate) squashfs: bool,
     pub(crate) version_info: Option<String>,
@@ -185,6 +187,8 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
     canonical.push(format!("cpu_limit={:?}", plan.cpu_limit));
     canonical.push(format!("memory_limit_mb={:?}", plan.memory_limit_mb));
     canonical.push(format!("pid_limit={:?}", plan.pid_limit));
+    canonical.push(format!("pre_hooks={:?}", plan.pre_hooks));
+    canonical.push(format!("post_hooks={:?}", plan.post_hooks));
     canonical.push(format!("encrypt={}", plan.encrypt));
     canonical.push(format!("squashfs={}", plan.squashfs));
     canonical.push(format!("compress={}", args.compression_level));
@@ -334,6 +338,14 @@ pub struct BuildArgs {
     /// Base URL of the SISR update channel
     #[arg(long)]
     pub update_url: Option<String>,
+
+    /// Pre-extract hooks (JSON string or @file path)
+    #[arg(long)]
+    pub pre_hooks: Option<String>,
+
+    /// Post-exec hooks (JSON string or @file path)
+    #[arg(long)]
+    pub post_hooks: Option<String>,
 
     /// Target architecture (e.g., aarch64, `x86_64`, linux-arm64, macos-arm64)
     #[arg(long)]
@@ -555,6 +567,8 @@ pub(crate) fn default_build_args() -> BuildArgs {
         cpu_limit: None,
         memory_limit_mb: None,
         pid_limit: None,
+        pre_hooks: None,
+        post_hooks: None,
         landlock: false,
         encrypt: false,
         squashfs: false,
@@ -796,6 +810,11 @@ mod tests {
             seccomp: false,
             gui: false,
             landlock: false,
+            cpu_limit: None,
+            memory_limit_mb: None,
+            pid_limit: None,
+            pre_hooks: None,
+            post_hooks: None,
             encrypt,
             squashfs,
             version_info: None,

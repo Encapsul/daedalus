@@ -63,6 +63,8 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         cpu_limit: args.cpu_limit,
         memory_limit_mb: args.memory_limit_mb,
         pid_limit: args.pid_limit,
+        pre_hooks: args.pre_hooks.clone(),
+        post_hooks: args.post_hooks.clone(),
         encrypt: args.encrypt || config.build.encrypt.unwrap_or(false),
         squashfs: args.squashfs || config.build.squashfs.unwrap_or(false),
         version_info: args.version_info.clone().or(config.package.version),

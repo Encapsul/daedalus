@@ -155,6 +155,8 @@ pub struct Metadata {
     #[serde(default)]
     #[allow(dead_code)]
     update_url: Option<String>,
+    #[serde(default)]
+    hooks: Option<Hooks>,
     /// Layers composing this artifact. Empty for legacy binaries.
     #[serde(default)]
     layers: Vec<SerializableLayer>,
@@ -334,6 +336,14 @@ pub struct Service {
     ready_port: u16,
     #[serde(default)]
     ready_timeout: u64,
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct Hooks {
+    #[serde(default)]
+    pub pre: Vec<String>,
+    #[serde(default)]
+    pub post: Vec<String>,
 }
 
 fn main() {
@@ -1590,6 +1600,7 @@ mod tests {
                 daedalus_core::layer::SerializableLayer::Config(cfg),
             ],
             entrypoint_layer: Some("python3".into()),
+            hooks: None,
         };
         let manifest = LayerManifest::from_metadata(&meta);
         assert_eq!(manifest.version, 1);
@@ -1630,6 +1641,7 @@ mod tests {
             update_url: None,
             layers: vec![],
             entrypoint_layer: None,
+            hooks: None,
         };
         write_layer_manifest(tmp.path(), &meta).unwrap();
         assert!(tmp.path().join(".daedalus-layers.json").is_file());
