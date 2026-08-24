@@ -42,28 +42,7 @@ pub fn resolve_arch(target_arch: Option<&str>) -> u8 {
     }
 }
 
-/// Build the metadata JSON bytes.
-#[allow(clippy::too_many_arguments)]
-pub fn build_meta_json(
-    name: &str,
-    runtime: &str,
-    isolation: u32,
-    entrypoint: &[String],
-    env: &[(String, String)],
-    options: &MetaOptions,
-    bun_features: &BunFeatures,
-) -> std::io::Result<Vec<u8>> {
-    let mut meta = serde_json::json!({
-        "name": name,
-        "daedalus_version": env!("CARGO_PKG_VERSION"),
-        "created": chrono_now(),
-        "runtime": runtime,
-        "isolation": isolation,
-        "entrypoint": entrypoint,
-        "env": env_map(env),
-        "cwd": "/app",
-    });
-
+fn apply_meta_options(meta: &mut serde_json::Value, options: &MetaOptions) -> std::io::Result<()> {
     if let Some(v) = &options.version {
         meta["version"] = serde_json::Value::String(v.clone());
     }
@@ -110,7 +89,10 @@ pub fn build_meta_json(
         meta["hooks"] = serde_json::json!({ "pre": pre });
     }
     if let Some(post) = &options.post_hooks {
-        let mut hooks = meta.get("hooks").cloned().unwrap_or_else(|| serde_json::json!({}));
+        let mut hooks = meta
+            .get("hooks")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
         if let Some(obj) = hooks.as_object_mut() {
             obj.insert("post".to_string(), post.clone());
         }
@@ -122,6 +104,33 @@ pub fn build_meta_json(
     if let Some(c) = &options.crypto {
         meta["crypto"] = c.clone();
     }
+
+    Ok(())
+}
+
+/// Build the metadata JSON bytes.
+#[allow(clippy::too_many_arguments)]
+pub fn build_meta_json(
+    name: &str,
+    runtime: &str,
+    isolation: u32,
+    entrypoint: &[String],
+    env: &[(String, String)],
+    options: &MetaOptions,
+    bun_features: &BunFeatures,
+) -> std::io::Result<Vec<u8>> {
+    let mut meta = serde_json::json!({
+        "name": name,
+        "daedalus_version": env!("CARGO_PKG_VERSION"),
+        "created": chrono_now(),
+        "runtime": runtime,
+        "isolation": isolation,
+        "entrypoint": entrypoint,
+        "env": env_map(env),
+        "cwd": "/app",
+    });
+
+    apply_meta_options(&mut meta, options)?;
 
     if bun_features.health_check.enabled {
         meta["health_check"] = serde_json::to_value(&bun_features.health_check)
@@ -564,6 +573,11 @@ mod tests {
             seccomp: false,
             landlock: false,
             gui: false,
+            cpu_limit: None,
+            memory_limit_mb: None,
+            pid_limit: None,
+            pre_hooks: None,
+            post_hooks: None,
             app_hash: None,
             rt_deps_hash: None,
             update_url: None,

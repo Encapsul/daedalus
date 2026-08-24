@@ -94,9 +94,9 @@ mod tests {
                 seccomp: false,
                 gui: false,
                 landlock: false,
-            cpu_limit: None,
-            memory_limit_mb: None,
-            pid_limit: None,
+                cpu_limit: None,
+                memory_limit_mb: None,
+                pid_limit: None,
                 services: Vec::new(),
                 crypto: None,
                 payload_format: String::new(),
@@ -104,7 +104,7 @@ mod tests {
                 update_url: None,
                 layers: Vec::new(),
                 entrypoint_layer: None,
-            hooks: None,
+                hooks: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -129,9 +129,9 @@ mod tests {
                 seccomp: false,
                 gui: false,
                 landlock: false,
-            cpu_limit: None,
-            memory_limit_mb: None,
-            pid_limit: None,
+                cpu_limit: None,
+                memory_limit_mb: None,
+                pid_limit: None,
                 services: Vec::new(),
                 crypto: None,
                 payload_format: String::new(),
@@ -139,7 +139,7 @@ mod tests {
                 update_url: None,
                 layers: Vec::new(),
                 entrypoint_layer: None,
-            hooks: None,
+                hooks: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -162,9 +162,9 @@ mod tests {
                 seccomp: false,
                 gui: false,
                 landlock: false,
-            cpu_limit: None,
-            memory_limit_mb: None,
-            pid_limit: None,
+                cpu_limit: None,
+                memory_limit_mb: None,
+                pid_limit: None,
                 services: Vec::new(),
                 crypto: None,
                 payload_format: String::new(),
@@ -172,7 +172,7 @@ mod tests {
                 update_url: None,
                 layers: Vec::new(),
                 entrypoint_layer: None,
-            hooks: None,
+                hooks: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -195,9 +195,9 @@ mod tests {
                 seccomp: false,
                 gui: false,
                 landlock: false,
-            cpu_limit: None,
-            memory_limit_mb: None,
-            pid_limit: None,
+                cpu_limit: None,
+                memory_limit_mb: None,
+                pid_limit: None,
                 services: Vec::new(),
                 crypto: None,
                 payload_format: String::new(),
@@ -205,7 +205,7 @@ mod tests {
                 update_url: None,
                 layers: Vec::new(),
                 entrypoint_layer: None,
-            hooks: None,
+                hooks: None,
             }
         };
         let err = resolve_update_url(&args, 0, &meta).unwrap_err();
@@ -228,16 +228,16 @@ mod tests {
                 seccomp: false,
                 gui: false,
                 landlock: false,
-            cpu_limit: None,
-            memory_limit_mb: None,
-            pid_limit: None,
+                cpu_limit: None,
+                memory_limit_mb: None,
+                pid_limit: None,
                 services: Vec::new(),
                 crypto: None,
                 payload_format: String::new(),
                 health_check: None,
                 update_url: Some("https://meta.example/app".into()),
                 entrypoint_layer: None,
-            hooks: None,
+                hooks: None,
                 layers: Vec::new(),
             }
         };
