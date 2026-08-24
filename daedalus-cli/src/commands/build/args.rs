@@ -134,7 +134,7 @@ pub(crate) fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<
         let out = if args
             .output
             .extension()
-            .is_some_and(|e| e == "daedalus" || e == "exe")
+            .is_some_and(|e| e == "daedalus" || e == "ere" || e == "exe")
         {
             args.output.clone()
         } else {
@@ -746,6 +746,18 @@ mod tests {
                 "app-win-x64.exe"
             ]
         );
+    }
+
+    #[test]
+    fn output_paths_single_ere_extension_kept() {
+        let args = BuildArgs {
+            output: PathBuf::from("/tmp/hello-web.ere"),
+            ..default_build_args()
+        };
+        let targets = resolve_targets(&args, None);
+        let outputs = output_paths(&args, &targets);
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0], PathBuf::from("/tmp/hello-web.ere"));
     }
 
     #[test]
