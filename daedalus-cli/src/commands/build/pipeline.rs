@@ -213,6 +213,31 @@ pub(crate) fn build_single_target(
 
     let layers = build_layers(runtime_name, &entrypoint, &env_pairs, app_dir);
 
+    let pre_hooks: Option<serde_json::Value> = if let Some(s) = plan.pre_hooks.as_deref() {
+        if !s.trim().is_empty() {
+            let v: serde_json::Value = parse_hooks_json(s)
+                .map_err(|e| anyhow::anyhow!("invalid --pre-hooks: {e}"))?
+                .unwrap_or(serde_json::Value::Null);
+            Some(v)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let post_hooks: Option<serde_json::Value> = if let Some(s) = plan.post_hooks.as_deref() {
+        if !s.trim().is_empty() {
+            let v: serde_json::Value = parse_hooks_json(s)
+                .map_err(|e| anyhow::anyhow!("invalid --post-hooks: {e}"))?
+                .unwrap_or(serde_json::Value::Null);
+            Some(v)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let meta = daedalus_core::assembly::build_meta_json(
         &app_name,
         runtime_name,
@@ -234,6 +259,8 @@ pub(crate) fn build_single_target(
             app_hash: Some(new_app_hash.clone()),
             rt_deps_hash: Some(new_rt_hash.clone()),
             update_url: args.update_url.clone(),
+            pre_hooks,
+            post_hooks,
             crypto: crypto_meta,
             layers: Some(layers),
             entrypoint_layer: Some(runtime_name.clone()),
@@ -312,6 +339,21 @@ pub(crate) fn build_single_target(
 }
 
 /// Build the layer list for the artifact metadata.
+fn parse_hooks_json(s: &str) -> Result<Option<serde_json::Value>, serde_json::Error> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Ok(None);
+    }
+    if s.starts_with('@') {
+        let path = s.trim_start_matches('@');
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| serde_json::Error::io(e))?;
+        serde_json::from_str(&content).map(Some)
+    } else {
+        serde_json::from_str(s).map(Some)
+    }
+}
+
 ///
 /// Always includes a `RuntimeLayer` for the detected runtime. Adds a
 /// `ConfigLayer` for `.daedalus.toml` when present.

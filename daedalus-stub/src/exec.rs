@@ -700,6 +700,57 @@ fn apply_cgroups(_meta: &Metadata) -> io::Result<()> {
     Ok(())
 }
 
+/// Run pre/post hooks from metadata.
+///
+/// Hooks are executed with `sh -c` inside the rootfs (if `use_pivot` is true,
+/// the process is already in the new root). Pre-hooks run before the entrypoint,
+/// post-hooks run after (only if execvp fails, since successful execvp replaces
+/// the process).
+///
+/// SECURITY: hooks run with the same privileges as the stub. They should be
+/// considered trusted code (signed as part of the binary).
+fn run_hooks(meta: &Metadata, rootfs: &Path, use_pivot: bool, phase: &str) -> io::Result<()> {
+    let hooks = match &meta.hooks {
+        Some(h) => h,
+        None => return Ok(()),
+    };
+
+    let commands = match phase {
+        "pre" => &hooks.pre,
+        "post" => &hooks.post,
+        _ => return Ok(()),
+    };
+
+    if commands.is_empty() {
+        return Ok(());
+    }
+
+    let cwd = if use_pivot {
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
+    } else {
+        rootfs.to_path_buf()
+    };
+
+    for cmd in commands {
+        eprintln!("[daedalus] hook {phase}: {cmd}");
+        let status = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(cmd)
+            .current_dir(&cwd)
+            .env("ROOTFS", rootfs)
+            .status()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("hook failed to start: {e}")))?;
+        if !status.success() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("hook failed (exit {:?}): {cmd}", status.code()),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 /// Launch the app entrypoint. Blocks until the app exits (or never returns on
 /// successful execvp).
 pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::Result<()> {
@@ -757,6 +808,8 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
     }
 
     apply_cgroups(meta)?;
+
+    run_hooks(meta, rootfs, use_pivot, "pre")?;
 
     // ── Platform-specific argv build + process launch ─────────────────────
     #[cfg(unix)]
@@ -1554,6 +1607,7 @@ mod tests {
             health_check: None,
             update_url: None,
             entrypoint_layer: None,
+            hooks: None,
             layers: Vec::new(),
         };
 
@@ -1706,6 +1760,7 @@ mod tests {
             health_check: None,
             update_url: None,
             entrypoint_layer: None,
+            hooks: None,
             layers: Vec::new(),
         };
         let err = resolve_entrypoint(&meta, tmp.path(), false).unwrap_err();

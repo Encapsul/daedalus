@@ -106,6 +106,16 @@ pub fn build_meta_json(
     if let Some(u) = &options.update_url {
         meta["update_url"] = serde_json::Value::String(u.clone());
     }
+    if let Some(pre) = &options.pre_hooks {
+        meta["hooks"] = serde_json::json!({ "pre": pre });
+    }
+    if let Some(post) = &options.post_hooks {
+        let mut hooks = meta.get("hooks").cloned().unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = hooks.as_object_mut() {
+            obj.insert("post".to_string(), post.clone());
+        }
+        meta["hooks"] = hooks;
+    }
 
     // Emit crypto metadata for v4 encrypted builds. Omitted for plaintext so
     // old stubs/parsers see no unexpected field.
@@ -191,6 +201,8 @@ pub struct MetaOptions {
     pub cpu_limit: Option<u32>,
     pub memory_limit_mb: Option<u32>,
     pub pid_limit: Option<u32>,
+    pub pre_hooks: Option<serde_json::Value>,
+    pub post_hooks: Option<serde_json::Value>,
     pub app_hash: Option<String>,
     pub rt_deps_hash: Option<String>,
     /// Base URL of the SISR update channel (`{url}/manifest`, `{url}/chunks/<hex>`).
