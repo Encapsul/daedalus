@@ -62,7 +62,9 @@ fn run_start(args: ServeStartArgs) -> Result<()> {
                 let verbose = args.verbose;
                 let reg = Arc::clone(&reg);
                 thread::spawn(move || {
-                    if let Err(e) = handle_connection(stream, &mut reg.lock().unwrap(), token, verbose) {
+                    if let Err(e) =
+                        handle_connection(stream, &mut reg.lock().unwrap(), token, verbose)
+                    {
                         eprintln!("[daedalus] error: {e}");
                     }
                 });
@@ -104,7 +106,7 @@ fn handle_connection(
         ("GET", "/list") => handle_list(&mut stream, reg)?,
         ("GET", path) if path.starts_with("/pull/") => {
             let hash = &path[6..];
-            handle_pull(&mut stream, reg, hash, verbose)?
+            handle_pull(&mut stream, reg, hash, verbose)?;
         }
         ("POST", "/push") => handle_push(&mut stream, reg, token, verbose)?,
         _ => send_response(&mut stream, 404, "Not Found", "Endpoint not found")?,
@@ -119,7 +121,12 @@ fn handle_list(stream: &mut TcpStream, reg: &LayerRegistry) -> Result<()> {
     send_response(stream, 200, "OK", &body)
 }
 
-fn handle_pull(stream: &mut TcpStream, reg: &LayerRegistry, hash: &str, verbose: bool) -> Result<()> {
+fn handle_pull(
+    stream: &mut TcpStream,
+    reg: &LayerRegistry,
+    hash: &str,
+    verbose: bool,
+) -> Result<()> {
     match reg.pull_layer(hash) {
         Ok(layer) => {
             let body = serde_json::to_vec_pretty(&layer)?;

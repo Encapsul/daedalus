@@ -346,8 +346,7 @@ fn parse_hooks_json(s: &str) -> Result<Option<serde_json::Value>, serde_json::Er
     }
     if s.starts_with('@') {
         let path = s.trim_start_matches('@');
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| serde_json::Error::io(e))?;
+        let content = std::fs::read_to_string(path).map_err(serde_json::Error::io)?;
         serde_json::from_str(&content).map(Some)
     } else {
         serde_json::from_str(s).map(Some)

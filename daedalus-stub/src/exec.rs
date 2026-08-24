@@ -661,34 +661,48 @@ fn apply_cgroups(meta: &Metadata) -> io::Result<()> {
     let _my_cgroup = cgroup_root.join(format!("{}", my_pid));
 
     if meta.cpu_limit.is_some() || meta.memory_limit_mb.is_some() || meta.pid_limit.is_some() {
-        eprintln!("[daedalus] applying cgroup limits: cpu={:?} memory={:?}MB pids={:?}",
-            meta.cpu_limit, meta.memory_limit_mb, meta.pid_limit);
+        eprintln!(
+            "[daedalus] applying cgroup limits: cpu={:?} memory={:?}MB pids={:?}",
+            meta.cpu_limit, meta.memory_limit_mb, meta.pid_limit
+        );
     }
 
     if let Some(cpu_pct) = meta.cpu_limit {
         let cpu_max = cgroup_root.join("cpu.max");
         if cpu_max.exists() {
             let period = 100_000;
-            let quota = (cpu_pct as u64 * period) / 100;
-            fs::write(cpu_max, format!("{} {}\n", quota, period))
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to write cpu.max: {e}")))?;
+            let quota = (u64::from(cpu_pct) * period) / 100;
+            fs::write(cpu_max, format!("{} {}\n", quota, period)).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("failed to write cpu.max: {e}"),
+                )
+            })?;
         }
     }
 
     if let Some(mem_mb) = meta.memory_limit_mb {
         let mem_max = cgroup_root.join("memory.max");
         if mem_max.exists() {
-            let bytes = (mem_mb as u64) * 1024 * 1024;
-            fs::write(mem_max, format!("{}\n", bytes))
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to write memory.max: {e}")))?;
+            let bytes = u64::from(mem_mb) * 1024 * 1024;
+            fs::write(mem_max, format!("{}\n", bytes)).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("failed to write memory.max: {e}"),
+                )
+            })?;
         }
     }
 
     if let Some(pids) = meta.pid_limit {
         let pids_max = cgroup_root.join("pids.max");
         if pids_max.exists() {
-            fs::write(pids_max, format!("{}\n", pids))
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to write pids.max: {e}")))?;
+            fs::write(pids_max, format!("{}\n", pids)).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("failed to write pids.max: {e}"),
+                )
+            })?;
         }
     }
 
@@ -739,7 +753,9 @@ fn run_hooks(meta: &Metadata, rootfs: &Path, use_pivot: bool, phase: &str) -> io
             .current_dir(&cwd)
             .env("ROOTFS", rootfs)
             .status()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("hook failed to start: {e}")))?;
+            .map_err(|e| {
+                io::Error::new(io::ErrorKind::Other, format!("hook failed to start: {e}"))
+            })?;
         if !status.success() {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
