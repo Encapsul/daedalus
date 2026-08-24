@@ -145,6 +145,7 @@ pub struct Metadata {
     #[serde(default)]
     health_check: Option<HealthCheckMeta>,
     #[serde(default)]
+    #[allow(dead_code)]
     update_url: Option<String>,
     /// Layers composing this artifact. Empty for legacy binaries.
     #[serde(default)]
@@ -1180,6 +1181,7 @@ fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
     Ok(buf)
 }
 
+#[allow(dead_code)]
 fn human_bytes(bytes: u64) -> String {
     const KIB: u64 = 1024;
     const MIB: u64 = 1024 * 1024;
