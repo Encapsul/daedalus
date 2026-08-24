@@ -67,6 +67,9 @@ pub(crate) struct BuildPlan {
     pub(crate) seccomp: bool,
     pub(crate) landlock: bool,
     pub(crate) gui: bool,
+    pub(crate) cpu_limit: Option<u32>,
+    pub(crate) memory_limit_mb: Option<u32>,
+    pub(crate) pid_limit: Option<u32>,
     pub(crate) encrypt: bool,
     pub(crate) squashfs: bool,
     pub(crate) version_info: Option<String>,
@@ -178,6 +181,10 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
     canonical.push(format!("no_install={}", plan.no_install));
     canonical.push(format!("seccomp={}", plan.seccomp));
     canonical.push(format!("landlock={}", plan.landlock));
+    canonical.push(format!("gui={}", plan.gui));
+    canonical.push(format!("cpu_limit={:?}", plan.cpu_limit));
+    canonical.push(format!("memory_limit_mb={:?}", plan.memory_limit_mb));
+    canonical.push(format!("pid_limit={:?}", plan.pid_limit));
     canonical.push(format!("encrypt={}", plan.encrypt));
     canonical.push(format!("squashfs={}", plan.squashfs));
     canonical.push(format!("compress={}", args.compression_level));
@@ -293,6 +300,18 @@ pub struct BuildArgs {
     /// Enable Landlock LSM filesystem sandbox
     #[arg(long)]
     pub landlock: bool,
+
+    /// CPU limit (cgroup v2, Linux only). Percentage of a single CPU core.
+    #[arg(long)]
+    pub cpu_limit: Option<u32>,
+
+    /// Memory limit in MB (cgroup v2, Linux only).
+    #[arg(long)]
+    pub memory_limit_mb: Option<u32>,
+
+    /// Max number of processes (cgroup v2, Linux only).
+    #[arg(long)]
+    pub pid_limit: Option<u32>,
 
     /// Encrypt the payload with AES-256-GCM (requires --key).
     ///
@@ -533,6 +552,9 @@ pub(crate) fn default_build_args() -> BuildArgs {
         isolation: "sandbox".into(),
         seccomp: false,
         gui: false,
+        cpu_limit: None,
+        memory_limit_mb: None,
+        pid_limit: None,
         landlock: false,
         encrypt: false,
         squashfs: false,

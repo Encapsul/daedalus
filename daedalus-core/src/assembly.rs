@@ -88,6 +88,15 @@ pub fn build_meta_json(
     if options.gui {
         meta["gui"] = serde_json::Value::Bool(true);
     }
+    if let Some(c) = &options.cpu_limit {
+        meta["cpu_limit"] = serde_json::Value::Number((*c).into());
+    }
+    if let Some(m) = &options.memory_limit_mb {
+        meta["memory_limit_mb"] = serde_json::Value::Number((*m).into());
+    }
+    if let Some(p) = &options.pid_limit {
+        meta["pid_limit"] = serde_json::Value::Number((*p).into());
+    }
     if let Some(c) = &options.app_hash {
         meta["app_hash"] = serde_json::Value::String(c.clone());
     }
@@ -179,6 +188,9 @@ pub struct MetaOptions {
     pub seccomp: bool,
     pub landlock: bool,
     pub gui: bool,
+    pub cpu_limit: Option<u32>,
+    pub memory_limit_mb: Option<u32>,
+    pub pid_limit: Option<u32>,
     pub app_hash: Option<String>,
     pub rt_deps_hash: Option<String>,
     /// Base URL of the SISR update channel (`{url}/manifest`, `{url}/chunks/<hex>`).

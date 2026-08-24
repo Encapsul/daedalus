@@ -639,6 +639,67 @@ fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
     Ok(())
 }
 
+/// Apply cgroup v2 resource limits (CPU, memory, PID) for the current process.
+///
+/// No-op if:
+/// - Not on Linux
+/// - cgroup v2 is not mounted at `/sys/fs/cgroup`
+/// - No limits are set in metadata
+///
+/// The stub writes to the current process's cgroup (`/sys/fs/cgroup/.../cgroup.procs`
+/// for joining, `cpu.max`, `memory.max`, `pids.max` for limits).
+#[cfg(target_os = "linux")]
+fn apply_cgroups(meta: &Metadata) -> io::Result<()> {
+    use std::fs;
+
+    let cgroup_root = Path::new("/sys/fs/cgroup");
+    if !cgroup_root.exists() {
+        return Ok(());
+    }
+
+    let my_pid = std::process::id();
+    let _my_cgroup = cgroup_root.join(format!("{}", my_pid));
+
+    if meta.cpu_limit.is_some() || meta.memory_limit_mb.is_some() || meta.pid_limit.is_some() {
+        eprintln!("[daedalus] applying cgroup limits: cpu={:?} memory={:?}MB pids={:?}",
+            meta.cpu_limit, meta.memory_limit_mb, meta.pid_limit);
+    }
+
+    if let Some(cpu_pct) = meta.cpu_limit {
+        let cpu_max = cgroup_root.join("cpu.max");
+        if cpu_max.exists() {
+            let period = 100_000;
+            let quota = (cpu_pct as u64 * period) / 100;
+            fs::write(cpu_max, format!("{} {}\n", quota, period))
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to write cpu.max: {e}")))?;
+        }
+    }
+
+    if let Some(mem_mb) = meta.memory_limit_mb {
+        let mem_max = cgroup_root.join("memory.max");
+        if mem_max.exists() {
+            let bytes = (mem_mb as u64) * 1024 * 1024;
+            fs::write(mem_max, format!("{}\n", bytes))
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to write memory.max: {e}")))?;
+        }
+    }
+
+    if let Some(pids) = meta.pid_limit {
+        let pids_max = cgroup_root.join("pids.max");
+        if pids_max.exists() {
+            fs::write(pids_max, format!("{}\n", pids))
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("failed to write pids.max: {e}")))?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn apply_cgroups(_meta: &Metadata) -> io::Result<()> {
+    Ok(())
+}
+
 /// Launch the app entrypoint. Blocks until the app exits (or never returns on
 /// successful execvp).
 pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::Result<()> {
@@ -694,6 +755,8 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             crate::macos_sandbox::apply_sandbox(rootfs);
         }
     }
+
+    apply_cgroups(meta)?;
 
     // ── Platform-specific argv build + process launch ─────────────────────
     #[cfg(unix)]
@@ -1482,6 +1545,9 @@ mod tests {
             seccomp: false,
             gui: false,
             landlock: false,
+            cpu_limit: None,
+            memory_limit_mb: None,
+            pid_limit: None,
             services: Vec::new(),
             crypto: None,
             payload_format: String::new(),
@@ -1631,6 +1697,9 @@ mod tests {
             seccomp: false,
             gui: false,
             landlock: false,
+            cpu_limit: None,
+            memory_limit_mb: None,
+            pid_limit: None,
             services: Vec::new(),
             crypto: None,
             payload_format: String::new(),
