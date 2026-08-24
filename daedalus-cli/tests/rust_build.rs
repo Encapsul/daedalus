@@ -95,6 +95,8 @@ fn rust_app_is_detected_built_and_runs() {
         .args([
             "build",
             project.to_str().unwrap(),
+            "--isolation",
+            "0",
             "-o",
             out.to_str().unwrap(),
         ])
