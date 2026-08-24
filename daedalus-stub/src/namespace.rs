@@ -20,14 +20,12 @@ use std::path::Path;
 pub fn running_in_container() -> bool {
     const CGROUP_HINTS: [&str; 3] = ["/.dockerenv", "/run/.containerenv", "/.containerenv"];
     CGROUP_HINTS.iter().any(|p| Path::new(p).exists())
-        || std::fs::read_to_string("/proc/1/cgroup")
-            .is_ok_and(|c| {
-                c.contains("docker") || c.contains("kubepod") || c.contains("containerd")
-            })
-        || std::fs::read_to_string("/proc/self/cgroup")
-            .is_ok_and(|c| {
-                c.contains("docker") || c.contains("kubepod") || c.contains("containerd")
-            })
+        || std::fs::read_to_string("/proc/1/cgroup").is_ok_and(|c| {
+            c.contains("docker") || c.contains("kubepod") || c.contains("containerd")
+        })
+        || std::fs::read_to_string("/proc/self/cgroup").is_ok_and(|c| {
+            c.contains("docker") || c.contains("kubepod") || c.contains("containerd")
+        })
 }
 
 /// Enter a new user + mount namespace (unprivileged). Linux-only.

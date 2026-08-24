@@ -17,6 +17,7 @@ use crate::Metadata;
 #[cfg(unix)]
 use crate::{cstr, to_ptr_vec};
 use daedalus_core::detect;
+#[allow(unused_imports)]
 use daedalus_core::layer::Capability;
 /// Enter user + mount namespace if isolation >= 2; no-op otherwise.
 /// No-op on non-Linux platforms (no namespaces available).
