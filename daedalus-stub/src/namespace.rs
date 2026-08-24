@@ -21,13 +21,11 @@ pub fn running_in_container() -> bool {
     const CGROUP_HINTS: [&str; 3] = ["/.dockerenv", "/run/.containerenv", "/.containerenv"];
     CGROUP_HINTS.iter().any(|p| Path::new(p).exists())
         || std::fs::read_to_string("/proc/1/cgroup")
-            .ok()
-            .is_some_and(|c| {
+            .is_ok_and(|c| {
                 c.contains("docker") || c.contains("kubepod") || c.contains("containerd")
             })
         || std::fs::read_to_string("/proc/self/cgroup")
-            .ok()
-            .is_some_and(|c| {
+            .is_ok_and(|c| {
                 c.contains("docker") || c.contains("kubepod") || c.contains("containerd")
             })
 }
