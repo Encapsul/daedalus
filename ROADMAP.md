@@ -161,6 +161,82 @@ Deux apps avec le même runtime = même SHA256 → cache partagé → cold start
 
 mmap/FUSE pour ne pas charger les gros assets au démarrage. Chargé à la demande via SISR chunks.
 
+### 4. Build cache (local + remote) — 1-2 jours
+
+**État** : flags `--use_cache`, `--clear_cache`, `--remote_cache_url` existent dans `args.rs` mais rien n'est implémenté.
+
+**Implémentation** :
+1. Cache local : hash du payload + `config_fingerprint()` → skip assemblage si hit
+2. Remote cache : HTTP PUT/GET sur `{url}/{hash}` pour partager les builds entre CI
+3. Invalidation : changement de config ou de source → nouveau fingerprint
+
+**Bénéfice** : CI/CD ne rebuild pas l'identique à chaque run. Cross-compilation Python/Go (5-10 min) évitée si rien n'a changé.
+
+### 5. `daedalus-runtime` lib (extraction du stub) — 2-3 jours
+
+**État** : `daedalus-stub/src/extraction.rs`, `exec.rs`, `seccomp.rs`, `landlock.rs`, `namespace.rs` sont des modules bien séparés.
+
+**Implémentation** :
+1. Créer `daedalus-runtime/` avec `[lib]`
+2. Déplacer les modules du stub vers la lib
+3. Exposer l'API publique :
+   - `verify(path) -> Result<Footer>` — vérifie l'intégrité sans extraire
+   - `extract(path, dest) -> Result<Rootfs>` — extrait le payload
+   - `launch(meta, rootfs, isolation) -> Result<()>` — execvp avec sandbox
+4. `daedalus-stub` devient un shell binaire au-dessus de `daedalus-runtime`
+
+**Bénéfice** : permet d'embedder le runtime dans un launcher custom, ou d'inspecter/patcher un `.ere` sans exécuter le stub.
+
+### 6. Resource limits (cgroups) — 1 jour
+
+**État** : le stub entre dans un mount namespace + seccomp. Les cgroups sont le complément naturel.
+
+**Implémentation** :
+1. Ajouter les flags `--cpu-limit`, `--memory-limit`, `--pid-limit`
+2. Écrire dans `cgroup.procs` avant `execvp` (Linux-only, no-op sur macOS/Windows)
+3. Nettoyage automatique du cgroup après exec
+
+**Bénéfice** : argument enterprise. "Cette app a droit à 512MB RAM max, 1 CPU, 50 processus".
+
+### 7. Post-extract hooks — 1-2 jours
+
+**État** : le stub extrait le rootfs et execvp l'entrypoint. Rien ne permet de faire du setup avant l'entrypoint.
+
+**Implémentation** :
+1. Ajouter un fichier `.daedalus/hooks.json` dans le payload metadata section
+2. Format :
+   ```json
+   {
+     "pre": ["cp /etc/hosts /app/etc/hosts", "ln -s /app/data /data"],
+     "post": ["curl -s https://health.check/ready"]
+   }
+   ```
+3. Le stub exécute les hooks dans l'ordre avant/après l'entrypoint
+
+**Bénéfice** : résout des use cases réels (migrate DB, warm cache, register service) sans modifier le code de l'app.
+
+### 8. WASM/WASI runtime embedding — 3-5 jours
+
+**État** : les flags `--wasm`, `--wasi`, `--component-model` existent dans `args.rs` mais sont `#[arg(hide = true)]` et non implémentés dans le stub.
+
+**Implémentation** :
+1. Embedder `wasmtime` dans le runtime
+2. Ajouter un `wasm_executor.rs` dans le stub qui appelle `wasmtime::Store::new()` + `instance.export("_start")`
+3. Activer les flags cachés
+
+**Bénéfice** : différenciation vs PyInstaller/pkg/nexe. Personne ne fait du packaging WASM single-file avec sandbox + delta updates.
+
+### 9. Registry serveur (daedalus serve) — 2-3 jours
+
+**État** : `daedalus-core/src/registry.rs` implémente push/pull/list. `daedalus-cli` a `--publish` et `--registry`. Il manque le serveur.
+
+**Implémentation** :
+1. Serveur HTTP minimal : `/push`, `/pull/{hash}`, `/list`
+2. Stockage filesystem ou S3
+3. Auth basique (Bearer token)
+
+**Bénéfice** : permet de partager des layers entre machines (ex: même Python runtime partagé entre 50 serveurs).
+
 ## Ce qui n'est PAS prioritaire
 
 - ❌ OCI/WASM (`--to oci|appimage|wasm`) — **DEPRECATED** (dilution, voir §5)
@@ -168,6 +244,9 @@ mmap/FUSE pour ne pas charger les gros assets au démarrage. Chargé à la deman
 - ❌ 50 repos GitHub trending — integration testing, pas un feature produit
 - ❌ Edge/IoT OTA channels — SISR le couvre déjà (delta updates + signatures)
 - ❌ IA agents / AI agent marketplace — DEGACER'd, le packaging universel couvre le besoin
+- ❌ Docker-in-Daedalus — contredit la philosophie "no daemon"
+- ❌ Plugin system avec scripting — les hooks JSON sont suffisants
+- ❌ SDK Python/Node/Go avant d'avoir la demande utilisateur — `daedalus-runtime` d'abord
 
 ## §7 — MCU companion systems (edge/IoT)
 
