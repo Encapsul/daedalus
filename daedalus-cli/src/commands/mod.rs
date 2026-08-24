@@ -10,6 +10,7 @@ pub mod registry;
 pub mod run;
 pub mod scan;
 pub mod selftest;
+pub mod serve;
 pub mod sign;
 pub mod swap;
 pub mod trust;
