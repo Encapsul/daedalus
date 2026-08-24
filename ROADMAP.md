@@ -172,20 +172,21 @@ mmap/FUSE pour ne pas charger les gros assets au démarrage. Chargé à la deman
 
 **Bénéfice** : CI/CD ne rebuild pas l'identique à chaque run. Cross-compilation Python/Go (5-10 min) évitée si rien n'a changé.
 
-### 5. `daedalus-runtime` lib (extraction du stub) — 2-3 jours
+### 5. `daedalus-runtime` lib (extraction du stub) — REPORTÉ
 
-**État** : `daedalus-stub/src/extraction.rs`, `exec.rs`, `seccomp.rs`, `landlock.rs`, `namespace.rs` sont des modules bien séparés.
+**Raison** : couplage fort entre `main.rs` et les modules (`exec.rs`, `extraction.rs`, etc.) :
+types partagés (`Metadata`, `Service`, `CryptoMeta`, `HealthCheckMeta`), constants
+(`LD_PATHS`, `BIN_PATHS`), fonctions (`cstr`, `pivot_root_into`, `libc_execvp`).
 
-**Implémentation** :
-1. Créer `daedalus-runtime/` avec `[lib]`
-2. Déplacer les modules du stub vers la lib
-3. Exposer l'API publique :
-   - `verify(path) -> Result<Footer>` — vérifie l'intégrité sans extraire
-   - `extract(path, dest) -> Result<Rootfs>` — extrait le payload
-   - `launch(meta, rootfs, isolation) -> Result<()>` — execvp avec sandbox
-4. `daedalus-stub` devient un shell binaire au-dessus de `daedalus-runtime`
+L'extraction propre nécessite soit une refonte complète de `main.rs` en thin wrapper,
+soit de déplacer tous les types partagés dans `daedalus-core` d'abord.
 
-**Bénéfice** : permet d'embedder le runtime dans un launcher custom, ou d'inspecter/patcher un `.ere` sans exécuter le stub.
+**Plan alternatif** :
+1. Déplacer `Metadata`, `Service`, `CryptoMeta`, `HealthCheckMeta` dans `daedalus-core`
+2. Extraire les constantes et fonctions utilitaires dans `daedalus-core::platform`
+3. Seulement ensuite, extraire les modules dans `daedalus-runtime`
+
+**Status** : reporté à Phase 2 (après resource limits + hooks).
 
 ### 6. Resource limits (cgroups) — 1 jour
 
