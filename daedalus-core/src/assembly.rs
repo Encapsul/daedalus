@@ -273,14 +273,16 @@ pub fn assemble_daedalus(out_path: &Path, input: &AssemblyInput<'_>) -> std::io:
 
     let meta_offset = payload_offset + payload.len() as u64;
     let footer = build_footer(
-        fmt_ver,
-        arch,
+        FooterConfig {
+            fmt_ver,
+            arch,
+            payload_offset,
+            payload_sha256: body_hash,
+            meta_offset,
+            has_sisr: ext.is_some(),
+            encrypted: input.encryption.is_some(),
+        },
         input,
-        payload_offset,
-        body_hash,
-        meta_offset,
-        ext.is_some(),
-        input.encryption.is_some(),
     );
 
     let parent = out_path.parent().unwrap_or_else(|| Path::new("."));
@@ -293,7 +295,7 @@ pub fn assemble_daedalus(out_path: &Path, input: &AssemblyInput<'_>) -> std::io:
     {
         let f = w.file_mut();
         f.write_all(input.stub_bytes)?;
-        f.write_all(&payload)?;
+        f.write_all(payload)?;
         f.write_all(&meta_bytes)?;
         if let Some((artifacts, ext)) = ext.as_ref() {
             f.write_all(&artifacts.manifest_bytes)?;
@@ -349,34 +351,36 @@ fn sisr_footer_ext<'a>(
 }
 
 /// Build the on-disk [`Footer`] from assembled inputs.
-fn build_footer(
+#[derive(Debug, Clone, Copy)]
+struct FooterConfig {
     fmt_ver: u8,
     arch: u8,
-    input: &AssemblyInput<'_>,
     payload_offset: u64,
     payload_sha256: [u8; 32],
     meta_offset: u64,
     has_sisr: bool,
     encrypted: bool,
-) -> Footer {
+}
+
+fn build_footer(cfg: FooterConfig, input: &AssemblyInput<'_>) -> Footer {
     Footer {
-        format_version: fmt_ver,
-        arch,
+        format_version: cfg.fmt_ver,
+        arch: cfg.arch,
         flags: {
             let mut f = 0u8;
-            if has_sisr {
+            if cfg.has_sisr {
                 f |= format::FLAG_SISR;
             }
-            if encrypted {
+            if cfg.encrypted {
                 f |= format::FLAG_ENCRYPTED;
             }
             f
         },
-        payload_offset,
+        payload_offset: cfg.payload_offset,
         payload_csize: input.payload.len() as u64,
         payload_usize: 0,
-        payload_sha256,
-        meta_offset,
+        payload_sha256: cfg.payload_sha256,
+        meta_offset: cfg.meta_offset,
         meta_size: input.meta_bytes.len() as u64,
         sig_offset: 0,
     }
@@ -475,6 +479,7 @@ mod tests {
         let size = assemble_daedalus(
             &out,
             &AssemblyInput {
+                encryption: None,
                 stub_bytes: stub,
                 payload,
                 meta_bytes: meta,
@@ -508,6 +513,7 @@ mod tests {
             assemble_daedalus(
                 &out,
                 &AssemblyInput {
+                    encryption: None,
                     stub_bytes: b"STUB",
                     payload: b"PAYLOAD",
                     meta_bytes: meta,
@@ -594,6 +600,7 @@ mod tests {
         let size = assemble_daedalus(
             &classic,
             &AssemblyInput {
+                encryption: None,
                 stub_bytes: stub,
                 payload,
                 meta_bytes: meta,
@@ -607,6 +614,7 @@ mod tests {
         let size2 = assemble_daedalus(
             &with_sisr,
             &AssemblyInput {
+                encryption: None,
                 stub_bytes: stub,
                 payload,
                 meta_bytes: meta,
@@ -645,6 +653,7 @@ mod tests {
         assemble_daedalus(
             &out,
             &AssemblyInput {
+                encryption: None,
                 stub_bytes: stub,
                 payload,
                 meta_bytes: meta,
