@@ -12,7 +12,7 @@ and reuses.
     .ready       ← marker: extraction is complete and valid
 ```
 
-The cache key is the **SHA-256 of the compressed payload**. Two `.ere` with
+The cache key is the **SHA-256 of the compressed payload**. Two `.daedalus` with
 identical content share the same cache; changing a single byte produces a new
 key. (`.lock` for concurrent access and `last_used` for LRU cleanup are
 planned — see [Roadmap](../roadmap.md).)
@@ -57,7 +57,7 @@ tmp directory is created in the **same** parent directory as the target.
 | Role | avoid re-extracting on every launch | avoid recompressing on rebuild |
 
 The build cache is what makes a rebuild go from ~25 s to ~1 s (runtime layer
-reused). See [`.ere` Format](./format.md#layers-v2).
+reused). See [`.daedalus` Format](./format.md#layers-v2).
 
 ## Extraction cache key in v2
 

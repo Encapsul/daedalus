@@ -15,9 +15,10 @@ path = "src/bin/daedalus-crypto.rs"
 [dependencies]
 # Shared core library (format parsing, constants).
 daedalus-core = { path = "../daedalus-core" }
-# Mostly pure-Rust: tar, sha2, serde, ed25519-dalek, aes-gcm, hkdf
-# are all pure Rust.  backhand (squashfs) pulls in zstd-sys which requires
-# a C compiler (cc crate) at build time.  A C toolchain (gcc/musl-gcc) and
+# Mostly pure-Rust: tar, sha2, serde, ed25519-dalek are all pure Rust.
+# backhand (squashfs) pulls in zstd-sys which requires a C compiler (cc crate)
+# at build time.  A C toolchain (gcc/musl-gcc) and pkg-config are therefore
+# needed alongside the Rust toolchain.
 # pkg-config are therefore needed alongside the Rust toolchain.
 tar = "0.4"             # tar extraction
 sha2 = "0.10"           # SHA-256 integrity check
@@ -28,8 +29,6 @@ dirs = "5"              # standard directories (config, cache, home)
 ed25519-dalek = { version = "2.1", default-features = false, features = ["alloc", "zeroize"] }  # >= 2.1.0: CVE-2023-48022
 rand = "0.8"
 libc = "0.2"
-aes-gcm = "0.10"        # AES-256-GCM payload decryption
-hkdf = "0.12"           # HKDF-SHA256 for AES key derivation from signing seed
 zeroize = "1"           # secure memory zeroization for keys and secrets
 backhand = { version = "0.25", default-features = false, features = ["gzip", "lz4", "zstd"] }  # squashfs extraction
 hex = "0.4"               # hex encoding for cache keys

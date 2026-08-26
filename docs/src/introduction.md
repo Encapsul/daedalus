@@ -5,26 +5,26 @@
 
 **daedalus** packages any web, server, or headless app into a single
 self-extracting ELF binary. The CLI is `daedalus`; its output files use the
-`.ere` extension (a dot can't appear in a shell command name).
+`.daedalus` extension (a dot can't appear in a shell command name).
 
 daedalus is to a server app what a Go static binary is to a compiled program:
-everything lives inside the file, and it runs with `./my_app.ere`.
+everything lives inside the file, and it runs with `./my_app.daedalus`.
 
 ## What daedalus does
 
 ```bash
 # Build once — bundles the runtime, the app, and its libraries
-$ daedalus build ./my-app -o my-app.ere
+$ daedalus build ./my-app -o my-app.daedalus
 
 # Run anywhere — the end user installs nothing
-$ ./my-app.ere
+$ ./my-app.daedalus
 # Server listening on http://127.0.0.1:8080
 ```
 
 | Step | What happens | Who does it |
 |---|---|---|
 | `daedalus build` | detects the runtime, resolves dependencies, compresses a rootfs | the developer |
-| `./my_app.ere` | verifies integrity, extracts to cache, launches | the end user |
+| `./my_app.daedalus` | verifies integrity, extracts to cache, launches | the end user |
 
 ## Key features
 
@@ -34,7 +34,7 @@ $ ./my-app.ere
   target machine.
 - **Incremental builds** — the runtime layer is cached; app-only edits rebuild
   in about a second.
-- **Integrity first** — every `.ere` carries a `SHA-256` of its payload,
+- **Integrity first** — every `.daedalus` carries a `SHA-256` of its payload,
   verified before anything is extracted. Optional Ed25519 signatures and
   AES-256-GCM encryption.
 - **Sandboxing without root** — user namespaces, mount namespaces,
@@ -73,8 +73,8 @@ make preflight
 
 # Build the launcher, then package your first app
 make stub
-daedalus build ./examples/hello-web -o hello-web.ere
-./hello-web.ere
+daedalus build ./examples/hello-web -o hello-web.daedalus
+./hello-web.daedalus
 ```
 
 Follow the [Quickstart](./guides/quickstart.md) for the full walkthrough, or
@@ -84,21 +84,21 @@ jump straight to a language guide: [Python](./guides/python.md),
 ## Project status
 
 Phase 2 is complete; Phase 3 is in progress. The full pipeline runs
-end-to-end: `build` → `.ere` → execution with self-extraction, caching,
+end-to-end: `build` → `.daedalus` → execution with self-extraction, caching,
 Ed25519 signatures, SquashFS support, and multi-arch builds
 (`x86_64` / `aarch64`). See the [Roadmap](./roadmap.md) for what's next.
 
 ## Optional extension: SISR (self-updates)
 
-By default a `.ere` is a simple, static container — no update machinery, nothing to configure. As an **opt-in, advanced extension**, daedalus supports the **SISR** engine: a binary that can update *itself* from signed deltas, with no toolchain on the target machine.
+By default a `.daedalus` is a simple, static container — no update machinery, nothing to configure. As an **opt-in, advanced extension**, daedalus supports the **SISR** engine: a binary that can update *itself* from signed deltas, with no toolchain on the target machine.
 
 ```
-[ v1.0 ] ── ./app.ere update ──▶ fetch manifest ──▶ verify Ed25519
+[ v1.0 ] ── ./app.daedalus update ──▶ fetch manifest ──▶ verify Ed25519
                 ──▶ download changed chunks ──▶ verify hashes
                 ──▶ rebuild & atomic swap ──▶ [ v1.1 ]
 ```
 
-- Static containers: `daedalus build ./app -o app.ere`
-- Self-updating binaries: `daedalus build ./app -o app.ere --self-update`
+- Static containers: `daedalus build ./app -o app.daedalus`
+- Self-updating binaries: `daedalus build ./app -o app.daedalus --self-update`
 
 Both run identically by default; SISR is only engaged on an explicit update. See the [SISR overview](./concepts/sisr-overview.md), the [delta manifest spec](./spec/delta-manifest-format.md), and the [incremental updates guide](./guides/incremental-updates.md).

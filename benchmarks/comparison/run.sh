@@ -47,9 +47,9 @@ die()  { echo "[run.sh] ERROR: $*" >&2; exit 1; }
 require_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 # Ensure a freshly built stub is used (find_stub silently prefers old
-# installed stubs otherwise — see xbin-cli/src/commands/build.rs).
+# installed stubs otherwise — see daedalus-cli/src/commands/build.rs).
 if [ -z "${XBIN_STUB_PATH:-}" ]; then
-    MUSL_STUB="$REPO_ROOT/target/x86_64-unknown-linux-musl/release/xbin-stub"
+    MUSL_STUB="$REPO_ROOT/target/x86_64-unknown-linux-musl/release/daedalus-stub"
     if [ ! -f "$MUSL_STUB" ]; then
         log "building stub (make stub)"
         (cd "$REPO_ROOT" && make stub) >/dev/null 2>&1
@@ -58,7 +58,7 @@ if [ -z "${XBIN_STUB_PATH:-}" ]; then
         XBIN_STUB_PATH="$MUSL_STUB"
         export XBIN_STUB_PATH
     else
-        log "WARNING: no fresh stub found; xbin may embed a stale installed stub"
+        log "WARNING: no fresh stub found; daedalus may embed a stale installed stub"
     fi
 fi
 
@@ -86,7 +86,7 @@ collect_profile() {
         echo "tmp_free:    $(df -h /tmp 2>/dev/null | awk 'NR==2{print $4}')"
         echo "env:         $env_type"
         echo "live_system: $live"
-        echo "xbin:        $($XBIN_BIN --version 2>/dev/null || echo n/a)"
+        echo "daedalus:        $($XBIN_BIN --version 2>/dev/null || echo n/a)"
         echo "stub:        ${XBIN_STUB_PATH:-n/a} ($(stat -c%s "${XBIN_STUB_PATH:-/nonexistent}" 2>/dev/null || echo '?') bytes)"
         echo "node:        $(node --version 2>/dev/null || echo n/a)"
         echo "docker:      $(docker --version 2>/dev/null || echo n/a)"
@@ -130,7 +130,7 @@ spawn_and_measure() {
         sleep 1
         # RSS of the process actually listening on the port (the serving
         # process). Some packagers re-exec/spawn children (AppImage runtime,
-        # xbin exec) — the launched PID may not be the server.
+        # daedalus exec) — the launched PID may not be the server.
         local server_pid
         server_pid=$(ss -tlnp 2>/dev/null | grep ":$port" | grep -oP 'pid=\K[0-9]+' | head -1)
         if [ -n "$server_pid" ] && [ -r "/proc/$server_pid/status" ]; then
@@ -165,30 +165,30 @@ cell() { [ -n "$1" ] && echo "$1" || echo "n/a"; }
 # ---------------------------------------------------------------------------
 measure_xbin() {
     local port=$((PORT_BASE + 1))
-    log "xbin: building"
+    log "daedalus: building"
     local t0 t1
     t0=$(now_ms)
-    "$XBIN_BIN" build "$APP_DIR" -o "$WORK/hello.xbin" >/dev/null 2>&1
+    "$XBIN_BIN" build "$APP_DIR" -o "$WORK/hello.de" >/dev/null 2>&1
     t1=$(now_ms)
     local build_ms=$((t1 - t0))
     local artifact_size
-    artifact_size=$(stat -c%s "$WORK/hello.xbin")
+    artifact_size=$(stat -c%s "$WORK/hello.de")
 
-    log "xbin: cold start (first run, extraction included)"
-    rm -rf "$OUT_DIR/xbin-cache"
-    export XDG_CACHE_HOME="$OUT_DIR/xbin-cache"
-    if spawn_and_measure xbin "$port" 60 env PORT="$port" "$WORK/hello.xbin"; then
+    log "daedalus: cold start (first run, extraction included)"
+    rm -rf "$OUT_DIR/daedalus-cache"
+    export XDG_CACHE_HOME="$OUT_DIR/daedalus-cache"
+    if spawn_and_measure daedalus "$port" 60 env PORT="$port" "$WORK/hello.de"; then
         local cold_ms=$MEAS_COLD_MS rss_kb=$MEAS_RSS_KB
-        log "xbin: warm start (cache hit)"
-        if spawn_and_measure xbin "$((port + 1))" 30 env PORT="$((port + 1))" "$WORK/hello.xbin"; then
+        log "daedalus: warm start (cache hit)"
+        if spawn_and_measure daedalus "$((port + 1))" 30 env PORT="$((port + 1))" "$WORK/hello.de"; then
             local warm_ms=$MEAS_COLD_MS
         else
             local warm_ms="n/a"
         fi
         local footprint
-        footprint=$(du -sb "$OUT_DIR/xbin-cache" 2>/dev/null | awk '{print $1}')
+        footprint=$(du -sb "$OUT_DIR/daedalus-cache" 2>/dev/null | awk '{print $1}')
         unset XDG_CACHE_HOME
-        record xbin "build_ms=$build_ms" "artifact_bytes=$artifact_size" \
+        record daedalus "build_ms=$build_ms" "artifact_bytes=$artifact_size" \
             "artifact_mib=$(fmt_mib "$artifact_size")" \
             "footprint_bytes=$footprint" "footprint_mib=$(fmt_mib "$footprint")" \
             "cold_ms=$cold_ms" "warm_ms=$warm_ms" "rss_kb=$rss_kb" \
@@ -196,7 +196,7 @@ measure_xbin() {
         return 0
     fi
     unset XDG_CACHE_HOME
-    record xbin "build_ms=$build_ms" "artifact_bytes=$artifact_size" \
+    record daedalus "build_ms=$build_ms" "artifact_bytes=$artifact_size" \
         "artifact_mib=$(fmt_mib "$artifact_size")" "cold_ms=fail" \
         "warm_ms=n/a" "rss_kb=n/a" "host_deps=none"
     return 1
@@ -208,7 +208,7 @@ measure_xbin() {
 measure_docker() {
     require_cmd docker || { log "docker: skipped (not installed)"; return 1; }
     docker ps >/dev/null 2>&1 || { log "docker: skipped (daemon down)"; return 1; }
-    local port=$((PORT_BASE + 2)) tag="xbin-bench-hello:$(date +%s)"
+    local port=$((PORT_BASE + 2)) tag="daedalus-bench-hello:$(date +%s)"
     local dockerfile="$WORK/Dockerfile"
     cat > "$dockerfile" <<EOF
 FROM node:24-slim
@@ -228,7 +228,7 @@ EOF
     local artifact_size
     artifact_size=$(docker image inspect -f '{{.Size}}' "$tag" 2>/dev/null)
     log "docker: cold start"
-    local cname="xbin-bench-$port"
+    local cname="daedalus-bench-$port"
     docker rm -f "$cname" >/dev/null 2>&1
     local t2 t3
     t2=$(now_ms)
@@ -321,15 +321,15 @@ export PORT
 exec "\$(dirname "\$(readlink -f "\$0")")/hello-node"
 EOF
     chmod +x "$appdir/AppRun"
-    cat > "$appdir/xbin-bench.desktop" <<EOF
+    cat > "$appdir/daedalus-bench.desktop" <<EOF
 [Desktop Entry]
 Name=Hello Node
 Exec=hello-node
 Type=Application
-Icon=xbin-bench
+Icon=daedalus-bench
 Categories=Utility;
 EOF
-    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > "$appdir/xbin-bench.png"
+    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d > "$appdir/daedalus-bench.png"
 
     log "appimage: packaging"
     local t0 t1

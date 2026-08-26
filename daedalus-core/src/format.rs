@@ -16,12 +16,10 @@ pub const V3_FOOTER_SIZE: u64 = 92;
 pub const SISR_FOOTER_EXT_SIZE: usize = 110;
 
 pub const CRYPTO_NONE: u64 = 0x00;
-pub const CRYPTO_AES_256_GCM: u64 = 0x01;
 
 pub const PAYLOAD_FORMAT_SQUASHFS: &str = "squashfs";
 
 pub const FLAG_SIGNED: u8 = 0x01;
-pub const FLAG_ENCRYPTED: u8 = 0x02;
 /// Set when the file carries a `SISR` footer extension + delta manifest.
 pub const FLAG_SISR: u8 = 0x04;
 
@@ -49,14 +47,6 @@ pub struct Footer {
 }
 
 impl Footer {
-    pub fn crypto_suite(&self) -> u64 {
-        if self.format_version >= 4 {
-            self.payload_usize
-        } else {
-            CRYPTO_NONE
-        }
-    }
-
     pub fn is_signed(&self) -> bool {
         self.flags & FLAG_SIGNED != 0
     }
@@ -327,40 +317,6 @@ mod tests {
     }
 
     #[test]
-    fn crypto_suite_v3_returns_none() {
-        let f = Footer {
-            format_version: 3,
-            arch: 0,
-            flags: 0,
-            payload_offset: 0,
-            payload_csize: 0,
-            payload_usize: 12345,
-            payload_sha256: [0; 32],
-            meta_offset: 0,
-            meta_size: 0,
-            sig_offset: 0,
-        };
-        assert_eq!(f.crypto_suite(), CRYPTO_NONE);
-    }
-
-    #[test]
-    fn crypto_suite_v4_returns_usize() {
-        let f = Footer {
-            format_version: 4,
-            arch: 0,
-            flags: 0,
-            payload_offset: 0,
-            payload_csize: 0,
-            payload_usize: 99999,
-            payload_sha256: [0; 32],
-            meta_offset: 0,
-            meta_size: 0,
-            sig_offset: 0,
-        };
-        assert_eq!(f.crypto_suite(), 99999);
-    }
-
-    #[test]
     fn is_signed_checks_flag() {
         let mut f = Footer {
             format_version: 5,
@@ -377,27 +333,6 @@ mod tests {
         assert!(!f.is_signed());
         f.flags = FLAG_SIGNED;
         assert!(f.is_signed());
-        f.flags = FLAG_SIGNED | FLAG_ENCRYPTED;
-        assert!(f.is_signed());
-    }
-
-    #[test]
-    fn is_encrypted_checks_flag() {
-        let mut f = Footer {
-            format_version: 5,
-            arch: 0,
-            flags: 0,
-            payload_offset: 0,
-            payload_csize: 0,
-            payload_usize: 0,
-            payload_sha256: [0; 32],
-            meta_offset: 0,
-            meta_size: 0,
-            sig_offset: 0,
-        };
-        assert_eq!(f.flags & FLAG_ENCRYPTED, 0);
-        f.flags = FLAG_ENCRYPTED;
-        assert!(f.flags & FLAG_ENCRYPTED != 0);
     }
 
     #[test]

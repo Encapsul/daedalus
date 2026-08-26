@@ -1,8 +1,8 @@
 # The Launcher (stub)
 
 The launcher ("stub") is the small program embedded at the head of every
-`.ere`. It's the ELF the kernel runs when the user executes
-`./my_app.ere`.
+`.daedalus`. It's the ELF the kernel runs when the user executes
+`./my_app.daedalus`.
 
 - **Code**: `stub/src/main.rs` + `daedalus-core/src/format.rs` (shared format parser)
 - **Language**: Rust, statically compiled for `x86_64-unknown-linux-musl` →
@@ -29,7 +29,7 @@ ldd stub/target/x86_64-unknown-linux-musl/release/daedalus-stub
 ## Execution flow
 
 ```
-./my_app.ere
+./my_app.daedalus
    │
    1. open("/proc/self/exe")          ← reliable self-location
    2. read footer (last 92 bytes for v3), validate magic
@@ -95,7 +95,7 @@ relative paths and symlinks.
 
 ## Concurrent access: `flock()`
 
-If two instances of the same `.ere` start simultaneously on a cold cache,
+If two instances of the same `.daedalus` start simultaneously on a cold cache,
 an exclusive `flock()` (on `~/.cache/daedalus/{hash}.lock`) guarantees only one
 performs the extraction; the other waits and then finds the cache ready.
 Extraction is already atomic via `rename()` — `flock` simply avoids duplicated

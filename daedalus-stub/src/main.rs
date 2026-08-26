@@ -147,8 +147,6 @@ pub struct Metadata {
     #[serde(default)]
     services: Vec<Service>,
     #[serde(default)]
-    crypto: Option<CryptoMeta>,
-    #[serde(default)]
     payload_format: String,
     #[serde(default)]
     health_check: Option<HealthCheckMeta>,
@@ -301,29 +299,6 @@ pub struct HealthCheckMeta {
 
 fn default_health_endpoint() -> String {
     "/health".to_string()
-}
-
-/// Metadata describing an AES-256-GCM encrypted payload (`--encrypt`, v4+).
-///
-/// SECURITY / THREAT MODEL: the encryption key (`encryption_key_hex`) and salt
-/// are stored **in the clear** in the `.daedalus` metadata — i.e. in the same file
-/// as the ciphertext. The AES key is **not** the Ed25519 *signing* seed (that is
-/// never embedded; `@see` `daedalus-cli/src/commands/build.rs`), so a leaked file
-/// cannot be used to forge signatures. However, because the decryption key
-/// lives inside the file, *possession of the file suffices to decrypt the
-/// payload*. `--encrypt` therefore provides **obfuscation against casual
-/// inspection**, not confidentiality against an attacker who holds the binary.
-/// Real confidentiality requires a key that is *not* stored in the file —
-/// e.g. an environment variable / passphrase derived at runtime — which is not
-/// supported today. Authenticity of the bytes (signed vs unsigned) is governed
-/// solely by `FLAG_SIGNED` + the trusted-keys directory.
-#[derive(Deserialize)]
-pub struct CryptoMeta {
-    nonce_hex: String,
-    #[allow(dead_code)]
-    tag_offset: usize,
-    encryption_key_hex: String,
-    encryption_salt_hex: String,
 }
 
 #[derive(Deserialize)]
@@ -490,22 +465,6 @@ fn run() -> io::Result<()> {
             eprintln!("[daedalus] SISR section verified (at-rest)");
         }
     }
-
-    // Decrypt payload (v4+ with AES-256-GCM).
-    // Happens AFTER signature + integrity verification — we only decrypt
-    // what's already proven authentic.
-    let payload = if footer.crypto_suite() == format::CRYPTO_AES_256_GCM {
-        if let Some(ref crypto) = meta.crypto {
-            if verbose {
-                eprintln!("[daedalus] decrypting AES-256-GCM payload");
-            }
-            crypto::decrypt_aes_gcm(&payload, crypto)?
-        } else {
-            return Err(err("encrypted payload but no crypto metadata"));
-        }
-    } else {
-        payload
-    };
 
     // Extract atomically.
     let lock = File::create(base.join(format!("{hash}.lock")))?;
@@ -1591,7 +1550,6 @@ mod tests {
             memory_limit_mb: None,
             pid_limit: None,
             services: vec![],
-            crypto: None,
             payload_format: "zstd+tar".into(),
             health_check: None,
             update_url: None,
@@ -1635,7 +1593,6 @@ mod tests {
             memory_limit_mb: None,
             pid_limit: None,
             services: vec![],
-            crypto: None,
             payload_format: "zstd+tar".into(),
             health_check: None,
             update_url: None,

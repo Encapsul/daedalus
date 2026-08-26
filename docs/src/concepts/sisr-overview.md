@@ -7,14 +7,14 @@
 
 ## The two daedalus models
 
-daedalus ships in two shapes. They look alike (same `./app.ere`), but only one
+daedalus ships in two shapes. They look alike (same `./app.daedalus`), but only one
 can update itself.
 
-| | **Classic .ere** (default) | **SISR .ere** (opt-in) |
+| | **Classic .daedalus** (default) | **SISR .daedalus** (opt-in) |
 |---|---|---|
-| Build | `daedalus build ./app -o app.ere` | `daedalus build ./app -o app.ere --self-update` |
+| Build | `daedalus build ./app -o app.daedalus` | `daedalus build ./app -o app.daedalus --self-update` |
 | Contents | launcher + payload (SquashFS) | launcher + payload + **embedded SISR engine** |
-| Update | rebuild + redistribute | `./app.ere update` — self-rebuilds from signed deltas |
+| Update | rebuild + redistribute | `./app.daedalus update` — self-rebuilds from signed deltas |
 | Toolchain on target | none | **still none** (engine is embedded) |
 | Behavior | static container | static container by default, updatable on demand |
 | Trust | signature at launch | signature at launch **+** signed chain for every delta |
@@ -26,10 +26,10 @@ explicitly (invariant I-2 of the [SISR spec](../architecture/sisr-spec.md)).
 
 ## Why SISR exists
 
-A classic `.ere` is immutable. Shipping a fix means:
+A classic `.daedalus` is immutable. Shipping a fix means:
 
 ```
-[dev machine] daedalus build  →  [v1.1 .ere]  →  redistribute  →  [target]
+[dev machine] daedalus build  →  [v1.1 .daedalus]  →  redistribute  →  [target]
 ```
 
 For a handful of servers that's acceptable. For fleets behind slow links, or
@@ -44,7 +44,7 @@ target machine itself:
 ## The reconstruction flow
 
 ```
-[ Binary v1.0 ] ──( ./app.ere update )──▶ [ Interrogate remote manifest ]
+[ Binary v1.0 ] ──( ./app.daedalus update )──▶ [ Interrogate remote manifest ]
                                                 │
                                                 ▼
                                        [ Download deltas / chunks ]

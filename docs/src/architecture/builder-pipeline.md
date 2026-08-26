@@ -1,7 +1,7 @@
 # Builder Pipeline
 
 > Status: **implemented** (`daedalus-core` `assembly` + `sisr_stage`).
-> Describes how a `.ere` is assembled, how the optional `SISR` stage fits
+> Describes how a `.daedalus` is assembled, how the optional `SISR` stage fits
 > into the packager, and the invariants that keep the two outputs consistent.
 
 The packager lives in `daedalus-core/src/assembly.rs`. Its entry point is
@@ -12,7 +12,7 @@ return the total file size and set executable permissions on Unix.
 
 ```
 stub_bytes ─┐
-payload    ─┼─► [stub][payload][metadata][footer] ──► app.ere
+payload    ─┼─► [stub][payload][metadata][footer] ──► app.daedalus
 meta_bytes ─┘      │                    │
               payload_sha256 = SHA-256(payload ‖ meta_bytes)
               footer         = format version, offsets, hash, magic
@@ -42,7 +42,7 @@ Steps, all in memory:
    (`sisr_stage::sign`); all-zeros signature when unsigned.
 5. **Inject** the manifest and the fixed 110-byte `SisrFooterExt` before the
    standard footer; set `FLAG_SISR` in the footer `flags` byte.
-6. **Write** the remote manifest to `<name>.ere.manifest`
+6. **Write** the remote manifest to `<name>.daedalus.manifest`
    (`RemoteManifest::to_bytes`): `XBMR` magic + `merkle_root` + signature +
    embedded `DeltaManifest`, self-contained and verifiable offline.
 
@@ -82,7 +82,7 @@ extra pass is the cost of content addressing — run the probe with
 
 - [SISR: Self-Incremental Sovereign Reconstruction](./sisr-spec.md) — the
   trust model the stage serves.
-- [`.ere` Format v2 — SISR extension](../spec/daedalus-format-v2.md) — exact byte
+- [`.daedalus` Format v2 — SISR extension](../spec/daedalus-format-v2.md) — exact byte
   layout of the manifest and footer extension.
 - [The Builder](../reference/builder.md) — CLI flow that feeds this packager.
 - [Incremental Updates (SISR)](../guides/incremental-updates.md) — consuming

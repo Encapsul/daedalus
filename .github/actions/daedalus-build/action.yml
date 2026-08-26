@@ -1,5 +1,5 @@
 name: 'daedalus Build'
-description: 'Package any app into a single self-extracting .ere binary'
+description: 'Package any app into a single self-extracting .daedalus binary'
 
 inputs:
   app-path:
@@ -30,7 +30,7 @@ inputs:
   output:
     description: 'Output binary path'
     required: false
-    default: 'app.ere'
+    default: 'app.daedalus'
   daedalus-version:
     description: 'daedalus version to install (e.g. v0.5.0, latest)'
     required: false
@@ -45,7 +45,7 @@ inputs:
 
 outputs:
   binary-path:
-    description: 'Path to the built .ere binary'
+    description: 'Path to the built .daedalus binary'
     value: ${{ steps.build.outputs.binary-path }}
   runtime:
     description: 'Detected runtime'
@@ -155,7 +155,7 @@ runs:
         echo "DAEDALUS_KEY_FILE=${KEY_FILE}" >> "$GITHUB_ENV"
 
     # ── Build ────────────────────────────────────────────────────────
-    - name: Build .ere binary
+    - name: Build .daedalus binary
       id: build
       shell: bash
       run: |

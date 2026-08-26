@@ -33,7 +33,7 @@ A single self-contained binary file that contains absolutely everything the
 app needs, and runs like a normal program.
 
 ```bash
-chmod +x my_app.ere && ./my_app.ere
+chmod +x my_app.daedalus && ./my_app.daedalus
 ```
 
 Zero installation. Zero configuration. The file is self-sufficient.

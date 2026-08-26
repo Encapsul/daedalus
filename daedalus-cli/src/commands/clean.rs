@@ -35,6 +35,9 @@ pub fn run(args: CleanArgs) -> Result<()> {
     let size = dir_size(&cache_dir)?;
 
     if !args.force {
+        if !is_interactive() {
+            anyhow::bail!("interactive prompt required; pass --force for non-interactive use");
+        }
         eprintln!(
             "This will remove {} ({})",
             cache_dir.display(),
@@ -54,6 +57,11 @@ pub fn run(args: CleanArgs) -> Result<()> {
     eprintln!("Cleaned {} ({})", cache_dir.display(), format_size(size));
 
     Ok(())
+}
+
+fn is_interactive() -> bool {
+    use std::io::IsTerminal;
+    std::io::stdin().is_terminal()
 }
 
 fn dir_size(path: &std::path::Path) -> Result<u64> {

@@ -72,7 +72,6 @@ pub(crate) struct BuildPlan {
     pub(crate) pid_limit: Option<u32>,
     pub(crate) pre_hooks: Option<String>,
     pub(crate) post_hooks: Option<String>,
-    pub(crate) encrypt: bool,
     pub(crate) squashfs: bool,
     pub(crate) version_info: Option<String>,
     pub(crate) author: Option<String>,
@@ -139,7 +138,7 @@ pub(crate) fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<
         let out = if args
             .output
             .extension()
-            .is_some_and(|e| e == "daedalus" || e == "ere" || e == "exe")
+            .is_some_and(|e| e == "daedalus" || e == "de" || e == "exe")
         {
             args.output.clone()
         } else {
@@ -189,7 +188,6 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
     canonical.push(format!("pid_limit={:?}", plan.pid_limit));
     canonical.push(format!("pre_hooks={:?}", plan.pre_hooks));
     canonical.push(format!("post_hooks={:?}", plan.post_hooks));
-    canonical.push(format!("encrypt={}", plan.encrypt));
     canonical.push(format!("squashfs={}", plan.squashfs));
     canonical.push(format!("compress={}", args.compression_level));
     canonical.push(format!("sisr={}", args.enable_sisr));
@@ -322,16 +320,6 @@ pub struct BuildArgs {
     /// Max number of processes (cgroup v2, Linux only).
     #[arg(long)]
     pub pid_limit: Option<u32>,
-
-    /// Encrypt the payload with AES-256-GCM (requires --key).
-    ///
-    /// WARNING: this provides obfuscation against casual inspection only, NOT
-    /// confidentiality. The AES key is stored in the binary's metadata next to
-    /// the ciphertext, so anyone holding the `.daedalus` can decrypt it. Real
-    /// confidentiality requires a key that is never stored in the file
-    /// (env var, passphrase, HSM).
-    #[arg(long)]
-    pub encrypt: bool,
 
     /// Use `SquashFS` instead of zstd+tar
     #[arg(long)]
@@ -530,7 +518,6 @@ pub(crate) struct BuildConfig {
     pub seccomp: Option<bool>,
     pub landlock: Option<bool>,
     pub gui: Option<bool>,
-    pub encrypt: Option<bool>,
     pub squashfs: Option<bool>,
     pub target: Option<String>,
     pub no_install: Option<bool>,
@@ -576,7 +563,6 @@ pub(crate) fn default_build_args() -> BuildArgs {
         pre_hooks: None,
         post_hooks: None,
         landlock: false,
-        encrypt: false,
         squashfs: false,
         key: None,
         enable_sisr: false,
@@ -793,19 +779,19 @@ mod tests {
     #[test]
     fn output_paths_single_ere_extension_kept() {
         let args = BuildArgs {
-            output: PathBuf::from("/tmp/hello-web.ere"),
+            output: PathBuf::from("/tmp/hello-web.daedalus"),
             ..default_build_args()
         };
         let targets = resolve_targets(&args, None);
         let outputs = output_paths(&args, &targets);
         assert_eq!(outputs.len(), 1);
-        assert_eq!(outputs[0], PathBuf::from("/tmp/hello-web.ere"));
+        assert_eq!(outputs[0], PathBuf::from("/tmp/hello-web.daedalus"));
     }
 
     #[test]
     fn config_fingerprint_changes_with_build_options() {
         let app_dir = PathBuf::from("/tmp/fake-app");
-        let plan = |encrypt: bool, squashfs: bool| BuildPlan {
+        let plan = |squashfs: bool| BuildPlan {
             verbose: false,
             app_dir: app_dir.clone(),
             runtime: detect::Runtime::Python,
@@ -821,7 +807,6 @@ mod tests {
             pid_limit: None,
             pre_hooks: None,
             post_hooks: None,
-            encrypt,
             squashfs,
             version_info: None,
             author: None,
@@ -831,7 +816,7 @@ mod tests {
             targets: vec![None],
             outputs: vec![PathBuf::from("app.daedalus")],
         };
-        let base = config_fingerprint(&default_build_args(), &plan(false, false));
+        let base = config_fingerprint(&default_build_args(), &plan(false));
 
         let signed = default_build_args();
         let dir = tempfile::tempdir().unwrap();
@@ -842,25 +827,20 @@ mod tests {
             ..signed
         };
         assert_ne!(
-            config_fingerprint(&signed, &plan(false, false)),
+            config_fingerprint(&signed, &plan(false)),
             base,
             "--key must change the cache key"
         );
 
         assert_ne!(
-            config_fingerprint(&default_build_args(), &plan(true, false)),
-            base,
-            "--encrypt must change the cache key"
-        );
-        assert_ne!(
-            config_fingerprint(&default_build_args(), &plan(false, true)),
+            config_fingerprint(&default_build_args(), &plan(true)),
             base,
             "--squashfs must change the cache key"
         );
 
         assert_eq!(
-            config_fingerprint(&default_build_args(), &plan(false, false)),
-            config_fingerprint(&default_build_args(), &plan(false, false)),
+            config_fingerprint(&default_build_args(), &plan(false)),
+            config_fingerprint(&default_build_args(), &plan(false)),
             "fingerprint must be deterministic"
         );
     }

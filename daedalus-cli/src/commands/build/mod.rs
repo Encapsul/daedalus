@@ -45,7 +45,9 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     )?;
     let runtime_name = runtime.name().to_string();
 
-    eprintln!("Detected runtime: {runtime_name}");
+    if verbose {
+        eprintln!("Detected runtime: {runtime_name}");
+    }
 
     let targets = args::resolve_targets(&args, config.build.target.as_deref());
     let outputs = args::output_paths(&args, &targets);
@@ -65,7 +67,6 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         pid_limit: args.pid_limit,
         pre_hooks: args.pre_hooks.clone(),
         post_hooks: args.post_hooks.clone(),
-        encrypt: args.encrypt || config.build.encrypt.unwrap_or(false),
         squashfs: args.squashfs || config.build.squashfs.unwrap_or(false),
         version_info: args.version_info.clone().or(config.package.version),
         author: args.author.clone().or(config.package.author),
@@ -214,7 +215,6 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
     eprintln!("  Landlock:  {}", plan.landlock);
     eprintln!("  GUI:       {}", plan.gui);
     warn_sandbox_noops(plan.isolation_num, plan.seccomp, plan.landlock);
-    eprintln!("  Encrypt:   {}", plan.encrypt);
     eprintln!("  SquashFS:  {}", plan.squashfs);
     if args.enable_sisr {
         eprintln!("  SISR:      enabled (delta-indexed, <output>.manifest)");

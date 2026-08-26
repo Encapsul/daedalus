@@ -37,7 +37,6 @@ fn build_legacy(work: &Path, stub: &Path, body: &str, shared: &[u8]) -> PathBuf 
             stub_bytes: &stub_bytes,
             payload: &payload(body, shared),
             meta_bytes: meta(),
-            encrypt: false,
             squashfs: false,
             target_arch: None,
             sisr: None,

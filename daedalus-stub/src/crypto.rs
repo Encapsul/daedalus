@@ -1,18 +1,14 @@
 //! Cryptographic verification for the daedalus launcher stub.
 //!
-//! Provides Ed25519 signature verification, SHA-256 integrity checks,
-//! AES-256-GCM decryption, and HKDF key derivation.
+//! Provides Ed25519 signature verification and SHA-256 integrity checks.
 
 use std::io;
 use std::path::PathBuf;
 
-use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use ed25519_dalek::{Signature, Verifier};
 use sha2::{Digest, Sha256};
-use zeroize::Zeroizing;
 
-use crate::{CryptoMeta, Footer};
-use daedalus_core::encrypt::hkdf_derive_key as core_hkdf_derive_key;
+use crate::Footer;
 use daedalus_core::format::{SIG_BLOCK_SIZE, SIG_LEN};
 
 /// Verify Ed25519 signature: `Ed25519_verify(SHA256(payload‖meta‖footer), sig, public_key)`.
@@ -139,67 +135,6 @@ fn ct_eq_sha256(got: &sha2::digest::Output<sha2::Sha256>, expected: &[u8; 32]) -
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// AES-256-GCM decryption
-// ---------------------------------------------------------------------------
-
-/// Derive a 32-byte AES key from the encryption key via HKDF-SHA256.
-pub fn hkdf_derive_key(encryption_key: &[u8], salt: &[u8; 32]) -> io::Result<Zeroizing<[u8; 32]>> {
-    let key: &[u8; 32] = encryption_key
-        .try_into()
-        .map_err(|_| crate::err("encryption key must be exactly 32 bytes"))?;
-    core_hkdf_derive_key(key, salt)
-        .map_err(|e| crate::err(&format!("HKDF key derivation failed: {e}")))
-}
-
-/// Decrypt an AES-256-GCM payload.
-///
-/// Ciphertext layout: [plaintext bytes][16-byte GCM tag]. The encryption key
-/// is stored in metadata. We derive the AES key from it via HKDF, then
-/// decrypt. The encryption key is separate from the Ed25519 signing seed — it
-/// does not protect authenticity (that is the signing key's job), so callers
-/// must verify the signature before trusting the plaintext.
-pub fn decrypt_aes_gcm(ciphertext: &[u8], crypto: &CryptoMeta) -> io::Result<Vec<u8>> {
-    let encryption_key = Zeroizing::new(
-        hex_decode(&crypto.encryption_key_hex)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption key hex"))?,
-    );
-    if encryption_key.len() != 32 {
-        return Err(crate::err("encryption key must be 32 bytes"));
-    }
-
-    // Decode the encryption salt from metadata
-    let salt_bytes = hex_decode(&crypto.encryption_salt_hex)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad encryption salt hex"))?;
-    let salt: [u8; 32] = salt_bytes
-        .try_into()
-        .map_err(|_| crate::err("encryption salt must be exactly 32 bytes"))?;
-
-    let aes_key = hkdf_derive_key(&encryption_key, &salt)?;
-    let cipher = Aes256Gcm::new_from_slice(&*aes_key)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("AES init: {e}")))?;
-
-    let nonce_bytes = Zeroizing::new(
-        hex_decode(&crypto.nonce_hex)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad nonce hex"))?,
-    );
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("AES decrypt: {e}")))
-}
-
-fn hex_decode(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
-        return None;
-    }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,17 +153,5 @@ mod tests {
         let mut expected = [0u8; 32];
         expected[0] = 1;
         assert!(verify_sha256(data, &expected).is_err());
-    }
-
-    #[test]
-    fn hex_decode_roundtrip() {
-        let hex_str = "deadbeef";
-        let decoded = hex_decode(hex_str).unwrap();
-        assert_eq!(decoded, vec![0xde, 0xad, 0xbe, 0xef]);
-    }
-
-    #[test]
-    fn hex_decode_rejects_odd_length() {
-        assert!(hex_decode("abc").is_none());
     }
 }

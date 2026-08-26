@@ -1,11 +1,11 @@
-# `.ere` Format v2 — SISR extension
+# `.daedalus` Format v2 — SISR extension
 
 > Status: **implemented** (`daedalus-core` `sisr_header` + `manifest` modules).
-> Specifies the `.ere` layout enriched with the `SISR` header and the
+> Specifies the `.daedalus` layout enriched with the `SISR` header and the
 > embedded delta manifest, and how it stays byte-for-byte backward
 > compatible with existing decoders.
 
-The stock `.ere` layout `[stub][payload][metadata][footer]` is unchanged.
+The stock `.daedalus` layout `[stub][payload][metadata][footer]` is unchanged.
 `SISR` adds two blocks between the app metadata and the standard footer, and
 signals their presence with one spare bit of the footer `flags` byte.
 
@@ -76,7 +76,7 @@ payload order; each is addressed by content, so reuse and tamper detection
 follow from the hash. See the [delta manifest format](./delta-manifest-format.md)
 for how the chunk list drives an incremental update.
 
-## Remote manifest (`<name>.ere.manifest`)
+## Remote manifest (`<name>.daedalus.manifest`)
 
 The builder writes a self-contained, signed copy of the manifest next to the
 binary:
@@ -87,7 +87,7 @@ binary:
 
 The signature is over `merkle_root ‖ DeltaManifest` (identical to the embedded
 header), so the remote file can be served over HTTPS / a package registry and
-verified offline without touching the `.ere`. `RemoteManifest::verify_signature`
+verified offline without touching the `.daedalus`. `RemoteManifest::verify_signature`
 and `verify_merkle` check both bindings.
 
 ## Security
@@ -102,7 +102,7 @@ over-allocation:
   count-derived sizes are computed with checked arithmetic **before** the
   chunk vector is allocated, so a forged `chunk_count` fails without
   allocating or over-reading.
-- Unknown schema versions are rejected (same rule as `.ere` format
+- Unknown schema versions are rejected (same rule as `.daedalus` format
   versions).
 
 ## Performance

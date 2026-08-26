@@ -41,7 +41,7 @@ rustup target add x86_64-unknown-linux-musl
 make preflight
 make stub
 make example
-./hello-web.ere
+./hello-web.daedalus
 ```
 
 ## Branching strategy
@@ -127,7 +127,7 @@ Bad: `fix stuff` or `updated code`
 2. CI must pass (lint, clippy, build, end-to-end test).
 3. At least one review from a maintainer.
 4. New features should include a demo example or test where practical.
-5. PRs that change the `.ere` format must update `daedalus-core/src/format.rs`.
+5. PRs that change the `.daedalus` format must update `daedalus-core/src/format.rs`.
 6. Squash or rebase — no merge commits on `dev`.
 
 ### Release process

@@ -42,7 +42,7 @@ from an untrusted source.
 
 ## Scope
 
-All code under `daedalus-core/`, `daedalus-cli/`, `stub/`, and the `.ere` format
+All code under `daedalus-core/`, `daedalus-cli/`, `stub/`, and the `.daedalus` format
 specification in `docs/src/reference/format.md` is in scope. The example
 apps in `examples/` are for demonstration only and not considered
 security-critical. The legacy Python CLI in `cli/` is deprecated.

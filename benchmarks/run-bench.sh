@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# benchmarks/run-bench.sh — Build an app with xbin and record machine specs + memory peak.
+# benchmarks/run-bench.sh — Build an app with daedalus and record machine specs + memory peak.
 #
 # Usage:
 #   ./benchmarks/run-bench.sh <app-dir> [output-name]
@@ -16,7 +16,7 @@ APP_NAME="${2:-$(basename "$APP_DIR")}"
 BENCH_DIR="$(cd "$(dirname "$0")" && pwd)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 OUT_FILE="${BENCH_DIR}/${APP_NAME}-${TIMESTAMP}.md"
-XBIN="${XBIN:-$HOME/.local/bin/xbin}"
+DAEDALUS="${DAEDALUS:-$HOME/.local/bin/daedalus}"
 
 # ── Machine specs ──────────────────────────────────────────────────────
 CPU_MODEL="$(lscpu | grep 'Model name' | sed 's/Model name:\s*//')"
@@ -40,7 +40,7 @@ OS="$(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || uname -s)"
 TMPFS_MODE="$(mount | grep 'on /tmp ' | grep -o 'tmpfs' || echo "no")"
 
 # ── Disk I/O benchmark (sequential write/read 64MB) ───────────────────
-IO_TEST_FILE="/tmp/.xbin-bench-io"
+IO_TEST_FILE="/tmp/.de-bench-io"
 dd if=/dev/zero of="$IO_TEST_FILE" bs=1M count=64 oflag=direct 2>/dev/null
 IO_WRITE_MS=$(date +%s%3N)
 sync
@@ -60,7 +60,7 @@ MEM_LOG=$(mktemp)
         rss=0
         while IFS= read -r pid; do
             rss=$((rss + $(awk '/^VmRSS:/ {print $2}' /proc/$pid/status 2>/dev/null || echo 0)))
-        done < <(pgrep -f "xbin build" 2>/dev/null || true)
+        done < <(pgrep -f "daedalus build" 2>/dev/null || true)
         echo "$(date +%s) $rss" >> "$MEM_LOG"
         sleep 0.1
     done
@@ -72,7 +72,7 @@ BUILD_START=$(date +%s%3N)
 BUILD_STDERR=$(mktemp)
 
 set +e
-"$XBIN" build "$APP_DIR" -o "/tmp/${APP_NAME}-bench.xbin" --no-install 2>"$BUILD_STDERR"
+"$DAEDALUS" build "$APP_DIR" -o "/tmp/${APP_NAME}-bench.de" --no-install 2>"$BUILD_STDERR"
 BUILD_EXIT=$?
 set -e
 
@@ -87,7 +87,7 @@ wait "$MONITOR_PID" 2>/dev/null || true
 BUILD_LOG=$(cat "$BUILD_STDERR" 2>/dev/null || echo "")
 rm -f "$BUILD_STDERR"
 
-OUTPUT_SIZE=$(stat -c%s "/tmp/${APP_NAME}-bench.xbin" 2>/dev/null || echo 0)
+OUTPUT_SIZE=$(stat -c%s "/tmp/${APP_NAME}-bench.de" 2>/dev/null || echo 0)
 OUTPUT_SIZE_MB=$(awk "BEGIN {printf \"%.1f\", ${OUTPUT_SIZE}/1024/1024}")
 
 # Peak memory (KB)
@@ -123,10 +123,10 @@ else
     BUILD_TIME="${BUILD_MS}ms"
 fi
 
-XBIN_VER=$("$XBIN" --version 2>/dev/null | head -1 | sed 's/^xbin //' || echo "unknown")
+XBIN_VER=$("$DAEDALUS" --version 2>/dev/null | head -1 | sed 's/^daedalus //' || echo "unknown")
 
 # ── Estimate: would this build survive on 8GB tmpfs live USB? ─────────
-# On tmpfs live USB, /tmp + swap ≈ RAM. xbin needs: source + rootfs + payload + tar
+# On tmpfs live USB, /tmp + swap ≈ RAM. daedalus needs: source + rootfs + payload + tar
 # Estimate: peak RSS × 2 (build uses temp files in /tmp)
 TMPFS_NOTE="N/A (not tmpfs)"
 if [ "$TMPFS_MODE" = "tmpfs" ]; then
@@ -138,7 +138,7 @@ cat > "$OUT_FILE" <<EOF
 # Benchmark: ${APP_NAME}
 
 - **Date**: $(date -Iseconds)
-- **Tool**: xbin ${XBIN_VER}
+- **Tool**: daedalus ${XBIN_VER}
 
 ## Machine
 
@@ -167,7 +167,7 @@ cat > "$OUT_FILE" <<EOF
 |--------|-------|
 | App | ${APP_NAME} |
 | Source | ${APP_DIR} |
-| Output | /tmp/${APP_NAME}-bench.xbin |
+| Output | /tmp/${APP_NAME}-bench.de |
 | Output size | ${OUTPUT_SIZE_MB} MB |
 | Build time | ${BUILD_TIME} |
 | Peak RSS | ${PEAK_MEM_MB} MB |
@@ -183,7 +183,7 @@ cat > "$OUT_FILE" <<EOF
 | Peak RSS + tmpfs overhead (~2×) | $(awk "BEGIN {printf \"%.0f\", ${PEAK_MEM_KB}*2/1024}") MB | $([ $(echo "$PEAK_MEM_KB*2/1024 < 8192" | bc -l) -eq 1 ] && echo "YES" || echo "NO") |
 
 > **Note**: On a live USB with 8GB RAM, /tmp is tmpfs and consumes RAM.
-> xbin writes temp files (tar, compressed payload) in /tmp during build.
+> daedalus writes temp files (tar, compressed payload) in /tmp during build.
 > Peak RSS + tmpfs usage must fit within available RAM + swap.
 
 ## Build log

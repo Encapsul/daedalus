@@ -17,7 +17,7 @@ echo "=== Running tests ==="
 cargo test --workspace
 
 echo "=== Smoke test ==="
-/tmp/daedalus-stub-target/release/daedalus build examples/hello-web -o /tmp/hello-web.ere
-/tmp/hello-web.ere
+/tmp/daedalus-stub-target/release/daedalus build examples/hello-web -o /tmp/hello-web.daedalus
+/tmp/hello-web.daedalus
 
 echo "=== All checks passed ==="

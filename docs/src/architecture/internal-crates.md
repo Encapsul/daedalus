@@ -101,10 +101,10 @@ pub trait BinaryAssembler {
 ```
 
 Reassembles a complete executable from a base binary and the reconstructed
-payload blocks, preserving the `.ere` layout
+payload blocks, preserving the `.daedalus` layout
 `[stub][payload][metadata][footer]`. The concrete `DaedalusStitcher` reads the
 payload/metadata offsets from the footer and splices the new blocks into the
-payload region — the output is a valid `.ere` indistinguishable from one
+payload region — the output is a valid `.daedalus` indistinguishable from one
 produced by `daedalus build`.
 
 This trait exists so that format-specific splicing (ELF/PE/Mach-O, squashfs
@@ -112,7 +112,7 @@ images) can evolve behind one stable contract.
 
 ## `sisr_stage` — build-side SISR pipeline
 
-Where the classic `assembly` module writes a plain `.ere`, `sisr_stage`
+Where the classic `assembly` module writes a plain `.daedalus`, `sisr_stage`
 computes the SISR artifacts in memory:
 
 ```rust
@@ -133,14 +133,14 @@ all-zeros when no key is supplied (unsigned, integrity-only builds). The
 `SigningKey` is an `ed25519-dalek` type, so the secret is zeroized on drop.
 
 The same module serializes and verifies the standalone remote manifest
-(`.ere.manifest`): `RemoteManifest::verify_signature` and
+(`.daedalus.manifest`): `RemoteManifest::verify_signature` and
 `verify_merkle` re-check both bindings without touching the binary — that is
 the `ManifestVerifier` role for the SISR path.
 
 ## `sisr` — runtime reconstruction engine
 
 The counterpart of `sisr_stage`, used by the launcher (`stub`): it rebuilds a
-`.ere` on disk from the current binary plus a signed delta.
+`.daedalus` on disk from the current binary plus a signed delta.
 
 ```rust
 pub trait ChunkFetcher {
@@ -185,5 +185,5 @@ entry; the engine never trusts a source. See
   invariants and trust model these primitives serve.
 - [Delta manifest format](../spec/delta-manifest-format.md) — the structure
   that references chunks and drives the assembler.
-- [`.ere` Format v2 — SISR extension](../spec/daedalus-format-v2.md) — where the
+- [`.daedalus` Format v2 — SISR extension](../spec/daedalus-format-v2.md) — where the
   binary `DeltaManifest` and `SisrFooterExt` live inside the file.

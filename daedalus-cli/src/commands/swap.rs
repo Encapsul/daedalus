@@ -6,7 +6,7 @@
 //! Usage: daedalus swap <binary> <layer-name> <new-file> [-o output]
 //!
 //! Limitations:
-//! - Plain zstd-tar payloads only (v2). Does not support encrypted (v4) or squashfs (v5).
+//! - Plain zstd-tar payloads only (v2). Does not support squashfs (v5).
 //! - Invalidates any Ed25519 binary signature (the signature covers the
 //!   payload+metadata+footer hash). Re-sign with `daedalus sign` after swap.
 
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 #[derive(clap::Parser, Debug)]
 #[command(
     about = "Hot-swap a layer in an existing .daedalus binary",
-    long_about = "Replaces a named file inside the payload of a .daedalus binary and reassembles the artifact with an updated integrity hash.\n\nUsage: daedalus swap <binary> <layer-name> <new-file> [-o output]\n\nLimitations:\n- Plain zstd-tar payloads only (v2). Does not support encrypted (v4) or squashfs (v5).\n- Invalidates any Ed25519 binary signature (re-sign with `daedalus sign` after swap)."
+    long_about = "Replaces a named file inside the payload of a .daedalus binary and reassembles the artifact with an updated integrity hash.\n\nUsage: daedalus swap <binary> <layer-name> <new-file> [-o output]\n\nLimitations:\n- Plain zstd-tar payloads only (v2). Does not support squashfs (v5).\n- Invalidates any Ed25519 binary signature (re-sign with `daedalus sign` after swap)."
 )]
 pub struct SwapArgs {
     /// Path to the .daedalus binary
@@ -105,11 +105,6 @@ fn swap_layer(
 
     if footer.has_sisr() {
         anyhow::bail!("SISR-enabled binaries are not yet supported for hot-swap");
-    }
-
-    let crypto_suite = footer.crypto_suite();
-    if crypto_suite != daedalus_core::format::CRYPTO_NONE {
-        anyhow::bail!("Encrypted binaries (v4) are not yet supported for hot-swap");
     }
 
     let payload_offset = footer.payload_offset as usize;

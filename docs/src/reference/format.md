@@ -1,6 +1,6 @@
-# `.ere` Format
+# `.daedalus` Format
 
-A `.ere` file is a **valid ELF executable** with a compressed payload,
+A `.daedalus` file is a **valid ELF executable** with a compressed payload,
 JSON metadata, and a **footer** at the very end of the file. The launcher
 reads itself via `/proc/self/exe`, seeks to the end, reads the footer, and
 finds everything else from the offsets stored there.
@@ -50,7 +50,7 @@ truth, shared by the launcher (stub) and the CLI. There is no separate
 
 **Constraint:** The Linux kernel requires ELF magic (`\x7fELF`) at offset 0
 to execute the file. We cannot put our own bytes at the start without
-breaking `chmod +x && ./my_app.ere`.
+breaking `chmod +x && ./my_app.daedalus`.
 
 **Options considered:**
 1. Custom header before ELF — rejected. The kernel would refuse to execute
@@ -194,11 +194,11 @@ layer is rebuilt.
 ```bash
 # First build: ~25s (compressing runtime layer, ~54 MB)
 $ daedalus build ./my_app
-[daedalus] wrote my_app.ere (7.1MB) in 25.1s
+[daedalus] wrote my_app.daedalus (7.1MB) in 25.1s
 
 # Rebuild after code change: ~1s (runtime layer reused)
 $ daedalus build ./my_app
-[daedalus] wrote my_app.ere (7.1MB) in 1.2s
+[daedalus] wrote my_app.daedalus (7.1MB) in 1.2s
 ```
 
 Two apps sharing the same runtime share the same runtime layer in the build
@@ -210,8 +210,8 @@ The footer is versioned (`format_version`). A launcher rejects a file with
 a version higher than it understands:
 
 ```bash
-$ ./old-daedalus new-format.ere
-[daedalus] error: unsupported .ere format version (binary newer than launcher)
+$ ./old-daedalus new-format.daedalus
+[daedalus] error: unsupported .daedalus format version (binary newer than launcher)
 ```
 
 | Version | Changes                                            |
@@ -231,10 +231,10 @@ with a `flags` bit and a dedicated offset — v2 files remain readable.
 # Universal Polyglot Binary Format
 
 A **universal** `.daedalus` file bundles multiple architecture-specific
-`.ere` slices behind a polyglot shell-script launcher. At runtime, the
+`.daedalus` slices behind a polyglot shell-script launcher. At runtime, the
 launcher detects the host OS/architecture via `uname`, extracts the
 matching slice to a temp file, and `exec`s it. Each slice is a complete,
-independent `.ere` binary.
+independent `.daedalus` binary.
 
 ## Motivation
 
@@ -243,7 +243,7 @@ A single self-contained binary that runs unmodified on:
 - **Linux**: x86_64, aarch64, riscv64
 - **macOS**: x86_64 (Intel), arm64 (Apple Silicon)
 
-is achieved by concatenating self-extracting `.ere` slices and prepending
+is achieved by concatenating self-extracting `.daedalus` slices and prepending
 a POSIX-compliant shell script that knows where each slice lives.
 
 ## Layout
@@ -253,9 +253,9 @@ offset 0        ┌────────────────────�
                 │  shell-script launcher    │  64 KiB (fixed), null-padded
                 │  (polyglot with ELF header│                      )
                 ├──────────────────────────┤
-slice_1_off     │  linux-x86_64 .ere slice │
+slice_1_off     │  linux-x86_64 .daedalus slice │
                 ├──────────────────────────┤
-slice_2_off     │  linux-aarch64 .ere slice│
+slice_2_off     │  linux-aarch64 .daedalus slice│
                 ├──────────────────────────┤
   ...           │  ...                     │
                 ├──────────────────────────┤
@@ -273,7 +273,7 @@ The first 64 KiB is simultaneously:
    at offset 0 as a directive to invoke `/bin/sh`. The shell reads and
    executes the script, which extracts the matching slice and `exec`s it.
 2. **A valid ELF/PE/Mach-O file** (when the slice is extracted alone) —
-   each slice is a standalone `.ere` binary that the kernel can load
+   each slice is a standalone `.daedalus` binary that the kernel can load
    directly.
 
 The shell script occupies exactly `64 * 1024` bytes. Bytes after the

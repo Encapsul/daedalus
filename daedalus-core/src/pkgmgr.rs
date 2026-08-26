@@ -70,7 +70,7 @@ impl PkgMgr {
                 "--no-interaction",
                 "--prefer-dist",
             ],
-            Self::Bundler => vec!["bundle", "install", "--deployment", "--without development"],
+            Self::Bundler => vec!["bundle", "install", "--deployment"],
             Self::Cpan => vec!["cpan", "-T", "."],
         }
     }

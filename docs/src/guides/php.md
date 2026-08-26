@@ -12,7 +12,7 @@ daedalus detects PHP applications by looking for `composer.json` in the project 
 
 ```bash
 # Laravel projects with artisan
-daedalus build my-laravel-app -o my-laravel-app.ere
+daedalus build my-laravel-app -o my-laravel-app.daedalus
 ```
 
 daedalus detects Laravel by the presence of the `artisan` file and uses it as the entry point.
@@ -21,7 +21,7 @@ daedalus detects Laravel by the presence of the `artisan` file and uses it as th
 
 ```bash
 # Symfony projects with symfony.lock
-daedalus build my-symfony-app -o my-symfony-app.ere
+daedalus build my-symfony-app -o my-symfony-app.daedalus
 ```
 
 daedalus detects Symfony by `symfony.lock` or `config/bundles.php` and uses `bin/console` as the entry point.
@@ -30,14 +30,14 @@ daedalus detects Symfony by `symfony.lock` or `config/bundles.php` and uses `bin
 
 ```bash
 # WordPress with wp-config.php
-daedalus build my-wordpress-site -o my-wordpress-site.ere
+daedalus build my-wordpress-site -o my-wordpress-site.daedalus
 ```
 
 ### Generic PHP Apps
 
 ```bash
 # Apps with public/index.php or index.php
-daedalus build my-php-app -o my-php-app.ere
+daedalus build my-php-app -o my-php-app.daedalus
 ```
 
 ## Requirements
@@ -64,11 +64,11 @@ cat > index.php << 'EOF'
 echo "Hello from PHP " . PHP_VERSION . "\n";
 EOF
 
-# Build the .ere
-daedalus build . -o my-php-app.ere
+# Build the .daedalus
+daedalus build . -o my-php-app.daedalus
 
 # Run it
-./my-php-app.ere
+./my-php-app.daedalus
 ```
 
 ## Notes

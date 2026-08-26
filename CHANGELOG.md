@@ -1,13 +1,13 @@
 # Changelog
 
-All notable changes to x.bin will be documented in this file.
+All notable changes to daedalus will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.5.0] - 2026-08-07
 
 ### Added
-- **SISR self-update engine**: a `.ere` can update itself from signed deltas
+- **SISR self-update engine**: a `.daedalus` can update itself from signed deltas
   - `daedalus build --self-update` enables the engine; `daedalus upgrade-binary`
     migrates existing binaries
   - Incremental updates: manifests list changed chunks with Ed25519 signatures
@@ -94,8 +94,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 - **Full Rust CLI** — zero Python dependency at runtime
   - `daedalus build` — package any app into self-extracting ELF
-  - `daedalus inspect` — read metadata from .ere
-  - `daedalus scan` — find .ere files recursively
+  - `daedalus inspect` — read metadata from .daedalus
+  - `daedalus scan` — find .daedalus files recursively
   - `daedalus sign` / `daedalus verify` — Ed25519 signing & verification
   - `daedalus keygen` — generate signing keypairs
   - `daedalus trust` — manage trusted public keys
@@ -104,7 +104,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   - `daedalus clean` — remove cache
   - `daedalus completion <shell>` — shell completions (bash, zsh, fish, elvish, powershell)
   - `daedalus man [dir]` — generate man pages
-- **`.ere.toml` config file** — defaults for all build flags
+- **`.daedalus.toml` config file** — defaults for all build flags
 - **Shell completions** — `daedalus completion bash/zsh/fish > file`
 - **Man pages** — `daedalus man /usr/local/share/man/man1/` (pre-generated in release tarballs)
   - Full Unix man(7) sections: EXIT STATUS, ENVIRONMENT, FILES, SEE ALSO, AUTHORS, HISTORY, BUGS

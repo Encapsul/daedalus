@@ -20,7 +20,7 @@ disk_free:   11G
 tmp_free:    99G
 env:         docker-container
 live_system: no
-xbin:        xbin 0.5.0
+daedalus:        daedalus 0.5.0
 stub:        n/a (? bytes)
 node:        v24.14.0
 docker:      Docker version 29.3.0-1, build 5927d80c76b3ce5cf782be818922966e8a0d87a3
@@ -31,7 +31,7 @@ pkg:         @yao-pkg/pkg@latest node24-linux-x64
 
 | Packager | Artifact | On-disk | Cold start | Warm start | Idle RSS | Host deps |
 |----------|----------|---------|------------|------------|----------|-----------|
-| xbin | 44.0 MiB | 122.6 MiB | 2142 ms | 96 ms | 48.6 MiB | none |
+| daedalus | 44.0 MiB | 122.6 MiB | 2142 ms | 96 ms | 48.6 MiB | none |
 | docker | 76.7 MiB | 76.7 MiB | 6147 ms | n/a ms | 50.0 MiB | docker-daemon |
 | pkg | 70.2 MiB | 70.2 MiB | 109 ms | n/a ms | 55.0 MiB | none |
 | appimage | 24.4 MiB | 24.4 MiB | 29 ms | n/a ms | 55.6 MiB | fuse-or-extract |

@@ -12,21 +12,21 @@ daedalus detects Perl applications by looking for `Makefile.PL` or `cpanfile` in
 
 ```bash
 # Perl apps with app.pl (PSGI)
-daedalus build my-perl-app -o my-perl-app.ere
+daedalus build my-perl-app -o my-perl-app.daedalus
 ```
 
 ### CGI Scripts
 
 ```bash
 # Traditional CGI scripts
-daedalus build my-cgi-app -o my-cgi-app.ere
+daedalus build my-cgi-app -o my-cgi-app.daedalus
 ```
 
 ### CLI Tools
 
 ```bash
 # Perl CLI tools with bin/app
-daedalus build my-perl-tool -o my-perl-tool.ere
+daedalus build my-perl-tool -o my-perl-tool.daedalus
 ```
 
 ## Requirements
@@ -56,11 +56,11 @@ use My::App;
 My::App->new->start;
 EOF
 
-# Build the .ere
-daedalus build . -o my-perl-app.ere
+# Build the .daedalus
+daedalus build . -o my-perl-app.daedalus
 
 # Run it
-./my-perl-app.ere
+./my-perl-app.daedalus
 ```
 
 ## Notes

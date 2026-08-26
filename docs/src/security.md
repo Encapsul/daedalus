@@ -6,22 +6,22 @@ Status: SHA-256 integrity, atomic extraction, Ed25519 signatures, user namespace
 
 ## 1. Authenticity — Ed25519 signatures
 
-**Attack:** Anyone can produce a `.ere`, and the user cannot verify its origin or whether it was modified.
+**Attack:** Anyone can produce a `.daedalus`, and the user cannot verify its origin or whether it was modified.
 
-**Defense:** Every `.ere` can be signed. The launcher verifies the signature before extracting anything. Invalid or missing signatures result in execution refusal.
+**Defense:** Every `.daedalus` can be signed. The launcher verifies the signature before extracting anything. Invalid or missing signatures result in execution refusal.
 
 ```bash
 # Generate a keypair
 $ daedalus keygen --key-dir $XDG_DATA_HOME/daedalus/keys
 a1b2c3d4e5f6...
 
-# Sign a .ere (in-place, writes v3 footer)
-$ daedalus sign my_app.ere --key $XDG_DATA_HOME/daedalus/keys/a1b2c3d4e5f6.key
-[daedalus] signed my_app.ere
+# Sign a .daedalus (in-place, writes v3 footer)
+$ daedalus sign my_app.daedalus --key $XDG_DATA_HOME/daedalus/keys/a1b2c3d4e5f6.key
+[daedalus] signed my_app.daedalus
 
 # Verify before running
-$ daedalus verify my_app.ere --trusted-dir $XDG_DATA_HOME/daedalus/trusted-keys
-[daedalus] signature verified for /path/to/my_app.ere
+$ daedalus verify my_app.daedalus --trusted-dir $XDG_DATA_HOME/daedalus/trusted-keys
+[daedalus] signature verified for /path/to/my_app.daedalus
 ```
 
 **Why Ed25519 over RSA:**
@@ -39,12 +39,12 @@ $ daedalus trust $XDG_DATA_HOME/daedalus/keys/a1b2c3d4e5f6.pub
 
 ## 1b. Chain of Trust for Local Rebuilding
 
-SISR (Self-Incremental Sovereign Reconstruction) lets a `.ere` rebuild
+SISR (Self-Incremental Sovereign Reconstruction) lets a `.daedalus` rebuild
 itself from signed deltas, with zero host dependency. This section fixes the
 cryptographic trust model for that path. The full conceptual specification is
 in [SISR: Self-Incremental Sovereign Reconstruction](./architecture/sisr-spec.md).
 
-**Attack:** A `.ere` that can reconstruct itself becomes a remote-code
+**Attack:** A `.daedalus` that can reconstruct itself becomes a remote-code
 execution surface. A malicious or replayed delta could replace the binary with
 an attacker-controlled (or simply old, vulnerable) version. On top of the
 original integrity concern (modification in transit), self-reconstruction adds
@@ -59,7 +59,7 @@ three threats:
 
 **Defense — three linked mechanisms:**
 
-1. **Signed chain of trust (non-repudiation).** A `.ere` only applies a
+1. **Signed chain of trust (non-repudiation).** A `.daedalus` only applies a
    delta or manifest signed by the **same Ed25519 public key** that signed
    the original binary, or by a **delegated key** whose delegation record is
    itself signed by the anchor (or transitively by a valid delegate). The
@@ -121,10 +121,10 @@ the full contract.
 **Defense:** The launcher recomputes `SHA-256(payload ‖ metadata)` and compares it to the footer's `payload_sha256` before extraction. On mismatch: `exit(1)`, nothing written to disk.
 
 ```bash
-# Corrupt one byte of a signed .ere
-$ dd if=/dev/urandom of=my_app.ere bs=1 seek=688788 count=1
-$ daedalus verify my_app.ere
-[daedalus] error: signature verification FAILED for /path/to/my_app.ere
+# Corrupt one byte of a signed .daedalus
+$ dd if=/dev/urandom of=my_app.daedalus bs=1 seek=688788 count=1
+$ daedalus verify my_app.daedalus
+[daedalus] error: signature verification FAILED for /path/to/my_app.daedalus
 ```
 
 SHA-256 alone protects against corruption, not against an attacker who modifies the payload and recomputes the hash. This is why signatures exist — the hash is signed:
@@ -172,7 +172,7 @@ Blocked: ptrace, mount, umount2, pivot_root, reboot, kexec_load,
 
 ## 6. Payload encryption — AES-256-GCM
 
-**Attack:** A `.ere` file is intercepted at rest (stolen laptop, shared storage, leaked artifact). Without encryption, anyone can extract the embedded application with `tar` after stripping the stub.
+**Attack:** A `.daedalus` file is intercepted at rest (stolen laptop, shared storage, leaked artifact). Without encryption, anyone can extract the embedded application with `tar` after stripping the stub.
 
 **Defense:** Optional AES-256-GCM encryption (v4 format, `--encrypt` flag). A fresh random 32-byte encryption key is generated at build time and stored (hex-encoded) in the binary's metadata next to the ciphertext; the AES key is then derived from it via HKDF-SHA256. The encryption key is deliberately **independent** of the Ed25519 signing seed — the seed is never embedded in the binary, so a key leak does not compromise authenticity.
 
@@ -180,7 +180,7 @@ Blocked: ptrace, mount, umount2, pivot_root, reboot, kexec_load,
 # Build with encryption
 $ daedalus build my_app/ --key $XDG_DATA_HOME/daedalus/keys/a1b2c3d4.key --encrypt
 [daedalus] encrypted: 12.3MB -> 12.3MB (AES-256-GCM)
-[daedalus] wrote my_app.ere (12.5MB, signed+encrypted)
+[daedalus] wrote my_app.daedalus (12.5MB, signed+encrypted)
 ```
 
 **Security model:**
@@ -207,7 +207,7 @@ Both `random_encryption_key` and `random_salt` are stored in the binary metadata
 **Verification order (non-negotiable):**
 ```
 1. open("/proc/self/exe")               ← self-locate (not argv[0])
-2. read footer, validate magic           ← reject early if not .ere
+2. read footer, validate magic           ← reject early if not .daedalus
 2. ── VERIFY Ed25519 SIGNATURE ──        ← nothing executes before this
 2. verify payload SHA-256                ← corruption check (on ciphertext if encrypted)
 3. ── DECRYPT PAYLOAD ──                 ← only after steps 3+4

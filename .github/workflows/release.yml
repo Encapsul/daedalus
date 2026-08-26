@@ -303,11 +303,11 @@ jobs:
           cargo zigbuild --release --target aarch64-unknown-linux-musl -p daedalus-cli
       - name: Build hello-web for aarch64
         run: |
-          ./target/aarch64-unknown-linux-musl/release/daedalus build examples/hello-web --target aarch64 -o /tmp/hello-web-aarch64.ere
+          ./target/aarch64-unknown-linux-musl/release/daedalus build examples/hello-web --target aarch64 -o /tmp/hello-web-aarch64.daedalus
       - name: Run under QEMU
         timeout-minutes: 10
         run: |
-          qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/hello-web-aarch64.ere &
+          qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/hello-web-aarch64.daedalus &
           PID=$!
           sleep 5
           curl -s http://127.0.0.1:8080 | grep -q "Hello" && echo "QEMU boot test passed" || (echo "QEMU boot test failed" && kill $PID && exit 1)

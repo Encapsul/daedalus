@@ -37,7 +37,7 @@ Before finishing any code change, run:
 3. `cargo clippy -p daedalus-stub --all-targets -- -D warnings`
 4. `cargo clippy -p daedalus-cli --all-targets -- -D warnings`
 5. `cargo test --workspace`
-6. `cargo build --release && ./target/release/daedalus build examples/hello-web -o /tmp/test.ere && ./target/release/daedalus inspect /tmp/test.ere`
+6. `cargo build --release && ./target/release/daedalus build examples/hello-web -o /tmp/test.daedalus && ./target/release/daedalus inspect /tmp/test.daedalus`
 
 ## Security Rules
 

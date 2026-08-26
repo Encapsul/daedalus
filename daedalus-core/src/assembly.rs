@@ -9,7 +9,7 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
-use crate::format::{self, Footer, CRYPTO_AES_256_GCM};
+use crate::format::{self, Footer};
 use crate::metadata::BunFeatures;
 use crate::sisr::swap::AtomicWriter;
 use crate::sisr_header::{SisrFooterExt, SISR_VERSION};
@@ -18,11 +18,9 @@ use crate::sisr_stage::SisrBuildConfig;
 use crate::sisr_stage::{self, RemoteManifest};
 
 /// Determine the format version based on build options.
-pub fn fmt_version(squashfs: bool, encrypt: bool, signed: bool) -> u8 {
+pub fn fmt_version(squashfs: bool, signed: bool) -> u8 {
     if squashfs {
         5
-    } else if encrypt {
-        4
     } else if signed {
         3
     } else {
@@ -97,12 +95,6 @@ fn apply_meta_options(meta: &mut serde_json::Value, options: &MetaOptions) -> st
             obj.insert("post".to_string(), post.clone());
         }
         meta["hooks"] = hooks;
-    }
-
-    // Emit crypto metadata for v4 encrypted builds. Omitted for plaintext so
-    // old stubs/parsers see no unexpected field.
-    if let Some(c) = &options.crypto {
-        meta["crypto"] = c.clone();
     }
 
     Ok(())
@@ -216,10 +208,6 @@ pub struct MetaOptions {
     pub rt_deps_hash: Option<String>,
     /// Base URL of the SISR update channel (`{url}/manifest`, `{url}/chunks/<hex>`).
     pub update_url: Option<String>,
-    /// AES-256-GCM crypto metadata (nonce, tag offset, encryption key) emitted into
-    /// the `crypto` meta field when `--encrypt` is enabled. `None` for plaintext
-    /// builds so the field is omitted entirely.
-    pub crypto: Option<serde_json::Value>,
     /// Pre-built layers to embed in metadata. If `None`, a default `RuntimeLayer`
     /// is constructed from the `runtime` + `entrypoint` parameters.
     pub layers: Option<Vec<crate::layer::SerializableLayer>>,
@@ -237,7 +225,6 @@ pub struct AssemblyInput<'a> {
     pub stub_bytes: &'a [u8],
     pub payload: &'a [u8],
     pub meta_bytes: &'a [u8],
-    pub encrypt: bool,
     pub squashfs: bool,
     pub target_arch: Option<&'a str>,
     pub sisr: Option<sisr_stage::SisrArtifacts>,
@@ -253,7 +240,7 @@ pub struct AssemblyInput<'a> {
 /// `assemble_daedalus_with_sisr_artifacts` trio: folding the optional SISR stage
 /// into `AssemblyInput` removes the duplicated 7-arity parameter list.
 pub fn assemble_daedalus(out_path: &Path, input: &AssemblyInput<'_>) -> std::io::Result<u64> {
-    let fmt_ver = fmt_version(input.squashfs, input.encrypt, false);
+    let fmt_ver = fmt_version(input.squashfs, false);
     let arch = resolve_arch(input.target_arch);
     let payload_offset = input.stub_bytes.len() as u64;
 
@@ -360,14 +347,11 @@ fn build_footer(
             if has_sisr {
                 f |= format::FLAG_SISR;
             }
-            if input.encrypt {
-                f |= format::FLAG_ENCRYPTED;
-            }
             f
         },
         payload_offset,
         payload_csize: input.payload.len() as u64,
-        payload_usize: if input.encrypt { CRYPTO_AES_256_GCM } else { 0 },
+        payload_usize: 0,
         payload_sha256,
         meta_offset,
         meta_size: input.meta_bytes.len() as u64,
@@ -400,12 +384,18 @@ fn sha2_hash(payload: &[u8], meta: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-/// ISO 8601 timestamp (UTC).
+/// ISO 8601 timestamp (UTC). Honors `SOURCE_DATE_EPOCH` for reproducible builds.
 fn chrono_now() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
+    let secs = std::env::var("SOURCE_DATE_EPOCH")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|d| d.as_secs())
+        })
+        .unwrap_or(0);
     let datetime = time::OffsetDateTime::from_unix_timestamp(secs as i64)
         .unwrap_or(time::OffsetDateTime::UNIX_EPOCH)
         .to_offset(time::UtcOffset::UTC);
@@ -428,22 +418,17 @@ mod tests {
 
     #[test]
     fn fmt_version_squashfs_is_5() {
-        assert_eq!(fmt_version(true, false, false), 5);
-    }
-
-    #[test]
-    fn fmt_version_encrypt_is_4() {
-        assert_eq!(fmt_version(false, true, false), 4);
+        assert_eq!(fmt_version(true, false), 5);
     }
 
     #[test]
     fn fmt_version_signed_is_3() {
-        assert_eq!(fmt_version(false, false, true), 3);
+        assert_eq!(fmt_version(false, true), 3);
     }
 
     #[test]
     fn fmt_version_default_is_2() {
-        assert_eq!(fmt_version(false, false, false), 2);
+        assert_eq!(fmt_version(false, false), 2);
     }
 
     #[test]
@@ -470,7 +455,6 @@ mod tests {
                 stub_bytes: stub,
                 payload,
                 meta_bytes: meta,
-                encrypt: false,
                 squashfs: false,
                 target_arch: None,
                 sisr: None,
@@ -488,55 +472,13 @@ mod tests {
     }
 
     #[test]
-    fn assemble_encrypt_sets_flags_and_integrity() {
-        let tmp = tempfile::tempdir().unwrap();
-        let out = tmp.path().join("enc.daedalus");
-        let stub = b"STUB";
-        let payload = b"CIPHERTEXT_PAYLOAD";
-        let meta = br#"{"name":"test"}"#;
-
-        let size = assemble_daedalus(
-            &out,
-            &AssemblyInput {
-                stub_bytes: stub,
-                payload,
-                meta_bytes: meta,
-                encrypt: true,
-                squashfs: false,
-                target_arch: None,
-                sisr: None,
-            },
-        )
-        .unwrap();
-        assert!(size > 0);
-
-        let data = fs::read(&out).unwrap();
-        let mut cursor = std::io::Cursor::new(data);
-        let footer = Footer::read_from(&mut cursor).unwrap();
-        // v4: signed-equivalent is handled by the CLI sign step; assemble with
-        // encrypt=true stamps the v4 layout + FLAG_ENCRYPTED + AES crypto_suite.
-        assert_eq!(footer.format_version, 4);
-        assert_eq!(
-            footer.flags & format::FLAG_ENCRYPTED,
-            format::FLAG_ENCRYPTED
-        );
-        assert_eq!(footer.flags & format::FLAG_SIGNED, 0);
-        assert_eq!(footer.crypto_suite(), CRYPTO_AES_256_GCM);
-        assert_eq!(footer.payload_csize, payload.len() as u64);
-        // Integrity hash covers the (encrypted) payload || metadata.
-        assert_eq!(footer.payload_sha256, sha2_hash(payload, meta));
-    }
-
-    #[test]
     fn assemble_v3plus_footer_roundtrips_sig_offset() {
         // Regression: v3+ files must end with the 92-byte `pack_full` footer
         // (sig_offset prefix + 84-byte core). Writing the bare 84-byte core
         // made the reader misparse trailing metadata bytes as a phantom
         // `sig_offset`, so the stub's signature-state check
         // (`has_sig_block == FLAG_SIGNED`) rejected valid unsigned files.
-        for (encrypt, squashfs, expected_version) in
-            [(true, false, 4), (false, true, 5), (true, true, 5)]
-        {
+        for (squashfs, expected_version) in [(false, 2), (true, 5)] {
             let tmp = tempfile::tempdir().unwrap();
             let out = tmp.path().join("t.daedalus");
             let meta = br#"{"name":"test"}"#;
@@ -546,7 +488,6 @@ mod tests {
                     stub_bytes: b"STUB",
                     payload: b"PAYLOAD",
                     meta_bytes: meta,
-                    encrypt,
                     squashfs,
                     target_arch: None,
                     sisr: None,
@@ -581,7 +522,6 @@ mod tests {
             app_hash: None,
             rt_deps_hash: None,
             update_url: None,
-            crypto: None,
             layers: None,
             entrypoint_layer: None,
         };
@@ -634,7 +574,6 @@ mod tests {
                 stub_bytes: stub,
                 payload,
                 meta_bytes: meta,
-                encrypt: false,
                 squashfs: false,
                 target_arch: None,
                 sisr: None,
@@ -648,7 +587,6 @@ mod tests {
                 stub_bytes: stub,
                 payload,
                 meta_bytes: meta,
-                encrypt: false,
                 squashfs: false,
                 target_arch: None,
                 // A disabled SisrBuildConfig is equivalent to omitting SISR:
@@ -687,7 +625,6 @@ mod tests {
                 stub_bytes: stub,
                 payload,
                 meta_bytes: meta,
-                encrypt: false,
                 squashfs: false,
                 target_arch: None,
                 sisr: Some(sisr_stage::build_artifacts(payload, &config).unwrap()),

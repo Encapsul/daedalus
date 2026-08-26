@@ -88,12 +88,12 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 **Always do:**
 - Rebuild after every code change: `cargo build --release` before testing daedalus on an app.
 - Run verification loop before committing.
-- Preserve the `.ere` footer format (magic constants in `format.rs`).
+- Preserve the `.daedalus` footer format (magic constants in `format.rs`).
 - Verify any auto-fix from `cargo clippy --fix` manually (ANSSI DENV-AUTOFIX).
 
 **Never do:**
 - Commit secrets, keys, or `.env` files.
-- Change the `.ere` binary format without updating `format.rs` version constants.
+- Change the `.daedalus` binary format without updating `format.rs` version constants.
 - Remove clippy allows from `Cargo.toml` without understanding why.
 - Use `unsafe` in `daedalus-core` or `daedalus-cli`.
 - Override `debug-assertions` or `overflow-checks` in profiles.

@@ -17,7 +17,7 @@ my-binary/
 ## Build
 
 ```bash
-daedalus build ./my-binary -o my-binary.ere
+daedalus build ./my-binary -o my-binary.daedalus
 ```
 
 The builder:
@@ -25,7 +25,7 @@ The builder:
 1. detects the ELF binary via the `\x7fELF` magic bytes;
 2. resolves its shared library dependencies via the ELF analyzer;
 3. packages the binary + libraries into the app layer;
-4. compresses and assembles the `.ere`.
+4. compresses and assembles the `.daedalus`.
 
 ## How it works
 
@@ -42,7 +42,7 @@ entries from the ELF header to find all transitive shared library dependencies.
 No host `ldd` is required.
 
 ```bash
-daedalus inspect my-binary.ere
+daedalus inspect my-binary.daedalus
 # layers:
 #   - app    2.1MB compressed / 8.4MB raw  (binary + .so files)
 ```
@@ -58,6 +58,6 @@ the target arch.
 
 - Only ELF binaries are supported (no PE/Windows, no Mach-O/macOS).
 - Statically linked binaries (no `.so` dependencies) work perfectly — the
-  smallest possible `.ere`.
+  smallest possible `.daedalus`.
 - Binaries with unusual loader paths (`/lib/ld-linux.so.2`) may need the
   loader embedded in the rootfs.

@@ -7,7 +7,6 @@ use daedalus_core::metadata::{BunFeatures, EmbeddedInterpreter};
 use daedalus_core::paths::cache_dir;
 use daedalus_core::pkgmgr;
 use std::path::{Path, PathBuf};
-use zeroize::Zeroizing;
 
 use super::args::{config_fingerprint, parse_target, BuildArgs, BuildPlan};
 use super::deps::{
@@ -35,23 +34,13 @@ pub(crate) fn warn_sandbox_noops(isolation_num: u32, seccomp: bool, landlock: bo
     }
 }
 
-/// Output of the payload-preparation phase: compressed (and optionally
-/// encrypted) payload bytes plus the crypto/SISR side data that must reach
-/// the artifact metadata and the assembler.
-struct PreparedPayload {
-    payload: Vec<u8>,
-    crypto_meta: Option<serde_json::Value>,
-    sisr_artifacts: Option<daedalus_core::sisr_stage::SisrArtifacts>,
-}
-
 /// Everything [`assemble_and_sign`] needs to write the final artifact.
 struct AssembleInputs<'a> {
     stub_bytes: &'a [u8],
     payload: &'a [u8],
     meta_bytes: &'a [u8],
-    encrypt: bool,
     squashfs: bool,
-    /// Pre-built SISR artifacts from the encrypt+SISR stage, if any.
+    /// Pre-built SISR artifacts from the build stage, if any.
     sisr_artifacts: Option<daedalus_core::sisr_stage::SisrArtifacts>,
 }
 
@@ -69,7 +58,6 @@ pub(crate) fn build_single_target(
     let seccomp = plan.seccomp;
     let landlock = plan.landlock;
     let gui = plan.gui;
-    let encrypt = plan.encrypt;
     let squashfs = plan.squashfs;
     let version_info = plan.version_info.clone();
     let author = plan.author.clone();
@@ -81,18 +69,6 @@ pub(crate) fn build_single_target(
     // (pivot_root + namespace path). Warn so the user isn't lulled into
     // believing the sandbox is active.
     warn_sandbox_noops(isolation_num, seccomp, landlock);
-
-    // ── Reject the broken encrypt+SISR combination ─────────────────────
-    // The stub's chunked-decrypt path requires per-layer sizes from
-    // `meta.layers`, but the CLI always assembles with an empty layer list —
-    // the produced binary would carry a chunk-encrypted payload that the
-    // stub can only attempt to decrypt as one GCM blob, failing at runtime.
-    if encrypt && args.enable_sisr {
-        anyhow::bail!(
-            "--encrypt and --enable-sisr cannot be combined: chunk-encrypted SISR \
-             binaries are not decryptable by the current stub — use one or the other"
-        );
-    }
 
     // ── Reject a bundled `.env` unless it is included explicitly ───────
     // `.env` is excluded from the payload by default (secrets would be
@@ -148,7 +124,7 @@ pub(crate) fn build_single_target(
     }
 
     // ── Incremental update: skip rebuild if nothing changed ────────────
-    if args.update && output.exists() {
+    let reuse_binary: Option<PathBuf> = if args.update && output.exists() {
         if let Some((old_app_hash, old_rt_hash)) = read_existing_hashes(output) {
             if old_app_hash == new_app_hash && old_rt_hash == new_rt_hash {
                 if verbose {
@@ -157,16 +133,32 @@ pub(crate) fn build_single_target(
                 return Ok(None);
             } else if old_rt_hash == new_rt_hash && old_app_hash != new_app_hash {
                 if verbose {
-                    eprintln!("[daedalus] app changed, reusing runtime layer (full layer reuse not yet supported in Rust CLI — doing full rebuild)");
+                    eprintln!("[daedalus] app changed, reusing runtime from existing binary");
                 }
-            } else if verbose {
-                eprintln!("[daedalus] runtime deps changed, full rebuild");
+                Some(output.clone())
+            } else {
+                if verbose {
+                    eprintln!("[daedalus] runtime deps changed, full rebuild");
+                }
+                None
             }
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
 
     // ── Package managers: detect + install deps for every manifest ────
-    install_package_managers(args, plan, target.as_deref())?;
+    // Skip when reusing the rootfs — the runtime + deps are already embedded.
+    let mut reuse_rootfs: Option<(tempfile::TempDir, PathBuf)> = None;
+    if let Some(ref old_bin) = reuse_binary {
+        reuse_rootfs = Some(reuse_rootfs_from_binary(old_bin, app_dir, args, verbose)?);
+    }
+
+    if reuse_rootfs.is_none() {
+        install_package_managers(args, plan, target.as_deref())?;
+    }
 
     // Find stub binary
     let stub = find_stub(&target)?;
@@ -174,7 +166,11 @@ pub(crate) fn build_single_target(
         .with_context(|| format!("failed to read stub binary at {}", stub.display()))?;
 
     // Stage the rootfs: temp dir, app copy, tree-shake/minify, includes.
-    let (_tmp, rootfs) = stage_rootfs(args, app_dir, verbose)?;
+    let (_tmp, rootfs) = if let Some((tmp, rootfs)) = reuse_rootfs {
+        (tmp, rootfs)
+    } else {
+        stage_rootfs(args, app_dir, verbose)?
+    };
 
     // ── Build Go / Rust binaries, Maven/Gradle JARs, .NET binaries ────────
     let go_binary_name = build_go_binary(plan, target.as_deref(), &rootfs)?;
@@ -183,14 +179,13 @@ pub(crate) fn build_single_target(
     let dotnet_binary_name = build_dotnet_binary(plan, target.as_deref(), &rootfs)?;
 
     // ── Embed interpreter / N-API addons / RoadRunner into the rootfs ──
-    embed_interpreters(args, plan, &rootfs, target.as_deref());
+    // Skip when reusing rootfs — interpreter already present in payload.
+    if reuse_binary.is_none() {
+        embed_interpreters(args, plan, &rootfs, target.as_deref());
+    }
 
-    // ── Payload: compress (tar+zstd or squashfs) then encrypt (v4) ────
-    let PreparedPayload {
-        payload,
-        crypto_meta,
-        sisr_artifacts: sisr_artifacts_opt,
-    } = build_and_encrypt_payload(args, plan, &rootfs)?;
+    // ── Payload: compress (tar+zstd or squashfs) ──────────────────────
+    let payload = compress_payload(args, plan, &rootfs)?;
 
     // Build metadata
     let app_name = app_dir
@@ -261,7 +256,6 @@ pub(crate) fn build_single_target(
             update_url: args.update_url.clone(),
             pre_hooks,
             post_hooks,
-            crypto: crypto_meta,
             layers: Some(layers),
             entrypoint_layer: Some(runtime_name.clone()),
         },
@@ -278,9 +272,8 @@ pub(crate) fn build_single_target(
             stub_bytes: &stub_bytes,
             payload: &payload,
             meta_bytes: &meta,
-            encrypt,
             squashfs,
-            sisr_artifacts: sisr_artifacts_opt,
+            sisr_artifacts: None,
         },
     )?;
 
@@ -330,7 +323,6 @@ pub(crate) fn build_single_target(
             "runtime": runtime_name,
             "format": if squashfs { "squashfs" } else { "zstd-tar" },
             "signed": args.key.is_some() && !args.enable_sisr,
-            "encrypted": encrypt,
             "sisr": args.enable_sisr,
             "manifest_signed": args.enable_sisr && args.key.is_some(),
         })));
@@ -465,6 +457,10 @@ fn install_pkgmgr_deps(
     if let Some(ref bin_dir) = node_bin_dir {
         let current = std::env::var("PATH").unwrap_or_default();
         command.env("PATH", format!("{}:{}", bin_dir.display(), current));
+    }
+
+    if *mgr == pkgmgr::PkgMgr::Bundler {
+        command.env("BUNDLE_WITHOUT", "development");
     }
 
     let status = command
@@ -1380,6 +1376,93 @@ fn embed_roadrunner(app_dir: &Path, rootfs: &Path, verbose: bool) {
     }
 }
 
+/// Extract the payload from an existing .de binary into a rootfs directory,
+/// then overlay new app files (with tree-shaking/includes) on top.
+fn reuse_rootfs_from_binary(
+    bin_path: &Path,
+    app_dir: &Path,
+    args: &BuildArgs,
+    verbose: bool,
+) -> Result<(tempfile::TempDir, PathBuf)> {
+    use daedalus_core::format::Footer;
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(bin_path)?;
+    let footer = Footer::read_from(&mut file)?;
+    if footer.meta_offset > 0 {
+        // Check if squashfs (can't extract incrementally)
+        let meta_bytes = {
+            let mut buf = vec![0u8; footer.meta_size as usize];
+            file.seek(SeekFrom::Start(footer.meta_offset))?;
+            file.read_exact(&mut buf)?;
+            buf
+        };
+        let meta: serde_json::Value =
+            serde_json::from_slice(&meta_bytes).context("failed to parse metadata JSON")?;
+        let is_squashfs = meta
+            .get("payload_format")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "squashfs")
+            .unwrap_or(false);
+        if is_squashfs {
+            return Err(anyhow::anyhow!(
+                "cannot reuse squashfs payload incrementally; use tar+zstd build"
+            ));
+        }
+    }
+
+    // Extract payload bytes
+    let len: usize = footer
+        .payload_csize
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("payload size does not fit in usize"))?;
+    let start = footer.payload_offset;
+    file.seek(SeekFrom::Start(start))?;
+    let mut payload = vec![0u8; len];
+    file.read_exact(&mut payload)?;
+
+    // Decompress into rootfs
+    let tmp = tempfile::tempdir().context("failed to create temp directory")?;
+    let rootfs = tmp.path().join("rootfs");
+    std::fs::create_dir_all(&rootfs).context("failed to create rootfs directory")?;
+
+    // Decompress zstd payload into tar bytes, then extract tar
+    let tar_bytes = daedalus_core::compress::decompress(&payload)?;
+    let mut archive = tar::Archive::new(&tar_bytes[..]);
+    archive.unpack(&rootfs)?;
+
+    // Overlay new app files with tree-shake/minify/includes
+    let app_dest = rootfs.join("app");
+    copy_dir_recursive_with(app_dir, &app_dest, true)
+        .context("failed to copy app files into reused rootfs")?;
+
+    if args.tree_shake {
+        let removed = daedalus_core::treeshake::prune_node_modules(&app_dest, verbose)
+            .context("tree-shaking failed")?;
+        if verbose {
+            eprintln!("  tree-shake: removed {removed} unused package(s)");
+        }
+    }
+
+    if args.minify {
+        let minified = daedalus_core::minify::minify_app_dir(&app_dest, verbose)
+            .context("minification failed")?;
+        if verbose {
+            eprintln!("  minify: minified {minified} file(s)");
+        }
+    }
+
+    if !args.include.is_empty() {
+        let count = daedalus_core::include::copy_include_paths(&args.include, &app_dest, app_dir)
+            .context("failed to copy include paths")?;
+        if verbose {
+            eprintln!("  include: copied {count} path(s) into rootfs");
+        }
+    }
+
+    Ok((tmp, rootfs))
+}
+
 /// Compress the staged rootfs: `SquashFS` image (v5) or tar+zstd stream.
 fn compress_payload(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path) -> Result<Vec<u8>> {
     // Build the payload: zstd(tar) by default, or a real SquashFS image
@@ -1403,131 +1486,6 @@ fn compress_payload(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path) -> Result
         );
     }
     Ok(payload)
-}
-
-/// Compress then (optionally) AES-256-GCM encrypt the payload.
-///
-/// SECURITY: The encryption key is **separate** from the Ed25519 signing
-/// seed.  `--key` is only used for SISR manifest signing (when
-/// `--enable-sisr` is also set) and/or binary signing (`--sign`).
-/// The encryption key itself is generated randomly at build time and
-/// stored in meta `crypto` as `encryption_key_hex`.  The signing seed is
-/// NEVER embedded in the binary — this prevents a key compromise from
-/// breaking both confidentiality and authenticity.
-///
-/// The ciphertext replaces the payload before assembly so the footer's
-/// integrity hash and signature both cover the *encrypted* bytes.
-///
-/// When combined with `--enable-sisr`, the payload is encrypted in
-/// per-chunk mode: each SISR plaintext chunk gets an independent AES key
-/// derived via `HKDF(encryption_key, salt, chunk_index)`, and the manifest
-/// tracks the ciphertext hashes.  The stub decrypts each chunk
-/// independently at runtime before SISR extraction.
-fn build_and_encrypt_payload(
-    args: &BuildArgs,
-    plan: &BuildPlan,
-    rootfs: &Path,
-) -> Result<PreparedPayload> {
-    let payload = compress_payload(args, plan, rootfs)?;
-
-    if !plan.encrypt {
-        return Ok(PreparedPayload {
-            payload,
-            crypto_meta: None,
-            sisr_artifacts: None,
-        });
-    }
-
-    // Generate a fresh random encryption key — never reuse the signing seed.
-    let encryption_key = daedalus_core::encrypt::generate_encryption_key();
-
-    let (payload, crypto_meta, sisr_artifacts) = if args.enable_sisr {
-        encrypt_payload_chunked(args, &payload, &encryption_key, plan.verbose)?
-    } else {
-        encrypt_payload_whole(&payload, &encryption_key, plan.verbose)?
-    };
-
-    Ok(PreparedPayload {
-        payload,
-        crypto_meta,
-        sisr_artifacts,
-    })
-}
-
-fn encrypt_payload_whole(
-    payload: &[u8],
-    encryption_key: &Zeroizing<[u8; 32]>,
-    verbose: bool,
-) -> Result<(
-    Vec<u8>,
-    Option<serde_json::Value>,
-    Option<daedalus_core::sisr_stage::SisrArtifacts>,
-)> {
-    let (ciphertext, em) = daedalus_core::encrypt::encrypt_payload(payload, encryption_key)
-        .context("AES-256-GCM payload encryption failed")?;
-    if verbose {
-        // NOTE: pre-refactor this printed the post-encryption size twice.
-        eprintln!(
-            "  encrypt: {} -> {} bytes (AES-256-GCM, tag at {})",
-            ciphertext.len(),
-            ciphertext.len(),
-            em.tag_offset
-        );
-    }
-    let crypto_meta = serde_json::json!({
-        "nonce_hex": hex::encode(em.nonce),
-        "tag_offset": em.tag_offset,
-        "encryption_key_hex": hex::encode(encryption_key),
-        "encryption_salt_hex": hex::encode(em.salt),
-    });
-    Ok((ciphertext, Some(crypto_meta), None))
-}
-
-fn encrypt_payload_chunked(
-    args: &BuildArgs,
-    payload: &[u8],
-    encryption_key: &Zeroizing<[u8; 32]>,
-    verbose: bool,
-) -> Result<(
-    Vec<u8>,
-    Option<serde_json::Value>,
-    Option<daedalus_core::sisr_stage::SisrArtifacts>,
-)> {
-    let sisr_config = build_sisr_config(&args.key)?;
-    let artifacts = daedalus_core::sisr_stage::build_artifacts(payload, &sisr_config)
-        .context("SISR stage failed during encrypt+SISR build")?;
-    let chunk_sizes: Vec<usize> = artifacts
-        .manifest
-        .chunks
-        .iter()
-        .map(|c| c.length as usize)
-        .collect();
-    let salt = daedalus_core::encrypt::generate_salt();
-    let nonce = daedalus_core::encrypt::generate_nonce();
-    let ciphertext = daedalus_core::encrypt::encrypt_chunks(
-        payload,
-        encryption_key,
-        &salt,
-        &nonce,
-        &chunk_sizes,
-    )
-    .context("chunked AES-256-GCM payload encryption failed")?;
-    if verbose {
-        // NOTE: pre-refactor this printed the post-encryption size twice.
-        eprintln!(
-            "  encrypt+SISR: {} -> {} bytes (per-chunk AES-256-GCM, {} chunks)",
-            ciphertext.len(),
-            ciphertext.len(),
-            chunk_sizes.len()
-        );
-    }
-    let crypto_meta = serde_json::json!({
-        "nonce_hex": hex::encode(nonce),
-        "encryption_key_hex": hex::encode(encryption_key),
-        "encryption_salt_hex": hex::encode(salt),
-        "chunked": true,
-    });
-    Ok((ciphertext, Some(crypto_meta), Some(artifacts)))
 }
 
 /// Build the metadata env map: env-file < `--env` < `--define` < built-ins.
@@ -1854,7 +1812,6 @@ fn assemble_and_sign(
             stub_bytes: inputs.stub_bytes,
             payload: inputs.payload,
             meta_bytes: inputs.meta_bytes,
-            encrypt: inputs.encrypt,
             squashfs: inputs.squashfs,
             target_arch: target,
             sisr: Some(artifacts),
@@ -1866,7 +1823,6 @@ fn assemble_and_sign(
             stub_bytes: inputs.stub_bytes,
             payload: inputs.payload,
             meta_bytes: inputs.meta_bytes,
-            encrypt: inputs.encrypt,
             squashfs: inputs.squashfs,
             target_arch: target,
             sisr: None,
