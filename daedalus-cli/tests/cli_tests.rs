@@ -145,7 +145,7 @@ fn test_build_dry_run_does_not_enable_sisr_by_default() {
         .stderr(predicate::str::contains("SISR:      enabled").not());
 }
 
-/// `upgrade-binary` turns a legacy (SISR-less) file into a valid v2 file and
+/// `migrate` turns a legacy (SISR-less) file into a valid v2 file and
 /// preserves the original payload bytes.
 #[test]
 fn test_upgrade_binary_converts_legacy_file() {
@@ -155,7 +155,7 @@ fn test_upgrade_binary_converts_legacy_file() {
     use std::io::Cursor;
 
     let dir = tempdir().unwrap();
-    let input = dir.path().join("legacy.daedalus");
+    let input = dir.path().join("legacy.de");
     assemble_daedalus(
         &input,
         &AssemblyInput {
@@ -172,10 +172,10 @@ fn test_upgrade_binary_converts_legacy_file() {
     let before = std::fs::read(&input).unwrap();
     let in_footer = Footer::read_from(&mut Cursor::new(&before)).unwrap();
 
-    let output = dir.path().join("migrated.daedalus");
+    let output = dir.path().join("migrated.de");
     daedalus()
         .args([
-            "upgrade-binary",
+            "migrate",
             input.to_str().unwrap(),
             output.to_str().unwrap(),
             "--force",

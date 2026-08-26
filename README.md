@@ -21,8 +21,8 @@ or plugin as a single portable unit.
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Tednoob17/daedalus/main/scripts/install.sh | bash
 daedalus doctor
-cd your-app && daedalus build . -o myapp.daedalus
-./myapp.daedalus
+cd your-app && daedalus build . -o myapp.de
+./myapp.de
 ```
 
 ## Overview
@@ -56,7 +56,7 @@ Each runtime has specific detection logic and framework support that triggers wh
 
 ## Binary format
 
-The `.daedalus` binary is structured as:
+The `.de` binary is structured as:
 
 ```
 [stub][payload][metadata][footer]
@@ -72,7 +72,7 @@ Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs).
 ## Target & host support
 
 `daedalus build --target <list>` packages one artifact **per target**. A comma-separated
-list emits one `<name>-<target>.daedalus` per target into the output directory. The
+list emits one `<name>-<target>.de` per target into the output directory. The
 stubs and (where available) embedded runtimes are cross-selected by target.
 
 | `--target` short form | Resolved triple | Stub | Runtime arch | Notes |
@@ -94,11 +94,11 @@ stubs and (where available) embedded runtimes are cross-selected by target.
 
 | Command | Description |
 |---------|-------------|
-| `daedalus build <dir>` | Package an app directory into a `.daedalus` file |
-| `daedalus inspect <file>` | Read metadata from a `.daedalus` file |
-| `daedalus scan [dir]` | Find `.daedalus` files recursively and display metadata |
-| `daedalus sign <file>` | Sign a `.daedalus` with an Ed25519 private key |
-| `daedalus verify <file>` | Verify the signature of a `.daedalus` against trusted keys |
+| `daedalus build <dir>` | Package an app directory into a `.de` file |
+| `daedalus inspect <file>` | Read metadata from a `.de` file |
+| `daedalus scan [dir]` | Find `.de` files recursively and display metadata |
+| `daedalus sign <file>` | Sign a `.de` with an Ed25519 private key |
+| `daedalus verify <file>` | Verify the signature of a `.de` against trusted keys |
 | `daedalus keygen` | Generate an Ed25519 keypair for signing |
 | `daedalus trust <keyfile>` | Add a public key to the trusted keys directory |
 | `daedalus doctor` | Check system prerequisites and report missing dependencies |
@@ -120,39 +120,33 @@ stubs and (where available) embedded runtimes are cross-selected by target.
 
 ```bash
 # Basic build
-daedalus build ./myapp -o myapp.daedalus
+daedalus build ./myapp -o myapp.de
 
 # Embed interpreter for self-contained binaries
-daedalus build ./myapp --embed-interpreter python3 -o myapp.daedalus
+daedalus build ./myapp --embed-interpreter python3 -o myapp.de
 
 # Multi-arch packaging: one artifact per target
-daedalus build ./myapp --target linux-x64,linux-arm64 -o out/app.daedalus
-#  -> out/app-linux-x64.daedalus, out/app-linux-arm64.daedalus
+daedalus build ./myapp --target linux-x64,linux-arm64 -o out/app.de
+#  -> out/app-linux-x64.de, out/app-linux-arm64.de
 
 # Cross-OS packaging: Windows artifact built on Linux/macOS
-daedalus build ./myapp --target win-x64 -o out/app.daedalus
+daedalus build ./myapp --target win-x64 -o out/app.de
 #  -> out/app-win-x64.exe (stubs+runtime selected for the target OS)
 
-# Sign and encrypt
-# `--encrypt` is obfuscation only (AES key lives in the file metadata —
-# possession of the binary decrypts it). Use `--sign` for authenticity.
-# `--encrypt` and `--enable-sisr` are mutually exclusive.
+# Sign your binary
 daedalus keygen --key-dir ~/.daedalus/keys
-daedalus build ./myapp --sign --key ~/.daedalus/keys/*.key -o myapp.daedalus
-daedalus build ./myapp --encrypt --key ~/.daedalus/keys/*.key -o myapp-secure.daedalus
+daedalus build ./myapp --sign --key ~/.daedalus/keys/*.key -o myapp.de
 
 # Self-updating binary with SISR (delta updates)
-# `--enable-sisr` and `--encrypt` cannot be combined (Sisir chunking is
-# incompatible with full-payload AES-GCM). Use one or the other.
-daedalus build ./myapp --enable-sisr --update-url https://updates.example.com -o myapp.daedalus
-#  -> myapp.daedalus + myapp.daedalus.manifest
+daedalus build ./myapp --enable-sisr --update-url https://updates.example.com -o myapp.de
+#  -> myapp.de + myapp.de.manifest
 
 # Persistent storage
-daedalus build ./myapp --persist -o myapp.daedalus
+daedalus build ./myapp --persist -o myapp.de
 #  -> DAEDALUS_PERSIST_DIR injected into app environment
 
 # Environment injection
-daedalus build ./myapp --env-file .env --env KEY=VALUE -o myapp.daedalus
+daedalus build ./myapp --env-file .env --env KEY=VALUE -o myapp.de
 ```
 
 ### Embedded Runtime Options
@@ -258,11 +252,55 @@ cargo build --release
 ## Security
 
 - **Ed25519 signing**: binaries can be signed and verified against trusted keys (`~/.daedalus/trusted-keys/`, or `$DAEDALUS_TRUSTED_DIR`)
-- **Encryption (obfuscation only)**: `--encrypt` uses AES-256-GCM on the payload, but the key is stored in the file's own metadata — possession of the binary is sufficient to decrypt it. It deters casual inspection, **not** an attacker who holds the file. Byte authenticity is governed by `FLAG_SIGNED` + the trusted-keys directory; `--encrypt` and `--enable-sisr` are mutually exclusive.
 - **SHA-256 integrity**: footer hash verifies payload tampering at runtime
 - **Namespace isolation**: Linux builds use user/mount namespaces + optional seccomp (fail-closed); macOS uses App Sandbox (`macos_sandbox`); Windows uses process isolation (`win`/supervisor). `--isolation sandbox` must not silently degrade.
 - **Delta updates (Sisir)**: the stub verifies an embedded Ed25519 `SisirFooterExt.signature` (of the delta manifest) at cold start — fail-closed, with `DAEDALUS_SISR_ALLOW_UNSIGNED=1` as an explicit escape hatch for air-gapped/untrusted-update scenarios.
 - **CVE-2023-48022**: ed25519-dalek pinned to >= 2.1.0 to ensure Ed25519 bit is set
+
+## Troubleshooting
+
+<!-- TROUBLESHOOTING_START -->
+
+### Common issues
+
+**Build fails with "runtime not found"**
+Run `daedalus doctor` to check prerequisites. If a runtime is missing, install it:
+```bash
+# Python
+pip install -r requirements.txt
+
+# Node
+npm install
+
+# Ruby
+bundle install
+```
+
+**Build succeeds but app won't run**
+Check isolation mode. If the target system doesn't support user namespaces:
+```bash
+daedalus build ./myapp --isolation none -o myapp.de
+```
+
+**Error: "permission denied" when building**
+Ensure the output directory is writable:
+```bash
+daedalus build ./myapp -o myapp.de
+```
+
+**"file not found" when running the binary**
+The binary may have been moved. Rebuild with a fresh path:
+```bash
+daedalus build ./myapp -o myapp.de && chmod +x myapp.de
+```
+
+**Debug mode**
+Enable verbose output to diagnose issues:
+```bash
+daedalus build ./myapp -v -o myapp.de
+```
+
+<!-- TROUBLESHOOTING_END -->
 
 ## Contributing
 

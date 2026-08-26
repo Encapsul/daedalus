@@ -18,12 +18,19 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // Quiet mode overrides verbose
     let verbose = verbose && !args.quiet;
 
-    let app_dir = args
-        .app
-        .canonicalize()
-        .context("failed to canonicalize app path")?;
+    let app_dir = args.app.canonicalize().with_context(|| {
+        format!(
+            "app directory not found: {}\n\
+             Check that the path exists and try again.",
+            args.app.display()
+        )
+    })?;
     if !app_dir.is_dir() {
-        anyhow::bail!("{} is not a directory", app_dir.display());
+        anyhow::bail!(
+            "{} is not a directory\n\
+             daedalus expects a directory containing an app (e.g. requirements.txt, package.json).",
+            app_dir.display()
+        );
     }
 
     // Load .daedalus.toml config if present
