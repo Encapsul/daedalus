@@ -17,7 +17,7 @@
 ## Build
 
 ```bash
-daedalus build ./my-deno-app -o my-deno-app.ere
+daedalus build ./my-deno-app -o my-deno-app.daedalus
 ```
 
 The builder:
@@ -25,7 +25,7 @@ The builder:
 1. detects the `deno` runtime and reads the entrypoint from config;
 2. embeds the `deno` binary (on PATH or vendored);
 3. packages the app source into the app layer;
-4. compresses and assembles the `.ere`.
+4. compresses and assembles the `.daedalus`.
 
 ## Entrypoint detection
 
@@ -45,14 +45,14 @@ binary from GitHub Releases and caches it at `~/.cache/daedalus/cross/deno/`.
 
 ```bash
 # No deno on PATH — daedalus downloads it automatically
-daedalus build ./my-deno-app -o my-deno-app.ere
+daedalus build ./my-deno-app -o my-deno-app.daedalus
 ```
 
 ## Environment variables
 
 ```bash
-DENO_ENV=production ./my-deno-app.ere
-PORT=8000 ./my-deno-app.ere
+DENO_ENV=production ./my-deno-app.daedalus
+PORT=8000 ./my-deno-app.daedalus
 ```
 
 ## Known limitations

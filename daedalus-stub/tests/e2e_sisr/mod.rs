@@ -141,7 +141,6 @@ fn assemble(work: &Path, stub: &Path, body: &str, shared: &[u8], config: &SisrBu
             stub_bytes: &stub_bytes,
             payload: &body_bytes,
             meta_bytes: meta(),
-            encrypt: false,
             squashfs: false,
             target_arch: None,
             sisr: Some(artifacts),

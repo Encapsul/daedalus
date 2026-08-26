@@ -14,7 +14,7 @@ my_app/
 ## Build
 
 ```bash
-daedalus build ./my_app -o my_app.ere
+daedalus build ./my_app -o my_app.daedalus
 ```
 
 The builder:
@@ -23,7 +23,7 @@ The builder:
 2. embeds the build machine's `python3` interpreter;
 3. embeds the **stdlib** (`/usr/lib/pythonX.Y`);
 4. resolves `.so` dependencies via the ELF analyzer (libc, etc.);
-5. compresses and assembles the `.ere`.
+5. compresses and assembles the `.daedalus`.
 
 ## Environment variables
 
@@ -36,7 +36,7 @@ PORT = int(os.environ.get("PORT", "8080"))
 ```
 
 ```bash
-PORT=9000 ./my_app.ere
+PORT=9000 ./my_app.daedalus
 ```
 
 ## Third-party dependencies (site-packages)
@@ -67,8 +67,8 @@ The example `examples/bottle-web` demonstrates this: it serves HTTP with
 `bottle`, a web framework **not** in the stdlib.
 
 ```bash
-daedalus build ./examples/bottle-web -o bottle-web.ere
-./bottle-web.ere   # → Hello from bottle, packaged by daedalus
+daedalus build ./examples/bottle-web -o bottle-web.daedalus
+./bottle-web.daedalus   # → Hello from bottle, packaged by daedalus
 ```
 
 ## Requirements.txt → pip install at build time
@@ -78,7 +78,7 @@ automatically creates a temporary venv, pip-installs the dependencies, and
 embeds them:
 
 ```bash
-daedalus build ./my_app -o my_app.ere
+daedalus build ./my_app -o my_app.daedalus
 # [daedalus] pip install: ./my_app/requirements.txt → /app/site-packages
 ```
 

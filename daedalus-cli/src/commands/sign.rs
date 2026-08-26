@@ -49,6 +49,9 @@ pub fn run(args: SignArgs) -> Result<()> {
     };
 
     if !args.force && !args.quiet {
+        if !is_interactive() {
+            anyhow::bail!("interactive prompt required; pass --force for non-interactive use");
+        }
         eprint!("Sign {}? [y/N] ", args.file.display());
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
@@ -70,6 +73,11 @@ pub fn run(args: SignArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn is_interactive() -> bool {
+    use std::io::IsTerminal;
+    std::io::stdin().is_terminal()
 }
 
 /// Sign a `.daedalus` file in-place with the given key. Used by both `daedalus sign`

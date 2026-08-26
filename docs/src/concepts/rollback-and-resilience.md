@@ -22,12 +22,12 @@ version"* — "valid" now includes *verified to start*.
 ## Flow
 
 ```
-./app.ere --daedalus-update …   (or $DAEDALUS_SISR_MANIFEST=…)
+./app.daedalus --daedalus-update …   (or $DAEDALUS_SISR_MANIFEST=…)
    │
    1. SISR update requested?   ──no──►  normal run
    2. refuse_quarantined_target?  yes ►  error: update refused (target quarantined)
    3. apply_with_rollback_snapshot:
-        a. copy ./app.ere → ./app.ere.bak        (same filesystem, atomic)
+        a. copy ./app.daedalus → ./app.daedalus.bak        (same filesystem, atomic)
         b. engine apply (reuse/fetch/verify/swap)   (error ⇒ discard .bak, untouched)
         c. health_store.begin(<new-version>)        (state = Pending)
    4. health gate on the new version:
@@ -45,7 +45,7 @@ version"* — "valid" now includes *verified to start*.
 
 ### Snapshot lifetime
 
-`./app.ere.bak` lives **only while the new version is unconfirmed**:
+`./app.daedalus.bak` lives **only while the new version is unconfirmed**:
 
 - update applies → snapshot taken **before** the swap, kept until the health
   gate decides;

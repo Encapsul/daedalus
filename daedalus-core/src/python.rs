@@ -55,22 +55,6 @@ impl PyFooter {
         }
     }
 
-    #[getter]
-    fn crypto_suite(&self) -> u64 {
-        if self.format_version >= 4 {
-            self.payload_usize
-        } else {
-            format::CRYPTO_NONE
-        }
-    }
-
-    #[setter]
-    fn set_crypto_suite(&mut self, value: u64) {
-        if self.format_version >= 4 {
-            self.payload_usize = value;
-        }
-    }
-
     fn is_signed(&self) -> bool {
         self.flags & format::FLAG_SIGNED != 0
     }
@@ -374,13 +358,12 @@ fn py_create_tar_zstd<'py>(py: Python<'py>, root: &str) -> PyResult<Bound<'py, P
 // ─── assembly ────────────────────────────────────────────────────────────
 
 #[pyfunction]
-#[pyo3(signature = (out_path, stub_bytes, payload, meta_bytes, encrypt=false, squashfs=false, target_arch=None))]
+#[pyo3(signature = (out_path, stub_bytes, payload, meta_bytes, squashfs=false, target_arch=None))]
 fn py_assemble_daedalus(
     out_path: &str,
     stub_bytes: &[u8],
     payload: &[u8],
     meta_bytes: &[u8],
-    encrypt: bool,
     squashfs: bool,
     target_arch: Option<&str>,
 ) -> PyResult<u64> {
@@ -390,7 +373,6 @@ fn py_assemble_daedalus(
             stub_bytes,
             payload,
             meta_bytes,
-            encrypt,
             squashfs,
             target_arch,
             sisr: None,
@@ -410,10 +392,7 @@ fn daedalus_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("FORMAT_VERSION", format::FORMAT_VERSION)?;
     m.add("V2_FOOTER_SIZE", format::V2_FOOTER_SIZE)?;
     m.add("V3_FOOTER_SIZE", format::V3_FOOTER_SIZE)?;
-    m.add("CRYPTO_NONE", format::CRYPTO_NONE)?;
-    m.add("CRYPTO_AES_256_GCM", format::CRYPTO_AES_256_GCM)?;
     m.add("FLAG_SIGNED", format::FLAG_SIGNED)?;
-    m.add("FLAG_ENCRYPTED", format::FLAG_ENCRYPTED)?;
     m.add("ARCH_X86_64", format::ARCH_X86_64)?;
     m.add("ARCH_AARCH64", format::ARCH_AARCH64)?;
     m.add_class::<PyFooter>()?;

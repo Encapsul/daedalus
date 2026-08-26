@@ -19,10 +19,10 @@ the presence of a `Gemfile` or a single `.rb` file.
 
 ```bash
 # Bundler project
-daedalus build ./my-ruby-app -o my-ruby-app.ere
+daedalus build ./my-ruby-app -o my-ruby-app.daedalus
 
 # Single file
-daedalus build ./my-script -o my-script.ere
+daedalus build ./my-script -o my-script.daedalus
 ```
 
 The builder:
@@ -31,7 +31,7 @@ The builder:
 2. for Bundler projects, reads `GEM_PATH` from `.bundle/config` or `vendor/bundle/`;
 3. embeds the `ruby` interpreter and its shared libraries;
 4. packages gems into the app layer;
-5. compresses and assembles the `.ere`.
+5. compresses and assembles the `.daedalus`.
 
 ## Entrypoint detection
 
@@ -51,7 +51,7 @@ If none found, defaults to `main.rb`.
 ```bash
 cd my-ruby-app
 bundle install --deployment    # installs to vendor/bundle
-daedalus build . -o my-app.ere
+daedalus build . -o my-app.daedalus
 ```
 
 The builder reads `BUNDLE_PATH` from `.bundle/config` and embeds the gem
@@ -65,14 +65,14 @@ Rails projects are detected by the presence of `config/ru`. The builder uses
 ```bash
 cd my-rails-app
 bundle install --deployment
-daedalus build . -o my-rails-app.ere
+daedalus build . -o my-rails-app.daedalus
 ```
 
 ## Environment variables
 
 ```bash
-RAILS_ENV=production ./my-rails-app.ere
-PORT=3000 ./my-rails-app.ere
+RAILS_ENV=production ./my-rails-app.daedalus
+PORT=3000 ./my-rails-app.daedalus
 ```
 
 ## Known limitations

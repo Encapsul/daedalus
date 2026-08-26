@@ -15,7 +15,7 @@ use std::process::ExitCode;
     name = "daedalus",
     version,
     about = "Package any app into a single self-extracting binary",
-    long_about = "x.bin compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  daedalus build ./myapp -o myapp.daedalus\n  daedalus run myapp.daedalus\n  daedalus inspect myapp.daedalus\n  daedalus keygen\n  daedalus sign myapp.daedalus --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.daedalus\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish"
+    long_about = "daedalus compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  daedalus build ./myapp -o myapp.daedalus\n  daedalus run myapp.daedalus\n  daedalus inspect myapp.daedalus\n  daedalus keygen\n  daedalus sign myapp.daedalus --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.daedalus\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish"
 )]
 struct Cli {
     /// Enable verbose output
@@ -82,7 +82,7 @@ enum Commands {
     /// Test a .daedalus file in an ephemeral sandbox
     Selftest(commands::selftest::SelftestArgs),
 
-    /// Upgrade x.bin to the latest release
+    /// Upgrade daedalus to the latest release
     Upgrade(commands::upgrade::UpgradeArgs),
 
     /// Migrate a legacy .daedalus (v1) to the SISR-enabled v2 format
@@ -230,7 +230,7 @@ fn generate_man_pages(dir: &std::path::Path) -> anyhow::Result<()> {
     let cmd = Cli::command();
     let version = env!("CARGO_PKG_VERSION");
     let author = "Ted Kouhouenou <ted.sig42@tutamail.com>";
-    let manual = format!("x.bin {version}");
+    let manual = format!("daedalus {version}");
 
     // ── Main man page (daedalus.1) ────────────────────────────────────────
     let man = clap_mangen::Man::new(cmd.clone())
@@ -283,7 +283,7 @@ AUTHORS
        Written by {author}.
 
 HISTORY
-       x.bin was started in 2025 by {author} to solve the problem of
+       daedalus was started in 2025 by {author} to solve the problem of
        packaging complex multi-dependency applications into a single
        portable binary.  The Rust CLI (v0.1.0) replaced the legacy
        Python CLI in 2026.
@@ -355,7 +355,7 @@ AUTHORS
        Written by {author}.
 
 HISTORY
-       Part of x.bin since v0.1.0.
+       Part of daedalus since v0.1.0.
 {extra_footer}"
         );
         buffer.extend_from_slice(shared.as_bytes());

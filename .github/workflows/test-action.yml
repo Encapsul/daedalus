@@ -51,7 +51,7 @@ jobs:
         id: daedalus
         with:
           app-path: '/tmp/test-app'
-          output: '/tmp/test-app.ere'
+          output: '/tmp/test-app.daedalus'
 
       # Verify output
       - name: Verify output
@@ -71,4 +71,4 @@ jobs:
       - uses: actions/upload-artifact@v6
         with:
           name: test-binary
-          path: /tmp/test-app.ere
+          path: /tmp/test-app.daedalus

@@ -28,10 +28,10 @@ The builder parses `<mainClass>` from:
 
 ```bash
 # Maven project
-daedalus build ./my-java-app -o my-java-app.ere
+daedalus build ./my-java-app -o my-java-app.daedalus
 
 # Gradle project
-daedalus build ./my-gradle-app -o my-gradle-app.ere
+daedalus build ./my-gradle-app -o my-gradle-app.daedalus
 ```
 
 The builder:
@@ -40,7 +40,7 @@ The builder:
 2. parses the `mainClass` from build config or JAR manifest;
 3. embeds the `java` interpreter and its shared libraries;
 4. packages the JAR into the app layer;
-5. compresses and assembles the `.ere`.
+5. compresses and assembles the `.daedalus`.
 
 ## Entrypoint
 
@@ -65,15 +65,15 @@ configuration.
 ```bash
 cd my-spring-app
 mvn package
-daedalus build . -o my-spring-app.ere
-./my-spring-app.ere
+daedalus build . -o my-spring-app.daedalus
+./my-spring-app.daedalus
 ```
 
 ## Environment variables
 
 ```bash
-JAVA_OPTS="-Xmx512m" ./my-java-app.ere
-PORT=9000 ./my-java-app.ere
+JAVA_OPTS="-Xmx512m" ./my-java-app.daedalus
+PORT=9000 ./my-java-app.daedalus
 ```
 
 ## Known limitations

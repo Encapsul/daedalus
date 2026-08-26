@@ -52,8 +52,8 @@ jobs:
       - name: Test CLI build (smoke test)
         timeout-minutes: 10
         run: |
-          /tmp/daedalus-stub-target/release/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.ere
-          /tmp/hello-web.ere &
+          /tmp/daedalus-stub-target/release/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.daedalus
+          /tmp/hello-web.daedalus &
           PID=$!
           sleep 5
           curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "smoke test passed" || { echo "smoke test failed"; kill $PID; exit 1; }

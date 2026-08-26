@@ -22,10 +22,10 @@
 # Published app (recommended)
 cd my-dotnet-app
 dotnet publish -c Release
-daedalus build . -o my-app.ere
+daedalus build . -o my-app.daedalus
 
 # Dev project (uses dotnet run, slower startup)
-daedalus build . -o my-app.ere
+daedalus build . -o my-app.daedalus
 ```
 
 The builder:
@@ -34,7 +34,7 @@ The builder:
 2. checks for a `publish/` directory (pre-built output);
 3. embeds the `dotnet` interpreter and its shared libraries;
 4. packages the published DLLs into the app layer;
-5. compresses and assembles the `.ere`.
+5. compresses and assembles the `.daedalus`.
 
 ## Published vs dev mode
 
@@ -70,8 +70,8 @@ This requires the SDK in the runtime layer (larger binary, slower startup).
 ## Environment variables
 
 ```bash
-DOTNET_ENVIRONMENT=Production ./my-app.ere
-ASPNETCORE_URLS="http://0.0.0.0:9000" ./my-app.ere
+DOTNET_ENVIRONMENT=Production ./my-app.daedalus
+ASPNETCORE_URLS="http://0.0.0.0:9000" ./my-app.daedalus
 ```
 
 ## Known limitations

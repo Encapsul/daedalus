@@ -12,7 +12,7 @@ Reconstruction) end to end.
 - **SISR delta self-updates** — binaries embed a content-addressed chunk
   manifest; `./app --daedalus-update <url>` fetches only the changed chunks from
   the update channel and rebuilds the binary in place.
-- **`daedalus upgrade-binary`** — promote a legacy (v1, SISR-less) `.ere` to the
+- **`daedalus upgrade-binary`** — promote a legacy (v1, SISR-less) `.daedalus` to the
   v2 format by injecting the delta manifest and `SISR` header, preserving
   every payload byte and the integrity hash.
 - **Post-update health gate + automatic rollback** — a newly updated binary
@@ -25,7 +25,7 @@ Reconstruction) end to end.
 - v1 (SISR-less) binaries run on the v2 runtime **unchanged and without
   warnings**: standard extraction only, zero startup penalty.
 - Deployment scripts based on v1 remain 100 % valid.
-- The `.ere` footer format is frozen; new capabilities ship as flags and
+- The `.daedalus` footer format is frozen; new capabilities ship as flags and
   backwards-readable format-version bumps.
 
 ### Testing

@@ -1,6 +1,6 @@
 # daedalus Build Action
 
-Package any app into a single self-extracting `.ere` binary directly in your CI/CD pipeline.
+Package any app into a single self-extracting `.daedalus` binary directly in your CI/CD pipeline.
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ Package any app into a single self-extracting `.ere` binary directly in your CI/
 - uses: actions/upload-artifact@v4
   with:
     name: my-app
-    path: app.ere
+    path: app.daedalus
 ```
 
 ## Usage Examples
@@ -29,12 +29,12 @@ jobs:
       - uses: Tednoob17/daedalus/.github/actions/daedalus-build@main
         with:
           app-path: '.'
-          output: 'my-python-app.ere'
+          output: 'my-python-app.daedalus'
 
       - uses: actions/upload-artifact@v4
         with:
           name: my-python-app
-          path: my-python-app.ere
+          path: my-python-app.daedalus
 ```
 
 ### Node.js app with signing
@@ -52,12 +52,12 @@ jobs:
           runtime: 'node'
           sign: 'true'
           key: ${{ secrets.DAEDALUS_SIGNING_KEY }}
-          output: 'my-node-app.ere'
+          output: 'my-node-app.daedalus'
 
       - uses: actions/upload-artifact@v4
         with:
           name: my-node-app
-          path: my-node-app.ere
+          path: my-node-app.daedalus
 ```
 
 ### Multi-platform build
@@ -80,12 +80,12 @@ jobs:
         with:
           app-path: '.'
           target: ${{ matrix.target }}
-          output: 'app-${{ matrix.target }}.ere'
+          output: 'app-${{ matrix.target }}.daedalus'
 
       - uses: actions/upload-artifact@v4
         with:
           name: app-${{ matrix.target }}
-          path: app-${{ matrix.target }}.ere
+          path: app-${{ matrix.target }}.daedalus
 ```
 
 ### With extra files
@@ -98,7 +98,7 @@ jobs:
       config/
       data/
       migrations/
-    output: 'full-app.ere'
+    output: 'full-app.daedalus'
 ```
 
 ### Specific version
@@ -121,7 +121,7 @@ jobs:
 | `sign` | Sign the binary | `false` |
 | `encrypt` | Encrypt the payload (requires key) | `false` |
 | `include` | Extra files/dirs to include (newline-separated) | — |
-| `output` | Output binary path | `app.ere` |
+| `output` | Output binary path | `app.daedalus` |
 | `daedalus-version` | daedalus version to install | `latest` |
 | `daedalus-repo` | GitHub repo to download daedalus from | `Tednoob17/daedalus` |
 | `build-args` | Extra arguments to pass to daedalus build | — |
@@ -130,7 +130,7 @@ jobs:
 
 | Output | Description |
 |--------|-------------|
-| `binary-path` | Path to the built .ere binary |
+| `binary-path` | Path to the built .daedalus binary |
 | `runtime` | Detected runtime |
 | `size` | Binary size in bytes |
 

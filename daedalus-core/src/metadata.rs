@@ -201,14 +201,6 @@ impl std::fmt::Display for EmbeddedInterpreter {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct CryptoMeta {
-    pub nonce_hex: String,
-    pub tag_offset: usize,
-    pub encryption_key_hex: String,
-    pub encryption_salt_hex: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Service {
     pub name: String,

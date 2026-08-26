@@ -1,11 +1,11 @@
-# HANDOFF.md — x.bin project status
+# HANDOFF.md — daedalus project status
 
 ## Current state
 
 - **Format**: v5 (SquashFS support)
 - **Status**: Phase 1/2/3 COMPLETE — full Rust CLI, no Python dependency for builds
 - **Build**: `cargo build --release` (or `make stub` for development)
-- **CLI**: Rust CLI (`daedalus` binary). The legacy Python CLI (`cli/`) was removed.
+- **CLI**: Rust CLI (`daedalus` binary). The legacy Rust CLI is the only CLI. Python CLI removed in v0.4.0.
 - **Health check**: `daedalus doctor` or `make preflight`
 - **Branches**: `main` (stable), `dev` (integration), `feat/*` / `fix/*` (features)
 - **Release**: create release on GitHub UI → `on: release: types: [published]` triggers workflow → builds 4 platforms → uploads binaries + SHASUMS256.txt
@@ -226,7 +226,7 @@ Machine specs (Xeon run):
 | Global `--verbose` flag | Docker/Bun | ✅ |
 | Exit codes 0/1/2 | clig.dev + BSD sysexits | ✅ documented in help |
 | `--dry-run` for destructive ops | clig.dev | ✅ daedalus build --dry-run |
-| Config file (`.ere.toml`) | Docker/Bun/Wasmer | ✅ .ere.toml in app dir |
+| Config file (`.daedalus.toml`) | Docker/Bun/Wasmer | ✅ .daedalus.toml in app dir |
 | Shell completion (Rust CLI) | clap_complete | ✅ `daedalus completion bash/zsh/fish` |
 | Man pages | Rust CLI Book | ✅ `daedalus man [dir]` |
 | `human-panic` crash reports | Rust CLI Book | ✅ |
@@ -235,9 +235,9 @@ Machine specs (Xeon run):
 | Exit codes 0/1/2 | clig.dev + BSD sysexits | ✅ documented in help |
 | Man pages | Rust CLI Book | ✅ `daedalus man [dir]` |
 
-## Config file (`.ere.toml`)
+## Config file (`.daedalus.toml`)
 
-Place `.ere.toml` in your app directory. CLI flags override config file values.
+Place `.daedalus.toml` in your app directory. CLI flags override config file values.
 
 ```toml
 [package]
@@ -322,7 +322,7 @@ git push --force --tags origin
 **How to create a release**:
 1. Go to https://github.com/Tednoob17/daedalus/releases/new
 2. **Tag**: create new tag `vX.Y.Z` (or select existing)
-3. **Release title**: `x.bin vX.Y.Z` (or `x.bin vX.Y.Z — <codename>`)
+3. **Release title**: `daedalus vX.Y.Z` (or `daedalus vX.Y.Z — <codename>`)
 4. **Description**: write changelog, install instructions, etc.
 5. Click "Publish release"
 6. Workflow auto-triggers: builds linux-x64, linux-arm64, macos-arm64, macos-x64 → uploads tar.gz + SHASUMS256.txt
@@ -356,7 +356,7 @@ git push --force --tags origin
 
 ### ⚠️ RULE: NEVER commit without running ALL of these first:
 ```bash
-cd cli && python3 -m ruff check daedalus/     # lint
+`cargo clippy --all-targets` + `cargo fmt --check`
 cd cli && python3 -m black --check daedalus/  # format
 cd cli && python3 -m pytest tests/ -q     # tests
 ```
@@ -375,7 +375,7 @@ cargo test --workspace                               # Tests
 
 ### 3. Does the app work?
 ```bash
-cargo build -p daedalus-cli && ./target/release/daedalus build examples/hello-web -o /tmp/test.ere 2>&1
+cargo build -p daedalus-cli && ./target/release/daedalus build examples/hello-web -o /tmp/test.daedalus 2>&1
 ```
 If this fails, your change broke the build. Fix it before proceeding.
 
@@ -399,11 +399,11 @@ relevant `docs/src/` page.
 ### 8. No regressions?
 Run the full test sequence:
 ```bash
-daedalus build examples/hello-web -o /tmp/t.ere
-daedalus inspect /tmp/t.ere
+daedalus build examples/hello-web -o /tmp/t.daedalus
+daedalus inspect /tmp/t.daedalus
 daedalus keygen --key-dir /tmp/tk
-daedalus sign /tmp/t.ere --key /tmp/tk/*.key
-daedalus verify /tmp/t.ere --trusted-dir /tmp/tk
+daedalus sign /tmp/t.daedalus --key /tmp/tk/*.key
+daedalus verify /tmp/t.daedalus --trusted-dir /tmp/tk
 ```
 All must pass. If any fails, your change introduced a regression.
 
@@ -411,12 +411,12 @@ All must pass. If any fails, your change introduced a regression.
 
 ## Cross-compilation (`--target aarch64`) — 2026-07-18
 
-- **File**: `cli/daedalus/cross.py`
+- **File**: removed in Rust migration
 - `download_vendored_python(runtime, arch)`: downloads prebuilt Python/Node from `python-build-standalone` (astral-sh) or Node.js official, extracts to `~/.cache/daedalus/vendor/{runtime}-{arch}/`
 - `pip_download_target(app_dir, requirements, venv_dir, target_arch)`: runs `pip download --only-binary=:all: --platform {manylinux tag} --python-version {ver}` to fetch wheels for target arch
 - `_vendored_python_version(vendored_root)`: detects Python version from vendored `lib/pythonX.Y/` directory
 - `_unpack_wheel(wheel_path, site_packages_dir)`: extracts wheel `.zip` into site-packages for cross-build
-- **File**: `cli/daedalus/build.py`
+- **File**: `daedalus-cli/src/commands/build/mod.rs`
 - `build()` rejects non-Python runtimes for cross-build (`node`/`deno` → clear error message)
 - `_pip_install_requirements()` accepts `target_arch`: uses `pip_download_target()` when cross-building, falls back to normal pip when native
 - `_build_runtime_layer()` / `_build_layers()` / `_build_layers_squashfs()` pass `target_arch` through for cross-build pip
@@ -424,7 +424,7 @@ All must pass. If any fails, your change introduced a regression.
 
 ## Dependency checks — 2026-07-18
 
-- **File**: `cli/daedalus/doctor.py`
+- **File**: `daedalus-cli/src/commands/doctor.rs`
 - `daedalus doctor` subcommand: checks Python, pip, cargo, rustc, musl target, C compiler, zstd, mksquashfs, node, deno, cryptography, ruff, black, daedalus-stub, daedalus-crypto
 - Each check returns (ok, detail). Required vs optional. Returns exit 1 if any required check fails.
 - **File**: `Makefile`
@@ -436,7 +436,7 @@ All must pass. If any fails, your change introduced a regression.
 
 ## Doctor --fix (auto-install missing deps) — 2026-07-20
 
-- **File**: `cli/daedalus/doctor.py` — `--fix` flag, `--force` / `-f` flag
+- **File**: `daedalus-cli/src/commands/doctor.rs` — `--fix` flag, `--force` / `-f` flag
 - `daedalus doctor --fix`: attempts to auto-install missing required prerequisites
 - `daedalus doctor --fix --force`: skips confirmation prompt (for scripts/CI)
 - **Fixable checks**: musl target (`rustup target add`), zstd (`apt install`), mksquashfs (`apt install`), cryptography/ruff/black (`pip install`), daedalus-stub/daedalus-crypto (`make stub`)
@@ -446,11 +446,11 @@ All must pass. If any fails, your change introduced a regression.
 
 ## Incremental update (`--update` flag) — 2026-07-20
 
-- **File**: `cli/daedalus/build.py` — `--update` flag on build subcommand
-- **File**: `cli/daedalus/assembly.py` — `app_hash` and `rt_deps_hash` params on `build_meta_json()`
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — `--update` flag on build subcommand
+- **File**: `daedalus-core/src/assembly.rs` — `app_hash` and `rt_deps_hash` params on `build_meta_json()`
 - **How it works**:
-  - First build: computes `app_hash` (SHA-256 of all app files) and `rt_deps_hash` (SHA-256 of requirements.txt), stores them in the .ere metadata JSON
-  - `daedalus build --update`: reads existing .ere, compares hashes:
+  - First build: computes `app_hash` (SHA-256 of all app files) and `rt_deps_hash` (SHA-256 of requirements.txt), stores them in the .daedalus metadata JSON
+  - `daedalus build --update`: reads existing .daedalus, compares hashes:
     - Same app + same runtime deps → early return ("everything up to date")
     - Same runtime deps, app changed → reuses existing runtime squashfs/zstd blob, only rebuilds app layer
     - Runtime deps changed → full rebuild
@@ -460,14 +460,14 @@ All must pass. If any fails, your change introduced a regression.
 - **Benefits**: 2-5x faster rebuilds when only app code changes (runtime layer is 12+ MB, app layer is small)
 - **Tested**: build → modify app.py → build --update → runtime layer SHA unchanged, app layer SHA changed ✓
 
-## daedalus scan (discover .ere files) — 2026-07-20
+## daedalus scan (discover .daedalus files) — 2026-07-20
 
-- **File**: `cli/daedalus/scan.py` — `scan(paths, json_output)` function
-- **File**: `cli/daedalus/cli.py` — `scan` subparser with `paths` (nargs="*", default=["."]) and `--json`
-- **File**: `cli/daedalus/_util.py` — `cache_dir()` moved here from `clean.py` (shared by scan + clean)
-- **File**: `cli/daedalus/clean.py` — imports `cache_dir` from `_util` instead of defining locally
+- **File**: `daedalus-cli/src/commands/scan.rs` — `scan(paths, json_output)` function
+- **File**: `daedalus-cli/src/main.rs` — `scan` subparser with `paths` (nargs="*", default=["."]) and `--json`
+- **File**: `daedalus-core/src/paths.rs` — `cache_dir()` moved here from `clean.py` (shared by scan + clean)
+- **File**: `daedalus-cli/src/commands/clean.rs` — imports `cache_dir` from `_util` instead of defining locally
 - **How it works**:
-  - Recursively finds `.ere` files by extension + footer magic (`0xBEEFCAFE`)
+  - Recursively finds `.daedalus` files by extension + footer magic (`0xBEEFCAFE`)
   - Reads metadata from each file (reuses `format.read_footer()`)
   - Displays table: FILE, NAME, RUNTIME, ARCH, SIGNED, CREATED
   - Shows cache stats (entries + total size from `~/.cache/daedalus/`)
@@ -479,18 +479,18 @@ All must pass. If any fails, your change introduced a regression.
 
 ### New runtimes: Go, PHP, Perl
 
-- **File**: `cli/daedalus/runtimes/go.py` — Go runtime
+- **File**: `daedalus-core/src/detect.rs` + `daedalus-cli/src/commands/build/pipeline.rs` — Go runtime
   - Detection: `go.mod` in project root
-  - Builds static binary via `go build`, embeds into .ere
+  - Builds static binary via `go build`, embeds into .daedalus
   - Cross-compilation supported (GOOS/GOARCH)
-- **File**: `cli/daedalus/runtimes/php.py` — PHP runtime
+- **File**: `daedalus-core/src/detect.rs` + `daedalus-cli/src/commands/build/pipeline.rs` — PHP runtime
   - Detection: `composer.json` in project root
   - Framework detection: Laravel (artisan), Symfony (symfony.lock), WordPress (wp-config.php)
   - Entry point: public/index.php, index.php, bin/console, artisan
-- **File**: `cli/daedalus/runtimes/perl.py` — Perl runtime
+- **File**: `daedalus-core/src/detect.rs` — Perl runtime
   - Detection: `Makefile.PL` or `cpanfile` in project root
   - Entry point: app.pl, bin/app, main.pl, server.pl, app.psgi
-- **File**: `cli/daedalus/runtimes/__init__.py` — updated registry
+- **File**: `daedalus-core/src/detect.rs` — updated registry
   - Detection order: Python > Deno > Node > Java > Ruby > .NET > Go > PHP > Perl > Binary
 
 ### Unit tests
@@ -545,7 +545,7 @@ All must pass. If any fails, your change introduced a regression.
 - Fallback: `manage.py runserver 0.0.0.0:8000`
 - Generic: `app.py`/`main.py`/`__main__.py`/`server.py`
 
-**PHP** (`cli/daedalus/runtimes/php.py`):
+**PHP** (`daedalus-core/src/detect.rs` + `daedalus-cli/src/commands/build/pipeline.rs`):
 - Laravel: `php artisan serve --host=0.0.0.0 --port=8000` (was just `artisan` which prints help)
 - Symfony: `php bin/console server:run 0.0.0.0:8000`
 - WordPress: `php -S 0.0.0.0:8080 -t /app` (PHP built-in server)
@@ -588,8 +588,8 @@ All must pass. If any fails, your change introduced a regression.
   - `parse_dotenv(env_file)`: parses KEY=value format (export prefix, quotes, comments, empty lines, values with `=`)
   - `detect_secret_keys(env)`: warns on `PASSWORD`, `SECRET`, `TOKEN`, `API_KEY`, `PRIVATE_KEY`, `CREDENTIALS` patterns
   - `load_dotenv(app_dir, env_file, verbose)`: resolves path relative to app_dir, parses, warns on secrets
-- **File**: `cli/daedalus/cli.py` — `--env-file FILE` flag on build subcommand
-- **File**: `cli/daedalus/build.py` — `env_file` param on `build()`, resolves to `env_file_path`, threads through `build_app_layer()` + `build_layers()`
+- **File**: `daedalus-cli/src/main.rs` — `--env-file FILE` flag on build subcommand
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — `env_file` param on `build()`, resolves to `env_file_path`, threads through `build_app_layer()` + `build_layers()`
 - **File**: `cli/daedalus/layers.py` — `env_file_path` param on `build_app_layer()` and `build_layers()`:
   - Copies external `.env` file into app layer as `.env`
   - If `plan.env` is set (from daedalus.toml), writes a `.env` file with those key-value pairs
@@ -599,11 +599,11 @@ All must pass. If any fails, your change introduced a regression.
 
 ## Version metadata — 2026-07-20
 
-- **File**: `cli/daedalus/cli.py` — `--version-info`, `--author`, `--description`, `--license` flags on build subcommand
-- **File**: `cli/daedalus/build.py` — passes version/author/description/license to `build_meta_json()`
-- **File**: `cli/daedalus/assembly.py` — `build_meta_json()` accepts and includes version/author/description/license in metadata JSON
+- **File**: `daedalus-cli/src/main.rs` — `--version-info`, `--author`, `--description`, `--license` flags on build subcommand
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — passes version/author/description/license to `build_meta_json()`
+- **File**: `daedalus-core/src/assembly.rs` — `build_meta_json()` accepts and includes version/author/description/license in metadata JSON
 - **File**: `cli/daedalus/inspect.py` — displays version/author/description/license when present
-- **Flow**: `--version-info 1.0 --author "John"` → stored in `.ere` metadata JSON → displayed by `daedalus inspect`
+- **Flow**: `--version-info 1.0 --author "John"` → stored in `.daedalus` metadata JSON → displayed by `daedalus inspect`
 - **Test file**: `cli/tests/test_version_metadata.py` — 6 tests
 - **Status**: implemented, committed `961c526`
 
@@ -613,16 +613,16 @@ All must pass. If any fails, your change introduced a regression.
   - `get_persist_dir(app_name)` → `~/.local/share/daedalus/{app-name}/` (XDG compliant)
   - `ensure_persist_dir()` creates directory
   - `get_persist_env()` returns `{"DAEDALUS_PERSIST_DIR": "<path>"}`
-- **File**: `cli/daedalus/cli.py` — `--persist` flag on build subcommand
-- **File**: `cli/daedalus/build.py` — injects `DAEDALUS_PERSIST_DIR` into `plan.env` when `--persist` is set
+- **File**: `daedalus-cli/src/main.rs` — `--persist` flag on build subcommand
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — injects `DAEDALUS_PERSIST_DIR` into `plan.env` when `--persist` is set
 - **Flow**: `--persist` → sets `DAEDALUS_PERSIST_DIR` env var → app reads it for persistent data
 - **Test file**: `cli/tests/test_persistent.py` — 7 tests
 - **Status**: implemented, committed `9872d53`
 
 ## Data files (--include) — 2026-07-20
 
-- **File**: `cli/daedalus/cli.py` — `--include PATH` flag (repeatable, `action="append"`)
-- **File**: `cli/daedalus/build.py` — resolves include paths relative to app_dir, validates existence
+- **File**: `daedalus-cli/src/main.rs` — `--include PATH` flag (repeatable, `action="append"`)
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — resolves include paths relative to app_dir, validates existence
 - **File**: `cli/daedalus/layers.py` — `build_app_layer()` and `build_layers()` accept `include_paths` param
 - **Flow**: `--include data/config.json --include templates/` → copies files/dirs into app layer
 - **Test file**: `cli/tests/test_include.py` — 6 tests (file, dir, multiple, none, overwrite, symlink)
@@ -633,8 +633,8 @@ All must pass. If any fails, your change introduced a regression.
 - **File**: `cli/daedalus/treeshake.py` — NEW module
   - `detect_used_packages(app_dir)` → scans JS/TS source for require() and import statements
   - `prune_node_modules(app_dir)` → removes unused top-level packages from node_modules
-- **File**: `cli/daedalus/cli.py` — `--tree-shake` flag on build subcommand
-- **File**: `cli/daedalus/build.py` — runs `prune_node_modules()` before layer building
+- **File**: `daedalus-cli/src/main.rs` — `--tree-shake` flag on build subcommand
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — runs `prune_node_modules()` before layer building
 - **Flow**: `--tree-shake` → scan source → resolve used packages → remove unused from node_modules
 - **Test file**: `cli/tests/test_treeshake.py` — 10 tests (detect, prune, scoped packages)
 - **Status**: implemented, committed `0a1c5a9`
@@ -643,8 +643,8 @@ All must pass. If any fails, your change introduced a regression.
 
 - **File**: `cli/daedalus/minify.py` — NEW module
   - `minify_app_dir(app_dir)` → minifies JS/TS (via terser) and CSS (built-in stripper)
-- **File**: `cli/daedalus/cli.py` — `--minify` flag on build subcommand
-- **File**: `cli/daedalus/build.py` — runs `minify_app_dir()` before layer building
+- **File**: `daedalus-cli/src/main.rs` — `--minify` flag on build subcommand
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — runs `minify_app_dir()` before layer building
 - **Flow**: `--minify` → scan app dir → minify JS/TS via terser, CSS via whitespace stripping
 - **Test file**: `cli/tests/test_minify.py` — 7 tests (CSS, JS, skip node_modules, no files)
 - **Status**: implemented, committed `74d2011`
@@ -669,8 +669,8 @@ All must pass. If any fails, your change introduced a regression.
   - HTTP server: `/healthz` (liveness, always 200), `/readyz` (readiness), `/status` (JSON)
   - `start_health_server(port)` — background thread, daemon
   - `get_health_state()` — global singleton for app code
-- **File**: `cli/daedalus/cli.py` — `--health-port PORT` flag on build subcommand
-- **File**: `cli/daedalus/build.py` — injects `DAEDALUS_HEALTH_PORT` into plan.env
+- **File**: `daedalus-cli/src/main.rs` — `--health-port PORT` flag on build subcommand
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — injects `DAEDALUS_HEALTH_PORT` into plan.env
 - **Flow**: `--health-port 8081` → launcher starts HTTP server → app marks ready via `daedalus.health.mark_ready()`
 - **Test file**: `cli/tests/test_health.py` — 12 tests (state, server endpoints, disabled)
 - **Status**: implemented, committed `0da1980`
@@ -690,8 +690,8 @@ was **removed** in favor of simplicity (no metrics/export for a packaging tool).
   - `Task` dataclass — name, schedule, func, error tracking
   - `get_scheduler()` — global singleton
   - `build_cron_env()` — DAEDALUS_CRON_ENABLED + DAEDALUS_CRON_TASKS env vars
-- **File**: `cli/daedalus/cli.py` — `--cron NAME:SCHEDULE` flag (repeatable)
-- **File**: `cli/daedalus/build.py` — parses cron tasks, injects env vars
+- **File**: `daedalus-cli/src/main.rs` — `--cron NAME:SCHEDULE` flag (repeatable)
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — parses cron tasks, injects env vars
 - **Flow**: `--cron cleanup:'*/5 * * * *'` → DAEDALUS_CRON_TASKS JSON → app registers tasks
 - **Test file**: `cli/tests/test_cron.py` — 22 tests (schedule parsing, scheduler, error handling)
 - **Status**: implemented, committed `465a3c9`
@@ -726,8 +726,8 @@ Automatic dependency installation via the user's package manager.
 - `--no-install` flag skips automatic installation (for pre-installed deps)
 - Incremental update hashes all lock files (not just `requirements.txt`)
 
-**File**: `cli/daedalus/build.py` — added `no_install` param, pkgmgr integration
-**File**: `cli/daedalus/cli.py` — added `--no-install` flag to build subcommand
+**File**: `daedalus-cli/src/commands/build/mod.rs` — added `no_install` param, pkgmgr integration
+**File**: `daedalus-cli/src/main.rs` — added `--no-install` flag to build subcommand
 
 ### Unit tests
 
@@ -764,7 +764,7 @@ daedalus-core now contains all build logic previously in Python:
 | `detect.rs` | `cli/daedalus/analyzer/runtime.py` | 5 (11 runtimes: Python, Node, Deno, Java, Ruby, .NET, Go, PHP, Perl, Binary, Hugo) |
 | `pkgmgr.rs` | `cli/daedalus/pkgmgr.py` | 5 (8 managers: uv, poetry, pipenv, pip, pnpm, yarn, bun, npm) |
 | `tar.rs` | `cli/daedalus/layers.py` (tar) | 4 (create, deterministic, roundtrip) |
-| `assembly.rs` | `cli/daedalus/assembly.py` | 5 (assemble, meta JSON, arch resolve, versioned footer) |
+| `assembly.rs` | `daedalus-core/src/assembly.rs` | 5 (assemble, meta JSON, arch resolve, versioned footer) |
 | `sign.rs` / `verify.rs` | `cli/daedalus/sign.py`, `verify.py` | integrated in build pipeline |
 | `python.rs` | PyO3 bindings | exposed: format, compress, detect, pkgmgr |
 | `crypto.rs` | `stub/src/bin/daedalus-crypto.rs` | keygen, sign, verify |
@@ -777,10 +777,10 @@ daedalus-core now contains all build logic previously in Python:
 
 | Command | Description | Status |
 |---|---|---|
-| `daedalus build` | Package app into .ere | ✅ Full Rust |
-| `daedalus inspect` | Read .ere footer metadata | ✅ |
-| `daedalus scan` | Scan .ere for crypto/integrity info | ✅ |
-| `daedalus sign` | Ed25519 sign a .ere | ✅ |
+| `daedalus build` | Package app into .daedalus | ✅ Full Rust |
+| `daedalus inspect` | Read .daedalus footer metadata | ✅ |
+| `daedalus scan` | Scan .daedalus for crypto/integrity info | ✅ |
+| `daedalus sign` | Ed25519 sign a .daedalus | ✅ |
 | `daedalus verify` | Verify signature | ✅ |
 | `daedalus keygen` | Generate Ed25519 keypair | ✅ |
 | `daedalus trust` | Add key to trusted dir | ✅ |
@@ -831,7 +831,7 @@ Stub now uses `daedalus-core` as a shared library dependency instead of its loca
 **What this enables**:
 - Phase 2: Python CLI can call daedalus-core via PyO3 or subprocess
 - Phase 3: Full Rust CLI — both stub and CLI share the same format parser
-- Single source of truth for .ere format (no more duplicate format.rs)
+- Single source of truth for .daedalus format (no more duplicate format.rs)
 
 ## Install script + upgrade command — 2026-07-20
 
@@ -847,7 +847,7 @@ Stub now uses `daedalus-core` as a shared library dependency instead of its loca
   - Compares against current `_DAEDALUS_VERSION`
   - Downloads platform-specific tar.gz, verifies SHA-256
   - Replaces daedalus binary in-place (with sudo if needed)
-- **File**: `cli/daedalus/cli.py` — `upgrade` subparser + dispatch
+- **File**: `daedalus-cli/src/main.rs` — `upgrade` subparser + dispatch
 - **File**: `.github/workflows/release.yml` — fixes:
   - Removed stale `RUST_VERSION: "1.80"` env var (never used, rustc is 1.97.1)
   - Release notes now point to `scripts/install.sh` for easy install
@@ -860,7 +860,7 @@ Stub now uses `daedalus-core` as a shared library dependency instead of its loca
 - **File**: `stub/src/format.rs` — format v5, `PAYLOAD_FORMAT_SQUASHFS = 2`
 - **File**: `stub/src/main.rs` — squashfs extraction via `squashfs_extract::extract()`, uses backhand crate
 - **File**: `stub/src/squashfs_extract.rs` — backhand-based squashfs reader (gzip/lz4/zstd support)
-- **File**: `cli/daedalus/build.py` — `--squashfs` flag, `mksquashfs` build, tar→squashfs conversion
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — `--squashfs` flag, `mksquashfs` build, tar→squashfs conversion
 - **File**: `docs/src/reference/format.md` — v5 format documented
 - Metadata `"payload_format": "squashfs"` tells launcher to use squashfs extraction instead of zstd(tar)
 - **Note**: SquashFS is a better-compressed layer format (vs zstd+tar). Extraction to disk still happens at startup. Direct mmap without extraction (the real cold-start perf win) is a Phase 3 goal — see "Next steps".
@@ -870,7 +870,7 @@ Stub now uses `daedalus-core` as a shared library dependency instead of its loca
 - `stub/src/main.rs:70-75` — calls `verify_ed25519()` when `format_version >= 3 && flags & FLAG_SIGNED`.
 - `stub/src/main.rs:119-182` — full verification logic: reads sig block at `sig_offset`,
   computes SHA-256(payload ‖ meta_bytes), iterates trusted keys from `$XDG_DATA_HOME/daedalus/trusted-keys/`
-  (legacy fallback: `~/.ere/trusted-keys/`), verifies via `ed25519_dalek::Verifier`.
+  (legacy fallback: `~/.daedalus/trusted-keys/`), verifies via `ed25519_dalek::Verifier`.
 - `stub/Cargo.toml:18` — `ed25519-dalek` with `default-features = false, features = ["alloc"]`.
 
 ## Keygen / Sign / Verify CLI: IMPLEMENTED
@@ -887,14 +887,14 @@ All implemented in the session of 2026-07-09:
     Exit 0 = valid, 1 = invalid, 2 = error.
 - `cli/daedalus/crypto.py` — `find_crypto()` (mirrors `find_stub()`) + thin subprocess wrappers
   for keygen/sign/verify.
-- `cli/daedalus/keygen.py` — `daedalus keygen` CLI (default dir `$XDG_DATA_HOME/daedalus/keys`, legacy fallback `~/.ere/keys`).
-- `cli/daedalus/sign.py` — `daedalus sign <file.ere>`: reads file with format.py, computes
+- `cli/daedalus/keygen.py` — `daedalus keygen` CLI (default dir `$XDG_DATA_HOME/daedalus/keys`, legacy fallback `~/.daedalus/keys`).
+- `cli/daedalus/sign.py` — `daedalus sign <file.daedalus>`: reads file with format.py, computes
   SHA-256(payload‖meta), calls crypto.py sign, writes sig_block `[sig_size:u32le][64-byte sig]`
   between metadata and footer, rewrites footer as v3 (format_version=3, flags|=FLAG_SIGNED,
   sig_offset set, footer grown to 92 bytes). In-place modification.
-- `cli/daedalus/verify.py` — `daedalus verify <file.ere>`: reads v3 footer, iterates trusted keys
-  from `$XDG_DATA_HOME/daedalus/trusted-keys/` (legacy fallback `~/.ere/trusted-keys/`, or `--trusted-dir`), calls crypto.py verify for each.
-- `cli/daedalus/cli.py` — wired up keygen/sign/verify subcommands.
+- `cli/daedalus/verify.py` — `daedalus verify <file.daedalus>`: reads v3 footer, iterates trusted keys
+  from `$XDG_DATA_HOME/daedalus/trusted-keys/` (legacy fallback `~/.daedalus/trusted-keys/`, or `--trusted-dir`), calls crypto.py verify for each.
+- `daedalus-cli/src/main.rs` — wired up keygen/sign/verify subcommands.
 - `Makefile` — `make stub` builds both `daedalus-stub` and `daedalus-crypto`.
 - `.cargo/config.toml` — target-dir is `/tmp/daedalus-stub-target` (vfat workaround).
 - `find_stub()` and `find_crypto()` now also search `/tmp/daedalus-stub-target/`.
@@ -902,12 +902,12 @@ All implemented in the session of 2026-07-09:
 ## End-to-end test results
 
 ```
-$ cargo build -p daedalus-cli && ./target/release/daedalus build examples/hello-web -o /tmp/hello-web.ere       → OK (7.1MB)
+$ cargo build -p daedalus-cli && ./target/release/daedalus build examples/hello-web -o /tmp/hello-web.daedalus       → OK (7.1MB)
 $ ./target/release/daedalus keygen --key-dir /tmp/daedalus-keys                        → OK, fingerprint printed
-$ ./target/release/daedalus sign /tmp/hello-web.ere --key <keyfile>               → OK, sig_offset=7117820
-$ ./target/release/daedalus verify /tmp/hello-web.ere --trusted-dir /tmp/daedalus-trusted → OK, exit 0
-$ dd if=/dev/urandom of=/tmp/hello-web.ere bs=1 seek=688788 count=1    → corrupt payload
-$ ./target/release/daedalus verify /tmp/hello-web.ere --trusted-dir /tmp/daedalus-trusted → FAIL, exit 1 (no crash)
+$ ./target/release/daedalus sign /tmp/hello-web.daedalus --key <keyfile>               → OK, sig_offset=7117820
+$ ./target/release/daedalus verify /tmp/hello-web.daedalus --trusted-dir /tmp/daedalus-trusted → OK, exit 0
+$ dd if=/dev/urandom of=/tmp/hello-web.daedalus bs=1 seek=688788 count=1    → corrupt payload
+$ ./target/release/daedalus verify /tmp/hello-web.daedalus --trusted-dir /tmp/daedalus-trusted → FAIL, exit 1 (no crash)
 ```
 
 ## Design audit fixes (2026-07-17)
@@ -919,7 +919,7 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 **What changed:** Removed incorrect `hashlib.sha256(sig[:32])` fingerprint computation — it was hashing 32 arbitrary bytes from the Ed25519 signature, not the actual public key. Replaced with actionable guidance: "run 'daedalus verify'". Removed unused `hashlib` import. Now uses `fmt.SIG_BLOCK_SIZE` constant instead of hardcoded `68`.
 
 ### Fix #2: format.py sig-block constants (eliminated struct duplication)
-**Files:** `cli/daedalus/format.py`, `cli/daedalus/build.py`, `cli/daedalus/sign.py`, `cli/daedalus/verify.py`, `cli/daedalus/inspect.py`
+**Files:** `cli/daedalus/format.py`, `daedalus-cli/src/commands/build/mod.rs`, `cli/daedalus/sign.py`, `cli/daedalus/verify.py`, `cli/daedalus/inspect.py`
 **What changed:** Added `SIG_BLOCK_SIZE = 68`, `SIG_BLOCK_SIZE_FIELD = 64`, `pack_sig_block()`, `unpack_sig_block()` to `format.py`. Updated `sign.py` and `verify.py` to use these helpers (removed `import struct` from both). Updated `inspect.py` to use `fmt.SIG_BLOCK_SIZE`. Removed unused `import struct` from `build.py`. All sig-block logic is now in one place (format.py) matching Rust's `format.rs`.
 
 ### Fix #3: cli.py RuntimeError catch (was missing)
@@ -939,11 +939,11 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 **What changed:** Renamed `Layer.usize` to `Layer.uncompressed_size` with `#[serde(rename = "usize")]` for JSON compat. Removed `#[allow(dead_code)]` — the field is now descriptively named and actively used.
 
 ### Fix #8: _sign_and_write helper (DRY in build.py)
-**File:** `cli/daedalus/build.py`
+**File:** `daedalus-cli/src/commands/build/mod.rs`
 **What changed:** Extracted `_sign_and_write()` helper function for the inline-sign-then-write-footer pattern that was duplicated in two places. Removed unused `pub_path` variable.
 
 ### Fix #9: _ManifestPlan dead field (removed extra_dirs_host)
-**File:** `cli/daedalus/build.py`
+**File:** `daedalus-cli/src/commands/build/mod.rs`
 **What changed:** Removed the unused `extra_dirs_host` field from `_ManifestPlan` dataclass.
 
 ### Fix #10: sys.exit → ValueError (proper error flow through cli.py)
@@ -951,7 +951,7 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 **What changed:** Converted all `sys.exit(1)` / `sys.exit(0)` to `raise ValueError(...)` (or `return` for the "already trusted" case in trust.py). Errors now flow through `cli.py`'s catch list and get formatted as `[daedalus] error: ...` instead of ugly tracebacks or silent exits. Added `try/except FileNotFoundError` around `os.listdir(keys_dir)` in sign.py.
 
 ### Fix #11: find_binary extraction (shared utility)
-**Files:** `cli/daedalus/_util.py` (new), `cli/daedalus/build.py`, `cli/daedalus/crypto.py`
+**Files:** `daedalus-core/src/paths.rs` (new), `daedalus-cli/src/commands/build/mod.rs`, `cli/daedalus/crypto.py`
 **What changed:** Created `_util.py` with shared `find_binary()` function (searches PATH + Cargo target dir). Updated `build.py` and `crypto.py` to import from `_util.py` instead of duplicating binary-finding logic. No circular imports — `_util` is a leaf module.
 
 ### Fix #12: French → English comments
@@ -959,7 +959,7 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 **What changed:** Translated three French comments to English: "argv relatif au rootfs" → "argv relative to rootfs", "On embarque les site-packages..." → "Embed site-packages...", "remplace le process" → "replaces the process".
 
 ### Fix #13: ldd.py inlined to elf.py
-**Files:** `cli/daedalus/analyzer/ldd.py` (reduced to 2-line re-export), `cli/daedalus/build.py`
+**Files:** `cli/daedalus/analyzer/ldd.py` (reduced to 2-line re-export), `daedalus-cli/src/commands/build/mod.rs`
 **What changed:** `ldd.py` was just a one-function wrapper around `elf.shared_libs`. Reduced it to a 2-line backwards-compat re-export from `elf.py`. Updated `build.py` to import from `elf` directly, 3 call sites changed from `ldd.shared_libs` to `elf.shared_libs`.
 
 ### Fix #14: __pycache__ cleanup
@@ -969,7 +969,7 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - All Python modules import cleanly with no circular dependencies
 - `format.py` pack/unpack sig-block round-trip test passes
 - `cargo build --release` + `cargo clippy -- -D warnings` passent clean (0 warnings, 0 errors)
-- No test suite exists; `make example` should build a working .ere to confirm end-to-end
+- No test suite exists; `make example` should build a working .daedalus to confirm end-to-end
 
 ## Clig.dev CLI audit (2026-07-20)
 
@@ -980,7 +980,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 | 1 | Progress on stdout | All `print()` → `file=sys.stderr` (build, clean, lockfile, fetch, cross) | `348e0b4` |
 | 2 | `clean --all` no confirmation | Interactive prompt + `-f`/`--force` flag, non-interactive requires `--force` | `fe8aaba` |
 | 3 | Silent network fetches | "detecting dependencies..." + "downloading N dependencies..." messages | `9ba1473` |
-| 4 | Non-XDG key paths | `$XDG_DATA_HOME/daedalus/` with legacy `~/.ere/` fallback + deprecation warning | `8a2bafe` |
+| 4 | Non-XDG key paths | `$XDG_DATA_HOME/daedalus/` with legacy `~/.daedalus/` fallback + deprecation warning | `8a2bafe` |
 | 5 | No `--version` | `daedalus --version` → `daedalus 0.1.0` | `f519099` |
 | 6 | No machine-readable output | `--json` flag for `inspect` and `doctor` | `9b567f3` |
 | 7 | Subcommand abbreviation | Already prevented by argparse (Python 3.12) | N/A |
@@ -1249,7 +1249,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 ## Payload encryption (AES-256-GCM)
 
 - **File**: `cli/daedalus/encrypt.py` — `encrypt_payload(plaintext, signing_seed) -> (ciphertext, metadata)`
-- **File**: `cli/daedalus/build.py` — `--encrypt` flag, requires `--key` for signing seed (used as AES key via HKDF).
+- **File**: `daedalus-cli/src/commands/build/mod.rs` — `--encrypt` flag, requires `--key` for signing seed (used as AES key via HKDF).
 - **File**: `cli/pyproject.toml` — `pip install -e "./cli[encrypt]"` pulls in `cryptography`.
 - AES-256-GCM with HKDF key derivation from signing seed. Salt: `daedalus-encrypt-v1`.
 - Encrypted payloads produce format v4 footers (`ENCRYPTED_AES_256_GCM` marker). Launcher decrypts after signature verification.
@@ -1277,13 +1277,13 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
   2. Fresh lock → returns deps, detection skipped.
   3. No lock or stale → runs Dockerfile + AST detection, fetches, writes lock.
   4. `--redetect` flag forces re-detection regardless of lock freshness.
-- **Build integration** (`cli/daedalus/build.py`): lockfile check inserted after app_dir resolution, before the daedalus.toml manifest check. Detection deps are recorded but not yet wired into rootfs building (that's a future layer).
-- **CLI integration** (`cli/daedalus/cli.py`): `--redetect` flag added to build subcommand.
+- **Build integration** (`daedalus-cli/src/commands/build/mod.rs`): lockfile check inserted after app_dir resolution, before the daedalus.toml manifest check. Detection deps are recorded but not yet wired into rootfs building (that's a future layer).
+- **CLI integration** (`daedalus-cli/src/main.rs`): `--redetect` flag added to build subcommand.
 - **Verified paths**: fresh build (no lock), fresh lock (skip), stale lock (re-detect), --redetect (force), no-Dockerfile app (lock always fresh).
 
 ## Docker-compose multi-service warning (2026-07-17)
 
-- **File**: `cli/daedalus/cli.py` — `_parse_compose_services()` + `_warn_multi_service_compose()`.
+- **File**: `daedalus-cli/src/main.rs` — `_parse_compose_services()` + `_warn_multi_service_compose()`.
 - **Parser**: regex-based, no YAML dependency (stdlib only). Finds `services:` at indent 0, extracts service names at indent 2, checks for `build:` or `image:` at indent 4.
 - **Warning** printed to stderr when >1 service detected: names all services, flags which use `build:` (packageable) vs `image:` (dependencies), states daedalus packages one process.
 - **Informational only** — does not block the build, does not affect return code. User sees warning then normal build output.
@@ -1362,7 +1362,7 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 
 1. **Arguments CLI** (highest priority)
    ```bash
-   ./app.ere --db-url "postgresql://user:pass@neon.tech/db"
+   ./app.daedalus --db-url "postgresql://user:pass@neon.tech/db"
    ```
 
 2. **Local config file** (fallback)
@@ -1378,12 +1378,12 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 3. **Environment variables** (standard Unix)
    ```bash
    export DATABASE_URL="postgresql://..."
-   ./app.ere
+   ./app.daedalus
    ```
 
 4. **Interactive prompt** (when TTY available)
    ```bash
-   ./app.ere
+   ./app.daedalus
    Enter DATABASE_URL: ********
    ```
 
@@ -1410,7 +1410,7 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 ### File Locations
 
 ```
-~/.ere/config.toml          # Global config (Unix)
+~/.daedalus/config.toml          # Global config (Unix)
 %APPDATA%\daedalus\config.toml   # Global config (Windows)
 ./daedalus.toml                   # Local config (same dir as binary)
 ./config.toml                 # Alternative local config
@@ -1420,19 +1420,19 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 
 ```bash
 # Build openEMR (no secrets embedded)
-daedalus build openemr/ -o openemr.ere
+daedalus build openemr/ -o openemr.daedalus
 
 # Runtime configuration options:
 # Option 1: Environment variables
 export DATABASE_URL="mysql://openemr:pass@mysql.example.com/openemr"
-./openemr.ere
+./openemr.daedalus
 
 # Option 2: Local config file
 echo '[database]\nurl = "mysql://openemr:pass@mysql.example.com/openemr"' > daedalus.toml
-./openemr.ere
+./openemr.daedalus
 
 # Option 3: CLI arguments
-./openemr.ere --db-url "mysql://openemr:pass@mysql.example.com/openemr"
+./openemr.daedalus --db-url "mysql://openemr:pass@mysql.example.com/openemr"
 ```
 
 ### Security Best Practices
@@ -1478,7 +1478,7 @@ DAEDALUS_SECRET_DB_PASSWORD: my-db-password
 
 **openEMR (92MB):**
 ```
-Built /tmp/openemr-final.ere (91.2MB)
+Built /tmp/openemr-final.daedalus (91.2MB)
 Config loaded correctly from daedalus.toml
 ```
 
@@ -1486,10 +1486,10 @@ Config loaded correctly from daedalus.toml
 
 ```bash
 # Build the binary
-daedalus build myapp/ -o myapp.ere --embed-interpreter php
+daedalus build myapp/ -o myapp.daedalus --embed-interpreter php
 
 # Create config file
-cat > myapp.ere.toml << EOF
+cat > myapp.daedalus.toml << EOF
 [database]
 url = "mysql://user:pass@host/db"
 
@@ -1498,5 +1498,5 @@ api_key = "secret-value"
 EOF
 
 # Run (secrets loaded from config)
-./myapp.ere
+./myapp.daedalus
 ```

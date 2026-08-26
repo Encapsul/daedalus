@@ -20,11 +20,11 @@
 # Spec
 
 - [Delta Manifest Format](./spec/delta-manifest-format.md)
-- [`.ere` Format v2 — SISR extension](./spec/daedalus-format-v2.md)
+- [`.daedalus` Format v2 — SISR extension](./spec/daedalus-format-v2.md)
 
 # Technical Reference
 
-- [`.ere` Format](./reference/format.md)
+- [`.daedalus` Format](./reference/format.md)
 - [The Launcher (stub)](./reference/launcher.md)
 - [The Builder](./reference/builder.md)
 - [Cache](./reference/cache.md)
@@ -45,7 +45,7 @@
 - [Native Binary](./guides/binary.md)
 - [Dependency Detection](./guides/dependencies.md)
 - [Incremental Updates (SISR)](./guides/incremental-updates.md)
-- [Updating a deployed `.ere` (SISR)](./guides/user-updates.md)
+- [Updating a deployed `.daedalus` (SISR)](./guides/user-updates.md)
 
 # Migration
 

@@ -8,6 +8,10 @@ pub struct RunArgs {
     /// Path to the .daedalus file to execute
     pub file: PathBuf,
 
+    /// Arguments forwarded to the embedded app
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub app_args: Vec<String>,
+
     /// Verbose output
     #[arg(short, long)]
     pub verbose: bool,
@@ -37,7 +41,7 @@ pub fn run(args: RunArgs) -> Result<()> {
 
     // Execute the binary directly — the stub handles extraction at runtime
     let err = Command::new(&file)
-        .args(std::env::args_os().skip(3)) // skip: daedalus run <file>
+        .args(&args.app_args)
         .status()
         .with_context(|| format!("failed to execute {}", file.display()))?;
 

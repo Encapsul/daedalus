@@ -3,7 +3,7 @@
 > **Status: conceptual spec.** No format has been frozen yet. This document
 > defines the structure that a SISR update is described by, and how it
 > applies to SquashFS images. It is the contract for a future format
-> evolution, not a change to the current `.ere` format.
+> evolution, not a change to the current `.daedalus` format.
 
 An incremental update is driven by a **manifest** — a small, signed document
 that answers three questions:
@@ -27,7 +27,7 @@ ManifestHeader {
 ```
 
 `version` is the manifest schema version. The launcher rejects manifests with
-a schema it does not understand (same rule as `.ere` format versions).
+a schema it does not understand (same rule as `.daedalus` format versions).
 
 ### 1.2 Signed body — the trust boundary
 
@@ -79,7 +79,7 @@ used.
 
 ## 2. SquashFS and content-defined chunking
 
-The payload of a `.ere` is a **SquashFS image** (or a zstd-tar layer). The
+The payload of a `.daedalus` is a **SquashFS image** (or a zstd-tar layer). The
 engine updates it by reconstructing the image block by block. Two facts shape
 the design:
 
@@ -194,26 +194,26 @@ construction:
 - `applied.index` is what makes replay impossible across runs: it records the
   highest monotonic index and is itself integrity-protected.
 
-## 5. Relationship to the `.ere` format
+## 5. Relationship to the `.daedalus` format
 
-This manifest is an **update artifact**, not a new `.ere` layout:
+This manifest is an **update artifact**, not a new `.daedalus` layout:
 
-| | `.ere` format (today) | SISR manifest (future) |
+| | `.daedalus` format (today) | SISR manifest (future) |
 |---|---|---|
 | Role | describes a binary | describes how to build the *next* binary |
 | Location | embedded at end of the file | external (fetched from a remote) |
 | Signed | Ed25519 (optional today) | Ed25519 (always) |
 | Versioning | format version in footer | schema version in header + monotonic index |
 
-The manifest's `target_sha256` is exactly the hash the rebuilt `.ere`'s
-footer must contain. SISR reconstructs a **valid, standard `.ere`** — the
+The manifest's `target_sha256` is exactly the hash the rebuilt `.daedalus`'s
+footer must contain. SISR reconstructs a **valid, standard `.daedalus`** — the
 result is indistinguishable from one produced by `daedalus build`.
 
-> This page describes the *external update artifact* (JSON). The `.ere`
+> This page describes the *external update artifact* (JSON). The `.daedalus`
 > file additionally embeds a compact **binary** chunk index — the same block
 > list serialized as `DeltaManifest` — so the runtime can verify the embedded
 > content before it is ever assembled. See
-> [`.ere` Format v2 — SISR extension](./daedalus-format-v2.md).
+> [`.daedalus` Format v2 — SISR extension](./daedalus-format-v2.md).
 
 ## References
 

@@ -10,7 +10,7 @@ daedalus detects Go applications by looking for `go.mod` in the project root.
 
 1. Detects `go.mod` in the project directory
 2. Builds the Go binary using `go build`
-3. Packages the static binary into the .ere format
+3. Packages the static binary into the .daedalus format
 4. No interpreter needed at runtime — pure native execution
 
 ## Requirements
@@ -42,11 +42,11 @@ func main() {
 }
 EOF
 
-# Build the .ere
-daedalus build . -o my-go-app.ere
+# Build the .daedalus
+daedalus build . -o my-go-app.daedalus
 
 # Run it
-./my-go-app.ere
+./my-go-app.daedalus
 ```
 
 ## Cross-Compilation
@@ -55,14 +55,14 @@ Go has excellent cross-compilation support. You can build for different architec
 
 ```bash
 # Build for Linux aarch64 from x86_64
-GOOS=linux GOARCH=arm64 daedalus build . -o my-go-app-arm64.ere
+GOOS=linux GOARCH=arm64 daedalus build . -o my-go-app-arm64.daedalus
 
 # Build for macOS from Linux
-GOOS=darwin GOARCH=arm64 daedalus build . -o my-go-app-macos.ere
+GOOS=darwin GOARCH=arm64 daedalus build . -o my-go-app-macos.daedalus
 ```
 
 ## Notes
 
 - Go produces static binaries, so no runtime dependencies are needed
 - CGO_ENABLED=0 is recommended for fully static builds
-- The resulting .ere will be larger than the Go binary alone due to the launcher
+- The resulting .daedalus will be larger than the Go binary alone due to the launcher

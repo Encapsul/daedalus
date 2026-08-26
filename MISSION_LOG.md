@@ -24,15 +24,15 @@ modification ni avertissement superflu — c'était déjà vrai côté runtime
 
 ### Code — `daedalus-core/src/legacy.rs` (nouveau)
 
-- `upgrade_binary(input, output, config)` : promeut un `.ere` classique au
+- `upgrade_binary(input, output, config)` : promeut un `.daedalus` classique au
   format v2 en insérant `[manifest][SisrFooterExt]` entre metadata et footer.
 - Segments stub/payload/metadata copiés **byte-for-byte** ; le payload est
   chunké tel que stocké (jamais décompressé/recompressé) ⇒ somme
   `SHA-256(payload ‖ meta)` et checksums internes (SquashFS) préservées (§10).
 - `payload_offset`/`meta_offset`/`footer_size` inchangés ⇒ un runtime v1
   lit toujours le fichier promu.
-- Refuse : fichier déjà SISR, fichier signé (format ≥ 3), non-`.ere`.
-- Écrit `<output>.ere.manifest` (comme `assemble_daedalus_with_sisr`).
+- Refuse : fichier déjà SISR, fichier signé (format ≥ 3), non-`.daedalus`.
+- Écrit `<output>.daedalus.manifest` (comme `assemble_daedalus_with_sisr`).
 - 4 tests unitaires : segments préservés + `FLAG_SISR` + round-trip `read_sisr`
   + hash inchangé ; refus SISR/signé/non-daedalus.
 
@@ -130,7 +130,7 @@ fmt OK · clippy 3 crates OK · **270 tests** (210 core + 24 cli + 13 cli_tests 
 ### Objectif
 Sécuriser l'auto-update contre les **mauvaises versions** : un update SISR
 atomique peut être parfaitement appliqué puis **crasher au démarrage**. Mission
-8 ajoute (1) un snapshot `.ere.bak` du binaire courant avant le swap, (2) un
+8 ajoute (1) un snapshot `.daedalus.bak` du binaire courant avant le swap, (2) un
 **Health Check Gate** au premier run de la nouvelle version (supervision
 fork+waitpid pendant une fenêtre de démarrage), (3) un **rollback automatique
 atomique** si la nouvelle version échoue, (4) une **quarantaine de version**
@@ -138,7 +138,7 @@ atomique** si la nouvelle version échoue, (4) une **quarantaine de version**
 Le « Cache Distant » du titre n'était pas détaillé dans le prompt — non traité.
 
 ### Décisions de conception (ENREGISTRÉES — modifiables ensuite)
-1. **Snapshot co-localisé** : `.ere.bak` à côté du binaire (même filesystem) ⇒
+1. **Snapshot co-localisé** : `.daedalus.bak` à côté du binaire (même filesystem) ⇒
    restauration = un seul `rename(2)` atomique. Il n'existe que pendant la
    validation (créé avant le swap, supprimé à la confirmation ou au rollback).
    Permissions préservées (bit exec).
@@ -198,7 +198,7 @@ Le « Cache Distant » du titre n'était pas détaillé dans le prompt — non t
 - `stub/Cargo.toml` : `[dev-dependencies]` daedalus-core, tempfile, tar, zstd,
   hex, sha2, ed25519-dalek (pour l'E2E du health gate).
 - `stub/tests/health_rollback.rs` (nouveau) — E2E sur le **vrai binaire stub**
-  (`CARGO_BIN_EXE_daedalus-stub` embarqué dans un `.ere` construit par
+  (`CARGO_BIN_EXE_daedalus-stub` embarqué dans un `.daedalus` construit par
   `assemble_daedalus_with_sisr`, clé déterministe, cache isolé via `XDG_CACHE_HOME`,
   trusted-keys via `DAEDALUS_TRUSTED_DIR`) :
   1. `crashing_update_is_rolled_back_and_old_version_runs` : v2 `exit 1` ⇒
@@ -415,14 +415,14 @@ release OK.
   - `SisrBuildConfig { enabled, chunk_target_size, signing_key }`
   - `build_artifacts(payload, config)` : FastCDC → `DeltaManifest` → racine
     Merkle → signature Ed25519 sur `merkle_root ‖ manifest_bytes`
-  - `RemoteManifest` : format fichier `.ere.manifest` (magic `XBMR`, 104 o
+  - `RemoteManifest` : format fichier `.daedalus.manifest` (magic `XBMR`, 104 o
     d'entête : magic+version+réservé+merkle+signature, puis `DeltaManifest`),
     `verify_signature()` / `verify_merkle()`
   - Clé `SigningKey` ed25519-dalek → zeroize au drop (feature std)
 - `daedalus-core/src/assembly.rs` :
   - `assemble_daedalus_with_sisr(...)` : layout
     `[stub][payload][metadata][DeltaManifest][SisrFooterExt][footer]`,
-    `FLAG_SISR`, écriture du manifeste distant `<name>.ere.manifest`
+    `FLAG_SISR`, écriture du manifeste distant `<name>.daedalus.manifest`
   - désactivé ⇒ octets strictement identiques à `assemble_daedalus` (testé)
   - `assemble_daedalus` délègue à la variante SISR (`disabled()`)
 - `daedalus-core/Cargo.toml` : + `ed25519-dalek = "2"` (cache cargo, réseau limité)

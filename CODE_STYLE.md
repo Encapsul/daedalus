@@ -1,4 +1,4 @@
-# CODE_STYLE.md — x.bin coding conventions
+# CODE_STYLE.md — daedalus coding conventions
 
 ## References
 

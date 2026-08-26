@@ -32,11 +32,46 @@ struct Check {
     optional: bool,
 }
 
+fn use_color() -> bool {
+    if std::env::var("NO_COLOR").is_ok() {
+        return false;
+    }
+    if std::env::var("TERM").ok().as_deref() == Some("dumb") {
+        return false;
+    }
+    use std::io::IsTerminal;
+    std::io::stdout().is_terminal()
+}
+
+fn color_green() -> &'static str {
+    if use_color() {
+        "\x1b[32m"
+    } else {
+        ""
+    }
+}
+
+fn color_red() -> &'static str {
+    if use_color() {
+        "\x1b[31m"
+    } else {
+        ""
+    }
+}
+
+fn color_reset() -> &'static str {
+    if use_color() {
+        "\x1b[0m"
+    } else {
+        ""
+    }
+}
+
 pub fn run(args: DoctorArgs) -> Result<()> {
     let mut checks = vec![
         check_command("python3", &["--version"], false),
         check_command("pip", &["--version"], false),
-        check_command("cargo", &["--version"], false),
+        check_command("cargo", &["version"], false),
         check_command("rustc", &["--version"], false),
         check_musl_target(false),
         check_command("cc", &["--version"], false),
@@ -97,12 +132,14 @@ pub fn run(args: DoctorArgs) -> Result<()> {
         let mut all_ok = true;
         for check in &checks {
             let marker = if check.ok { "✓" } else { "✗" };
-            let color = if check.ok { "\x1b[32m" } else { "\x1b[31m" };
+            let color = if check.ok { color_green() } else { color_red() };
             let optional_tag = if check.optional { " (optional)" } else { "" };
             if !args.quiet || !check.ok {
                 eprintln!(
-                    "  {color}{marker}\x1b[0m {:<20} {}{optional_tag}",
-                    check.name, check.detail
+                    "  {color}{marker}{} {:<20} {}{optional_tag}",
+                    color_reset(),
+                    check.name,
+                    check.detail
                 );
             }
             if !check.ok && !check.optional {

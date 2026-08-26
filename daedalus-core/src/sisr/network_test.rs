@@ -160,7 +160,6 @@ fn build_current(dir: &Path, payload: &[u8], chunk: usize) -> PathBuf {
             stub_bytes: b"STUB_DATA_HERE",
             payload,
             meta_bytes: b"{\"name\":\"network\"}",
-            encrypt: false,
             squashfs: false,
             target_arch: None,
             sisr: Some(artifacts),

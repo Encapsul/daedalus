@@ -10,12 +10,12 @@ ways to migrate them.
 
 ## Backward compatibility guarantee
 
-**A v1 `.ere` is read, extracted, and executed by the v2 runtime exactly as
+**A v1 `.daedalus` is read, extracted, and executed by the v2 runtime exactly as
 before — no modification, no warning.** SISR is additive: the launcher gates
 on a single flag in the footer, never on the file predating it.
 
 ```
-                        [ .ere file to load ]
+                        [ .daedalus file to load ]
                                    │
                        Contains SISR header?
                             /            \
@@ -39,7 +39,7 @@ Deployment scripts written against v1 remain 100 % valid against v2.
 
 ## What an upgrade actually changes
 
-`daedalus upgrade-binary <input_v1.ere> <output_v2.ere>` performs an **in-place
+`daedalus upgrade-binary <input_v1.daedalus> <output_v2.daedalus>` performs an **in-place
 format promotion**:
 
 ```
@@ -54,7 +54,7 @@ after:  [stub][payload][metadata][manifest][SisrFooterExt][footer]
 - `payload_offset`, `meta_offset`, `payload_csize`, `meta_size` are unchanged,
   so a legacy runtime that reads backwards from EOF keeps decoding the
   upgraded file.
-- A signed delta manifest (`<output>.ere.manifest`) is written next to the
+- A signed delta manifest (`<output>.daedalus.manifest`) is written next to the
   binary, matching a fresh SISR build.
 
 `upgrade-binary` refuses to touch a file that already has SISR, and refuses
@@ -68,7 +68,7 @@ must be inserted — rebuild those with `daedalus build --enable-sisr`).
 ```bash
 daedalus build ./app --enable-sisr \
   --update-url https://updates.example.com/app \
-  --key ~/.ere/keys/update.key
+  --key ~/.daedalus/keys/update.key
 ```
 
 Best when you can regenerate the app image: you get the current launcher, a
@@ -77,8 +77,8 @@ signed manifest, and an embedded update URL in one step.
 ### Option B — promote an existing v1 binary
 
 ```bash
-daedalus upgrade-binary ./app-old.ere ./app-new.ere \
-  --key ~/.ere/keys/update.key
+daedalus upgrade-binary ./app-old.daedalus ./app-new.daedalus \
+  --key ~/.daedalus/keys/update.key
 ```
 
 Use this to migrate already-deployed binaries without rebuilding the payload.
@@ -87,7 +87,7 @@ launcher as well, rebuild (Option A). The promoted binary can be updated
 immediately:
 
 ```bash
-./app-new.ere --daedalus-update https://updates.example.com/app
+./app-new.daedalus --daedalus-update https://updates.example.com/app
 ```
 
 ## Deprecation governance
@@ -95,15 +95,15 @@ immediately:
 - **v1 (SISR-less)** remains a supported, first-class input for the runtime
   and for `upgrade-binary`. No deprecation warnings are emitted.
 - **v2 (SISR)** is the recommended build output going forward.
-- The `.ere` footer format (magic constants, field offsets) is frozen; new
+- The `.daedalus` footer format (magic constants, field offsets) is frozen; new
   capabilities ship as flags and format-version bumps that are always
   backwards-readable, never repurposed fields.
 
 ## Verifying a migration
 
 ```bash
-daedalus inspect ./app-new.ere          # flags show SISR
-daedalus upgrade-binary ./app-new.ere ./again.ere
+daedalus inspect ./app-new.daedalus          # flags show SISR
+daedalus upgrade-binary ./app-new.daedalus ./again.daedalus
 #   → error: input is already SISR-enabled  (expected)
 ```
 

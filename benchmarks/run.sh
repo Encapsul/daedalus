@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # benchmarks/run.sh — x.bin vs native benchmark suite
 #
-# Reproducible benchmarks for xbin against 3 real-world Python apps.
+# Reproducible benchmarks for daedalus against 3 real-world Python apps.
 # Produces: benchmarks/report.md + benchmarks/results.json
 #
 # Usage: bash benchmarks/run.sh
@@ -24,13 +24,13 @@ REPORT_MD="$SCRIPT_DIR/report.md"
 RESULTS_JSON="$SCRIPT_DIR/results.json"
 
 # Use /tmp for all build artifacts (FAT32 can't do symlinks/chmod).
-WORK="/tmp/xbin-bench"
+WORK="/tmp/daedalus-bench"
 APPS_DIR="$WORK/apps"
 PORT_BASE=19800
 
 # Xbin command — use the Rust CLI binary.
-XBIN_BIN="$REPO_ROOT/target/release/xbin"
-xbin() {
+XBIN_BIN="$REPO_ROOT/target/release/daedalus"
+daedalus() {
     "$XBIN_BIN" "$@"
 }
 
@@ -147,7 +147,7 @@ PYEOF
 setup_openwebui() {
     # Open WebUI is a large Next.js + Python app that can't be pip-installed
     # standalone. We use a PROXY that imports the same heavy deps (torch,
-    # transformers, numpy) to measure xbin's overhead on a realistic ML stack.
+    # transformers, numpy) to measure daedalus's overhead on a realistic ML stack.
     local d="$APPS_DIR/open-webui"
     rm -rf "$d"; mkdir -p "$d"
 
@@ -351,25 +351,25 @@ JEOF
 }
 
 # ---------------------------------------------------------------------------
-# xbin: build + cold start + warm start + RSS + cache size
+# daedalus: build + cold start + warm start + RSS + cache size
 # ---------------------------------------------------------------------------
 
 run_xbin() {
     local name="$1" app_dir="$2" port="$3"
-    header "XBIN: $name"
+    header "DAEDALUS: $name"
 
-    local tmp_xbin="$WORK/${name}.xbin"
+    local tmp_xbin="$WORK/${name}.de"
 
-    # 1) Build .xbin
-    log "Building .xbin for $name..."
+    # 1) Build .de
+    log "Building .de for $name..."
     local t0 t1 build_time
     t0=$(python3 -c "import time; print(time.monotonic())")
 
     cd "$REPO_ROOT"
-    if ! xbin build "$app_dir" -o "$tmp_xbin" 2>&1 | tail -20; then
-        fail "xbin build failed for $name"
-        echo "{\"app\":\"$name\",\"phase\":\"xbin\",\"error\":\"build failed\"}" \
-            > "$RESULTS_DIR/${name}-xbin.json"
+    if ! daedalus build "$app_dir" -o "$tmp_xbin" 2>&1 | tail -20; then
+        fail "daedalus build failed for $name"
+        echo "{\"app\":\"$name\",\"phase\":\"daedalus\",\"error\":\"build failed\"}" \
+            > "$RESULTS_DIR/${name}-daedalus.json"
         return 1
     fi
 
@@ -377,15 +377,15 @@ run_xbin() {
     build_time=$(printf "%.2f" "$(echo "$t1 - $t0" | bc)")
     ok "build: ${build_time}s"
 
-    # 2) .xbin size
+    # 2) .de size
     local xb_bytes xb_human
     xb_bytes=$(stat -c%s "$tmp_xbin")
     xb_human=$(numfmt --to=iec "$xb_bytes" 2>/dev/null || echo "${xb_bytes}B")
-    ok ".xbin size: $xb_human"
+    ok ".de size: $xb_human"
 
     # 3) Cold start — clear cache, measure extraction + launch
     log "Cold start (clearing cache)..."
-    xbin clean --all 2>/dev/null || true
+    daedalus clean --all 2>/dev/null || true
     kill_port "$port"; sleep 1
 
     local t0 t1 cold
@@ -394,14 +394,14 @@ run_xbin() {
     chmod +x "$tmp_xbin"
     "$tmp_xbin" &
     local bpid=$!
-    echo "$bpid" > "$WORK/${name}-xbin.pid"
+    echo "$bpid" > "$WORK/${name}-daedalus.pid"
 
     if ! wait_for_ready "$port" "$TIMEOUT_COLD_START" "$bpid"; then
-        fail "xbin $name: cold start failed (${TIMEOUT_COLD_START}s)"
+        fail "daedalus $name: cold start failed (${TIMEOUT_COLD_START}s)"
         kill "$bpid" 2>/dev/null; wait "$bpid" 2>/dev/null || true
-        rm -f "$WORK/${name}-xbin.pid"
-        echo "{\"app\":\"$name\",\"phase\":\"xbin\",\"error\":\"cold start timed out\",\"build_time_s\":$build_time,\"xbin_size_bytes\":$xb_bytes}" \
-            > "$RESULTS_DIR/${name}-xbin.json"
+        rm -f "$WORK/${name}-daedalus.pid"
+        echo "{\"app\":\"$name\",\"phase\":\"daedalus\",\"error\":\"cold start timed out\",\"build_time_s\":$build_time,\"xbin_size_bytes\":$xb_bytes}" \
+            > "$RESULTS_DIR/${name}-daedalus.json"
         return 1
     fi
 
@@ -418,21 +418,21 @@ run_xbin() {
     # 5) Warm start — kill, re-launch (cache hit)
     log "Warm start (cache hit)..."
     kill "$bpid" 2>/dev/null; wait "$bpid" 2>/dev/null || true
-    rm -f "$WORK/${name}-xbin.pid"
+    rm -f "$WORK/${name}-daedalus.pid"
     kill_port "$port"; sleep 1
 
     t0=$(python3 -c "import time; print(time.monotonic())")
 
     "$tmp_xbin" &
     bpid=$!
-    echo "$bpid" > "$WORK/${name}-xbin.pid"
+    echo "$bpid" > "$WORK/${name}-daedalus.pid"
 
     if ! wait_for_ready "$port" "$TIMEOUT_WARM_START" "$bpid"; then
-        fail "xbin $name: warm start timed out"
+        fail "daedalus $name: warm start timed out"
         kill "$bpid" 2>/dev/null; wait "$bpid" 2>/dev/null || true
-        rm -f "$WORK/${name}-xbin.pid"
-        echo "{\"app\":\"$name\",\"phase\":\"xbin\",\"error\":\"warm start timed out\",\"build_time_s\":$build_time,\"xbin_size_bytes\":$xb_bytes,\"cold_start_time_s\":$cold}" \
-            > "$RESULTS_DIR/${name}-xbin.json"
+        rm -f "$WORK/${name}-daedalus.pid"
+        echo "{\"app\":\"$name\",\"phase\":\"daedalus\",\"error\":\"warm start timed out\",\"build_time_s\":$build_time,\"xbin_size_bytes\":$xb_bytes,\"cold_start_time_s\":$cold}" \
+            > "$RESULTS_DIR/${name}-daedalus.json"
         return 1
     fi
 
@@ -449,13 +449,13 @@ run_xbin() {
 
     # Cleanup
     kill "$bpid" 2>/dev/null; wait "$bpid" 2>/dev/null || true
-    rm -f "$WORK/${name}-xbin.pid"
+    rm -f "$WORK/${name}-daedalus.pid"
     kill_port "$port"
 
     # 7) Cache directory size
     local cache_size=0 cache_human="0B"
-    if [ -d "$HOME/.cache/xbin" ]; then
-        cache_size=$(du -sb "$HOME/.cache/xbin" | awk '{print $1}')
+    if [ -d "$HOME/.cache/daedalus" ]; then
+        cache_size=$(du -sb "$HOME/.cache/daedalus" | awk '{print $1}')
         cache_human=$(numfmt --to=iec "$cache_size" 2>/dev/null || echo "${cache_size}B")
     fi
     ok "cache size: $cache_human"
@@ -464,9 +464,9 @@ run_xbin() {
     local rss_final=$rss_cold
     [ "${rss_warm:-0}" -gt "${rss_final:-0}" ] 2>/dev/null && rss_final=$rss_warm
 
-    cat > "$RESULTS_DIR/${name}-xbin.json" <<JEOF
+    cat > "$RESULTS_DIR/${name}-daedalus.json" <<JEOF
 {
-  "app": "$name", "phase": "xbin",
+  "app": "$name", "phase": "daedalus",
   "build_time_s": $build_time,
   "xbin_size_bytes": $xb_bytes, "xbin_size_human": "$xb_human",
   "cold_start_time_s": $cold, "warm_start_time_s": $warm,
@@ -475,7 +475,7 @@ run_xbin() {
   "cache_size_bytes": $cache_size, "cache_size_human": "$cache_human"
 }
 JEOF
-    ok "xbin done: $name"
+    ok "daedalus done: $name"
 }
 
 # ---------------------------------------------------------------------------
@@ -494,7 +494,7 @@ all_r = {}
 
 for a in apps:
     all_r[a] = {}
-    for p in ["baseline", "xbin"]:
+    for p in ["baseline", "daedalus"]:
         path = f"{RESULTS_DIR}/{a}-{p}.json"
         if os.path.exists(path):
             with open(path) as f:
@@ -566,12 +566,12 @@ lines.append("**Methodology:**\n")
 lines.append("- RSS measured via `/proc/$pid/status` VmRSS (kernel's actual RSS, not VSZ)")
 lines.append("- Cold start = process launch to first HTTP 200 response")
 lines.append("- Warm start = subsequent launch with cache hit")
-lines.append("- Baseline = fresh venv + pip install (no xbin)")
+lines.append("- Baseline = fresh venv + pip install (no daedalus)")
 lines.append("- All times are single runs (not averaged) — reproducible via this script\n")
 
 for a in apps:
     bl = all_r[a].get("baseline")
-    xb = all_r[a].get("xbin")
+    xb = all_r[a].get("daedalus")
     lines.append(f"\n---\n\n## {a}\n")
 
     if bl is None and xb is None:
@@ -581,9 +581,9 @@ for a in apps:
     if bl and bl.get("error"):
         lines.append(f"**Baseline error:** {bl['error']}\n")
     if xb and xb.get("error"):
-        lines.append(f"**xbin error:** {xb['error']}\n")
+        lines.append(f"**daedalus error:** {xb['error']}\n")
 
-    lines.append("| Metric | Baseline (native) | xbin | Delta |")
+    lines.append("| Metric | Baseline (native) | daedalus | Delta |")
     lines.append("|--------|------------------:|-----:|------:|")
 
     lines.append(f"| Install / build time | "
@@ -624,18 +624,18 @@ for a in apps:
         xb_warm = xb.get('warm_start_time_s', 0)
         if xb_warm and bl_cold and xb_warm > 0:
             overhead = xb_warm / bl_cold if bl_cold else 0
-            lines.append(f"\n*xbin warm start overhead vs native cold: {overhead:.1f}x*")
+            lines.append(f"\n*daedalus warm start overhead vs native cold: {overhead:.1f}x*")
 
     lines.append("")
 
 lines.append("\n---\n\n## Notes\n")
 lines.append("- **open-webui** is a proxy: we install torch+transformers+numpy directly")
 lines.append("  (the real Open WebUI is a large Next.js app that can't be pip-installed standalone).")
-lines.append("  This measures xbin's overhead on the same heavy ML dependency chain.")
+lines.append("  This measures daedalus's overhead on the same heavy ML dependency chain.")
 lines.append("- **Cold start** includes extraction (zstd decompression + disk write) on first run.")
 lines.append("- **Warm start** is cache hit — no extraction, just launcher overhead + app boot.")
-lines.append("- **RSS** should be near-identical between baseline and xbin (same Python runtime).")
-lines.append("  If xbin RSS is significantly higher, that's a real finding worth investigating.")
+lines.append("- **RSS** should be near-identical between baseline and daedalus (same Python runtime).")
+lines.append("  If daedalus RSS is significantly higher, that's a real finding worth investigating.")
 lines.append("- **Failures are reported honestly.** A hidden dependency (subprocess, dlopen)")
 lines.append("  that breaks the build is more useful than a clean number that hides a gap.")
 lines.append("")
@@ -674,10 +674,10 @@ main() {
     # Ensure stub is built
     local stub_path="/tmp/daedalus-stub-target/x86_64-unknown-linux-musl/release/daedalus-stub"
     if [ ! -f "$stub_path" ]; then
-        log "Building xbin stub..."
+        log "Building daedalus stub..."
         cd "$REPO_ROOT/stub" && cargo build --release --target x86_64-unknown-linux-musl 2>&1 | tail -5
     fi
-    ok "xbin stub ready at $stub_path"
+    ok "daedalus stub ready at $stub_path"
 
     # ---- App 1: yt-dlp (light) ----
     local ytdlp_dir

@@ -18,7 +18,7 @@ Two trigger paths exist:
 - **Local staging** (mission 6): `$DAEDALUS_SISR_MANIFEST` points at a signed
   manifest whose chunks are staged in `<manifest-dir>/chunks/`. The launcher
   stays network-free; this path is unchanged.
-- **Remote update** (mission 7): `./app.ere --daedalus-update [URL]` — the
+- **Remote update** (mission 7): `./app.daedalus --daedalus-update [URL]` — the
   launcher intercepts the flag before the app sees it, downloads the manifest
   and the changed chunks over HTTPS, applies the delta, prints reuse/fetch
   statistics, and exits. The URL resolution order is
@@ -27,8 +27,8 @@ Two trigger paths exist:
   version info and exits.
 
 ```
-./app.ere  (DAEDALUS_SISR_MANIFEST=/updates/app.ere.manifest   — local staging)
-            (./app.ere --daedalus-update                        — remote update)
+./app.daedalus  (DAEDALUS_SISR_MANIFEST=/updates/app.daedalus.manifest   — local staging)
+            (./app.daedalus --daedalus-update                        — remote update)
    │
    1. open /proc/self/exe → footer → metadata
    2. update requested?
@@ -36,7 +36,7 @@ Two trigger paths exist:
         yes ↓
    3a. local: read + parse remote manifest (XBMR) from $DAEDALUS_SISR_MANIFEST
    3b. remote: GET {base}/manifest (HTTPS) and parse it
-   4. verify Ed25519 signature against trusted keys (~/.ere/trusted-keys/)
+   4. verify Ed25519 signature against trusted keys (~/.daedalus/trusted-keys/)
       verify Merkle root against the chunk table
    5. SisrEngine::apply_update(/proc/self/exe, manifest, fetcher)
         - reuse unchanged chunks from the current binary
@@ -48,7 +48,7 @@ Two trigger paths exist:
     6. re-open the *canonical real path* returned by the engine (not
        /proc/self/exe, which can still resolve to the pinned pre-update inode)
        and re-read footer + metadata — now the new version
-    7. health gate (mission 8): snapshot `./app.ere.bak` taken before the
+    7. health gate (mission 8): snapshot `./app.daedalus.bak` taken before the
        swap; the new version is supervised for its startup window
          - healthy  ⇒ confirmed, `.bak` discarded
          - crashing ⇒ recorded, `.bak` restored atomically, previous version runs
@@ -117,7 +117,7 @@ Only then does the engine assemble and atomically swap.
 ## Post-update health gate
 
 Atomicity alone does not protect against a *valid but broken* update. Before
-the swap the launcher snapshots the running binary to `./app.ere.bak`
+the swap the launcher snapshots the running binary to `./app.daedalus.bak`
 (same filesystem → atomic restore); after the swap it supervises the new
 version for its startup window (`DAEDALUS_HEALTH_TIMEOUT_MS`, default 10 s):
 
@@ -174,7 +174,7 @@ the engine falls back to fetching every chunk — correct, just not incremental.
   produced and signed.
 - [SISR: Self-Incremental Sovereign Reconstruction](./sisr-spec.md) — trust
   model and invariants.
-- [`.ere` Format v2 — SISR extension](../spec/daedalus-format-v2.md) — byte layout
+- [`.daedalus` Format v2 — SISR extension](../spec/daedalus-format-v2.md) — byte layout
   of the remote manifest and the footer extension.
 - [Incremental Updates (SISR)](../guides/incremental-updates.md) — the
   end-to-end workflow the launcher completes.

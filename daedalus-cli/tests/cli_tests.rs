@@ -14,7 +14,7 @@ fn test_help_output() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("x.bin compiles"));
+        .stdout(predicate::str::contains("daedalus compiles"));
 }
 
 #[test]
@@ -162,7 +162,6 @@ fn test_upgrade_binary_converts_legacy_file() {
             stub_bytes: b"STUB_DATA",
             payload: b"PAYLOAD_PAYLOAD_PAYLOAD_PAYLOAD",
             meta_bytes: br#"{"name":"legacy"}"#,
-            encrypt: false,
             squashfs: false,
             target_arch: None,
             sisr: None,
@@ -200,100 +199,6 @@ fn test_upgrade_binary_converts_legacy_file() {
     assert_eq!(manifest.payload_len, in_footer.payload_csize);
 
     assert!(dir.path().join("migrated.daedalus.manifest").exists());
-}
-
-#[test]
-fn test_inspect_reports_encrypted_v4() {
-    use daedalus_core::assembly::{assemble_daedalus, build_meta_json, MetaOptions};
-    use daedalus_core::encrypt::encrypt_payload;
-    use daedalus_core::format::{Footer, CRYPTO_AES_256_GCM, FLAG_ENCRYPTED, FLAG_SIGNED};
-    use daedalus_core::metadata::BunFeatures;
-    use std::io::Cursor;
-
-    let dir = tempdir().unwrap();
-    let out = dir.path().join("enc.daedalus");
-    let stub = b"STUB_DATA";
-    let seed = [0xABu8; 32];
-    let plaintext = b"SECRET_PAYLOAD_THAT_MUST_BE_ENCRYPTED";
-
-    // 1. Encrypt the payload (AES-256-GCM, HKDF from a random encryption key).
-    let (ciphertext, em) = encrypt_payload(plaintext, &seed).unwrap();
-    assert_ne!(&ciphertext[..], plaintext);
-
-    // 2. Build meta JSON with the `crypto` field (nonce + encryption key).
-    let crypto_value = serde_json::json!({
-        "nonce_hex": hex::encode(em.nonce),
-        "tag_offset": em.tag_offset,
-        "encryption_key_hex": hex::encode(seed),
-    });
-    let meta = build_meta_json(
-        "enc",
-        "binary",
-        0,
-        &["/app/app".to_string()],
-        &[],
-        &MetaOptions {
-            version: None,
-            author: None,
-            description: None,
-            license: None,
-            payload_format: Some("raw".to_string()),
-            seccomp: false,
-            landlock: false,
-            gui: false,
-            cpu_limit: None,
-            memory_limit_mb: None,
-            pid_limit: None,
-            pre_hooks: None,
-            post_hooks: None,
-            app_hash: None,
-            rt_deps_hash: None,
-            update_url: None,
-            crypto: Some(crypto_value),
-            layers: None,
-            entrypoint_layer: None,
-        },
-        &BunFeatures::default(),
-    )
-    .unwrap();
-
-    // 3. Assemble as v4 encrypted; integrity hash + footer cover the ciphertext.
-    assemble_daedalus(
-        &out,
-        &daedalus_core::assembly::AssemblyInput {
-            stub_bytes: stub,
-            payload: &ciphertext,
-            meta_bytes: &meta,
-            encrypt: true,
-            squashfs: false,
-            target_arch: None,
-            sisr: None,
-        },
-    )
-    .unwrap();
-
-    // 4. `daedalus inspect` must report encrypted=true + v4, and echo the crypto meta.
-    daedalus()
-        .args(["inspect", "--json", out.to_str().unwrap()])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#""encrypted": true"#))
-        .stdout(predicate::str::contains(r#""format_version": 4"#))
-        .stdout(predicate::str::contains("nonce_hex"));
-
-    // 5. Footer carries the encrypted flag + AES suite, and hashes the ciphertext.
-    let data = std::fs::read(&out).unwrap();
-    let footer = Footer::read_from(&mut Cursor::new(&data)).unwrap();
-    assert_eq!(footer.format_version, 4);
-    assert_ne!(
-        footer.flags & FLAG_ENCRYPTED,
-        0,
-        "FLAG_ENCRYPTED must be set"
-    );
-    assert_eq!(footer.flags & FLAG_SIGNED, 0, "no signature in this test");
-    assert_eq!(footer.crypto_suite(), CRYPTO_AES_256_GCM);
-    assert_eq!(footer.payload_csize, ciphertext.len() as u64);
-    assert_eq!(footer.payload_usize, CRYPTO_AES_256_GCM);
 }
 
 #[test]
@@ -388,7 +293,6 @@ fn test_registry_push_local_extracts_layers() {
             stub_bytes,
             payload: &tar_bytes,
             meta_bytes: &meta_bytes,
-            encrypt: false,
             squashfs: false,
             target_arch: None,
             sisr: None,
