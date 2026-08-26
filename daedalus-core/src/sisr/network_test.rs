@@ -157,6 +157,7 @@ fn build_current(dir: &Path, payload: &[u8], chunk: usize) -> PathBuf {
     assemble_daedalus(
         &out,
         &crate::assembly::AssemblyInput {
+            encryption: None,
             stub_bytes: b"STUB_DATA_HERE",
             payload,
             meta_bytes: b"{\"name\":\"network\"}",

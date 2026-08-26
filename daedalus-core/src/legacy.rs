@@ -159,6 +159,7 @@ mod tests {
         assemble_daedalus(
             &out,
             &AssemblyInput {
+                encryption: None,
                 stub_bytes: b"STUB_DATA",
                 payload: b"PAYLOAD_PAYLOAD_PAYLOAD",
                 meta_bytes: br#"{"name":"legacy"}"#,
@@ -233,6 +234,7 @@ mod tests {
         assemble_daedalus(
             &input,
             &AssemblyInput {
+                encryption: None,
                 stub_bytes: b"STUB_DATA",
                 payload: b"PAYLOAD_PAYLOAD_PAYLOAD",
                 meta_bytes: br#"{"name":"legacy"}"#,

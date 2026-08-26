@@ -440,6 +440,7 @@ mod tests {
         assemble_daedalus(
             &out,
             &crate::assembly::AssemblyInput {
+                encryption: None,
                 stub_bytes: b"STUB_DATA_HERE",
                 payload,
                 meta_bytes: meta,
@@ -608,6 +609,7 @@ mod tests {
         crate::assembly::assemble_daedalus(
             &out,
             &crate::assembly::AssemblyInput {
+                encryption: None,
                 stub_bytes: b"STUB_DATA_HERE",
                 payload: &payload,
                 meta_bytes: meta,
