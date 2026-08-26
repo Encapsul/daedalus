@@ -15,7 +15,7 @@ use std::process::ExitCode;
     name = "daedalus",
     version,
     about = "Package any app into a single self-extracting binary",
-    long_about = "daedalus compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  daedalus build ./myapp -o myapp.daedalus\n  daedalus run myapp.daedalus\n  daedalus inspect myapp.daedalus\n  daedalus keygen\n  daedalus sign myapp.daedalus --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.daedalus\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish"
+    long_about = "daedalus compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  daedalus build ./myapp -o myapp.de\n  daedalus run myapp.de\n  daedalus inspect myapp.de\n  daedalus keygen\n  daedalus sign myapp.de --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.de\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish"
 )]
 struct Cli {
     /// Enable verbose output
@@ -36,38 +36,35 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build a .daedalus binary from an app directory
+    /// Build a .de binary from an app directory
     ///
     /// Examples:
-    ///   daedalus build ./myapp -o myapp.daedalus
+    ///   daedalus build ./myapp -o myapp.de
     ///   daedalus build ./myapp --target aarch64 --squashfs
     ///   daedalus build ./myapp --sign --key ~/.daedalus/keys/*.key
-    ///   daedalus build ./myapp --encrypt --key ~/.daedalus/keys/*.key
-    ///     (--encrypt is obfuscation-only: the decryption key is embedded in
-    ///      the metadata, so a determined attacker can always extract the app)
     ///   daedalus build ./myapp --health-port 8081
     ///   daedalus build ./myapp --persist --env-file .env
     Build(Box<commands::build::BuildArgs>),
 
-    /// Execute a .daedalus file
+    /// Execute a .de file
     Run(commands::run::RunArgs),
 
-    /// Inspect a .daedalus file's metadata
+    /// Inspect a .de file's metadata
     Inspect(commands::inspect::InspectArgs),
 
     /// Generate Ed25519 signing keys
     Keygen(commands::keygen::KeygenArgs),
 
-    /// Sign a .daedalus file
+    /// Sign a .de file
     Sign(commands::sign::SignArgs),
 
-    /// Verify a .daedalus file's signature
+    /// Verify a .de file's signature
     Verify(commands::verify::VerifyArgs),
 
     /// Trust a public key
     Trust(commands::trust::TrustArgs),
 
-    /// Scan directories for .daedalus files
+    /// Scan directories for .de files
     Scan(commands::scan::ScanArgs),
 
     /// Check system prerequisites
@@ -79,19 +76,19 @@ enum Commands {
     /// Interactive TUI dashboard showing SISR benchmark & cache status
     Dashboard(commands::dashboard::DashboardArgs),
 
-    /// Test a .daedalus file in an ephemeral sandbox
+    /// Test a .de file in an ephemeral sandbox
     Selftest(commands::selftest::SelftestArgs),
 
     /// Upgrade daedalus to the latest release
     Upgrade(commands::upgrade::UpgradeArgs),
 
     /// Migrate a legacy .daedalus (v1) to the SISR-enabled v2 format
-    UpgradeBinary(commands::upgrade_binary::UpgradeBinaryArgs),
+    Migrate(commands::upgrade_binary::UpgradeBinaryArgs),
 
-    /// Hot-swap a layer in an existing .daedalus binary
+    /// Hot-swap a layer in an existing .de binary
     Swap(commands::swap::SwapArgs),
 
-    /// Publish a .daedalus file to a registry
+    /// Publish a .de file to a registry
     Publish(commands::publish::PublishArgs),
 
     /// Push/Pull/List layers in a content-addressable registry
@@ -184,7 +181,7 @@ fn main() -> ExitCode {
             }
             commands::upgrade::run(args)
         }
-        Commands::UpgradeBinary(mut args) => {
+        Commands::Migrate(mut args) => {
             if cli.quiet {
                 args.quiet = true;
             }

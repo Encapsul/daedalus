@@ -129,7 +129,7 @@ pub(crate) fn target_slug(target: Option<&str>) -> Option<String> {
 }
 
 /// One output path per target. A single target keeps the historical naming
-/// (`-o app.daedalus` stays `app.daedalus`); multiple targets get a `<name>-<target>`
+/// (`-o app.de` stays `app.de`); multiple targets get a `<name>-<target>`
 /// suffix so linux and windows artifacts never overwrite each other.
 pub(crate) fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<PathBuf> {
     if targets.len() == 1 {
@@ -145,7 +145,7 @@ pub(crate) fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<
             args.output.join(if is_windows_target {
                 "app.exe"
             } else {
-                "app.daedalus"
+                "app.de"
             })
         };
         return vec![out];
@@ -161,7 +161,7 @@ pub(crate) fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "app".to_string());
             let is_windows = t.as_deref().is_some_and(|t| parse_target(t).1 == "windows");
-            let ext = if is_windows { "exe" } else { "daedalus" };
+            let ext = if is_windows { "exe" } else { "de" };
             let dir = args
                 .output
                 .parent()
@@ -274,11 +274,11 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
 #[derive(Args)]
 #[command(after_help = "\
 Examples:
-  daedalus build ./myapp                         Build for the host (default output: app.daedalus)
-  daedalus build ./myapp -o myapp.daedalus           Build for the host, custom output name
-  daedalus build ./myapp --target linux-arm64 -o myapp.daedalus     Single cross-target artifact
-  daedalus build ./myapp --target linux-x64,linux-arm64 -o out/app.daedalus  Multi-arch: emits app-linux-x64.daedalus + app-linux-arm64.daedalus
-  daedalus build ./myapp --target win-x64 -o out/app.daedalus       Cross-OS: Windows PE stub (.exe)
+  daedalus build ./myapp                         Build for the host (default output: app.de)
+  daedalus build ./myapp -o myapp.de           Build for the host, custom output name
+  daedalus build ./myapp --target linux-arm64 -o myapp.de     Single cross-target artifact
+  daedalus build ./myapp --target linux-x64,linux-arm64 -o out/app.de  Multi-arch: emits app-linux-x64.de + app-linux-arm64.de
+  daedalus build ./myapp --target win-x64 -o out/app.de       Cross-OS: Windows PE stub (.exe)
   daedalus build ./myapp --dry-run                              Preview the multi-target plan without building")]
 pub struct BuildArgs {
     /// Path to the app directory
@@ -286,7 +286,7 @@ pub struct BuildArgs {
     pub app: PathBuf,
 
     /// Output file path
-    #[arg(short, long, default_value = "app.daedalus")]
+    #[arg(short, long, default_value = "app.de")]
     pub output: PathBuf,
 
     /// Signing key path
@@ -768,11 +768,7 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            vec![
-                "app-linux-x64.daedalus",
-                "app-linux-arm64.daedalus",
-                "app-win-x64.exe"
-            ]
+            vec!["app-linux-x64.de", "app-linux-arm64.de", "app-win-x64.exe"]
         );
     }
 

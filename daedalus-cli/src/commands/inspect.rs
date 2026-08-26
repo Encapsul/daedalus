@@ -29,7 +29,15 @@ pub fn run(args: InspectArgs) -> Result<()> {
     }
 
     let mut f = std::fs::File::open(&args.file)
-        .with_context(|| format!("failed to open {}", args.file.display()))?;
+        .with_context(|| {
+            let name = args.file.display();
+            if !args.file.exists() {
+                anyhow::anyhow!("file not found: {name}")
+            } else {
+                anyhow::anyhow!("cannot open file: {name}")
+            }
+        })
+        .with_context(|| format!("check the path and try again: {}", args.file.display()))?;
     let footer = Footer::read_from(&mut f).context("failed to read daedalus footer")?;
 
     let arch_name = match footer.arch {
