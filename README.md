@@ -20,9 +20,7 @@ or plugin as a single portable unit.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Tednoob17/daedalus/main/scripts/install.sh | bash
-daedalus doctor
-cd your-app && daedalus build . -o myapp.de
-./myapp.de
+daedalus doctor  && cd your-app && daedalus build . -o myapp.de && ./myapp.de
 ```
 
 ## Overview

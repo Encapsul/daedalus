@@ -20,6 +20,10 @@ pub struct InspectArgs {
     /// Dry run — show what would be done without doing it
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Generate SBOM (SPDX JSON) instead of default metadata
+    #[arg(short = 'S', long)]
+    pub sbom: bool,
 }
 
 pub fn run(args: InspectArgs) -> Result<()> {
@@ -51,6 +55,19 @@ pub fn run(args: InspectArgs) -> Result<()> {
             .context("failed to read metadata payload")?;
     let meta: serde_json::Value =
         serde_json::from_slice(&payload).context("failed to parse metadata JSON")?;
+
+    if args.sbom {
+        let sbom = generate_sbom(&args.file, &meta, arch_name, &footer);
+        let json_str = serde_json::to_string_pretty(&sbom)?;
+        if let Some(ref path) = args.output {
+            std::fs::write(path, &json_str)
+                .with_context(|| format!("failed to write to {}", path.display()))?;
+            eprintln!("Wrote SBOM to {}", path.display());
+        } else {
+            println!("{json_str}");
+        }
+        return Ok(());
+    }
 
     if args.json {
         let info = serde_json::json!({
@@ -157,4 +174,68 @@ pub fn run(args: InspectArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn generate_sbom(
+    _file: &std::path::Path,
+    meta: &serde_json::Value,
+    arch: &str,
+    footer: &daedalus_core::format::Footer,
+) -> serde_json::Value {
+    use serde_json::json;
+
+    let name = meta
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let version = meta
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("0.0.0");
+    let runtime = meta
+        .get("runtime")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    let mut components = Vec::new();
+    components.push(json!({
+        "type": "application",
+        "bom-ref": format!("app-{name}"),
+        "name": name,
+        "version": version,
+        "properties": {
+            "runtime": runtime,
+            "arch": arch,
+            "format_version": footer.format_version,
+            "sha256": footer.sha256_hex(),
+        }
+    }));
+
+    if let Some(layers) = meta.get("layers").and_then(|v| v.as_array()) {
+        for layer in layers {
+            let lname = layer.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+            components.push(json!({
+                "type": "library",
+                "bom-ref": format!("layer-{lname}"),
+                "name": lname,
+                "version": version,
+            }));
+        }
+    }
+
+    json!({
+        "spdxVersion": "SPDX-2.3",
+        "documentNamespace": format!("https://daedalus.dev/spdx/{name}-{version}"),
+        "id": "SPDXRef-DOCUMENT",
+        "name": format!("daedalus SBOM for {name}"),
+        "creationInfo": {
+            "created": meta.get("created").and_then(|v| v.as_str())
+                .unwrap_or(&chrono::Utc::now().to_rfc3339()),
+            "creators": [
+                {"tool": "daedalus", "version": env!("CARGO_PKG_VERSION")}
+            ],
+        },
+        "documentDescribes": ["SPDXRef-Package-1"],
+        "packages": components,
+    })
 }
