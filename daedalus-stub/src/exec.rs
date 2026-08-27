@@ -782,10 +782,11 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
 
     #[cfg(unix)]
     let orig_cwd = std::env::current_dir().ok();
-    #[cfg(target_os = "linux")]
-    let use_pivot = meta.isolation >= 2;
-    #[cfg(all(unix, not(target_os = "linux")))]
-    let use_pivot = false;
+    let use_pivot = if cfg!(target_os = "linux") {
+        meta.isolation >= 2
+    } else {
+        false
+    };
 
     crate::health_gate::maybe_start_health(meta);
 
