@@ -609,6 +609,7 @@ pub(crate) fn default_build_args() -> BuildArgs {
         health_endpoint: None,
         token: None,
         universal: false,
+        encrypt: None,
     }
 }
 
