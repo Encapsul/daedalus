@@ -40,13 +40,13 @@ server.listen(port, () => {
 Build it:
 
 ```bash
-daedalus build ./examples/hello-node -o hello-node.daedalus
+daedalus build ./examples/hello-node -o hello-node.de
 ```
 
 Run it:
 
 ```bash
-./hello-node.daedalus
+./hello-node.de
 # Server listening on http://127.0.0.1:8080
 ```
 
@@ -59,7 +59,7 @@ detects it and sets `NODE_PATH` inside the extracted rootfs.
 ```bash
 cd my-node-app
 npm install express
-daedalus build . -o my-app.daedalus
+daedalus build . -o my-app.de
 ```
 
 The build output will confirm:

@@ -1,6 +1,6 @@
-# Updating a deployed `.daedalus` (SISR)
+# Updating a deployed `.de` (SISR)
 
-A `.daedalus` built with `--enable-sisr` can update itself **in place** from a
+A `.de` built with `--enable-sisr` can update itself **in place** from a
 signed delta: it downloads only the chunks that changed, verifies every byte,
 and atomically swaps in the new binary. No toolchain, no `daedalus` CLI, no
 extraction on the target machine — the update runs inside the binary itself.
@@ -8,21 +8,21 @@ extraction on the target machine — the update runs inside the binary itself.
 ```
 DEV MACHINE                        TARGET MACHINE
 
-daedalus build ./app -o app.daedalus \
-  --enable-sisr --key …           ./app.daedalus --daedalus-update
+daedalus build ./app -o app.de \
+  --enable-sisr --key …           ./app.de --daedalus-update
   --update-url https://…            │  fetch manifest (HTTPS)
    │                                │  verify signature + Merkle root
    └─ publish to update server ───► │  download changed chunks
-        app.daedalus.manifest          │  SHA-256-verify every chunk
+        app.de.manifest          │  SHA-256-verify every chunk
         chunks/<sha256>            │  atomic in-place swap
                                    ▼
-                               app.daedalus is now the new version
+                               app.de is now the new version
 ```
 
 ## 1. Build an updatable binary
 
 ```bash
-daedalus build ./my_app -o my_app.daedalus \
+daedalus build ./my_app -o my_app.de \
     --enable-sisr \
     --key $XDG_DATA_HOME/daedalus/keys/<fingerprint>.key \
     --update-url https://updates.example.com/my_app
@@ -32,8 +32,8 @@ Two artifacts are produced:
 
 | Artifact | Purpose |
 |---|---|
-| `my_app.daedalus` | Self-extracting binary; self-updates against the channel |
-| `my_app.daedalus.manifest` | Signed `XBMR` manifest, published to the server |
+| `my_app.de` | Self-extracting binary; self-updates against the channel |
+| `my_app.de.manifest` | Signed `XBMR` manifest, published to the server |
 
 ## 2. Publish a release
 
@@ -43,7 +43,7 @@ before use:
 
 ```
 https://updates.example.com/my_app/
-  manifest                     ← the .daedalus.manifest (XBMR, signed)
+  manifest                     ← the .de.manifest (XBMR, signed)
   chunks/
     <64-hex-sha256>            ← one file per chunk
     <64-hex-sha256>
@@ -61,13 +61,13 @@ in sync for the *newest* release.
 
 ```bash
 # Uses the URL embedded at build time
-./my_app.daedalus --daedalus-update
+./my_app.de --daedalus-update
 
 # Or point at a specific channel
-./my_app.daedalus --daedalus-update https://updates.example.com/my_app
+./my_app.de --daedalus-update https://updates.example.com/my_app
 
 # Or override per-run via the environment
-DAEDALUS_UPDATE_URL=https://updates.example.com/my_app ./my_app.daedalus --daedalus-update
+DAEDALUS_UPDATE_URL=https://updates.example.com/my_app ./my_app.de --daedalus-update
 ```
 
 Progress and statistics are printed on stderr (stdout is reserved for the app):
@@ -79,7 +79,7 @@ Progress and statistics are printed on stderr (stdout is reserved for the app):
 [daedalus]   fetched chunk 2/247 (65536 bytes)
 …
 [daedalus] update applied: 203 chunks reused (12.7 MiB), 44 chunks fetched (2.8 MiB), total 247
-[daedalus] updated binary: /home/alice/app.daedalus
+[daedalus] updated binary: /home/alice/app.de
 ```
 
 The `reused` number is the bandwidth you saved: those chunks were already
@@ -100,7 +100,7 @@ forwarded to the application.
 Nothing is trusted from the network:
 
 1. The manifest is verified with Ed25519 against the trusted keys in
-   `~/.daedalus/trusted-keys/` (same keys the binary signature uses) **before**
+   `~/.de/trusted-keys/` (same keys the binary signature uses) **before**
    a single byte is written.
 2. The Merkle root must match the manifest's own chunk table.
 3. Every chunk — reused or downloaded — must SHA-256 to its manifest entry;

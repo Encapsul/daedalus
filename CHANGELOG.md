@@ -4,6 +4,18 @@ All notable changes to daedalus will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed
+- **File extension**: renamed from `.daedalus` to `.de` across CLI, docs, and examples
+- **Command rename**: `upgrade-binary` → `migrate` for clarity
+- **Error messages**: improved to include problem + cause + fix (e.g. "app directory not found" instead of "failed to canonicalize app path")
+- **README**: added Troubleshooting section; removed `--encrypt` references
+
+### Fixed
+- CLI help text no longer shows removed `--encrypt` flag
+- Extension consistency between HN pitch (`.de`) and CLI output (`.de`)
+
 ## [0.5.0] - 2026-08-07
 
 ### Added

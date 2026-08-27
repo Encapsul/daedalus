@@ -375,7 +375,7 @@ cargo test --workspace                               # Tests
 
 ### 3. Does the app work?
 ```bash
-cargo build -p daedalus-cli && ./target/release/daedalus build examples/hello-web -o /tmp/test.daedalus 2>&1
+cargo build -p daedalus-cli && ./target/release/daedalus build examples/hello-web -o /tmp/test.de 2>&1
 ```
 If this fails, your change broke the build. Fix it before proceeding.
 
@@ -399,11 +399,11 @@ relevant `docs/src/` page.
 ### 8. No regressions?
 Run the full test sequence:
 ```bash
-daedalus build examples/hello-web -o /tmp/t.daedalus
-daedalus inspect /tmp/t.daedalus
+daedalus build examples/hello-web -o /tmp/t.de
+daedalus inspect /tmp/t.de
 daedalus keygen --key-dir /tmp/tk
-daedalus sign /tmp/t.daedalus --key /tmp/tk/*.key
-daedalus verify /tmp/t.daedalus --trusted-dir /tmp/tk
+daedalus sign /tmp/t.de --key /tmp/tk/*.key
+daedalus verify /tmp/t.de --trusted-dir /tmp/tk
 ```
 All must pass. If any fails, your change introduced a regression.
 
@@ -449,8 +449,8 @@ All must pass. If any fails, your change introduced a regression.
 - **File**: `daedalus-cli/src/commands/build/mod.rs` — `--update` flag on build subcommand
 - **File**: `daedalus-core/src/assembly.rs` — `app_hash` and `rt_deps_hash` params on `build_meta_json()`
 - **How it works**:
-  - First build: computes `app_hash` (SHA-256 of all app files) and `rt_deps_hash` (SHA-256 of requirements.txt), stores them in the .daedalus metadata JSON
-  - `daedalus build --update`: reads existing .daedalus, compares hashes:
+  - First build: computes `app_hash` (SHA-256 of all app files) and `rt_deps_hash` (SHA-256 of requirements.txt), stores them in the .de metadata JSON
+  - `daedalus build --update`: reads existing .de, compares hashes:
     - Same app + same runtime deps → early return ("everything up to date")
     - Same runtime deps, app changed → reuses existing runtime squashfs/zstd blob, only rebuilds app layer
     - Runtime deps changed → full rebuild
@@ -460,14 +460,14 @@ All must pass. If any fails, your change introduced a regression.
 - **Benefits**: 2-5x faster rebuilds when only app code changes (runtime layer is 12+ MB, app layer is small)
 - **Tested**: build → modify app.py → build --update → runtime layer SHA unchanged, app layer SHA changed ✓
 
-## daedalus scan (discover .daedalus files) — 2026-07-20
+## daedalus scan (discover .de files) — 2026-07-20
 
 - **File**: `daedalus-cli/src/commands/scan.rs` — `scan(paths, json_output)` function
 - **File**: `daedalus-cli/src/main.rs` — `scan` subparser with `paths` (nargs="*", default=["."]) and `--json`
 - **File**: `daedalus-core/src/paths.rs` — `cache_dir()` moved here from `clean.py` (shared by scan + clean)
 - **File**: `daedalus-cli/src/commands/clean.rs` — imports `cache_dir` from `_util` instead of defining locally
 - **How it works**:
-  - Recursively finds `.daedalus` files by extension + footer magic (`0xBEEFCAFE`)
+  - Recursively finds `.de` files by extension + footer magic (`0xBEEFCAFE`)
   - Reads metadata from each file (reuses `format.read_footer()`)
   - Displays table: FILE, NAME, RUNTIME, ARCH, SIGNED, CREATED
   - Shows cache stats (entries + total size from `~/.cache/daedalus/`)
@@ -481,7 +481,7 @@ All must pass. If any fails, your change introduced a regression.
 
 - **File**: `daedalus-core/src/detect.rs` + `daedalus-cli/src/commands/build/pipeline.rs` — Go runtime
   - Detection: `go.mod` in project root
-  - Builds static binary via `go build`, embeds into .daedalus
+  - Builds static binary via `go build`, embeds into .de
   - Cross-compilation supported (GOOS/GOARCH)
 - **File**: `daedalus-core/src/detect.rs` + `daedalus-cli/src/commands/build/pipeline.rs` — PHP runtime
   - Detection: `composer.json` in project root
@@ -603,7 +603,7 @@ All must pass. If any fails, your change introduced a regression.
 - **File**: `daedalus-cli/src/commands/build/mod.rs` — passes version/author/description/license to `build_meta_json()`
 - **File**: `daedalus-core/src/assembly.rs` — `build_meta_json()` accepts and includes version/author/description/license in metadata JSON
 - **File**: `cli/daedalus/inspect.py` — displays version/author/description/license when present
-- **Flow**: `--version-info 1.0 --author "John"` → stored in `.daedalus` metadata JSON → displayed by `daedalus inspect`
+- **Flow**: `--version-info 1.0 --author "John"` → stored in `.de` metadata JSON → displayed by `daedalus inspect`
 - **Test file**: `cli/tests/test_version_metadata.py` — 6 tests
 - **Status**: implemented, committed `961c526`
 
@@ -777,10 +777,10 @@ daedalus-core now contains all build logic previously in Python:
 
 | Command | Description | Status |
 |---|---|---|
-| `daedalus build` | Package app into .daedalus | ✅ Full Rust |
-| `daedalus inspect` | Read .daedalus footer metadata | ✅ |
-| `daedalus scan` | Scan .daedalus for crypto/integrity info | ✅ |
-| `daedalus sign` | Ed25519 sign a .daedalus | ✅ |
+| `daedalus build` | Package app into .de | ✅ Full Rust |
+| `daedalus inspect` | Read .de footer metadata | ✅ |
+| `daedalus scan` | Scan .de for crypto/integrity info | ✅ |
+| `daedalus sign` | Ed25519 sign a .de | ✅ |
 | `daedalus verify` | Verify signature | ✅ |
 | `daedalus keygen` | Generate Ed25519 keypair | ✅ |
 | `daedalus trust` | Add key to trusted dir | ✅ |
@@ -831,7 +831,7 @@ Stub now uses `daedalus-core` as a shared library dependency instead of its loca
 **What this enables**:
 - Phase 2: Python CLI can call daedalus-core via PyO3 or subprocess
 - Phase 3: Full Rust CLI — both stub and CLI share the same format parser
-- Single source of truth for .daedalus format (no more duplicate format.rs)
+- Single source of truth for .de format (no more duplicate format.rs)
 
 ## Install script + upgrade command — 2026-07-20
 
@@ -888,11 +888,11 @@ All implemented in the session of 2026-07-09:
 - `cli/daedalus/crypto.py` — `find_crypto()` (mirrors `find_stub()`) + thin subprocess wrappers
   for keygen/sign/verify.
 - `cli/daedalus/keygen.py` — `daedalus keygen` CLI (default dir `$XDG_DATA_HOME/daedalus/keys`, legacy fallback `~/.daedalus/keys`).
-- `cli/daedalus/sign.py` — `daedalus sign <file.daedalus>`: reads file with format.py, computes
+- `cli/daedalus/sign.py` — `daedalus sign <file.de>`: reads file with format.py, computes
   SHA-256(payload‖meta), calls crypto.py sign, writes sig_block `[sig_size:u32le][64-byte sig]`
   between metadata and footer, rewrites footer as v3 (format_version=3, flags|=FLAG_SIGNED,
   sig_offset set, footer grown to 92 bytes). In-place modification.
-- `cli/daedalus/verify.py` — `daedalus verify <file.daedalus>`: reads v3 footer, iterates trusted keys
+- `cli/daedalus/verify.py` — `daedalus verify <file.de>`: reads v3 footer, iterates trusted keys
   from `$XDG_DATA_HOME/daedalus/trusted-keys/` (legacy fallback `~/.daedalus/trusted-keys/`, or `--trusted-dir`), calls crypto.py verify for each.
 - `daedalus-cli/src/main.rs` — wired up keygen/sign/verify subcommands.
 - `Makefile` — `make stub` builds both `daedalus-stub` and `daedalus-crypto`.
@@ -902,12 +902,12 @@ All implemented in the session of 2026-07-09:
 ## End-to-end test results
 
 ```
-$ cargo build -p daedalus-cli && ./target/release/daedalus build examples/hello-web -o /tmp/hello-web.daedalus       → OK (7.1MB)
+$ cargo build -p daedalus-cli && ./target/release/daedalus build examples/hello-web -o /tmp/hello-web.de       → OK (7.1MB)
 $ ./target/release/daedalus keygen --key-dir /tmp/daedalus-keys                        → OK, fingerprint printed
-$ ./target/release/daedalus sign /tmp/hello-web.daedalus --key <keyfile>               → OK, sig_offset=7117820
-$ ./target/release/daedalus verify /tmp/hello-web.daedalus --trusted-dir /tmp/daedalus-trusted → OK, exit 0
-$ dd if=/dev/urandom of=/tmp/hello-web.daedalus bs=1 seek=688788 count=1    → corrupt payload
-$ ./target/release/daedalus verify /tmp/hello-web.daedalus --trusted-dir /tmp/daedalus-trusted → FAIL, exit 1 (no crash)
+$ ./target/release/daedalus sign /tmp/hello-web.de --key <keyfile>               → OK, sig_offset=7117820
+$ ./target/release/daedalus verify /tmp/hello-web.de --trusted-dir /tmp/daedalus-trusted → OK, exit 0
+$ dd if=/dev/urandom of=/tmp/hello-web.de bs=1 seek=688788 count=1    → corrupt payload
+$ ./target/release/daedalus verify /tmp/hello-web.de --trusted-dir /tmp/daedalus-trusted → FAIL, exit 1 (no crash)
 ```
 
 ## Design audit fixes (2026-07-17)
@@ -969,7 +969,7 @@ All 14 issues from the design audit have been fixed. Changes verified via Python
 - All Python modules import cleanly with no circular dependencies
 - `format.py` pack/unpack sig-block round-trip test passes
 - `cargo build --release` + `cargo clippy -- -D warnings` passent clean (0 warnings, 0 errors)
-- No test suite exists; `make example` should build a working .daedalus to confirm end-to-end
+- No test suite exists; `make example` should build a working .de to confirm end-to-end
 
 ## Clig.dev CLI audit (2026-07-20)
 
@@ -1362,7 +1362,7 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 
 1. **Arguments CLI** (highest priority)
    ```bash
-   ./app.daedalus --db-url "postgresql://user:pass@neon.tech/db"
+   ./app.de --db-url "postgresql://user:pass@neon.tech/db"
    ```
 
 2. **Local config file** (fallback)
@@ -1378,12 +1378,12 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 3. **Environment variables** (standard Unix)
    ```bash
    export DATABASE_URL="postgresql://..."
-   ./app.daedalus
+   ./app.de
    ```
 
 4. **Interactive prompt** (when TTY available)
    ```bash
-   ./app.daedalus
+   ./app.de
    Enter DATABASE_URL: ********
    ```
 
@@ -1420,19 +1420,19 @@ When packaging apps with external databases (PostgreSQL, MySQL, MongoDB), secret
 
 ```bash
 # Build openEMR (no secrets embedded)
-daedalus build openemr/ -o openemr.daedalus
+daedalus build openemr/ -o openemr.de
 
 # Runtime configuration options:
 # Option 1: Environment variables
 export DATABASE_URL="mysql://openemr:pass@mysql.example.com/openemr"
-./openemr.daedalus
+./openemr.de
 
 # Option 2: Local config file
 echo '[database]\nurl = "mysql://openemr:pass@mysql.example.com/openemr"' > daedalus.toml
-./openemr.daedalus
+./openemr.de
 
 # Option 3: CLI arguments
-./openemr.daedalus --db-url "mysql://openemr:pass@mysql.example.com/openemr"
+./openemr.de --db-url "mysql://openemr:pass@mysql.example.com/openemr"
 ```
 
 ### Security Best Practices
@@ -1478,7 +1478,7 @@ DAEDALUS_SECRET_DB_PASSWORD: my-db-password
 
 **openEMR (92MB):**
 ```
-Built /tmp/openemr-final.daedalus (91.2MB)
+Built /tmp/openemr-final.de (91.2MB)
 Config loaded correctly from daedalus.toml
 ```
 
@@ -1486,7 +1486,7 @@ Config loaded correctly from daedalus.toml
 
 ```bash
 # Build the binary
-daedalus build myapp/ -o myapp.daedalus --embed-interpreter php
+daedalus build myapp/ -o myapp.de --embed-interpreter php
 
 # Create config file
 cat > myapp.daedalus.toml << EOF
@@ -1498,5 +1498,5 @@ api_key = "secret-value"
 EOF
 
 # Run (secrets loaded from config)
-./myapp.daedalus
+./myapp.de
 ```

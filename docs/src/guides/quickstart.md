@@ -30,9 +30,9 @@ make stub
 ## 2. Build & run a Python app
 
 ```bash
-daedalus build ./examples/hello-web -o hello-web.daedalus
+daedalus build ./examples/hello-web -o hello-web.de
 
-./hello-web.daedalus
+./hello-web.de
 # Server listening on http://127.0.0.1:8080
 ```
 
@@ -41,18 +41,18 @@ Open http://127.0.0.1:8080 in your browser.
 ## 3. Build & run a Node.js app
 
 ```bash
-daedalus build ./examples/hello-node -o hello-node.daedalus
+daedalus build ./examples/hello-node -o hello-node.de
 
-./hello-node.daedalus
+./hello-node.de
 # Server listening on http://127.0.0.1:8080
 ```
 
 See the [Node.js guide](./node.md) for details on dependencies and `node_modules`.
 
-## 4. Inspect a .daedalus
+## 4. Inspect a .de
 
 ```bash
-daedalus inspect hello-web.daedalus
+daedalus inspect hello-web.de
 ```
 
 ```
@@ -71,20 +71,20 @@ integrity sha256: 4232327e...
 # Generate a keypair
 daedalus keygen --key-dir $XDG_DATA_HOME/daedalus/keys
 
-# Sign a .daedalus
-daedalus sign hello-web.daedalus --key $XDG_DATA_HOME/daedalus/keys/<fingerprint>.key
+# Sign a .de
+daedalus sign hello-web.de --key $XDG_DATA_HOME/daedalus/keys/<fingerprint>.key
 
 # Copy public key to trusted directory
 cp $XDG_DATA_HOME/daedalus/keys/<fingerprint>.pub $XDG_DATA_HOME/daedalus/trusted-keys/
 
 # Verify
-daedalus verify hello-web.daedalus
+daedalus verify hello-web.de
 ```
 
 ## Debug
 
 ```bash
-DAEDALUS_VERBOSE=1 ./hello-web.daedalus
+DAEDALUS_VERBOSE=1 ./hello-web.de
 # Shows cold/warm start, extraction, and cache status
 ```
 
