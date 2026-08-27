@@ -1788,7 +1788,10 @@ fn load_encryption_key(path: &Path) -> Result<[u8; 32]> {
     let bytes = hex::decode(hex_str.trim())
         .with_context(|| format!("invalid hex in encrypt key file {}", path.display()))?;
     if bytes.len() != 32 {
-        anyhow::bail!("encrypt key must be exactly 32 bytes (64 hex chars), got {}", bytes.len());
+        anyhow::bail!(
+            "encrypt key must be exactly 32 bytes (64 hex chars), got {}",
+            bytes.len()
+        );
     }
     let mut key = [0u8; 32];
     key.copy_from_slice(&bytes);
@@ -1823,12 +1826,17 @@ fn assemble_and_sign(
             None => daedalus_core::sisr_stage::build_artifacts(inputs.payload, &sisr_config)
                 .context("SISR stage failed during build")?,
         };
-        let (encrypted_payload, encryption) = args.encrypt.as_ref().map(|path| {
-            let key = load_encryption_key(path)?;
-            let (ct, meta) = encrypt::encrypt_payload(inputs.payload, &key)
-                .context("payload encryption failed")?;
-            Ok::<_, anyhow::Error>((ct, meta))
-        }).transpose()?.unzip();
+        let (encrypted_payload, encryption) = args
+            .encrypt
+            .as_ref()
+            .map(|path| {
+                let key = load_encryption_key(path)?;
+                let (ct, meta) = encrypt::encrypt_payload(inputs.payload, &key)
+                    .context("payload encryption failed")?;
+                Ok::<_, anyhow::Error>((ct, meta))
+            })
+            .transpose()?
+            .unzip();
         let payload = encrypted_payload.as_deref().unwrap_or(inputs.payload);
         let input = daedalus_core::assembly::AssemblyInput {
             stub_bytes: inputs.stub_bytes,
@@ -1842,12 +1850,17 @@ fn assemble_and_sign(
         daedalus_core::assembly::assemble_daedalus(output, &input)
             .context("failed to assemble daedalus (SISR)")?
     } else {
-        let (encrypted_payload, encryption) = args.encrypt.as_ref().map(|path| {
-            let key = load_encryption_key(path)?;
-            let (ct, meta) = encrypt::encrypt_payload(inputs.payload, &key)
-                .context("payload encryption failed")?;
-            Ok::<_, anyhow::Error>((ct, meta))
-        }).transpose()?.unzip();
+        let (encrypted_payload, encryption) = args
+            .encrypt
+            .as_ref()
+            .map(|path| {
+                let key = load_encryption_key(path)?;
+                let (ct, meta) = encrypt::encrypt_payload(inputs.payload, &key)
+                    .context("payload encryption failed")?;
+                Ok::<_, anyhow::Error>((ct, meta))
+            })
+            .transpose()?
+            .unzip();
         let payload = encrypted_payload.as_deref().unwrap_or(inputs.payload);
         let input = daedalus_core::assembly::AssemblyInput {
             stub_bytes: inputs.stub_bytes,

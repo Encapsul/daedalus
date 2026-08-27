@@ -165,6 +165,7 @@ fn test_upgrade_binary_converts_legacy_file() {
             squashfs: false,
             target_arch: None,
             sisr: None,
+            encryption: None,
         },
     )
     .unwrap();
@@ -296,6 +297,7 @@ fn test_registry_push_local_extracts_layers() {
             squashfs: false,
             target_arch: None,
             sisr: None,
+            encryption: None,
         },
     )
     .unwrap();
