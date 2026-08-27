@@ -3,6 +3,7 @@ pub mod clean;
 pub mod dashboard;
 pub mod doctor;
 pub mod env;
+pub mod feedback;
 pub mod inspect;
 pub mod keygen;
 pub mod publish;

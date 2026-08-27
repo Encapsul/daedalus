@@ -324,4 +324,10 @@ See [CODE_STYLE.md](CODE_STYLE.md) for Rust style guidelines, best practices, an
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+## Community
+
+- [GitHub Issues](https://github.com/Tednoob17/daedalus/issues) — report bugs or request features
+- `daedalus feedback --browser` — open the feedback page quickly
+- [Contributing Guide](#contributing) — how to contribute code or docs
 # daedalus

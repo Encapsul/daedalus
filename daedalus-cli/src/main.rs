@@ -100,6 +100,9 @@ enum Commands {
     /// Show daedalus environment info
     Env(commands::env::EnvArgs),
 
+    /// Open feedback page to report issues or suggestions
+    Feedback(commands::feedback::FeedbackArgs),
+
     /// Generate shell completion scripts
     Completion {
         /// Shell to generate completions for
@@ -191,6 +194,7 @@ fn main() -> ExitCode {
         Commands::Registry(args) => commands::registry::run(args),
         Commands::Serve(args) => commands::serve::run(args),
         Commands::Env(args) => commands::env::run(args),
+        Commands::Feedback(args) => commands::feedback::run(args),
         Commands::Completion { shell } => {
             let mut cmd = Cli::command();
             let bin_name = "daedalus";
