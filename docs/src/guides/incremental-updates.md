@@ -1,12 +1,12 @@
 # Incremental Updates (SISR)
 
-> **Advanced, opt-in.** This guide covers the SISR extension: making a `.daedalus`
+> **Advanced, opt-in.** This guide covers the SISR extension: making a `.de`
 > able to update itself from signed deltas. If you don't need self-updates,
 > ignore this page — a plain `daedalus build` already gives you a static,
 > self-contained binary.
 >
 > Status: **implemented** — `daedalus build --enable-sisr` produces an updatable
-> binary and its signed manifest, and `./app.daedalus --daedalus-update` applies the
+> binary and its signed manifest, and `./app.de --daedalus-update` applies the
 > delta on the target (see [User-updates](./user-updates.md) for the
 > end-to-end workflow).
 
@@ -20,7 +20,7 @@ and rebuilding + redistributing the whole file each time is the bottleneck:
 - many identical deployments that can share deltas.
 
 If you deploy to a handful of machines and can rebuild, SISR is overkill. The
-default static `.daedalus` remains the right choice.
+default static `.de` remains the right choice.
 
 ## Overview of the workflow
 
@@ -28,7 +28,7 @@ default static `.daedalus` remains the right choice.
 DEV MACHINE                          TARGET MACHINE
                                      (no toolchain, no daedalus CLI)
 
-build + sign v1.0  ──────────────►   ./app.daedalus --daedalus-update
+build + sign v1.0  ──────────────►   ./app.de --daedalus-update
 build + sign v1.1                     │  fetch manifest (HTTPS)
    │                                  │  verify signature + anti-rollback
    │                                  │  download changed chunks
@@ -38,7 +38,7 @@ build + sign v1.1                     │  fetch manifest (HTTPS)
    │                              running v1.1
 ```
 
-Three things are produced per release: the `.daedalus` itself (for fresh
+Three things are produced per release: the `.de` itself (for fresh
 installs), the **manifest**, and the **chunks** it references. Both the
 manifest and every chunk are verifiable without any tool — the verification
 runs inside the binary.
@@ -47,10 +47,10 @@ runs inside the binary.
 
 ```bash
 # Static container — no SISR
-daedalus build ./my_app -o my_app.daedalus
+daedalus build ./my_app -o my_app.de
 
 # Updatable binary — enables SISR and embeds the update channel
-daedalus build ./my_app -o my_app.daedalus \
+daedalus build ./my_app -o my_app.de \
     --enable-sisr \
     --key $XDG_DATA_HOME/daedalus/keys/<fingerprint>.key \
     --update-url https://updates.example.com/my_app
@@ -74,7 +74,7 @@ daedalus build ./my_app --enable-sisr --key $XDG_DATA_HOME/daedalus/keys/<finger
 With `--enable-sisr` the `--key` argument signs the **manifest**, not the
 binary (the SISR section would be truncated by the binary signature block).
 Without `--enable-sisr`, `daedalus sign` still signs the binary as before. The
-trust chain is fixed at build time: a `.daedalus` only applies updates signed by
+trust chain is fixed at build time: a `.de` only applies updates signed by
 the same key, or by a delegated key recorded in its header.
 
 ## 3. Publish the update
@@ -84,7 +84,7 @@ For each release, publish:
 ```
 updates.example.com/
   my-app/
-    manifest              ← signed XBMR manifest (the .daedalus.manifest)
+    manifest              ← signed XBMR manifest (the .de.manifest)
     chunks/<sha256>        ← content-addressed encoded chunks
 ```
 
@@ -100,13 +100,13 @@ beside it.
 ```bash
 # Check for and apply an update (URL from --update-url, $DAEDALUS_UPDATE_URL,
 # or an explicit argument — in that order)
-./my_app.daedalus --daedalus-update
+./my_app.de --daedalus-update
 
 # Point at a different channel explicitly
-./my_app.daedalus --daedalus-update https://updates.example.com/my_app
+./my_app.de --daedalus-update https://updates.example.com/my_app
 
 # Inspect versions without updating
-./my_app.daedalus --daedalus-version
+./my_app.de --daedalus-version
 ```
 
 What happens under the hood — and what cannot be skipped:
@@ -120,13 +120,13 @@ What happens under the hood — and what cannot be skipped:
 6. it rebuilds the binary and commits atomically — an interruption leaves the
    previous binary intact.
 
-## 5. Verification of a standalone `.daedalus`
+## 5. Verification of a standalone `.de`
 
-A `.daedalus` produced by SISR is a **standard, valid `.daedalus`**. Existing
+A `.de` produced by SISR is a **standard, valid `.de`**. Existing
 verification works unchanged:
 
 ```bash
-daedalus verify my_app.daedalus --trusted-dir $XDG_DATA_HOME/daedalus/trusted-keys
+daedalus verify my_app.de --trusted-dir $XDG_DATA_HOME/daedalus/trusted-keys
 ```
 
 There is no separate "SISR format" to verify.
@@ -153,7 +153,7 @@ In every case the running binary is the last valid version. There is no
 - **Updates need a reachable manifest** — self-update requires network access
   to the update channel.
 
-None of this applies to a classic `.daedalus`; it stays a zero-dependency static
+None of this applies to a classic `.de`; it stays a zero-dependency static
 container.
 
 ## References
