@@ -104,6 +104,7 @@ mod tests {
                 layers: Vec::new(),
                 entrypoint_layer: None,
                 hooks: None,
+                encryption: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -138,6 +139,7 @@ mod tests {
                 layers: Vec::new(),
                 entrypoint_layer: None,
                 hooks: None,
+                encryption: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -170,6 +172,7 @@ mod tests {
                 layers: Vec::new(),
                 entrypoint_layer: None,
                 hooks: None,
+                encryption: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -202,6 +205,7 @@ mod tests {
                 layers: Vec::new(),
                 entrypoint_layer: None,
                 hooks: None,
+                encryption: None,
             }
         };
         let err = resolve_update_url(&args, 0, &meta).unwrap_err();
@@ -234,6 +238,7 @@ mod tests {
                 entrypoint_layer: None,
                 hooks: None,
                 layers: Vec::new(),
+                encryption: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();

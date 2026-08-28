@@ -1625,6 +1625,7 @@ mod tests {
             entrypoint_layer: None,
             hooks: None,
             layers: Vec::new(),
+            encryption: None,
         };
 
         let app_config = AppConfig {
@@ -1777,6 +1778,7 @@ mod tests {
             entrypoint_layer: None,
             hooks: None,
             layers: Vec::new(),
+            encryption: None,
         };
         let err = resolve_entrypoint(&meta, tmp.path(), false).unwrap_err();
         assert!(err.to_string().contains("unsupported runtime 'cobol'"));

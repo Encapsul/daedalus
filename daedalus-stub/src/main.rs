@@ -35,7 +35,6 @@ use daedalus_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
 use daedalus_core::sisr::resilience::{
     backup_path_for, create_backup, discard_backup, restore_backup,
 };
-use hex;
 use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use std::ffi::CString;
@@ -336,7 +335,10 @@ fn run() -> io::Result<()> {
     let verbose = std::env::var_os("DAEDALUS_VERBOSE").is_some();
 
     let args: Vec<String> = std::env::args().collect();
-    let decrypt_key = args.windows(2).find(|w| w[0] == "--decrypt-key").map(|w| w[1].clone());
+    let decrypt_key = args
+        .windows(2)
+        .find(|w| w[0] == "--decrypt-key")
+        .map(|w| w[1].clone());
 
     // Load configuration (multi-layered: CLI args → local config → env vars → global config)
     let app_config = config::AppConfig::load();
@@ -436,14 +438,20 @@ fn run() -> io::Result<()> {
         let key = decrypt_key.as_ref().ok_or_else(|| {
             err("payload is encrypted — pass --decrypt-key <32-byte-hex-keyfile> to decrypt")
         })?;
-        let key_bytes = hex::decode(key).map_err(|e| err(format!("invalid decrypt key hex: {e}")))?;
+        let key_bytes =
+            hex::decode(key).map_err(|e| err(format!("invalid decrypt key hex: {e}")))?;
         if key_bytes.len() != 32 {
-            return Err(err(format!("decrypt key must be 32 bytes, got {}", key_bytes.len())));
+            return Err(err(format!(
+                "decrypt key must be 32 bytes, got {}",
+                key_bytes.len()
+            )));
         }
         let mut key_array = [0u8; 32];
         key_array.copy_from_slice(&key_bytes);
-        let salt = hex::decode(&enc.salt).map_err(|e| err(format!("bad encryption salt hex: {e}")))?;
-        let nonce = hex::decode(&enc.nonce).map_err(|e| err(format!("bad encryption nonce hex: {e}")))?;
+        let salt =
+            hex::decode(&enc.salt).map_err(|e| err(format!("bad encryption salt hex: {e}")))?;
+        let nonce =
+            hex::decode(&enc.nonce).map_err(|e| err(format!("bad encryption nonce hex: {e}")))?;
         if salt.len() != 32 || nonce.len() != 12 {
             return Err(err("encryption metadata has invalid salt/nonce length"));
         }
@@ -1597,6 +1605,7 @@ mod tests {
             ],
             entrypoint_layer: Some("python3".into()),
             hooks: None,
+            encryption: None,
         };
         let manifest = LayerManifest::from_metadata(&meta);
         assert_eq!(manifest.version, 1);
@@ -1637,6 +1646,7 @@ mod tests {
             layers: vec![],
             entrypoint_layer: None,
             hooks: None,
+            encryption: None,
         };
         write_layer_manifest(tmp.path(), &meta).unwrap();
         assert!(tmp.path().join(".daedalus-layers.json").is_file());
