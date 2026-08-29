@@ -144,6 +144,7 @@ fn assemble(work: &Path, stub: &Path, body: &str, shared: &[u8], config: &SisrBu
             squashfs: false,
             target_arch: None,
             sisr: Some(artifacts),
+            encryption: None,
         },
     )
     .unwrap();

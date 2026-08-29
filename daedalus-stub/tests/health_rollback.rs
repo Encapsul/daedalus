@@ -88,6 +88,7 @@ fn build_daedalus(work: &Path, stub: &Path, body: &str) {
     assemble_daedalus(
         &out,
         &AssemblyInput {
+            encryption: None,
             stub_bytes: &stub_bytes,
             payload: &body_bytes,
             meta_bytes: meta(),
