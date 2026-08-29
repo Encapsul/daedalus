@@ -65,7 +65,7 @@ The `.de` binary is structured as:
 - **Metadata**: JSON with runtime info, entrypoint, layers, capabilities, version
 - **Footer**: 4-byte magic `0xBEEF_CAFE`, format version, integrity SHA-256 hash
 
-Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs).
+Format versions: v2 (plain), v3 (signed), v5 (squashfs). Encryption is a flag (`FLAG_ENCRYPTED`), not a separate version.
 
 ## Target & host support
 
@@ -135,6 +135,12 @@ daedalus build ./myapp --target win-x64 -o out/app.de
 daedalus keygen --key-dir ~/.daedalus/keys
 daedalus build ./myapp --sign --key ~/.daedalus/keys/*.key -o myapp.de
 
+# Encrypt your binary (AES-256-GCM, external key)
+# Build: supply a 32-byte hex key file
+daedalus build ./myapp --encrypt ./app.key -o myapp.de
+# Run: supply the same key file at exec time
+./myapp.de --decrypt-key ./app.key
+
 # Self-updating binary with SISR (delta updates)
 daedalus build ./myapp --enable-sisr --update-url https://updates.example.com -o myapp.de
 #  -> myapp.de + myapp.de.manifest
@@ -202,7 +208,6 @@ license = "MIT"
 [build]
 isolation = "sandbox"
 seccomp = true
-encrypt = false
 squashfs = false
 target = "x86_64"
 no_install = false
@@ -251,6 +256,7 @@ cargo build --release
 
 - **Ed25519 signing**: binaries can be signed and verified against trusted keys (`~/.daedalus/trusted-keys/`, or `$DAEDALUS_TRUSTED_DIR`)
 - **SHA-256 integrity**: footer hash verifies payload tampering at runtime
+- **AES-256-GCM encryption**: optional payload encryption with external key (`--encrypt` / `--decrypt-key`). The binary never contains the key; salt and nonce are stored in the metadata JSON.
 - **Namespace isolation**: Linux builds use user/mount namespaces + optional seccomp (fail-closed); macOS uses App Sandbox (`macos_sandbox`); Windows uses process isolation (`win`/supervisor). `--isolation sandbox` must not silently degrade.
 - **Delta updates (Sisir)**: the stub verifies an embedded Ed25519 `SisirFooterExt.signature` (of the delta manifest) at cold start — fail-closed, with `DAEDALUS_SISR_ALLOW_UNSIGNED=1` as an explicit escape hatch for air-gapped/untrusted-update scenarios.
 - **CVE-2023-48022**: ed25519-dalek pinned to >= 2.1.0 to ensure Ed25519 bit is set
