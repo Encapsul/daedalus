@@ -10,10 +10,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - **File extension**: renamed from `.daedalus` to `.de` across CLI, docs, and examples
 - **Command rename**: `upgrade-binary` → `migrate` for clarity
 - **Error messages**: improved to include problem + cause + fix (e.g. "app directory not found" instead of "failed to canonicalize app path")
-- **README**: added Troubleshooting section; removed `--encrypt` references
+
+### Added
+- **AES-256-GCM payload encryption**: optional external-key encryption for `.de` binaries
+  - `daedalus build --encrypt <keyfile>` encrypts the payload at build time with AES-256-GCM + HKDF
+  - `daedalus run --decrypt-key <keyfile>` decrypts the payload at runtime
+  - Encryption metadata (salt, nonce, tag offset, encrypted size) is stored in the JSON metadata block
+  - The binary never contains the key; key rotation is supported by re-encrypting
 
 ### Fixed
-- CLI help text no longer shows removed `--encrypt` flag
 - Extension consistency between HN pitch (`.de`) and CLI output (`.de`)
 
 ## [0.5.0] - 2026-08-07

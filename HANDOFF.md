@@ -1248,12 +1248,17 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 
 ## Payload encryption (AES-256-GCM)
 
-- **File**: `cli/daedalus/encrypt.py` — `encrypt_payload(plaintext, signing_seed) -> (ciphertext, metadata)`
-- **File**: `daedalus-cli/src/commands/build/mod.rs` — `--encrypt` flag, requires `--key` for signing seed (used as AES key via HKDF).
-- **File**: `cli/pyproject.toml` — `pip install -e "./cli[encrypt]"` pulls in `cryptography`.
-- AES-256-GCM with HKDF key derivation from signing seed. Salt: `daedalus-encrypt-v1`.
-- Encrypted payloads produce format v4 footers (`ENCRYPTED_AES_256_GCM` marker). Launcher decrypts after signature verification.
-- Signing key = encryption key (whoever can sign can also decrypt). Key rotation planned for future.
+- **File**: `daedalus-core/src/encrypt.rs` — `encrypt_payload(plaintext, key) -> (ciphertext, EncryptMetadata)` and `decrypt_payload(ciphertext, key, meta) -> plaintext`.
+- **File**: `daedalus-cli/src/commands/build/args.rs` — `--encrypt <keyfile>` (path to a 32-byte hex key file).
+- **File**: `daedalus-cli/src/commands/build/pipeline.rs` — encrypts the payload before `assemble_daedalus` and passes `EncryptMetadata` through `AssemblyInput.encryption`.
+- **File**: `daedalus-core/src/assembly.rs` — `AssemblyInput.encryption: Option<EncryptMetadata>`; when `Some`, appends an `encryption` object to the JSON metadata block (`salt`, `nonce`, `tag_offset`, `encrypted_size`) and sets `format::FLAG_ENCRYPTED`.
+- **File**: `daedalus-core/src/format.rs` — `FLAG_ENCRYPTED` flag added to footer.
+- **File**: `daedalus-core/src/metadata.rs` — `EncryptionMeta` struct stored in `Metadata.encryption`.
+- **File**: `daedalus-stub/src/main.rs` — at runtime, if `meta.encryption` is present, requires `--decrypt-key <32-byte-hex-keyfile>` and decrypts the payload with AES-256-GCM before extraction.
+- **File**: `daedalus-stub/Cargo.toml` — `aes-gcm` + `hkdf` dependencies.
+- AES-256-GCM with HKDF key derivation. Salt and nonce are stored in the metadata JSON (hex-encoded).
+- The key is **external**: the binary contains only the ciphertext and metadata, never the key. The keyfile must be supplied at build time (`--encrypt`) and at runtime (`--decrypt-key`).
+- Key rotation is supported by re-encrypting with a new keyfile; old binaries remain decryptable with their original key.
 
 ## Deno support
 
