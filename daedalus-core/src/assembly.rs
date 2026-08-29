@@ -9,6 +9,7 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
+use crate::encrypt::EncryptMetadata;
 use crate::format::{self, Footer};
 use crate::metadata::BunFeatures;
 use crate::sisr::swap::AtomicWriter;
@@ -16,6 +17,7 @@ use crate::sisr_header::{SisrFooterExt, SISR_VERSION};
 #[cfg(test)]
 use crate::sisr_stage::SisrBuildConfig;
 use crate::sisr_stage::{self, RemoteManifest};
+use hex;
 
 /// Determine the format version based on build options.
 pub fn fmt_version(squashfs: bool, signed: bool) -> u8 {
@@ -228,6 +230,9 @@ pub struct AssemblyInput<'a> {
     pub squashfs: bool,
     pub target_arch: Option<&'a str>,
     pub sisr: Option<sisr_stage::SisrArtifacts>,
+    /// Optional AES-256-GCM encryption metadata appended to the JSON metadata
+    /// block. When `Some`, the payload bytes are already encrypted.
+    pub encryption: Option<EncryptMetadata>,
 }
 
 /// Assemble a .daedalus file from its components (without signing).
@@ -242,12 +247,31 @@ pub struct AssemblyInput<'a> {
 pub fn assemble_daedalus(out_path: &Path, input: &AssemblyInput<'_>) -> std::io::Result<u64> {
     let fmt_ver = fmt_version(input.squashfs, false);
     let arch = resolve_arch(input.target_arch);
-    let payload_offset = input.stub_bytes.len() as u64;
 
-    let body_hash = sha2_hash(input.payload, input.meta_bytes);
+    let payload = input.payload;
+    let meta_bytes = if let Some(ref enc_meta) = input.encryption {
+        let mut meta_map: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_slice(input.meta_bytes).unwrap_or_default();
+        meta_map.insert(
+            "encryption".to_string(),
+            serde_json::json!({
+                "salt": hex::encode(enc_meta.salt),
+                "nonce": hex::encode(enc_meta.nonce),
+                "tag_offset": enc_meta.tag_offset,
+                "encrypted_size": payload.len(),
+            }),
+        );
+        serde_json::to_vec(&meta_map)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+    } else {
+        input.meta_bytes.to_vec()
+    };
+
+    let payload_offset = input.stub_bytes.len() as u64;
+    let body_hash = sha2_hash(payload, &meta_bytes);
     let ext = sisr_footer_ext(payload_offset, input)?;
 
-    let meta_offset = payload_offset + input.payload.len() as u64;
+    let meta_offset = payload_offset + payload.len() as u64;
     let footer = build_footer(
         fmt_ver,
         arch,
@@ -256,12 +280,9 @@ pub fn assemble_daedalus(out_path: &Path, input: &AssemblyInput<'_>) -> std::io:
         body_hash,
         meta_offset,
         ext.is_some(),
+        input.encryption.is_some(),
     );
 
-    // Write to a temp file in the same directory, fsync, then rename over the
-    // output. Writing in place kept the destination open for write until the
-    // handle dropped — racing an immediate exec (`ETXTBSY` in CI) and leaving
-    // a half-written binary at the output path on a mid-write crash.
     let parent = out_path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)?;
     let tag = out_path
@@ -272,8 +293,8 @@ pub fn assemble_daedalus(out_path: &Path, input: &AssemblyInput<'_>) -> std::io:
     {
         let f = w.file_mut();
         f.write_all(input.stub_bytes)?;
-        f.write_all(input.payload)?;
-        f.write_all(input.meta_bytes)?;
+        f.write_all(&payload)?;
+        f.write_all(&meta_bytes)?;
         if let Some((artifacts, ext)) = ext.as_ref() {
             f.write_all(&artifacts.manifest_bytes)?;
             f.write_all(&ext.pack())?;
@@ -281,8 +302,6 @@ pub fn assemble_daedalus(out_path: &Path, input: &AssemblyInput<'_>) -> std::io:
         write_footer(f, &footer)?;
     }
 
-    // Set the executable bit on the temp before the atomic rename so a
-    // concurrent exec observes the final mode (mode survives rename(2)).
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -338,6 +357,7 @@ fn build_footer(
     payload_sha256: [u8; 32],
     meta_offset: u64,
     has_sisr: bool,
+    encrypted: bool,
 ) -> Footer {
     Footer {
         format_version: fmt_ver,
@@ -346,6 +366,9 @@ fn build_footer(
             let mut f = 0u8;
             if has_sisr {
                 f |= format::FLAG_SISR;
+            }
+            if encrypted {
+                f |= format::FLAG_ENCRYPTED;
             }
             f
         },

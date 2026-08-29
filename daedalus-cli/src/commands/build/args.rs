@@ -329,6 +329,11 @@ pub struct BuildArgs {
     #[arg(long)]
     pub enable_sisr: bool,
 
+    /// Encrypt the payload with AES-256-GCM using the key from this file (32 bytes hex).
+    /// The decryption key must be provided at runtime via `--decrypt-key`.
+    #[arg(long)]
+    pub encrypt: Option<PathBuf>,
+
     /// Base URL of the SISR update channel
     #[arg(long)]
     pub update_url: Option<String>,

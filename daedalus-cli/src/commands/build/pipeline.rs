@@ -2,10 +2,12 @@ use crate::remote_cache::remote_cache_from_args;
 use anyhow::{Context, Result};
 use daedalus_core::detect;
 use daedalus_core::embed;
+use daedalus_core::encrypt;
 use daedalus_core::layer::{Capability, RuntimeLayer, SerializableLayer};
 use daedalus_core::metadata::{BunFeatures, EmbeddedInterpreter};
 use daedalus_core::paths::cache_dir;
 use daedalus_core::pkgmgr;
+use hex;
 use std::path::{Path, PathBuf};
 
 use super::args::{config_fingerprint, parse_target, BuildArgs, BuildPlan};
@@ -1780,6 +1782,19 @@ fn apply_cross_compile(args: &BuildArgs, bun_features: &mut BunFeatures, verbose
     }
 }
 
+fn load_encryption_key(path: &Path) -> Result<[u8; 32]> {
+    let hex_str = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read encrypt key from {}", path.display()))?;
+    let bytes = hex::decode(hex_str.trim())
+        .with_context(|| format!("invalid hex in encrypt key file {}", path.display()))?;
+    if bytes.len() != 32 {
+        anyhow::bail!("encrypt key must be exactly 32 bytes (64 hex chars), got {}", bytes.len());
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&bytes);
+    Ok(key)
+}
+
 /// Assemble the final `.daedalus` artifact, warn about unsigned SISR artifacts
 /// and re-sign on macOS targets.
 /// Returns the artifact size in bytes.
@@ -1808,24 +1823,40 @@ fn assemble_and_sign(
             None => daedalus_core::sisr_stage::build_artifacts(inputs.payload, &sisr_config)
                 .context("SISR stage failed during build")?,
         };
+        let (encrypted_payload, encryption) = args.encrypt.as_ref().map(|path| {
+            let key = load_encryption_key(path)?;
+            let (ct, meta) = encrypt::encrypt_payload(inputs.payload, &key)
+                .context("payload encryption failed")?;
+            Ok::<_, anyhow::Error>((ct, meta))
+        }).transpose()?.unzip();
+        let payload = encrypted_payload.as_deref().unwrap_or(inputs.payload);
         let input = daedalus_core::assembly::AssemblyInput {
             stub_bytes: inputs.stub_bytes,
-            payload: inputs.payload,
+            payload,
             meta_bytes: inputs.meta_bytes,
             squashfs: inputs.squashfs,
             target_arch: target,
             sisr: Some(artifacts),
+            encryption,
         };
         daedalus_core::assembly::assemble_daedalus(output, &input)
             .context("failed to assemble daedalus (SISR)")?
     } else {
+        let (encrypted_payload, encryption) = args.encrypt.as_ref().map(|path| {
+            let key = load_encryption_key(path)?;
+            let (ct, meta) = encrypt::encrypt_payload(inputs.payload, &key)
+                .context("payload encryption failed")?;
+            Ok::<_, anyhow::Error>((ct, meta))
+        }).transpose()?.unzip();
+        let payload = encrypted_payload.as_deref().unwrap_or(inputs.payload);
         let input = daedalus_core::assembly::AssemblyInput {
             stub_bytes: inputs.stub_bytes,
-            payload: inputs.payload,
+            payload,
             meta_bytes: inputs.meta_bytes,
             squashfs: inputs.squashfs,
             target_arch: target,
             sisr: None,
+            encryption,
         };
         daedalus_core::assembly::assemble_daedalus(output, &input)
             .context("failed to assemble daedalus")?
