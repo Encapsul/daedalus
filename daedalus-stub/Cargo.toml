@@ -36,6 +36,8 @@ hex = "0.4"               # hex encoding for cache keys
 tempfile = "3"            # temp files for macOS sandbox profiles
 zstd = { version = "0.13", features = ["zstdmt"] }  # multithreaded zstd decompression for cold start
 walkdir = "2"               # recursive directory scan for native libs
+aes-gcm = "0.10"            # AES-256-GCM payload decryption
+hkdf = "0.12"               # HKDF-SHA256 key derivation for decryption
 
 # HTTP client for --daedalus-update: Linux-only (macOS lacks cross-compiled
 # ring/rustls without SDK). Update feature falls back to disabled on macOS.

@@ -28,12 +28,14 @@ mod update_url;
 mod win;
 
 use daedalus_core::detect;
+use daedalus_core::encrypt::decrypt_payload;
 use daedalus_core::format::{self as format, read_at, Footer};
 use daedalus_core::layer::SerializableLayer;
 use daedalus_core::sisr::health::{HealthCheckPolicy, HealthState, HealthStore};
 use daedalus_core::sisr::resilience::{
     backup_path_for, create_backup, discard_backup, restore_backup,
 };
+use hex;
 use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use std::ffi::CString;
@@ -161,6 +163,8 @@ pub struct Metadata {
     /// Name of the layer containing the main entrypoint.
     #[serde(default)]
     entrypoint_layer: Option<String>,
+    #[serde(default)]
+    encryption: Option<daedalus_core::metadata::EncryptionMeta>,
 }
 
 impl Metadata {
@@ -331,6 +335,9 @@ fn main() {
 fn run() -> io::Result<()> {
     let verbose = std::env::var_os("DAEDALUS_VERBOSE").is_some();
 
+    let args: Vec<String> = std::env::args().collect();
+    let decrypt_key = args.windows(2).find(|w| w[0] == "--decrypt-key").map(|w| w[1].clone());
+
     // Load configuration (multi-layered: CLI args → local config → env vars → global config)
     let app_config = config::AppConfig::load();
 
@@ -424,6 +431,37 @@ fn run() -> io::Result<()> {
         footer.payload_offset,
         footer.payload_csize as usize,
     )?;
+
+    let (payload, meta_bytes) = if let Some(ref enc) = meta.encryption {
+        let key = decrypt_key.as_ref().ok_or_else(|| {
+            err("payload is encrypted — pass --decrypt-key <32-byte-hex-keyfile> to decrypt")
+        })?;
+        let key_bytes = hex::decode(key).map_err(|e| err(format!("invalid decrypt key hex: {e}")))?;
+        if key_bytes.len() != 32 {
+            return Err(err(format!("decrypt key must be 32 bytes, got {}", key_bytes.len())));
+        }
+        let mut key_array = [0u8; 32];
+        key_array.copy_from_slice(&key_bytes);
+        let salt = hex::decode(&enc.salt).map_err(|e| err(format!("bad encryption salt hex: {e}")))?;
+        let nonce = hex::decode(&enc.nonce).map_err(|e| err(format!("bad encryption nonce hex: {e}")))?;
+        if salt.len() != 32 || nonce.len() != 12 {
+            return Err(err("encryption metadata has invalid salt/nonce length"));
+        }
+        let mut salt_array = [0u8; 32];
+        let mut nonce_array = [0u8; 12];
+        salt_array.copy_from_slice(&salt);
+        nonce_array.copy_from_slice(&nonce);
+        let plaintext = decrypt_payload(&payload, &key_array, &nonce_array, &salt_array)
+            .map_err(|e| err(format!("decryption failed: {e}")))?;
+        if verbose {
+            eprintln!("[daedalus] payload decrypted ({} bytes)", plaintext.len());
+        }
+        // Recompute metadata hash with decrypted payload
+        let new_meta = meta_bytes.clone();
+        (plaintext, new_meta)
+    } else {
+        (payload, meta_bytes)
+    };
 
     // Verify Ed25519 signature. Enforce a consistent signature state first:
     // a sig block must exist iff FLAG_SIGNED is set — a flag without a block
@@ -1379,8 +1417,8 @@ extern "C" {
     fn libc_flock(fd: i32, operation: i32) -> i32;
 }
 
-fn err(msg: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, msg)
+fn err(msg: impl AsRef<str>) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, msg.as_ref())
 }
 
 // ---------------------------------------------------------------------------

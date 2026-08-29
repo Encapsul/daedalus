@@ -20,6 +20,7 @@ pub const CRYPTO_NONE: u64 = 0x00;
 pub const PAYLOAD_FORMAT_SQUASHFS: &str = "squashfs";
 
 pub const FLAG_SIGNED: u8 = 0x01;
+pub const FLAG_ENCRYPTED: u8 = 0x08;
 /// Set when the file carries a `SISR` footer extension + delta manifest.
 pub const FLAG_SISR: u8 = 0x04;
 
@@ -63,6 +64,10 @@ impl Footer {
     /// Whether the file embeds a `SISR` extension and delta manifest.
     pub fn has_sisr(&self) -> bool {
         self.flags & FLAG_SISR != 0
+    }
+
+    pub fn is_encrypted(&self) -> bool {
+        self.flags & FLAG_ENCRYPTED != 0
     }
 
     pub fn read_from<R: Read + Seek>(r: &mut R) -> io::Result<Footer> {

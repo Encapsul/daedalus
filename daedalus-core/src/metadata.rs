@@ -202,6 +202,14 @@ impl std::fmt::Display for EmbeddedInterpreter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncryptionMeta {
+    pub salt: String,
+    pub nonce: String,
+    pub tag_offset: usize,
+    pub encrypted_size: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Service {
     pub name: String,
     pub command: Vec<String>,
