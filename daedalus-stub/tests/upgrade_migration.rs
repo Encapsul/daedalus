@@ -34,6 +34,7 @@ fn build_legacy(work: &Path, stub: &Path, body: &str, shared: &[u8]) -> PathBuf 
     assemble_daedalus(
         &out,
         &AssemblyInput {
+            encryption: None,
             stub_bytes: &stub_bytes,
             payload: &payload(body, shared),
             meta_bytes: meta(),

@@ -49,6 +49,7 @@ fn build_seccomp_daedalus(work: &Path, stub: &Path, seccomp: bool) -> PathBuf {
     assemble_daedalus(
         &out,
         &AssemblyInput {
+            encryption: None,
             stub_bytes: &fs::read(stub).unwrap(),
             payload: &payload_bytes,
             meta_bytes: &meta_bytes,
@@ -131,6 +132,7 @@ fn build_layered_daedalus(work: &Path, stub: &Path, capabilities: &[&str]) -> Pa
     assemble_daedalus(
         &out,
         &AssemblyInput {
+            encryption: None,
             stub_bytes: &fs::read(stub).unwrap(),
             payload: &payload(),
             meta_bytes: &meta_bytes,
