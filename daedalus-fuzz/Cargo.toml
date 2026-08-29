@@ -3,19 +3,35 @@ name = "daedalus-fuzz"
 version = "0.1.0"
 edition = "2021"
 publish = false
-# Not part of the workspace `members` list: libFuzzer requires a nightly
-# toolchain, so this crate is deliberately excluded from stable CI builds.
+# Not part of the workspace `members` list: this crate requires extra
+# dependencies (tokio, clap, etc.) and is intended for offline fuzzing,
+# not part of the stable CI suite.
 
-[package.metadata]
-cargo-fuzz = true
+[workspace]
 
 [dependencies]
-libfuzzer-sys = "0.4"
 daedalus-core = { path = "../daedalus-core" }
+arbitrary = { version = "1.3", features = ["derive"] }
+proptest = "1.0"
+rand = "0.8"
+rand_chacha = "0.3"
+num_cpus = "1.16"
+humantime = "2.1"
+tempfile = "3.8"
+anyhow = "1.0"
+sha2 = "0.10"
+flate2 = "1.0"
+tar = "0.4"
+bincode = "1.3"
+tokio = { version = "1.0", features = ["rt-multi-thread", "time", "fs", "macros"] }
+reqwest = { version = "0.12", features = ["blocking", "rustls-tls", "json"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [[bin]]
-name = "sisr_manifest"
-path = "fuzz_targets/sisr_manifest.rs"
+name = "daedalus-harness"
+path = "src/main.rs"
 test = false
 doc = false
 bench = false
