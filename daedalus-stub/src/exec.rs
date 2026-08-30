@@ -22,6 +22,13 @@ use daedalus_core::layer::Capability;
 /// Enter user + mount namespace if isolation >= 2; no-op otherwise.
 /// No-op on non-Linux platforms (no namespaces available).
 #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+/// enter_namespace_if_needed - enter namespace if needed.
+/// @isolation: isolation
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 pub fn enter_namespace_if_needed(isolation: u8) -> io::Result<()> {
     #[cfg(target_os = "linux")]
     if isolation >= 2 {
@@ -391,6 +398,13 @@ pub fn expand_env_arg(arg: &str, env: &BTreeMap<String, String>) -> Option<Strin
 
 /// Convert a `BTreeMap<String,String>` to a null-terminated `Vec<CString>` for execve.
 #[cfg(unix)]
+/// env_to_cstrings - env to cstrings.
+/// @env: environment variables
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<Vec<CString>>
 pub fn env_to_cstrings(env: &BTreeMap<String, String>) -> io::Result<Vec<CString>> {
     env.iter()
         .map(|(k, v)| cstr(format!("{k}={v}").as_bytes()))
@@ -400,6 +414,12 @@ pub fn env_to_cstrings(env: &BTreeMap<String, String>) -> io::Result<Vec<CString
 /// Check if an executable path exists and is executable.
 /// Searches PATH directories when given a bare name (no directory component).
 #[cfg(unix)]
+/// is_executable - check whether executable.
+/// @prog: prog
+///
+/// Description:
+///
+/// Return: true or false
 pub fn is_executable(prog: &[u8]) -> bool {
     if prog.is_empty() {
         return false;
@@ -445,6 +465,14 @@ pub fn check_executable(path: &str) -> bool {
 /// `pivot_root` the rootfs PATH takes over before `execvp`, so a rootfs-only
 /// interpreter must pass the pre-flight even when the host lacks the runtime.
 #[cfg(unix)]
+/// entrypoint_is_executable - entrypoint is executable.
+/// @prog: prog
+/// @interpreter_name: interpreter name
+/// @rootfs: rootfs
+///
+/// Description:
+///
+/// Return: true or false
 fn entrypoint_is_executable(prog: &[u8], interpreter_name: &str, rootfs: &Path) -> bool {
     if is_executable(prog) {
         return true;
@@ -470,6 +498,13 @@ fn entrypoint_is_executable(prog: &[u8], interpreter_name: &str, rootfs: &Path) 
 /// socket) are silently skipped. This lets the same binary run on X11-only,
 /// Wayland-only, or mixed systems.
 #[cfg(target_os = "linux")]
+/// bind_mount_gui_devices - bind mount gui devices.
+/// @rootfs: rootfs
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn bind_mount_gui_devices(rootfs: &Path) -> io::Result<()> {
     // SAFETY: getuid(2) returns the real UID of the calling process. It
     // cannot fail and has no invalid inputs.
@@ -605,6 +640,14 @@ fn bind_mount_gui_devices(rootfs: &Path) -> io::Result<()> {
 /// mount tree swap. Bind-mounting must happen before `pivot_root` because the
 /// host filesystem is unreachable afterwards.
 #[cfg(target_os = "linux")]
+/// enter_pivot_sandbox - enter pivot sandbox.
+/// @rootfs: rootfs
+/// @meta: meta
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
     let root_guard = if meta.landlock {
         Some(crate::landlock::RootfsGuard::open(rootfs)?)
@@ -649,6 +692,13 @@ fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
 /// The stub writes to the current process's cgroup (`/sys/fs/cgroup/.../cgroup.procs`
 /// for joining, `cpu.max`, `memory.max`, `pids.max` for limits).
 #[cfg(target_os = "linux")]
+/// apply_cgroups - apply cgroups.
+/// @meta: meta
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn apply_cgroups(meta: &Metadata) -> io::Result<()> {
     use std::fs;
 
@@ -710,6 +760,13 @@ fn apply_cgroups(meta: &Metadata) -> io::Result<()> {
 }
 
 #[cfg(not(target_os = "linux"))]
+/// apply_cgroups - apply cgroups.
+/// @_meta:  meta
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn apply_cgroups(_meta: &Metadata) -> io::Result<()> {
     Ok(())
 }
@@ -1092,6 +1149,11 @@ pub fn resolve_entrypoint(
 /// Spawn the app as a child process on Windows (`CreateProcess`), returning the
 /// child handle. The caller decides whether to poll (health gate) or wait.
 #[cfg(windows)]
+/// spawn_app_windows - spawn app windows.
+///
+/// Description:
+///
+/// Return: nothing
 pub fn spawn_app_windows(
     meta: &Metadata,
     rootfs: &Path,
@@ -1138,6 +1200,13 @@ pub fn spawn_app_windows(
 /// Resolve a bare interpreter/command name against the rootfs bin dirs,
 /// trying the `.exe` suffix on Windows.
 #[cfg(windows)]
+/// find_in_bin_paths - find in bin paths.
+/// @rootfs: rootfs
+/// @name: name
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 pub fn find_in_bin_paths(rootfs: &Path, name: &str) -> Option<PathBuf> {
     #[cfg(windows)]
     let candidates = [name.to_string(), format!("{name}.exe")];
@@ -1158,6 +1227,12 @@ pub fn find_in_bin_paths(rootfs: &Path, name: &str) -> Option<PathBuf> {
 
 /// `is_executable` for a `Path` (avoids unix-only `OsStr::as_bytes`).
 #[cfg(windows)]
+/// is_executable_path - check whether executable path.
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: true or false
 pub fn is_executable_path(path: &Path) -> bool {
     #[cfg(unix)]
     {
@@ -1175,6 +1250,11 @@ pub fn is_executable_path(path: &Path) -> bool {
 
 /// Supervise multiple services: fork+exec each, health-check ports, wait for all.
 #[cfg(unix)]
+/// supervise_services - supervise services.
+///
+/// Description:
+///
+/// Return: nothing
 pub fn supervise_services(
     meta: &Metadata,
     rootfs: &Path,
@@ -1214,6 +1294,11 @@ pub fn supervise_services(
 /// Supervise multiple services on Windows: spawn each with `CreateProcess`,
 /// health-check ports, then wait for all handles.
 #[cfg(windows)]
+/// supervise_services - supervise services.
+///
+/// Description:
+///
+/// Return: nothing
 pub fn supervise_services(
     meta: &Metadata,
     rootfs: &Path,
@@ -1275,6 +1360,11 @@ pub fn supervise_services(
 
 /// Fork+exec each service, returning (name, pid) pairs.
 #[cfg(unix)]
+/// fork_services - fork services.
+///
+/// Description:
+///
+/// Return: nothing
 pub fn fork_services(
     meta: &Metadata,
     base_env: &BTreeMap<String, String>,
@@ -1357,6 +1447,14 @@ pub fn wait_for_health(meta: &Metadata, verbose: bool) -> io::Result<()> {
 /// Wait for all children to exit. Forward SIGTERM/SIGINT to children.
 /// Returns the exit code of the first failed service, or 0 if all succeeded.
 #[cfg(unix)]
+/// wait_for_children - wait for children.
+/// @children: children
+/// @verbose: verbose
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 pub fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Result<()> {
     let mut exit_code = 0i32;
     let mut remaining = children.len();
@@ -1420,6 +1518,14 @@ pub fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Resul
     Ok(())
 }
 
+/// wait_for_port - wait for port.
+/// @port: port number
+/// @timeout_secs: timeout secs
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 pub fn wait_for_port(port: u16, timeout_secs: u64) -> io::Result<()> {
     use std::net::TcpStream;
     use std::time::{Duration, Instant};
@@ -1463,6 +1569,12 @@ static mut CHILD_PIDS: [i32; MAX_CHILDREN] = [0; MAX_CHILDREN];
 /// Callers MUST ensure the process is single-threaded at this point —
 /// no spawned threads, no concurrent mutable access to `CHILD_PIDS`.
 #[cfg(unix)]
+/// install_signal_handler - install signal handler.
+/// @children: children
+///
+/// Description:
+///
+/// Return: nothing
 pub fn install_signal_handler(children: &[(String, i32)]) {
     let count = children.len().min(MAX_CHILDREN);
     // SAFETY: install_signal_handler is called from a single-threaded context
@@ -1512,6 +1624,11 @@ mod tests {
     static FORK_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
+    /// make_resolve_returns_absolute_when_pivot - make resolve returns absolute when pivot.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn make_resolve_returns_absolute_when_pivot() {
         let rootfs = PathBuf::from("/app");
         let resolve = make_resolve(&rootfs, true);
@@ -1522,6 +1639,11 @@ mod tests {
     }
 
     #[test]
+    /// make_resolve_strips_leading_slash_when_no_pivot - make resolve strips leading slash when no pivot.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn make_resolve_strips_leading_slash_when_no_pivot() {
         let rootfs = PathBuf::from("/tmp/daedalus-cache/abc");
         let resolve = make_resolve(&rootfs, false);
@@ -1529,11 +1651,21 @@ mod tests {
     }
 
     #[test]
+    /// check_executable_returns_false_for_missing_path - check executable returns false for missing path.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn check_executable_returns_false_for_missing_path() {
         assert!(!check_executable("/nonexistent/binary"));
     }
 
     #[test]
+    /// entrypoint_executable_falls_back_to_rootfs_interpreter - entrypoint executable falls back to rootfs interpreter.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn entrypoint_executable_falls_back_to_rootfs_interpreter() {
         let tmp = tempfile::tempdir().unwrap();
         let rootfs = tmp.path();
@@ -1548,6 +1680,11 @@ mod tests {
     }
 
     #[test]
+    /// entrypoint_executable_rejects_absolute_missing_path - entrypoint executable rejects absolute missing path.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn entrypoint_executable_rejects_absolute_missing_path() {
         let tmp = tempfile::tempdir().unwrap();
         let rootfs = tmp.path();
@@ -1562,6 +1699,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_web_port_returns_8000_for_django - detect web port returns 8000 for django.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_web_port_returns_8000_for_django() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("manage.py"), "").unwrap();
@@ -1569,6 +1711,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_web_port_returns_3000_for_rails - detect web port returns 3000 for rails.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_web_port_returns_3000_for_rails() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("bin")).unwrap();
@@ -1577,6 +1724,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_django_settings_handles_commas_and_parens - detect django settings handles commas and parens.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_django_settings_handles_commas_and_parens() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
@@ -1591,6 +1743,11 @@ mod tests {
     }
 
     #[test]
+    /// setup_env_dotenv_loses_to_explicit_config - set up env dotenv loses to explicit config.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn setup_env_dotenv_loses_to_explicit_config() {
         let tmp = tempfile::tempdir().unwrap();
         let rootfs = tmp.path();
@@ -1650,6 +1807,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_web_port_handles_port_equals_syntax - detect web port handles port equals syntax.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_web_port_handles_port_equals_syntax() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
@@ -1661,6 +1823,11 @@ mod tests {
     }
 
     #[test]
+    /// wait_for_children_ignores_spurious_and_waits_for_tracked - wait for children ignores spurious and waits for tracked.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn wait_for_children_ignores_spurious_and_waits_for_tracked() {
         // Serialized: waitpid(-1, ...) reaps ANY child of the process, so
         // fork-based tests must not run concurrently or they steal each
@@ -1694,6 +1861,11 @@ mod tests {
     }
 
     #[test]
+    /// wait_for_children_ok_when_tracked_exits_zero - wait for children ok when tracked exits zero.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn wait_for_children_ok_when_tracked_exits_zero() {
         // Serialized: see wait_for_children_ignores_spurious_and_waits_for_tracked.
         let _guard = FORK_TEST_LOCK.lock().unwrap();
@@ -1709,6 +1881,12 @@ mod tests {
         wait_for_children(&[("ok".to_string(), pid)], false).unwrap();
     }
 
+    /// env_map - env map.
+    /// @pairs: pairs
+    ///
+    /// Description:
+    ///
+    /// Return: the BTreeMap<String, String>
     fn env_map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs
             .iter()
@@ -1717,6 +1895,11 @@ mod tests {
     }
 
     #[test]
+    /// expand_env_arg_expands_port - expand env arg expands port.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn expand_env_arg_expands_port() {
         let env = env_map(&[("PORT", "8080")]);
         assert_eq!(
@@ -1726,6 +1909,11 @@ mod tests {
     }
 
     #[test]
+    /// expand_env_arg_supports_braces - expand env arg supports braces.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn expand_env_arg_supports_braces() {
         let env = env_map(&[("DAEDALUS_PORT", "9000")]);
         assert_eq!(
@@ -1735,11 +1923,21 @@ mod tests {
     }
 
     #[test]
+    /// expand_env_arg_drops_arg_when_var_unset - expand env arg drops arg when var unset.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn expand_env_arg_drops_arg_when_var_unset() {
         assert_eq!(expand_env_arg("-Dserver.port=$PORT", &env_map(&[])), None);
     }
 
     #[test]
+    /// expand_env_arg_passes_through_without_dollar - expand env arg passes through without dollar.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn expand_env_arg_passes_through_without_dollar() {
         let env = env_map(&[("PORT", "8080")]);
         assert_eq!(
@@ -1749,12 +1947,22 @@ mod tests {
     }
 
     #[test]
+    /// expand_env_arg_handles_trailing_dollar - expand env arg handles trailing dollar.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn expand_env_arg_handles_trailing_dollar() {
         let env = env_map(&[("PORT", "8080")]);
         assert_eq!(expand_env_arg("cost$", &env), Some("cost$".to_string()));
     }
 
     #[test]
+    /// resolve_entrypoint_rejects_unknown_runtime - resolve entrypoint rejects unknown runtime.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_entrypoint_rejects_unknown_runtime() {
         let tmp = tempfile::tempdir().unwrap();
         let meta = Metadata {
@@ -1785,6 +1993,11 @@ mod tests {
     }
 
     #[test]
+    /// runtime_interpreter_covers_all_interpreted_runtimes - runtime interpreter covers all interpreted runtimes.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn runtime_interpreter_covers_all_interpreted_runtimes() {
         for name in [
             "python", "node", "electron", "deno", "java", "ruby", "dotnet", "php", "perl", "hugo",
@@ -1802,6 +2015,11 @@ mod tests {
     /// leak into the child application's environment. Config secrets (injected
     /// via `AppConfig`) should still be present.
     #[test]
+    /// daedalus_env_vars_are_stripped_from_child - daedalus env vars are stripped from child.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn daedalus_env_vars_are_stripped_from_child() {
         let _guard = FORK_TEST_LOCK.lock().unwrap();
 
