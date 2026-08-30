@@ -39,12 +39,24 @@ pub struct ServeStartArgs {
     pub verbose: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: ServeArgs) -> Result<()> {
     match args.command {
         ServeCommand::Start(sub) => run_start(sub),
     }
 }
 
+/// run_start - run start.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn run_start(args: ServeStartArgs) -> Result<()> {
     let dir = expand_tilde(&args.dir);
     std::fs::create_dir_all(&dir).context("failed to create registry directory")?;
@@ -78,6 +90,11 @@ fn run_start(args: ServeStartArgs) -> Result<()> {
     Ok(())
 }
 
+/// handle_connection - handle connection.
+///
+/// Description:
+///
+/// Return: nothing
 fn handle_connection(
     mut stream: TcpStream,
     reg: &mut LayerRegistry,
@@ -115,12 +132,24 @@ fn handle_connection(
     Ok(())
 }
 
+/// handle_list - handle list.
+/// @stream: stream
+/// @reg: reg
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn handle_list(stream: &mut TcpStream, reg: &LayerRegistry) -> Result<()> {
     let layers = reg.list_layers().unwrap_or_default();
     let body = layers.join("\n");
     send_response(stream, 200, "OK", &body)
 }
 
+/// handle_pull - handle pull.
+///
+/// Description:
+///
+/// Return: nothing
 fn handle_pull(
     stream: &mut TcpStream,
     reg: &LayerRegistry,
@@ -142,6 +171,11 @@ fn handle_pull(
     Ok(())
 }
 
+/// handle_push - handle push.
+///
+/// Description:
+///
+/// Return: nothing
 fn handle_push(
     stream: &mut TcpStream,
     reg: &mut LayerRegistry,
@@ -170,16 +204,36 @@ fn handle_push(
     send_response(stream, 201, "Created", &hash)
 }
 
+/// extract_body - extract body.
+/// @stream: stream
+///
+/// Description:
+///
+/// Return: vector of Vec<u8>
 fn extract_body(stream: &mut TcpStream) -> Vec<u8> {
     let mut buf = [0u8; 4096];
     let n = stream.read(&mut buf).unwrap_or(0);
     buf[..n].to_vec()
 }
 
+/// send_response - send response.
+/// @stream: stream
+/// @code: code
+/// @status: status code
+/// @body: body
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn send_response(stream: &mut TcpStream, code: u16, status: &str, body: &str) -> Result<()> {
     send_response_bytes(stream, code, status, body.as_bytes(), "text/plain")
 }
 
+/// send_response_bytes - send response bytes.
+///
+/// Description:
+///
+/// Return: nothing
 fn send_response_bytes(
     stream: &mut TcpStream,
     code: u16,
@@ -196,6 +250,12 @@ fn send_response_bytes(
     Ok(())
 }
 
+/// expand_tilde - expand tilde.
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: the PathBuf
 fn expand_tilde(path: &Path) -> PathBuf {
     let s = path.to_string_lossy();
     if let Some(rest) = s.strip_prefix("~/") {

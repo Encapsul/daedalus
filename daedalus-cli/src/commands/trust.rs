@@ -26,6 +26,12 @@ pub struct TrustArgs {
     pub json: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: TrustArgs) -> Result<()> {
     let trusted_dir = args.trusted_dir.unwrap_or_else(trusted_keys_dir);
 

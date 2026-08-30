@@ -86,6 +86,12 @@ pub struct RegistryListArgs {
     pub verbose: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: RegistryArgs) -> Result<()> {
     match args.command {
         RegistryCommand::Push(sub) => run_push(sub),
@@ -94,6 +100,12 @@ pub fn run(args: RegistryArgs) -> Result<()> {
     }
 }
 
+/// run_push - run push.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn run_push(args: RegistryPushArgs) -> Result<()> {
     let file = args.file.canonicalize().context("failed to find file")?;
 
@@ -138,6 +150,12 @@ fn run_push(args: RegistryPushArgs) -> Result<()> {
     Ok(())
 }
 
+/// run_pull - run pull.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn run_pull(args: RegistryPullArgs) -> Result<()> {
     std::fs::create_dir_all(&args.output).context("failed to create output directory")?;
 
@@ -169,6 +187,12 @@ fn run_pull(args: RegistryPullArgs) -> Result<()> {
     Ok(())
 }
 
+/// run_list - run list.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn run_list(args: RegistryListArgs) -> Result<()> {
     let dir = expand_tilde(&args.dir);
     let reg = local_registry(&dir)?;
@@ -193,12 +217,26 @@ fn run_list(args: RegistryListArgs) -> Result<()> {
     Ok(())
 }
 
+/// local_registry - local registry.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: Result containing Result<LayerRegistry>
 fn local_registry(dir: &Path) -> Result<LayerRegistry> {
     let path = expand_tilde(dir);
     std::fs::create_dir_all(&path).ok();
     LayerRegistry::disk(&path).context("failed to open local registry")
 }
 
+/// push_local - push local.
+/// @dir: directory path
+/// @layers: layers
+/// @bin: bin
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn push_local(dir: &Path, layers: &[SerializableLayer], bin: &Path) -> Result<()> {
     let path = expand_tilde(dir);
     std::fs::create_dir_all(&path).context("failed to create local registry dir")?;
@@ -223,6 +261,11 @@ fn push_local(dir: &Path, layers: &[SerializableLayer], bin: &Path) -> Result<()
     Ok(())
 }
 
+/// push_remote - push remote.
+///
+/// Description:
+///
+/// Return: nothing
 fn push_remote(
     url: &str,
     _layers: &[SerializableLayer],
@@ -298,6 +341,11 @@ pub fn push_remote_artifact(
     Ok(())
 }
 
+/// pull_from_store - pull from store.
+///
+/// Description:
+///
+/// Return: nothing
 fn pull_from_store(
     reg: &mut LayerRegistry,
     hash: &str,
@@ -323,6 +371,11 @@ fn pull_from_store(
     Ok(())
 }
 
+/// pull_from_remote - pull from remote.
+///
+/// Description:
+///
+/// Return: nothing
 fn pull_from_remote(
     url: &str,
     hash: &str,
@@ -365,6 +418,11 @@ fn pull_from_remote(
     Ok(())
 }
 
+/// build_layer_refs - build layer refs.
+///
+/// Description:
+///
+/// Return: nothing
 fn build_layer_refs(
     reg: &mut LayerRegistry,
     layers: &[SerializableLayer],
@@ -384,6 +442,11 @@ fn build_layer_refs(
     Ok(refs)
 }
 
+/// extract_layers_from_artifact - extract layers from artifact.
+///
+/// Description:
+///
+/// Return: nothing
 pub fn extract_layers_from_artifact(
     bin: &Path,
 ) -> Result<(daedalus_core::format::Footer, Vec<SerializableLayer>)> {
@@ -408,6 +471,12 @@ pub fn extract_layers_from_artifact(
     Ok((footer, layers))
 }
 
+/// format_layer_kind - format layer kind.
+/// @layer: layer
+///
+/// Description:
+///
+/// Return: the &'static str
 fn format_layer_kind(layer: &SerializableLayer) -> &'static str {
     match layer.kind() {
         daedalus_core::layer::LayerKind::Runtime => "runtime",
@@ -416,6 +485,12 @@ fn format_layer_kind(layer: &SerializableLayer) -> &'static str {
     }
 }
 
+/// expand_tilde - expand tilde.
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: the PathBuf
 fn expand_tilde(path: &Path) -> PathBuf {
     let s = path.to_string_lossy();
     if let Some(rest) = s.strip_prefix("~/") {

@@ -26,6 +26,12 @@ pub struct InspectArgs {
     pub sbom: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: InspectArgs) -> Result<()> {
     if args.dry_run {
         eprintln!("Would inspect: {}", args.file.display());
@@ -176,6 +182,11 @@ pub fn run(args: InspectArgs) -> Result<()> {
     Ok(())
 }
 
+/// generate_sbom - generate sbom.
+///
+/// Description:
+///
+/// Return: nothing
 fn generate_sbom(
     _file: &std::path::Path,
     meta: &serde_json::Value,

@@ -602,6 +602,13 @@ fn version_satisfies(version: &str, constraint: &str) -> bool {
     false
 }
 
+/// satisfies_single - satisfies single.
+/// @version: version
+/// @constraint: constraint
+///
+/// Description:
+///
+/// Return: true or false
 fn satisfies_single(version: &[u32], constraint: &str) -> bool {
     let constraint = constraint.trim();
     if constraint.starts_with('^') {
@@ -654,10 +661,25 @@ fn satisfies_single(version: &[u32], constraint: &str) -> bool {
     }
 }
 
+/// parse_version - parse version.
+/// @s: s
+///
+/// Description:
+///
+/// Return: vector of Vec<u32>
 fn parse_version(s: &str) -> Vec<u32> {
     s.split('.').filter_map(|p| p.trim().parse().ok()).collect()
 }
 
+/// compare_versions - compare versions.
+/// @a: a
+/// @b: b
+/// @std: std
+/// @cmp: cmp
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn compare_versions(a: &[u32], b: &[u32]) -> Option<std::cmp::Ordering> {
     for (x, y) in a.iter().zip(b.iter()) {
         let ord = x.cmp(y);
@@ -974,12 +996,22 @@ mod tests {
     use super::*;
 
     #[test]
+    /// check_php_platform_reqs_no_composer_json - check php platform reqs no composer json.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn check_php_platform_reqs_no_composer_json() {
         let dir = tempfile::tempdir().unwrap();
         assert!(check_php_platform_reqs(dir.path(), false).is_ok());
     }
 
     #[test]
+    /// check_php_platform_reqs_no_require - check php platform reqs no require.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn check_php_platform_reqs_no_require() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
@@ -987,6 +1019,11 @@ mod tests {
     }
 
     #[test]
+    /// check_php_platform_reqs_finds_extensions - check php platform reqs finds extensions.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn check_php_platform_reqs_finds_extensions() {
         let dir = tempfile::tempdir().unwrap();
         let composer = r#"{"require": {"php": ">=8.0", "ext-json": "*", "ext-mbstring": "*"}}"#;
@@ -996,6 +1033,11 @@ mod tests {
     }
 
     #[test]
+    /// ensure_python_returns_host_when_no_target - ensure python returns host when no target.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn ensure_python_returns_host_when_no_target() {
         // When target is None, ensure_python should find the host python3
         // This test only checks the path doesn't error; actual download is
@@ -1006,6 +1048,11 @@ mod tests {
     }
 
     #[test]
+    /// ensure_python_target_arch_mapping - ensure python target arch mapping.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn ensure_python_target_arch_mapping() {
         let target = "aarch64-apple-darwin";
         let (arch, os) = parse_target(target);
@@ -1025,6 +1072,11 @@ mod tests {
     }
 
     #[test]
+    /// ensure_python_musl_target_mapping - ensure python musl target mapping.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn ensure_python_musl_target_mapping() {
         let target = "riscv64gc-unknown-linux-musl";
         let (arch, _os) = parse_target(target);
@@ -1038,6 +1090,11 @@ mod tests {
     }
 
     #[test]
+    /// ensure_python_url_format - ensure python url format.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn ensure_python_url_format() {
         let py_arch = "aarch64";
         let py_os = "unknown-linux-musl";

@@ -33,6 +33,12 @@ struct BenchmarkRow {
     fetched_chunks: u64,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: &DashboardArgs) -> Result<()> {
     let rows = load_benchmarks(&args.csv)?;
     if rows.is_empty() {
@@ -67,11 +73,22 @@ pub fn run(args: &DashboardArgs) -> Result<()> {
 struct ShutdownGuard;
 
 impl Drop for ShutdownGuard {
+    /// drop - drop.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn drop(&mut self) {
         ratatui::restore();
     }
 }
 
+/// load_benchmarks - load benchmarks.
+/// @csv_path: csv path
+///
+/// Description:
+///
+/// Return: Result containing Result<Vec<BenchmarkRow>>
 fn load_benchmarks(csv_path: &Option<PathBuf>) -> Result<Vec<BenchmarkRow>> {
     let path = csv_path
         .clone()
@@ -106,6 +123,12 @@ struct CacheInfo {
     total_size_mb: f64,
 }
 
+/// load_cache_info - load cache info.
+/// @cache_path: cache path
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn load_cache_info(cache_path: &Option<PathBuf>) -> Option<CacheInfo> {
     let path = cache_path.clone().unwrap_or_else(|| {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/ubuntu".into());
@@ -141,6 +164,14 @@ fn load_cache_info(cache_path: &Option<PathBuf>) -> Option<CacheInfo> {
     })
 }
 
+/// dir_size - dir size.
+/// @path: file or directory path
+/// @std: std
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing std::io::Result<u64>
 fn dir_size(path: &PathBuf) -> std::io::Result<u64> {
     let mut size = 0;
     if path.is_dir() {
@@ -161,6 +192,14 @@ fn dir_size(path: &PathBuf) -> std::io::Result<u64> {
     Ok(size)
 }
 
+/// ui - ui.
+/// @frame: frame
+/// @rows: rows
+/// @cache_info: cache info
+///
+/// Description:
+///
+/// Return: nothing
 fn ui(frame: &mut Frame, rows: &[BenchmarkRow], cache_info: &Option<CacheInfo>) {
     let area = frame.area();
     let chunks = Layout::default()
@@ -310,6 +349,13 @@ where
     )
 }
 
+/// format_chunks_bar - format chunks bar.
+/// @reused: reused
+/// @fetched: fetched
+///
+/// Description:
+///
+/// Return: the resulting string
 fn format_chunks_bar(reused: u64, fetched: u64) -> String {
     let total = reused + fetched;
     if total == 0 {

@@ -27,6 +27,12 @@ pub struct SelftestArgs {
     pub verbose: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: SelftestArgs) -> Result<()> {
     let path = args
         .file
@@ -119,6 +125,13 @@ pub fn run(args: SelftestArgs) -> Result<()> {
     std::process::exit(rc);
 }
 
+/// detect_mode - detect mode.
+/// @meta: metadata
+/// @serde_json: serde json
+///
+/// Description:
+///
+/// Return: the resulting string
 fn detect_mode(meta: &serde_json::Value) -> String {
     if meta.get("services").is_some() {
         return "server".into();
@@ -132,6 +145,11 @@ fn detect_mode(meta: &serde_json::Value) -> String {
     "cli".into()
 }
 
+/// wait_and_observe - wait and observe.
+///
+/// Description:
+///
+/// Return: nothing
 fn wait_and_observe(
     child: &mut std::process::Child,
     timeout_secs: u64,
@@ -177,6 +195,16 @@ fn wait_and_observe(
     Ok(0)
 }
 
+/// report_exit - report exit.
+/// @child: child
+/// @std: std
+/// @process: process
+/// @rc: rc
+/// @mode: mode
+///
+/// Description:
+///
+/// Return: nothing
 fn report_exit(child: &mut std::process::Child, rc: i32, mode: &str) {
     let label = if rc != 0 { "crashed" } else { "exited" };
     eprintln!("[daedalus] selftest: {label} with code {rc}");
@@ -198,6 +226,16 @@ fn report_exit(child: &mut std::process::Child, rc: i32, mode: &str) {
     }
 }
 
+/// do_probe - do probe.
+/// @child: child
+/// @std: std
+/// @process: process
+/// @probe_url: probe url
+/// @verbose: verbose
+///
+/// Description:
+///
+/// Return: Result containing Result<i32>
 fn do_probe(child: &mut std::process::Child, probe_url: &str, verbose: bool) -> Result<i32> {
     let deadline = Instant::now() + Duration::from_secs(3);
     let client = reqwest::blocking::Client::builder()
@@ -238,6 +276,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// test_detect_mode_server_python_flask - test detect mode server python flask.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_detect_mode_server_python_flask() {
         let meta = serde_json::json!({
             "runtime": "python",
@@ -247,6 +290,11 @@ mod tests {
     }
 
     #[test]
+    /// test_detect_mode_server_has_services - test detect mode server has services.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_detect_mode_server_has_services() {
         let meta = serde_json::json!({
             "services": [{"name": "web"}]
@@ -255,6 +303,11 @@ mod tests {
     }
 
     #[test]
+    /// test_detect_mode_cli_go - test detect mode cli go.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_detect_mode_cli_go() {
         let meta = serde_json::json!({
             "runtime": "go",
@@ -264,6 +317,11 @@ mod tests {
     }
 
     #[test]
+    /// test_detect_mode_server_node_express - test detect mode server node express.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_detect_mode_server_node_express() {
         let meta = serde_json::json!({
             "runtime": "node",

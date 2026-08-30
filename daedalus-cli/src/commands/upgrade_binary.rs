@@ -35,6 +35,12 @@ pub struct UpgradeBinaryArgs {
     pub json: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: UpgradeBinaryArgs) -> Result<()> {
     if args.output.exists() && !args.force {
         anyhow::bail!(

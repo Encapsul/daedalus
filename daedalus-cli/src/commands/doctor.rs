@@ -32,6 +32,11 @@ struct Check {
     optional: bool,
 }
 
+/// use_color - use color.
+///
+/// Description:
+///
+/// Return: true or false
 fn use_color() -> bool {
     if std::env::var("NO_COLOR").is_ok() {
         return false;
@@ -43,6 +48,11 @@ fn use_color() -> bool {
     std::io::stdout().is_terminal()
 }
 
+/// color_green - color green.
+///
+/// Description:
+///
+/// Return: the &'static str
 fn color_green() -> &'static str {
     if use_color() {
         "\x1b[32m"
@@ -51,6 +61,11 @@ fn color_green() -> &'static str {
     }
 }
 
+/// color_red - color red.
+///
+/// Description:
+///
+/// Return: the &'static str
 fn color_red() -> &'static str {
     if use_color() {
         "\x1b[31m"
@@ -59,6 +74,11 @@ fn color_red() -> &'static str {
     }
 }
 
+/// color_reset - color reset.
+///
+/// Description:
+///
+/// Return: the &'static str
 fn color_reset() -> &'static str {
     if use_color() {
         "\x1b[0m"
@@ -67,6 +87,12 @@ fn color_reset() -> &'static str {
     }
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: DoctorArgs) -> Result<()> {
     let mut checks = vec![
         check_command("python3", &["--version"], false),
@@ -163,6 +189,14 @@ pub fn run(args: DoctorArgs) -> Result<()> {
     Ok(())
 }
 
+/// check_command - check command.
+/// @name: name
+/// @args: command arguments
+/// @optional: optional
+///
+/// Description:
+///
+/// Return: the Check
 fn check_command(name: &str, args: &[&str], optional: bool) -> Check {
     match Command::new(name).args(args).output() {
         Ok(output) => {
@@ -189,6 +223,12 @@ fn check_command(name: &str, args: &[&str], optional: bool) -> Check {
     }
 }
 
+/// check_musl_target - check musl target.
+/// @optional: optional
+///
+/// Description:
+///
+/// Return: the Check
 fn check_musl_target(optional: bool) -> Check {
     let output = Command::new("rustup")
         .args(["target", "list", "--installed"])
@@ -219,6 +259,12 @@ fn check_musl_target(optional: bool) -> Check {
     }
 }
 
+/// check_daedalus_stub - check daedalus stub.
+/// @optional: optional
+///
+/// Description:
+///
+/// Return: the Check
 fn check_daedalus_stub(optional: bool) -> Check {
     match which::which("daedalus-stub") {
         Ok(path) => Check {
@@ -236,6 +282,11 @@ fn check_daedalus_stub(optional: bool) -> Check {
     }
 }
 
+/// check_python_cryptography - check python cryptography.
+///
+/// Description:
+///
+/// Return: the Check
 fn check_python_cryptography() -> Check {
     let output = Command::new("python3")
         .args(["-c", "import cryptography; print(cryptography.__version__)"])
@@ -259,6 +310,12 @@ fn check_python_cryptography() -> Check {
     }
 }
 
+/// attempt_fix - attempt fix.
+/// @name: name
+///
+/// Description:
+///
+/// Return: Result containing Result<String>
 fn attempt_fix(name: &str) -> Result<String> {
     match name {
         "musl target" => {
@@ -285,6 +342,11 @@ fn attempt_fix(name: &str) -> Result<String> {
     }
 }
 
+/// is_interactive - check whether interactive.
+///
+/// Description:
+///
+/// Return: true or false
 fn is_interactive() -> bool {
     use std::io::IsTerminal;
     std::io::stdin().is_terminal()

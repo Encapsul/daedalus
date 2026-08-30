@@ -618,23 +618,43 @@ mod tests {
     use super::*;
 
     #[test]
+    /// sandbox_default_maps_to_level_2 - sandbox default maps to level 2.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn sandbox_default_maps_to_level_2() {
         assert_eq!(parse_isolation("sandbox").unwrap(), 2);
         assert_eq!(parse_isolation("2").unwrap(), 2);
     }
 
     #[test]
+    /// none_maps_to_level_0 - none maps to level 0.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn none_maps_to_level_0() {
         assert_eq!(parse_isolation("none").unwrap(), 0);
         assert_eq!(parse_isolation("0").unwrap(), 0);
     }
 
     #[test]
+    /// numeric_level_1_is_accepted - numeric level 1 is accepted.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn numeric_level_1_is_accepted() {
         assert_eq!(parse_isolation("1").unwrap(), 1);
     }
 
     #[test]
+    /// invalid_values_fail_closed - invalid values fail closed.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn invalid_values_fail_closed() {
         assert!(parse_isolation("3").is_err());
         assert!(parse_isolation("root").is_err());
@@ -642,12 +662,22 @@ mod tests {
     }
 
     #[test]
+    /// parse_target_short_forms - parse target short forms.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_target_short_forms() {
         assert_eq!(parse_target("aarch64"), ("aarch64".into(), "linux".into()));
         assert_eq!(parse_target("x86_64"), ("x86_64".into(), "linux".into()));
     }
 
     #[test]
+    /// parse_target_full_triples - parse target full triples.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_target_full_triples() {
         assert_eq!(
             parse_target("aarch64-apple-darwin"),
@@ -668,6 +698,11 @@ mod tests {
     }
 
     #[test]
+    /// parse_target_windows_shorthands - parse target windows shorthands.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_target_windows_shorthands() {
         assert_eq!(parse_target("win-x64"), ("x86_64".into(), "windows".into()));
         assert_eq!(
@@ -682,6 +717,11 @@ mod tests {
     }
 
     #[test]
+    /// resolve_targets_comma_list_and_cross_compile - resolve targets comma list and cross compile.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_targets_comma_list_and_cross_compile() {
         let args = BuildArgs {
             target: Some("linux-x64,win-x64".into()),
@@ -700,6 +740,11 @@ mod tests {
     }
 
     #[test]
+    /// resolve_targets_defaults_to_host - resolve targets defaults to host.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_targets_defaults_to_host() {
         let args = default_build_args();
         assert_eq!(resolve_targets(&args, None), vec![None]);
@@ -710,6 +755,11 @@ mod tests {
     }
 
     #[test]
+    /// resolve_targets_dedupes - resolve targets dedupes.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_targets_dedupes() {
         let args = BuildArgs {
             target: Some("win-x64".into()),
@@ -724,6 +774,11 @@ mod tests {
     }
 
     #[test]
+    /// output_paths_single_target_keeps_name - output paths single target keeps name.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn output_paths_single_target_keeps_name() {
         let args = BuildArgs {
             target: Some("linux-x64".into()),
@@ -736,6 +791,11 @@ mod tests {
     }
 
     #[test]
+    /// output_paths_single_windows_explicit_name_kept - output paths single windows explicit name kept.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn output_paths_single_windows_explicit_name_kept() {
         let args = BuildArgs {
             target: Some("win-x64".into()),
@@ -749,6 +809,11 @@ mod tests {
     }
 
     #[test]
+    /// output_paths_single_windows_dir_naming - output paths single windows dir naming.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn output_paths_single_windows_dir_naming() {
         let args = BuildArgs {
             target: Some("win-x64".into()),
@@ -761,6 +826,11 @@ mod tests {
     }
 
     #[test]
+    /// output_paths_multi_target_suffixes - output paths multi target suffixes.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn output_paths_multi_target_suffixes() {
         let args = BuildArgs {
             target: Some("linux-x64,linux-arm64,win-x64".into()),
@@ -779,6 +849,11 @@ mod tests {
     }
 
     #[test]
+    /// output_paths_single_ere_extension_kept - output paths single ere extension kept.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn output_paths_single_ere_extension_kept() {
         let args = BuildArgs {
             output: PathBuf::from("/tmp/hello-web.daedalus"),
@@ -791,6 +866,11 @@ mod tests {
     }
 
     #[test]
+    /// config_fingerprint_changes_with_build_options - config fingerprint changes with build options.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn config_fingerprint_changes_with_build_options() {
         let app_dir = PathBuf::from("/tmp/fake-app");
         let plan = |squashfs: bool| BuildPlan {

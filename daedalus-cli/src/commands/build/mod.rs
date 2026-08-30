@@ -14,6 +14,13 @@ use anyhow::{Context, Result};
 use daedalus_core::detect;
 use std::path::Path;
 
+/// run - run.
+/// @args: command arguments
+/// @verbose: verbose
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // Quiet mode overrides verbose
     let verbose = verbose && !args.quiet;
@@ -130,6 +137,11 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     Ok(())
 }
 
+/// publish_artifact_to_registry - publish artifact to registry.
+///
+/// Description:
+///
+/// Return: nothing
 fn publish_artifact_to_registry(
     artifact: &Path,
     registry_url: &str,
@@ -182,6 +194,11 @@ fn publish_artifact_to_registry(
     Ok(())
 }
 
+/// build_layer_refs - build layer refs.
+///
+/// Description:
+///
+/// Return: nothing
 fn build_layer_refs(
     reg: &mut daedalus_core::registry::LayerRegistry,
     layers: &[daedalus_core::layer::SerializableLayer],
@@ -201,6 +218,14 @@ fn build_layer_refs(
     Ok(refs)
 }
 
+/// expand_path - expand path.
+/// @path: file or directory path
+/// @std: std
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: the std::path::PathBuf
 fn expand_path(path: &str) -> std::path::PathBuf {
     let p = std::path::Path::new(path);
     let s = p.to_string_lossy();
@@ -212,6 +237,15 @@ fn expand_path(path: &str) -> std::path::PathBuf {
     p.to_path_buf()
 }
 
+/// print_dry_run - print dry run.
+/// @args: command arguments
+/// @plan: plan
+/// @target: target
+/// @output: output destination
+///
+/// Description:
+///
+/// Return: nothing
 fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, output: &Path) {
     eprintln!("Dry run — would build:");
     eprintln!("  App:       {}", plan.app_dir.display());

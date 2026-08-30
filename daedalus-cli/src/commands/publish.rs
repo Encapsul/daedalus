@@ -27,6 +27,12 @@ pub struct PublishArgs {
 
 const DEFAULT_REGISTRY_PLACEHOLDER: &str = "https://daedalus.example.com";
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: PublishArgs) -> Result<()> {
     let file = args.file.canonicalize().context("failed to find file")?;
 

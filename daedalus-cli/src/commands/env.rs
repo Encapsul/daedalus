@@ -9,6 +9,12 @@ pub struct EnvArgs {
     pub json: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: EnvArgs) -> Result<()> {
     let stub = find_binary("daedalus-stub", "DAEDALUS_STUB_PATH");
     let crypto = find_binary("daedalus-crypto", "DAEDALUS_CRYPTO_PATH");
@@ -44,6 +50,13 @@ pub fn run(args: EnvArgs) -> Result<()> {
     Ok(())
 }
 
+/// find_binary - find binary.
+/// @name: name
+/// @env_var: env var
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn find_binary(name: &str, env_var: &str) -> Option<PathBuf> {
     if let Ok(path) = std::env::var(env_var) {
         let p = PathBuf::from(path);
@@ -54,6 +67,11 @@ fn find_binary(name: &str, env_var: &str) -> Option<PathBuf> {
     which::which(name).ok()
 }
 
+/// rustc_version - rustc version.
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn rustc_version() -> Option<String> {
     std::process::Command::new("rustc")
         .arg("--version")

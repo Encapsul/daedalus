@@ -481,6 +481,11 @@ fn install_pkgmgr_deps(
 /// Resolve the install command for one manager as `(prog, args, node_bin_dir)`.
 /// Returns `None` when the tool is missing from PATH and cannot be fetched.
 #[allow(clippy::type_complexity)] // (prog, args, downloaded-node bin dir) triple
+/// pkgmgr_install_command - pkgmgr install command.
+///
+/// Description:
+///
+/// Return: nothing
 fn pkgmgr_install_command(
     mgr: &pkgmgr::PkgMgr,
     app_dir: &Path,
@@ -1012,6 +1017,11 @@ fn dotnet_rid_from_target(target: Option<&str>) -> String {
     }
 }
 
+/// ensure_dotnet - ensure dotnet.
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn ensure_dotnet() -> Result<()> {
     let ok = std::process::Command::new("dotnet")
         .arg("--version")
@@ -1027,6 +1037,11 @@ fn ensure_dotnet() -> Result<()> {
     Ok(())
 }
 
+/// ensure_java - ensure java.
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn ensure_java() -> Result<()> {
     let ok = std::process::Command::new("java")
         .arg("-version")
@@ -1113,6 +1128,13 @@ fn rust_target_is_windows(target: Option<&str>) -> bool {
         || (target.is_none() && std::env::consts::OS == "windows")
 }
 
+/// go_mod_download - go mod download.
+/// @app_dir: app dir
+/// @verbose: verbose
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn go_mod_download(app_dir: &Path, verbose: bool) -> Result<()> {
     if verbose {
         eprintln!("  go mod download...");
@@ -1145,6 +1167,11 @@ fn go_module_bin_name(app_dir: &Path) -> String {
         .to_string()
 }
 
+/// go_build_and_strip - go build and strip.
+///
+/// Description:
+///
+/// Return: nothing
 fn go_build_and_strip(
     target: Option<&str>,
     rootfs: &Path,
@@ -1540,6 +1567,11 @@ fn insert_kv_flags(env_map: &mut serde_json::Map<String, serde_json::Value>, ent
     }
 }
 
+/// inject_builtin_env - inject builtin env.
+///
+/// Description:
+///
+/// Return: nothing
 fn inject_builtin_env(
     env_map: &mut serde_json::Map<String, serde_json::Value>,
     args: &BuildArgs,
@@ -1553,6 +1585,11 @@ fn inject_builtin_env(
     Ok(())
 }
 
+/// inject_xdebug_default - inject xdebug default.
+///
+/// Description:
+///
+/// Return: nothing
 fn inject_xdebug_default(
     env_map: &mut serde_json::Map<String, serde_json::Value>,
     runtime_name: &str,
@@ -1570,6 +1607,11 @@ fn inject_xdebug_default(
     }
 }
 
+/// inject_persist_dir - inject persist dir.
+///
+/// Description:
+///
+/// Return: nothing
 fn inject_persist_dir(
     env_map: &mut serde_json::Map<String, serde_json::Value>,
     enabled: bool,
@@ -1591,6 +1633,11 @@ fn inject_persist_dir(
     }
 }
 
+/// inject_health_port - inject health port.
+///
+/// Description:
+///
+/// Return: nothing
 fn inject_health_port(
     env_map: &mut serde_json::Map<String, serde_json::Value>,
     port: Option<u16>,
@@ -1607,6 +1654,11 @@ fn inject_health_port(
     }
 }
 
+/// inject_cron_tasks - inject cron tasks.
+///
+/// Description:
+///
+/// Return: nothing
 fn inject_cron_tasks(
     env_map: &mut serde_json::Map<String, serde_json::Value>,
     crons: &[String],
@@ -1710,6 +1762,11 @@ fn build_bun_features(args: &BuildArgs, plan: &BuildPlan) -> Result<BunFeatures>
     Ok(bun_features)
 }
 
+/// resolve_bun_interpreter - resolve bun interpreter.
+///
+/// Description:
+///
+/// Return: nothing
 fn resolve_bun_interpreter(
     args: &BuildArgs,
     runtime_name: &str,
@@ -1739,6 +1796,14 @@ fn resolve_bun_interpreter(
     }
 }
 
+/// apply_wasm_features - apply wasm features.
+/// @args: command arguments
+/// @bun_features: bun features
+/// @verbose: verbose
+///
+/// Description:
+///
+/// Return: nothing
 fn apply_wasm_features(args: &BuildArgs, bun_features: &mut BunFeatures, verbose: bool) {
     if !args.wasm {
         return;
@@ -1758,6 +1823,14 @@ fn apply_wasm_features(args: &BuildArgs, bun_features: &mut BunFeatures, verbose
     }
 }
 
+/// apply_health_features - apply health features.
+/// @args: command arguments
+/// @bun_features: bun features
+/// @verbose: verbose
+///
+/// Description:
+///
+/// Return: nothing
 fn apply_health_features(args: &BuildArgs, bun_features: &mut BunFeatures, verbose: bool) {
     let Some(port) = args.health_port else { return };
     bun_features.health_check.enabled = true;
@@ -1770,6 +1843,14 @@ fn apply_health_features(args: &BuildArgs, bun_features: &mut BunFeatures, verbo
     }
 }
 
+/// apply_cross_compile - apply cross compile.
+/// @args: command arguments
+/// @bun_features: bun features
+/// @verbose: verbose
+///
+/// Description:
+///
+/// Return: nothing
 fn apply_cross_compile(args: &BuildArgs, bun_features: &mut BunFeatures, verbose: bool) {
     let Some(ref cross) = args.cross_compile else {
         return;
@@ -1782,6 +1863,12 @@ fn apply_cross_compile(args: &BuildArgs, bun_features: &mut BunFeatures, verbose
     }
 }
 
+/// load_encryption_key - load encryption key.
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: Result containing Result<[u8; 32]>
 fn load_encryption_key(path: &Path) -> Result<[u8; 32]> {
     let hex_str = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read encrypt key from {}", path.display()))?;
@@ -2021,6 +2108,13 @@ mod tests {
     use crate::commands::build::args::default_build_args;
     use std::path::{Path, PathBuf};
 
+    /// dir_with_cargo_toml - dir with cargo toml.
+    /// @content: content
+    /// @tempfile: tempfile
+    ///
+    /// Description:
+    ///
+    /// Return: the (tempfile::TempDir, PathBuf)
     fn dir_with_cargo_toml(content: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("Cargo.toml"), content).unwrap();
@@ -2029,6 +2123,11 @@ mod tests {
     }
 
     #[test]
+    /// cargo_bin_name_from_package_section - cargo bin name from package section.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn cargo_bin_name_from_package_section() {
         let (_d, path) = dir_with_cargo_toml(
             "[package]\nname = \"hello-daedalus\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
@@ -2038,6 +2137,11 @@ mod tests {
 
     /// An explicit `[[bin]]` target overrides the package name.
     #[test]
+    /// cargo_bin_name_prefers_explicit_bin - cargo bin name prefers explicit bin.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn cargo_bin_name_prefers_explicit_bin() {
         let (_d, path) = dir_with_cargo_toml(
             "[package]\nname = \"my-tool\"\n\n[[bin]]\nname = \"tool-bin\"\npath = \"src/main.rs\"\n",
@@ -2048,6 +2152,11 @@ mod tests {
     /// Workspace virtual manifests have no `[package]` — fall back to "app"
     /// until workspace support lands (Phase 8 Step 5).
     #[test]
+    /// cargo_bin_name_defaults_for_virtual_manifest - cargo bin name defaults for virtual manifest.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn cargo_bin_name_defaults_for_virtual_manifest() {
         let (_d, path) =
             dir_with_cargo_toml("[workspace]\nmembers = [\"crates/a\", \"crates/b\"]\n");
@@ -2055,6 +2164,11 @@ mod tests {
     }
 
     #[test]
+    /// rust_target_triple_passes_full_triples_through - rust target triple passes full triples through.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn rust_target_triple_passes_full_triples_through() {
         assert_eq!(
             rust_target_triple("x86_64-unknown-linux-musl"),
@@ -2067,6 +2181,11 @@ mod tests {
     }
 
     #[test]
+    /// rust_target_triple_synthesizes_from_shorthands - rust target triple synthesizes from shorthands.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn rust_target_triple_synthesizes_from_shorthands() {
         assert_eq!(rust_target_triple("linux-x64"), "x86_64-unknown-linux-gnu");
         assert_eq!(
@@ -2082,6 +2201,11 @@ mod tests {
     /// A built JAR becomes `java -jar /app/<name>`: the stub drops argv[0]
     /// and prepends its interpreter, so argv[0] here is a placeholder.
     #[test]
+    /// java_entrypoint_wraps_built_jar - java entrypoint wraps built jar.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn java_entrypoint_wraps_built_jar() {
         let args = default_build_args();
         let ep = resolve_entrypoint_argv(
@@ -2100,6 +2224,14 @@ mod tests {
         );
     }
 
+    /// write_jar - write jar.
+    /// @dir: directory path
+    /// @rel: rel
+    /// @size: size
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn write_jar(dir: &Path, rel: &str, size: usize) {
         let path = dir.join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -2109,6 +2241,11 @@ mod tests {
     /// Shade originals, sources and `-plain` jars are by-products; among
     /// real candidates the largest (fat jar) wins.
     #[test]
+    /// find_built_jar_skips_auxiliary_and_prefers_largest - find built jar skips auxiliary and prefers largest.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn find_built_jar_skips_auxiliary_and_prefers_largest() {
         let dir = tempfile::tempdir().unwrap();
         write_jar(dir.path(), "target/app-1.0-sources.jar", 10);
@@ -2125,6 +2262,11 @@ mod tests {
     }
 
     #[test]
+    /// find_built_jar_returns_none_without_artifacts - find built jar returns none without artifacts.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn find_built_jar_returns_none_without_artifacts() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(find_built_jar(dir.path()), None);
@@ -2133,6 +2275,11 @@ mod tests {
     /// Project wrappers pin the toolchain version — they win over any
     /// system install.
     #[test]
+    /// java_build_tool_prefers_wrapper - java build tool prefers wrapper.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn java_build_tool_prefers_wrapper() {
         let maven = tempfile::tempdir().unwrap();
         std::fs::write(maven.path().join("pom.xml"), "<project/>").unwrap();
@@ -2158,6 +2305,11 @@ mod tests {
     // ── build_layers tests ──────────────────────────────────────────────
 
     #[test]
+    /// build_layers_creates_runtime_layer - build layers creates runtime layer.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_layers_creates_runtime_layer() {
         let dir = tempfile::tempdir().unwrap();
         let layers = build_layers("python", &["python3".into()], &[], dir.path());
@@ -2173,6 +2325,11 @@ mod tests {
     }
 
     #[test]
+    /// build_layers_adds_config_layer_when_daedalus_toml_exists - build layers adds config layer when daedalus toml exists.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_layers_adds_config_layer_when_daedalus_toml_exists() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
