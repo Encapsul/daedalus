@@ -89,24 +89,44 @@ mod tests {
     use super::*;
 
     #[test]
+    /// find_stub_default_is_x86_64 - find stub default is x86 64.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn find_stub_default_is_x86_64() {
         let result = find_stub(&None);
         assert!(result.is_err() || result.is_ok(), "should not panic");
     }
 
     #[test]
+    /// find_stub_aarch64_suffix - find stub aarch64 suffix.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn find_stub_aarch64_suffix() {
         let result = find_stub(&Some("aarch64".into()));
         assert!(result.is_err() || result.is_ok(), "should not panic");
     }
 
     #[test]
+    /// find_stub_darwin_suffix - find stub darwin suffix.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn find_stub_darwin_suffix() {
         let result = find_stub(&Some("aarch64-apple-darwin".into()));
         assert!(result.is_err() || result.is_ok(), "should not panic");
     }
 
     #[test]
+    /// find_stub_windows_suffix - find stub windows suffix.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn find_stub_windows_suffix() {
         let result = find_stub(&Some("win-x64".into()));
         assert!(result.is_err() || result.is_ok(), "should not panic");

@@ -27,6 +27,12 @@ pub struct ScanArgs {
     pub cache: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: ScanArgs) -> Result<()> {
     // Show cache stats if requested
     if args.cache {
@@ -134,6 +140,13 @@ pub fn run(args: ScanArgs) -> Result<()> {
     Ok(())
 }
 
+/// find_daedalus_files - find daedalus files.
+/// @dir: directory path
+/// @files: files
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn find_daedalus_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
@@ -152,11 +165,24 @@ fn find_daedalus_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
+/// is_daedalus_file - check whether daedalus file.
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn is_daedalus_file(path: &Path) -> bool {
     path.extension().map_or(false, |ext| ext == "daedalus")
         && std::fs::metadata(path).map_or(false, |m| m.len() > 84)
 }
 
+/// inspect_file - inspect file.
+/// @path: file or directory path
+/// @serde_json: serde json
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn inspect_file(path: &Path) -> Option<serde_json::Value> {
     let mut f = std::fs::File::open(path).ok()?;
     let footer = Footer::read_from(&mut f).ok()?;
@@ -236,10 +262,22 @@ fn inspect_file(path: &Path) -> Option<serde_json::Value> {
     }))
 }
 
+/// is_leap - check whether leap.
+/// @year: year
+///
+/// Description:
+///
+/// Return: true or false
 fn is_leap(year: u32) -> bool {
     year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
 }
 
+/// cache_stats - cache stats.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: Result containing Result<(usize, u64)>
 fn cache_stats(dir: &Path) -> Result<(usize, u64)> {
     let mut count = 0usize;
     let mut total = 0u64;
@@ -259,6 +297,13 @@ fn cache_stats(dir: &Path) -> Result<(usize, u64)> {
     Ok((count, total))
 }
 
+/// write_json_output - write json output.
+/// @json_str: json str
+/// @output: output destination
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn write_json_output(json_str: &str, output: Option<&Path>) -> Result<()> {
     if let Some(path) = output {
         std::fs::write(path, json_str)

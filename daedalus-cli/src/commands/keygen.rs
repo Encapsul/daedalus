@@ -25,6 +25,12 @@ pub struct KeygenArgs {
     pub json: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: KeygenArgs) -> Result<()> {
     let key_dir = if args.key_dir == PathBuf::from(".") {
         default_key_dir()

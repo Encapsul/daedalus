@@ -17,6 +17,12 @@ pub struct CleanArgs {
     pub force: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: CleanArgs) -> Result<()> {
     if args.gc {
         let cache = BuildCache::new(std::path::Path::new("."), 50);
@@ -59,11 +65,24 @@ pub fn run(args: CleanArgs) -> Result<()> {
     Ok(())
 }
 
+/// is_interactive - check whether interactive.
+///
+/// Description:
+///
+/// Return: true or false
 fn is_interactive() -> bool {
     use std::io::IsTerminal;
     std::io::stdin().is_terminal()
 }
 
+/// dir_size - dir size.
+/// @path: file or directory path
+/// @std: std
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: Result containing Result<u64>
 fn dir_size(path: &std::path::Path) -> Result<u64> {
     let mut total = 0;
     for entry in std::fs::read_dir(path)? {

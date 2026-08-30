@@ -164,6 +164,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// include_points_to_env_matches_only_explicit_env - include points to env matches only explicit env.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn include_points_to_env_matches_only_explicit_env() {
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join(".env"), "SECRET=1").unwrap();

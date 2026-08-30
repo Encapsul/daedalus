@@ -78,6 +78,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// build_sisr_config_defaults_no_key - build sisr config defaults no key.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_sisr_config_defaults_no_key() {
         let cfg = build_sisr_config(&None).unwrap();
         assert!(cfg.enabled);
@@ -86,6 +91,11 @@ mod tests {
     }
 
     #[test]
+    /// build_sisr_config_loads_32_byte_key - build sisr config loads 32 byte key.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_sisr_config_loads_32_byte_key() {
         let dir = tempfile::TempDir::new().unwrap();
         let key_path = dir.path().join("key.bin");
@@ -95,6 +105,11 @@ mod tests {
     }
 
     #[test]
+    /// build_sisr_config_rejects_wrong_key_length - build sisr config rejects wrong key length.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_sisr_config_rejects_wrong_key_length() {
         let dir = tempfile::TempDir::new().unwrap();
         let key_path = dir.path().join("key.bin");
@@ -103,6 +118,11 @@ mod tests {
     }
 
     #[test]
+    /// build_sisr_config_errors_on_missing_key - build sisr config errors on missing key.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_sisr_config_errors_on_missing_key() {
         let path = PathBuf::from("/nonexistent/key.bin");
         assert!(build_sisr_config(&Some(path)).is_err());

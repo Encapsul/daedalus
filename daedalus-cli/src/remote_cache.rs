@@ -28,6 +28,13 @@ pub struct HttpRemoteCache {
 }
 
 impl HttpRemoteCache {
+    /// new - new.
+    /// @base_url: base url
+    /// @anyhow: anyhow
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing anyhow::Result<Self>
     pub fn new(base_url: impl Into<String>) -> anyhow::Result<Self> {
         let client = reqwest::blocking::Client::builder()
             .user_agent("daedalus-remote-cache/0.1")
@@ -40,6 +47,14 @@ impl HttpRemoteCache {
 }
 
 impl RemoteCacheBackend for HttpRemoteCache {
+    /// get - get.
+    /// @hash: hash value
+    /// @std: std
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing std::io::Result<Option<Vec<u8>>>
     fn get(&self, hash: &str) -> std::io::Result<Option<Vec<u8>>> {
         let url = format!("{}/{}", self.base_url, hash);
         let resp = self
@@ -60,6 +75,15 @@ impl RemoteCacheBackend for HttpRemoteCache {
         }
     }
 
+    /// put - put.
+    /// @hash: hash value
+    /// @bytes: bytes
+    /// @std: std
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing std::io::Result<()>
     fn put(&self, hash: &str, bytes: &[u8]) -> std::io::Result<()> {
         let url = format!("{}/{}", self.base_url, hash);
         let resp = self

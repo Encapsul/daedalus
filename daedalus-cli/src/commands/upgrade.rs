@@ -24,6 +24,12 @@ pub struct UpgradeArgs {
     pub dry_run: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: UpgradeArgs) -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     if args.verbose {
@@ -173,6 +179,11 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     Ok(())
 }
 
+/// detect_platform - detect platform.
+///
+/// Description:
+///
+/// Return: Result containing Result<String>
 fn detect_platform() -> Result<String> {
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
@@ -193,6 +204,11 @@ fn detect_platform() -> Result<String> {
     Ok(format!("{os_str}-{arch_str}"))
 }
 
+/// fetch_latest_version - fetch latest version.
+///
+/// Description:
+///
+/// Return: Result containing Result<String>
 fn fetch_latest_version() -> Result<String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
@@ -216,6 +232,13 @@ fn fetch_latest_version() -> Result<String> {
 
 const MAX_DOWNLOAD_BYTES: u64 = 500 * 1024 * 1024;
 
+/// download_file - download file.
+/// @url: URL
+/// @dest: dest
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_mins(5))
@@ -241,6 +264,12 @@ fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// fetch_checksum - fetch checksum.
+/// @url: URL
+///
+/// Description:
+///
+/// Return: Result containing Result<String>
 fn fetch_checksum(url: &str) -> Result<String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
@@ -257,6 +286,12 @@ fn fetch_checksum(url: &str) -> Result<String> {
     Ok(hash)
 }
 
+/// sha256_file - sha256 file.
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: Result containing Result<String>
 fn sha256_file(path: &PathBuf) -> Result<String> {
     let bytes = std::fs::read(path).context("failed to read file for checksum")?;
     let mut hasher = Sha256::new();
@@ -265,6 +300,11 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
     Ok(hex::encode(result))
 }
 
+/// find_daedalus_binary - find daedalus binary.
+///
+/// Description:
+///
+/// Return: Result containing Result<PathBuf>
 fn find_daedalus_binary() -> Result<PathBuf> {
     // Try /proc/self/exe (Linux)
     let proc = PathBuf::from("/proc/self/exe");
@@ -304,6 +344,11 @@ fn is_writable(path: &Path) -> bool {
     created
 }
 
+/// is_interactive - check whether interactive.
+///
+/// Description:
+///
+/// Return: true or false
 fn is_interactive() -> bool {
     use std::io::IsTerminal;
     std::io::stdin().is_terminal()
@@ -314,6 +359,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// test_detect_platform_linux_x64 - test detect platform linux x64.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_detect_platform_linux_x64() {
         // This test runs on the current platform, just verify it doesn't panic
         let p = detect_platform();
@@ -326,6 +376,11 @@ mod tests {
     }
 
     #[test]
+    /// test_sha256_file - test sha256 file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_sha256_file() {
         let tmp = tempfile::tempdir().unwrap();
         let file = tmp.path().join("test.txt");
@@ -339,6 +394,11 @@ mod tests {
     }
 
     #[test]
+    /// test_is_writable_existing_file - test is writable existing file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_is_writable_existing_file() {
         let tmp = tempfile::tempdir().unwrap();
         let file = tmp.path().join("test.txt");
@@ -347,6 +407,11 @@ mod tests {
     }
 
     #[test]
+    /// test_is_writable_dir_probes_real_perms - test is writable dir probes real perms.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_is_writable_dir_probes_real_perms() {
         let tmp = tempfile::tempdir().unwrap();
         assert!(is_writable(tmp.path()));

@@ -29,6 +29,12 @@ pub struct SignArgs {
     pub json: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: SignArgs) -> Result<()> {
     let key_path = match args.key {
         Some(p) => p,
@@ -75,6 +81,11 @@ pub fn run(args: SignArgs) -> Result<()> {
     Ok(())
 }
 
+/// is_interactive - check whether interactive.
+///
+/// Description:
+///
+/// Return: true or false
 fn is_interactive() -> bool {
     use std::io::IsTerminal;
     std::io::stdin().is_terminal()

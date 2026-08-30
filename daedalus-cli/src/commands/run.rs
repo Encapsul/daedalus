@@ -17,6 +17,12 @@ pub struct RunArgs {
     pub verbose: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: RunArgs) -> Result<()> {
     let file = args
         .file

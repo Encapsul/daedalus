@@ -12,6 +12,12 @@ pub struct FeedbackArgs {
     pub title: Option<String>,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: FeedbackArgs) -> Result<()> {
     let repo_url = "https://github.com/Tednoob17/daedalus/issues/new";
 
@@ -35,6 +41,11 @@ pub fn run(args: FeedbackArgs) -> Result<()> {
     Ok(())
 }
 
+/// open_browser - open browser.
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn open_browser() -> Option<Box<dyn BrowserOpener>> {
     let cmd = if cfg!(target_os = "linux") {
         Some(("xdg-open", vec![]))
@@ -55,6 +66,12 @@ fn open_browser() -> Option<Box<dyn BrowserOpener>> {
 }
 
 trait BrowserOpener {
+    /// open - open.
+    /// @url: URL
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing Result<()>;
     fn open(&self, url: &str) -> Result<()>;
 }
 
@@ -64,6 +81,12 @@ struct ExternalBrowser {
 }
 
 impl BrowserOpener for ExternalBrowser {
+    /// open - open.
+    /// @url: URL
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing Result<()>
     fn open(&self, url: &str) -> Result<()> {
         std::process::Command::new(&self.cmd)
             .args(&self.args)

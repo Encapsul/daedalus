@@ -1,3 +1,5 @@
+#![warn(missing_docs)]
+
 mod commands;
 mod error;
 mod remote_cache;
@@ -127,6 +129,11 @@ enum Shell {
     PowerShell,
 }
 
+/// main - main.
+///
+/// Description:
+///
+/// Return: the ExitCode
 fn main() -> ExitCode {
     // Hide source locations in panic messages for security (no file/line info leakage)
     human_panic::setup_panic!();
@@ -225,6 +232,15 @@ fn main() -> ExitCode {
     }
 }
 
+/// generate_man_pages - generate man pages.
+/// @dir: directory path
+/// @std: std
+/// @path: file or directory path
+/// @anyhow: anyhow
+///
+/// Description:
+///
+/// Return: Result containing anyhow::Result<()>
 fn generate_man_pages(dir: &std::path::Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
 

@@ -6,6 +6,16 @@ use ed25519_dalek::{Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
+/// write_json_output - write json output.
+/// @value: value
+/// @serde_json: serde json
+/// @output: output destination
+/// @std: std
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 fn write_json_output(value: &serde_json::Value, output: Option<&std::path::Path>) -> Result<()> {
     let json_str = serde_json::to_string_pretty(value)?;
     if let Some(path) = output {
@@ -40,6 +50,12 @@ pub struct VerifyArgs {
     pub output: Option<PathBuf>,
 }
 
+/// run - run.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: Result containing Result<()>
 pub fn run(args: VerifyArgs) -> Result<()> {
     let trusted_dir = args.trusted_dir.unwrap_or_else(trusted_keys_dir);
 
@@ -134,6 +150,12 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     Ok(())
 }
 
+/// load_trusted_keys - load trusted keys.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: Result containing Result<Vec<(PathBuf, VerifyingKey)>>
 fn load_trusted_keys(dir: &PathBuf) -> Result<Vec<(PathBuf, VerifyingKey)>> {
     let mut keys = Vec::new();
     if !dir.exists() {

@@ -40,6 +40,13 @@ pub struct SwapArgs {
     pub quiet: bool,
 }
 
+/// run - run.
+/// @args: command arguments
+/// @anyhow: anyhow
+///
+/// Description:
+///
+/// Return: Result containing anyhow::Result<()>
 pub fn run(args: SwapArgs) -> anyhow::Result<()> {
     let binary_data = std::fs::read(&args.binary)
         .with_context(|| format!("failed to read {}", args.binary.display()))?;
@@ -77,6 +84,12 @@ pub fn run(args: SwapArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// has_executable_extension - check whether executable extension.
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn has_executable_extension(path: &str) -> bool {
     path.eq_ignore_ascii_case(".py")
         || path.eq_ignore_ascii_case(".sh")
@@ -87,6 +100,11 @@ fn has_executable_extension(path: &str) -> bool {
         || path.eq_ignore_ascii_case(".exe")
 }
 
+/// swap_layer - swap layer.
+///
+/// Description:
+///
+/// Return: nothing
 fn swap_layer(
     binary_data: &[u8],
     new_file_data: &[u8],
@@ -249,6 +267,11 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    /// swap_args_parses_minimal - swap args parses minimal.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn swap_args_parses_minimal() {
         let args = SwapArgs {
             binary: PathBuf::from("/tmp/app.daedalus"),
@@ -264,6 +287,11 @@ mod tests {
     }
 
     #[test]
+    /// swap_layer_replaces_file_and_reassembles - swap layer replaces file and reassembles.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn swap_layer_replaces_file_and_reassembles() {
         use daedalus_core::compress::compress;
         use daedalus_core::tar::create_deterministic_tar;
@@ -311,6 +339,11 @@ mod tests {
     }
 
     #[test]
+    /// swap_layer_rejects_sisr_binary - swap layer rejects sisr binary.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn swap_layer_rejects_sisr_binary() {
         let tmp = tempfile::tempdir().unwrap();
         let binary_path = tmp.path().join("sisr.daedalus");
