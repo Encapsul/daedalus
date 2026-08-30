@@ -282,6 +282,13 @@ pub(crate) fn ct_eq_hash(a: &[u8; 32], b: &[u8; 32]) -> bool {
     a.ct_eq(b).into()
 }
 
+/// signing_message - signing message.
+/// @merkle_root: merkle root
+/// @manifest_bytes: manifest bytes
+///
+/// Description:
+///
+/// Return: vector of Vec<u8>
 fn signing_message(merkle_root: &[u8; 32], manifest_bytes: &[u8]) -> Vec<u8> {
     let mut msg = Vec::with_capacity(32 + manifest_bytes.len());
     msg.extend_from_slice(merkle_root);
@@ -294,6 +301,13 @@ fn fixed<const N: usize>(b: &[u8]) -> io::Result<[u8; N]> {
         .map_err(|_| err("truncated remote manifest field"))
 }
 
+/// err - err.
+/// @msg: message
+/// @io: io
+///
+/// Description:
+///
+/// Return: the io::Error
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -302,6 +316,12 @@ fn err(msg: &str) -> io::Error {
 mod tests {
     use super::*;
 
+    /// manifest_with - manifest with.
+    /// @hashes: hashes
+    ///
+    /// Description:
+    ///
+    /// Return: the DeltaManifest
     fn manifest_with(hashes: &[[u8; 32]]) -> DeltaManifest {
         DeltaManifest {
             version: manifest::VERSION,
@@ -316,6 +336,13 @@ mod tests {
         }
     }
 
+    /// random_buf - random buf.
+    /// @len: length
+    /// @seed: seed
+    ///
+    /// Description:
+    ///
+    /// Return: vector of Vec<u8>
     fn random_buf(len: usize, seed: u64) -> Vec<u8> {
         let mut state = seed;
         (0..len)
@@ -329,6 +356,11 @@ mod tests {
     }
 
     #[test]
+    /// merkle_root_is_deterministic_and_content_binding - merkle root is deterministic and content binding.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn merkle_root_is_deterministic_and_content_binding() {
         let leaves = [[1u8; 32], [2u8; 32], [3u8; 32], [4u8; 32]];
         assert_eq!(merkle_root(&leaves), merkle_root(&leaves));
@@ -338,6 +370,11 @@ mod tests {
     }
 
     #[test]
+    /// merkle_root_of_two_leaves_matches_manual_hash - merkle root of two leaves matches manual hash.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn merkle_root_of_two_leaves_matches_manual_hash() {
         let a = [1u8; 32];
         let b = [2u8; 32];
@@ -349,12 +386,22 @@ mod tests {
     }
 
     #[test]
+    /// merkle_root_of_single_leaf_is_the_leaf - merkle root of single leaf is the leaf.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn merkle_root_of_single_leaf_is_the_leaf() {
         let a = [9u8; 32];
         assert_eq!(merkle_root(&[a]), a);
     }
 
     #[test]
+    /// chunk_payload_tiles_payload_and_hashes_content - chunk payload tiles payload and hashes content.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn chunk_payload_tiles_payload_and_hashes_content() {
         let payload = random_buf(100_000, 42);
         let chunks = chunk_payload(&payload, 8192).unwrap();
@@ -369,6 +416,11 @@ mod tests {
     }
 
     #[test]
+    /// sign_verify_roundtrip_with_known_key - sign verify roundtrip with known key.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn sign_verify_roundtrip_with_known_key() {
         let key = SigningKey::from_bytes(&[9u8; 32]);
         let public = key.verifying_key();
@@ -381,6 +433,11 @@ mod tests {
     }
 
     #[test]
+    /// build_artifacts_signs_when_key_present - build artifacts signs when key present.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_artifacts_signs_when_key_present() {
         let payload = random_buf(50_000, 7);
         let key = SigningKey::from_bytes(&[5u8; 32]);
@@ -401,6 +458,11 @@ mod tests {
     }
 
     #[test]
+    /// build_artifacts_without_key_zero_signature - build artifacts without key zero signature.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_artifacts_without_key_zero_signature() {
         let config = SisrBuildConfig {
             enabled: true,
@@ -412,6 +474,11 @@ mod tests {
     }
 
     #[test]
+    /// remote_manifest_roundtrip_and_verification - remote manifest roundtrip and verification.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn remote_manifest_roundtrip_and_verification() {
         let key = SigningKey::from_bytes(&[11u8; 32]);
         let public = key.verifying_key();
@@ -435,6 +502,11 @@ mod tests {
     }
 
     #[test]
+    /// remote_manifest_verify_any_accepts_any_trusted_key - remote manifest verify any accepts any trusted key.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn remote_manifest_verify_any_accepts_any_trusted_key() {
         let key = SigningKey::from_bytes(&[17u8; 32]);
         let other = SigningKey::from_bytes(&[19u8; 32]);
@@ -456,6 +528,11 @@ mod tests {
     }
 
     #[test]
+    /// remote_manifest_rejects_tampering - remote manifest rejects tampering.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn remote_manifest_rejects_tampering() {
         let key = SigningKey::from_bytes(&[13u8; 32]);
         let public = key.verifying_key();
@@ -478,6 +555,11 @@ mod tests {
     }
 
     #[test]
+    /// remote_manifest_rejects_bad_magic_and_truncation - remote manifest rejects bad magic and truncation.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn remote_manifest_rejects_bad_magic_and_truncation() {
         let mut bytes = vec![0u8; REMOTE_HEADER_SIZE + manifest::HEADER_SIZE];
         bytes[0..4].copy_from_slice(b"XXXX");
@@ -490,6 +572,11 @@ mod tests {
     /// payload so the < 5 % build-overhead budget can be verified.
     #[test]
     #[ignore = "manual perf measurement"]
+    /// perf_sisr_on_100_mib - perf sisr on 100 mib.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn perf_sisr_on_100_mib() {
         let payload = random_buf(100 << 20, 1);
         let config = SisrBuildConfig {
@@ -532,6 +619,11 @@ mod tests {
     }
 
     #[test]
+    /// verify_embedded_sisr_accepts_a_signed_section - verify embedded sisr accepts a signed section.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn verify_embedded_sisr_accepts_a_signed_section() {
         let key = SigningKey::from_bytes(&[5u8; 32]);
         let payload = random_buf(10_000, 31);
@@ -540,6 +632,11 @@ mod tests {
     }
 
     #[test]
+    /// verify_embedded_sisr_rejects_zero_signature - verify embedded sisr rejects zero signature.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn verify_embedded_sisr_rejects_zero_signature() {
         let key = SigningKey::from_bytes(&[5u8; 32]);
         let payload = random_buf(10_000, 31);
@@ -552,6 +649,11 @@ mod tests {
     }
 
     #[test]
+    /// verify_embedded_sisr_rejects_untrusted_key - verify embedded sisr rejects untrusted key.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn verify_embedded_sisr_rejects_untrusted_key() {
         let signer = SigningKey::from_bytes(&[5u8; 32]);
         let other = SigningKey::from_bytes(&[6u8; 32]);
@@ -564,6 +666,11 @@ mod tests {
     }
 
     #[test]
+    /// verify_embedded_sisr_rejects_tampered_payload - verify embedded sisr rejects tampered payload.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn verify_embedded_sisr_rejects_tampered_payload() {
         let key = SigningKey::from_bytes(&[5u8; 32]);
         let payload = random_buf(10_000, 31);
@@ -577,6 +684,11 @@ mod tests {
     }
 
     #[test]
+    /// verify_embedded_sisr_rejects_wrong_payload_length - verify embedded sisr rejects wrong payload length.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn verify_embedded_sisr_rejects_wrong_payload_length() {
         let key = SigningKey::from_bytes(&[5u8; 32]);
         let payload = random_buf(10_000, 31);
@@ -589,6 +701,11 @@ mod tests {
     }
 
     #[test]
+    /// verify_embedded_sisr_rejects_merkle_mismatch - verify embedded sisr rejects merkle mismatch.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn verify_embedded_sisr_rejects_merkle_mismatch() {
         let key = SigningKey::from_bytes(&[5u8; 32]);
         let payload = random_buf(10_000, 31);

@@ -48,6 +48,11 @@ pub struct Footer {
 }
 
 impl Footer {
+    /// is_signed - check whether signed.
+    ///
+    /// Description:
+    ///
+    /// Return: true or false
     pub fn is_signed(&self) -> bool {
         self.flags & FLAG_SIGNED != 0
     }
@@ -66,6 +71,11 @@ impl Footer {
         self.flags & FLAG_SISR != 0
     }
 
+    /// is_encrypted - check whether encrypted.
+    ///
+    /// Description:
+    ///
+    /// Return: true or false
     pub fn is_encrypted(&self) -> bool {
         self.flags & FLAG_ENCRYPTED != 0
     }
@@ -98,6 +108,14 @@ impl Footer {
         Err(err("file too small to be a .daedalus"))
     }
 
+    /// parse - parse.
+    /// @buf: buffer
+    /// @sig_offset: sig offset
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<Footer>
     fn parse(buf: &[u8], sig_offset: u64) -> io::Result<Footer> {
         let footer_magic = u32::from_le_bytes(
             buf[80..84]
@@ -129,6 +147,11 @@ impl Footer {
         })
     }
 
+    /// pack - pack.
+    ///
+    /// Description:
+    ///
+    /// Return: the [u8; 84]
     pub fn pack(&self) -> [u8; 84] {
         let mut buf = [0u8; 84];
         buf[0..5].copy_from_slice(MAGIC);
@@ -158,6 +181,11 @@ impl Footer {
         buf
     }
 
+    /// sha256_hex - sha256 hex.
+    ///
+    /// Description:
+    ///
+    /// Return: the resulting string
     pub fn sha256_hex(&self) -> String {
         self.payload_sha256
             .iter()
@@ -169,6 +197,13 @@ impl Footer {
     }
 }
 
+/// u64_le - u64 le.
+/// @b: b
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<u64>
 fn u64_le(b: &[u8]) -> io::Result<u64> {
     Ok(u64::from_le_bytes(
         b.try_into().map_err(|_| err("truncated u64 field"))?,
@@ -202,6 +237,13 @@ pub fn read_at<R: Read + Seek>(f: &mut R, off: u64, len: usize) -> io::Result<Ve
     Ok(buf)
 }
 
+/// err - err.
+/// @msg: message
+/// @io: io
+///
+/// Description:
+///
+/// Return: the io::Error
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -212,6 +254,11 @@ mod tests {
     use std::io::Cursor;
 
     #[allow(clippy::too_many_arguments)]
+    /// build_v2_footer - build v2 footer.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_v2_footer(
         version: u8,
         arch: u8,
@@ -239,6 +286,11 @@ mod tests {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// build_v3_footer - build v3 footer.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_v3_footer(
         version: u8,
         arch: u8,
@@ -269,6 +321,11 @@ mod tests {
     }
 
     #[test]
+    /// constants_are_correct - constants are correct.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn constants_are_correct() {
         assert_eq!(MAGIC, b"ERE\x01\x00");
         assert_eq!(FOOTER_MAGIC, 0xBEEF_CAFE);
@@ -278,6 +335,11 @@ mod tests {
     }
 
     #[test]
+    /// parse_v2_footer - parse v2 footer.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_v2_footer() {
         let sha = [0xABu8; 32];
         let raw = build_v2_footer(3, 0x3C, 0x01, 1024, 512, 2048, sha, 2560, 128);
@@ -295,6 +357,11 @@ mod tests {
     }
 
     #[test]
+    /// parse_v3_footer_with_sig - parse v3 footer with sig.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_v3_footer_with_sig() {
         let sha = [0x42u8; 32];
         let raw = build_v3_footer(5, 0x86, 0x03, 4096, 1024, 8192, sha, 5120, 256, 9999);
@@ -307,6 +374,11 @@ mod tests {
     }
 
     #[test]
+    /// bad_footer_magic_returns_err - bad footer magic returns err.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn bad_footer_magic_returns_err() {
         let mut raw = build_v2_footer(3, 0, 0, 0, 0, 0, [0; 32], 0, 0);
         raw[80..84].copy_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
@@ -315,6 +387,11 @@ mod tests {
     }
 
     #[test]
+    /// unsupported_version_returns_err - unsupported version returns err.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn unsupported_version_returns_err() {
         let raw = build_v2_footer(99, 0, 0, 0, 0, 0, [0; 32], 0, 0);
         let result = Footer::parse(&raw, 0);
@@ -322,6 +399,11 @@ mod tests {
     }
 
     #[test]
+    /// is_signed_checks_flag - check whether signed checks flag.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn is_signed_checks_flag() {
         let mut f = Footer {
             format_version: 5,
@@ -341,6 +423,11 @@ mod tests {
     }
 
     #[test]
+    /// pack_full_roundtrips_v3_footer - pack full roundtrips v3 footer.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn pack_full_roundtrips_v3_footer() {
         let sha = [0xDDu8; 32];
         let f = Footer {
@@ -367,6 +454,11 @@ mod tests {
     }
 
     #[test]
+    /// sha256_hex_is_correct - sha256 hex is correct.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn sha256_hex_is_correct() {
         let sha = [
             0x00, 0x01, 0x0A, 0xFF, 0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE,
@@ -391,6 +483,11 @@ mod tests {
     }
 
     #[test]
+    /// read_from_v2_file - read from v2 file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_from_v2_file() {
         let sha = [0xBBu8; 32];
         let footer = build_v2_footer(3, 0x3C, 0, 100, 50, 200, sha, 160, 30);
@@ -404,6 +501,11 @@ mod tests {
     }
 
     #[test]
+    /// read_from_v3_file - read from v3 file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_from_v3_file() {
         let sha = [0xCCu8; 32];
         let mut data = vec![0xBB; 512];
@@ -416,6 +518,11 @@ mod tests {
     }
 
     #[test]
+    /// read_from_too_small - read from too small.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_from_too_small() {
         let mut data = vec![0u8; 10];
         let mut cursor = Cursor::new(&mut data);
@@ -424,6 +531,11 @@ mod tests {
     }
 
     #[test]
+    /// read_from_bad_magic - read from bad magic.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_from_bad_magic() {
         let mut data = vec![0u8; 300];
         let footer = build_v2_footer(3, 0, 0, 0, 0, 0, [0; 32], 0, 0);
@@ -436,6 +548,11 @@ mod tests {
     }
 
     #[test]
+    /// read_at_reads_correct_bytes - read at reads correct bytes.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_at_reads_correct_bytes() {
         let data = vec![0, 0, 0, 42, 43, 44, 0, 0];
         let mut cursor = Cursor::new(data);
@@ -444,6 +561,11 @@ mod tests {
     }
 
     #[test]
+    /// read_at_rejects_oversized_len_without_allocating - read at rejects oversized len without allocating.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_at_rejects_oversized_len_without_allocating() {
         // Simulates a malicious footer whose csize/len field is u64::MAX, which
         // the call sites fold to `usize::MAX` via `as usize`. read_at must reject
@@ -463,6 +585,11 @@ mod proptests {
 
     proptest! {
         #[test]
+        /// read_from_arbitrary_bytes_never_panics - read from arbitrary bytes never panics.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn read_from_arbitrary_bytes_never_panics(
             buf in prop::collection::vec(any::<u8>(), 0..4096),
         ) {
@@ -470,6 +597,11 @@ mod proptests {
         }
 
         #[test]
+        /// pack_roundtrips - pack roundtrips.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn pack_roundtrips(
             format_version in 1u8..=FORMAT_VERSION,
             arch in any::<u8>(),

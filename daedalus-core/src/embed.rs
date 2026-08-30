@@ -272,6 +272,12 @@ fn elf_interpreter_path(interp_path: &Path) -> io::Result<Option<PathBuf>> {
         .lines()
         .find_map(parse_loader_line))
 }
+/// resolve_lib_dirs - resolve lib dirs.
+/// @rootfs: rootfs
+///
+/// Description:
+///
+/// Return: vector of Vec<PathBuf>
 fn resolve_lib_dirs(rootfs: &Path) -> Vec<PathBuf> {
     let arch = std::env::consts::ARCH;
     let arch_dir = match arch {
@@ -1318,6 +1324,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// parse_loader_line_glibc - parse loader line glibc.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_loader_line_glibc() {
         let line = "/lib64/ld-linux-x86-64.so.2 (0x00007f1234567890)";
         assert_eq!(
@@ -1327,6 +1338,11 @@ mod tests {
     }
 
     #[test]
+    /// parse_loader_line_musl - parse loader line musl.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_loader_line_musl() {
         let line = "/lib/ld-musl-x86_64.so.1 (0x7f...)";
         assert_eq!(
@@ -1336,6 +1352,11 @@ mod tests {
     }
 
     #[test]
+    /// parse_loader_line_rejects_regular_deps - parse loader line rejects regular deps.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_loader_line_rejects_regular_deps() {
         assert_eq!(
             parse_loader_line("libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x...)"),
@@ -1346,6 +1367,11 @@ mod tests {
     }
 
     #[test]
+    /// update_ini_value_existing - update ini value existing.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn update_ini_value_existing() {
         let content = "memory_limit = 128M\nupload_max_filesize = 2M\n";
         let result = update_ini_value(content, "memory_limit", "/new/path");
@@ -1354,6 +1380,11 @@ mod tests {
     }
 
     #[test]
+    /// update_ini_value_missing - update ini value missing.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn update_ini_value_missing() {
         let content = "memory_limit = 128M\n";
         let result = update_ini_value(content, "extension_dir", "/ext");
@@ -1361,12 +1392,22 @@ mod tests {
     }
 
     #[test]
+    /// count_dir_files_empty - count dir files empty.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn count_dir_files_empty() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(count_dir_files(dir.path()), 0);
     }
 
     #[test]
+    /// count_dir_files_nested - count dir files nested.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn count_dir_files_nested() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.txt"), "a").unwrap();

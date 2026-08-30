@@ -27,6 +27,11 @@ pub enum PkgMgr {
 }
 
 impl PkgMgr {
+    /// name - name.
+    ///
+    /// Description:
+    ///
+    /// Return: the &'static str
     pub fn name(&self) -> &'static str {
         match self {
             Self::Uv => "uv",
@@ -43,6 +48,11 @@ impl PkgMgr {
         }
     }
 
+    /// install_cmd - install cmd.
+    ///
+    /// Description:
+    ///
+    /// Return: vector of Vec<&'static str>
     pub fn install_cmd(&self) -> Vec<&'static str> {
         match self {
             Self::Uv => vec!["uv", "sync"],
@@ -243,6 +253,12 @@ pub fn run_build_steps(app_dir: &Path, verbose: bool) -> io::Result<usize> {
     Ok(ran)
 }
 
+/// is_command_available - check whether command available.
+/// @name: name
+///
+/// Description:
+///
+/// Return: true or false
 fn is_command_available(name: &str) -> bool {
     std::process::Command::new("sh")
         .args(["-c", &format!("command -v {name}")])
@@ -298,6 +314,11 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    /// uv_lock - uv lock.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn uv_lock() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("uv.lock"), "# uv").unwrap();
@@ -305,6 +326,11 @@ mod tests {
     }
 
     #[test]
+    /// uv_beats_poetry - uv beats poetry.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn uv_beats_poetry() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("uv.lock"), "# uv").unwrap();
@@ -313,6 +339,11 @@ mod tests {
     }
 
     #[test]
+    /// pnpm_lock - pnpm lock.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn pnpm_lock() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
@@ -321,12 +352,22 @@ mod tests {
     }
 
     #[test]
+    /// no_package_json_no_node - no package json no node.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn no_package_json_no_node() {
         let dir = TempDir::new().unwrap();
         assert_eq!(detect_node_pkgmgr(dir.path()), None);
     }
 
     #[test]
+    /// detect_for_runtime - detect for runtime.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_for_runtime() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("uv.lock"), "# uv").unwrap();
@@ -335,6 +376,11 @@ mod tests {
     }
 
     #[test]
+    /// composer_detection - composer detection.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn composer_detection() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
@@ -342,6 +388,11 @@ mod tests {
     }
 
     #[test]
+    /// composer_lock_file - composer lock file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn composer_lock_file() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
@@ -350,6 +401,11 @@ mod tests {
     }
 
     #[test]
+    /// bundler_detection - bundler detection.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn bundler_detection() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("Gemfile"), "source 'https://rubygems.org'").unwrap();
@@ -357,6 +413,11 @@ mod tests {
     }
 
     #[test]
+    /// bundler_lock_file - bundler lock file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn bundler_lock_file() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("Gemfile"), "source 'https://rubygems.org'").unwrap();
@@ -365,6 +426,11 @@ mod tests {
     }
 
     #[test]
+    /// php_runtime_detects_composer - php runtime detects composer.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn php_runtime_detects_composer() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
@@ -372,6 +438,11 @@ mod tests {
     }
 
     #[test]
+    /// ruby_runtime_detects_bundler - ruby runtime detects bundler.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn ruby_runtime_detects_bundler() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("Gemfile"), "").unwrap();
@@ -379,6 +450,11 @@ mod tests {
     }
 
     #[test]
+    /// secondary_node_mgr - secondary node mgr.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn secondary_node_mgr() {
         let dir = TempDir::new().unwrap();
         // PHP app with Node.js frontend
@@ -391,6 +467,11 @@ mod tests {
     }
 
     #[test]
+    /// secondary_php_mgr - secondary php mgr.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn secondary_php_mgr() {
         let dir = TempDir::new().unwrap();
         // Node app with PHP API
@@ -403,6 +484,11 @@ mod tests {
     }
 
     #[test]
+    /// perl_runtime_detects_cpan - perl runtime detects cpan.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn perl_runtime_detects_cpan() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("cpanfile"), "").unwrap();
@@ -410,6 +496,11 @@ mod tests {
     }
 
     #[test]
+    /// cpanfile_snapshot - cpanfile snapshot.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn cpanfile_snapshot() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("cpanfile.snapshot"), "").unwrap();
@@ -417,6 +508,11 @@ mod tests {
     }
 
     #[test]
+    /// secondary_perl_mgr - secondary perl mgr.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn secondary_perl_mgr() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();

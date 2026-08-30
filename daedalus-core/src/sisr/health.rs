@@ -35,6 +35,11 @@ pub struct HealthCheckPolicy {
 }
 
 impl Default for HealthCheckPolicy {
+    /// default - default.
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     fn default() -> Self {
         Self {
             timeout_ms: DEFAULT_TIMEOUT_MS,
@@ -87,6 +92,12 @@ impl HealthStore {
         &self.dir
     }
 
+    /// record_path - record path.
+    /// @version_id: version id
+    ///
+    /// Description:
+    ///
+    /// Return: the PathBuf
     fn record_path(&self, version_id: &str) -> PathBuf {
         self.dir.join(format!("{version_id}.json"))
     }
@@ -200,6 +211,13 @@ impl HealthStore {
         Ok(false)
     }
 
+    /// save - save.
+    /// @status: status code
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<()>
     fn save(&self, status: &HealthStatus) -> io::Result<()> {
         fs::create_dir_all(&self.dir)?;
         let tmp = self.dir.join(format!(".{}.tmp", status.version_id));
@@ -210,6 +228,11 @@ impl HealthStore {
     }
 }
 
+/// unix_secs - unix secs.
+///
+/// Description:
+///
+/// Return: the u64
 fn unix_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -220,6 +243,12 @@ fn unix_secs() -> u64 {
 mod tests {
     use super::*;
 
+    /// store - store.
+    /// @tempfile: tempfile
+    ///
+    /// Description:
+    ///
+    /// Return: the (tempfile::TempDir, HealthStore)
     fn store() -> (tempfile::TempDir, HealthStore) {
         let tmp = tempfile::tempdir().unwrap();
         let store = HealthStore::new(&tmp.path().join("health"));
@@ -227,12 +256,22 @@ mod tests {
     }
 
     #[test]
+    /// load_returns_none_for_unknown_version - load returns none for unknown version.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn load_returns_none_for_unknown_version() {
         let (_tmp, store) = store();
         assert_eq!(store.load("abc").unwrap(), None);
     }
 
     #[test]
+    /// begin_creates_pending_record - begin creates pending record.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn begin_creates_pending_record() {
         let (_tmp, store) = store();
         let status = store.begin("v1").unwrap();
@@ -242,6 +281,11 @@ mod tests {
     }
 
     #[test]
+    /// begin_preserves_failure_counter_across_reinstalls - begin preserves failure counter across reinstalls.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn begin_preserves_failure_counter_across_reinstalls() {
         let (_tmp, store) = store();
         store.record_failure("v1", 3).unwrap();
@@ -251,6 +295,11 @@ mod tests {
     }
 
     #[test]
+    /// begin_will_not_rearm_a_quarantined_version - begin will not rearm a quarantined version.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn begin_will_not_rearm_a_quarantined_version() {
         let (_tmp, store) = store();
         store.record_failure("v1", 1).unwrap();
@@ -260,6 +309,11 @@ mod tests {
     }
 
     #[test]
+    /// confirm_marks_healthy - confirm marks healthy.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn confirm_marks_healthy() {
         let (_tmp, store) = store();
         store.begin("v1").unwrap();
@@ -272,6 +326,11 @@ mod tests {
     }
 
     #[test]
+    /// record_failure_quarantines_at_threshold - record failure quarantines at threshold.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn record_failure_quarantines_at_threshold() {
         let (_tmp, store) = store();
         assert!(!store.record_failure("v1", 3).unwrap());
@@ -282,6 +341,11 @@ mod tests {
     }
 
     #[test]
+    /// zero_max_attempts_never_quarantines - zero max attempts never quarantines.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn zero_max_attempts_never_quarantines() {
         let (_tmp, store) = store();
         store.record_failure("v1", 0).unwrap();
@@ -290,6 +354,11 @@ mod tests {
     }
 
     #[test]
+    /// has_quarantined_scans_the_store - check whether quarantined scans the store.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn has_quarantined_scans_the_store() {
         let (_tmp, store) = store();
         assert!(!store.has_quarantined().unwrap());
@@ -300,6 +369,11 @@ mod tests {
     }
 
     #[test]
+    /// has_quarantined_is_false_for_missing_dir - check whether quarantined is false for missing dir.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn has_quarantined_is_false_for_missing_dir() {
         let (_tmp, store) = store();
         assert!(!store.has_quarantined().unwrap());

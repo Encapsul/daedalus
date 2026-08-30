@@ -4,6 +4,8 @@
 //! detection. Used by the Rust CLI (`daedalus-cli`) and the launcher stub
 //! (`daedalus-stub`).
 
+#![warn(missing_docs)]
+
 pub mod assembler;
 pub mod assembly;
 pub mod cas;

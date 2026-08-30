@@ -47,12 +47,27 @@ impl MemoryStore {
 }
 
 impl ObjectStore for MemoryStore {
+    /// put - put.
+    /// @hash: hash value
+    /// @data: data
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<()>
     fn put(&mut self, hash: &[u8; 32], data: &[u8]) -> io::Result<()> {
         verify_hash(hash, data)?;
         self.objects.insert(*hash, data.to_vec());
         Ok(())
     }
 
+    /// get - get.
+    /// @hash: hash value
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<Option<Vec<u8>>>
     fn get(&self, hash: &[u8; 32]) -> io::Result<Option<Vec<u8>>> {
         match self.objects.get(hash) {
             None => Ok(None),
@@ -63,6 +78,13 @@ impl ObjectStore for MemoryStore {
         }
     }
 
+    /// as_any - as any.
+    /// @std: std
+    /// @any: any
+    ///
+    /// Description:
+    ///
+    /// Return: the &dyn std::any::Any
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -91,12 +113,26 @@ impl DiskObjectStore {
         &self.root
     }
 
+    /// path_for - path for.
+    /// @hash: hash value
+    ///
+    /// Description:
+    ///
+    /// Return: the PathBuf
     fn path_for(&self, hash: &[u8; 32]) -> PathBuf {
         self.root.join(hex::encode(hash))
     }
 }
 
 impl ObjectStore for DiskObjectStore {
+    /// put - put.
+    /// @hash: hash value
+    /// @data: data
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<()>
     fn put(&mut self, hash: &[u8; 32], data: &[u8]) -> io::Result<()> {
         verify_hash(hash, data)?;
         let path = self.path_for(hash);
@@ -108,6 +144,13 @@ impl ObjectStore for DiskObjectStore {
         verify_hash(hash, &written)
     }
 
+    /// get - get.
+    /// @hash: hash value
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<Option<Vec<u8>>>
     fn get(&self, hash: &[u8; 32]) -> io::Result<Option<Vec<u8>>> {
         let path = self.path_for(hash);
         let data = match fs::read(&path) {
@@ -119,6 +162,13 @@ impl ObjectStore for DiskObjectStore {
         Ok(Some(data))
     }
 
+    /// as_any - as any.
+    /// @std: std
+    /// @any: any
+    ///
+    /// Description:
+    ///
+    /// Return: the &dyn std::any::Any
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -140,11 +190,22 @@ fn verify_hash(expected: &[u8; 32], data: &[u8]) -> io::Result<()> {
 mod tests {
     use super::*;
 
+    /// hash_of - hash of.
+    /// @data: data
+    ///
+    /// Description:
+    ///
+    /// Return: the [u8; 32]
     fn hash_of(data: &[u8]) -> [u8; 32] {
         Sha256::digest(data).into()
     }
 
     #[test]
+    /// memory_roundtrip - memory roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn memory_roundtrip() {
         let mut store = MemoryStore::new();
         let data = b"payload block";
@@ -154,6 +215,11 @@ mod tests {
     }
 
     #[test]
+    /// memory_missing_returns_none - memory missing returns none.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn memory_missing_returns_none() {
         let store = MemoryStore::new();
         let absent = [0u8; 32];
@@ -161,6 +227,11 @@ mod tests {
     }
 
     #[test]
+    /// memory_rejects_wrong_hash_on_put - memory rejects wrong hash on put.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn memory_rejects_wrong_hash_on_put() {
         let mut store = MemoryStore::new();
         let wrong = [0u8; 32];
@@ -169,6 +240,11 @@ mod tests {
     }
 
     #[test]
+    /// disk_roundtrip_and_persistence - disk roundtrip and persistence.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn disk_roundtrip_and_persistence() {
         let dir = tempfile::tempdir().unwrap();
         let mut store = DiskObjectStore::new(dir.path()).unwrap();
@@ -182,6 +258,11 @@ mod tests {
     }
 
     #[test]
+    /// disk_detects_tampering_on_read - disk detects tampering on read.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn disk_detects_tampering_on_read() {
         let dir = tempfile::tempdir().unwrap();
         let mut store = DiskObjectStore::new(dir.path()).unwrap();
@@ -196,6 +277,11 @@ mod tests {
     }
 
     #[test]
+    /// disk_detects_wrong_hash_on_put - disk detects wrong hash on put.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn disk_detects_wrong_hash_on_put() {
         let dir = tempfile::tempdir().unwrap();
         let mut store = DiskObjectStore::new(dir.path()).unwrap();

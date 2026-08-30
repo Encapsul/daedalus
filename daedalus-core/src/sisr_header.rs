@@ -138,6 +138,13 @@ fn fixed<const N: usize>(b: &[u8]) -> io::Result<[u8; N]> {
         .map_err(|_| err("truncated SISR footer extension"))
 }
 
+/// err - err.
+/// @msg: message
+/// @io: io
+///
+/// Description:
+///
+/// Return: the io::Error
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -147,6 +154,11 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
+    /// ext - ext.
+    ///
+    /// Description:
+    ///
+    /// Return: the SisrFooterExt
     fn ext() -> SisrFooterExt {
         SisrFooterExt {
             sisr_version: SISR_VERSION,
@@ -157,6 +169,12 @@ mod tests {
         }
     }
 
+    /// v3_footer - v3 footer.
+    /// @flags: flags
+    ///
+    /// Description:
+    ///
+    /// Return: the [u8; 92]
     fn v3_footer(flags: u8) -> [u8; 92] {
         let core = format::Footer {
             format_version: 5,
@@ -177,17 +195,32 @@ mod tests {
         full
     }
 
+    /// footer_size_hint - footer size hint.
+    ///
+    /// Description:
+    ///
+    /// Return: the u64
     fn footer_size_hint() -> u64 {
         format::V3_FOOTER_SIZE
     }
 
     #[test]
+    /// size_is_110_bytes - size is 110 bytes.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn size_is_110_bytes() {
         assert_eq!(SIZE, 110);
         assert_eq!(SisrFooterExt::pack(&ext()).len(), 110);
     }
 
     #[test]
+    /// header_overhead_stays_under_4kib - header overhead stays under 4kib.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn header_overhead_stays_under_4kib() {
         let manifest = DeltaManifest {
             version: crate::manifest::VERSION,
@@ -207,6 +240,11 @@ mod tests {
     }
 
     #[test]
+    /// pack_parse_roundtrip_is_bit_exact - pack parse roundtrip is bit exact.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn pack_parse_roundtrip_is_bit_exact() {
         let e = ext();
         let bytes = e.pack();
@@ -215,12 +253,22 @@ mod tests {
     }
 
     #[test]
+    /// parse_rejects_short_buffer - parse rejects short buffer.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_rejects_short_buffer() {
         assert!(SisrFooterExt::parse(&[0u8; SIZE - 1]).is_err());
         assert!(SisrFooterExt::parse(&[]).is_err());
     }
 
     #[test]
+    /// read_from_locates_ext_before_footer - read from locates ext before footer.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_from_locates_ext_before_footer() {
         let mut data = vec![0u8; 92];
         data.extend_from_slice(&ext().pack());
@@ -234,6 +282,11 @@ mod tests {
     }
 
     #[test]
+    /// read_from_returns_none_when_absent - read from returns none when absent.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_from_returns_none_when_absent() {
         let mut e = ext();
         e.sisr_version = 0;
@@ -247,6 +300,11 @@ mod tests {
     }
 
     #[test]
+    /// read_from_returns_none_for_small_files - read from returns none for small files.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_from_returns_none_for_small_files() {
         let mut cursor = Cursor::new(vec![0u8; 10]);
         let got = SisrFooterExt::read_from(&mut cursor, 10, footer_size_hint()).unwrap();
@@ -254,6 +312,11 @@ mod tests {
     }
 
     #[test]
+    /// read_sisr_roundtrip_full_file - read sisr roundtrip full file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_sisr_roundtrip_full_file() {
         let manifest = DeltaManifest {
             version: crate::manifest::VERSION,
@@ -282,6 +345,11 @@ mod tests {
     }
 
     #[test]
+    /// read_sisr_returns_none_for_legacy_file - read sisr returns none for legacy file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_sisr_returns_none_for_legacy_file() {
         let mut data = vec![0x00; 500];
         data.extend_from_slice(&v3_footer(0));
@@ -290,6 +358,11 @@ mod tests {
     }
 
     #[test]
+    /// read_sisr_preserves_legacy_footer_semantics - read sisr preserves legacy footer semantics.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_sisr_preserves_legacy_footer_semantics() {
         let manifest = DeltaManifest {
             version: crate::manifest::VERSION,
@@ -317,6 +390,11 @@ mod tests {
     }
 
     #[test]
+    /// read_sisr_rejects_out_of_bounds_chunk_table - read sisr rejects out of bounds chunk table.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_sisr_rejects_out_of_bounds_chunk_table() {
         let e = SisrFooterExt {
             sisr_version: SISR_VERSION,
@@ -333,6 +411,11 @@ mod tests {
     }
 
     #[test]
+    /// read_sisr_rejects_offset_overflow - read sisr rejects offset overflow.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_sisr_rejects_offset_overflow() {
         let e = SisrFooterExt {
             sisr_version: SISR_VERSION,
@@ -349,6 +432,11 @@ mod tests {
     }
 
     #[test]
+    /// read_sisr_rejects_missing_manifest_for_set_flag - read sisr rejects missing manifest for set flag.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_sisr_rejects_missing_manifest_for_set_flag() {
         let e = SisrFooterExt {
             sisr_version: SISR_VERSION,
@@ -365,6 +453,11 @@ mod tests {
     }
 
     #[test]
+    /// read_sisr_rejects_oversized_manifest - read sisr rejects oversized manifest.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn read_sisr_rejects_oversized_manifest() {
         // A manifest larger than MAX_MANIFEST_SIZE must be rejected before any
         // allocation, even when the reported range sits inside the file.
@@ -390,6 +483,11 @@ mod proptests {
     use proptest::prelude::*;
     use std::io::Cursor;
 
+    /// signature - signature.
+    ///
+    /// Description:
+    ///
+    /// Return: the impl Strategy<Value = [u8; 64]>
     fn signature() -> impl Strategy<Value = [u8; 64]> {
         prop::collection::vec(any::<u8>(), 64).prop_map(|v| {
             let mut arr = [0u8; 64];
@@ -400,6 +498,11 @@ mod proptests {
 
     proptest! {
         #[test]
+        /// arbitrary_bytes_never_panic - arbitrary bytes never panic.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn arbitrary_bytes_never_panic(
             buf in prop::collection::vec(any::<u8>(), 0..SIZE),
         ) {
@@ -407,6 +510,11 @@ mod proptests {
         }
 
         #[test]
+        /// truncated_buf_is_rejected - truncated buf is rejected.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn truncated_buf_is_rejected(
             buf in prop::collection::vec(any::<u8>(), 0..SIZE),
         ) {
@@ -416,6 +524,11 @@ mod proptests {
         }
 
         #[test]
+        /// pack_roundtrips - pack roundtrips.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn pack_roundtrips(
             sisr_version in any::<u16>(),
             chunk_table_offset in any::<u64>(),
@@ -435,6 +548,11 @@ mod proptests {
         }
 
         #[test]
+        /// read_sisr_arbitrary_bytes_never_panic - read sisr arbitrary bytes never panic.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn read_sisr_arbitrary_bytes_never_panic(
             buf in prop::collection::vec(any::<u8>(), 0..8192),
         ) {

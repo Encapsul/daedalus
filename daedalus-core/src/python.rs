@@ -40,6 +40,12 @@ struct PyFooter {
 #[pymethods]
 impl PyFooter {
     #[new]
+    /// py_new - py new.
+    /// @_py:  py
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing PyResult<Self>
     fn py_new(_py: Python<'_>) -> PyResult<Self> {
         Err(pyo3::exceptions::PyNotImplementedError::new_err(
             "Use PyFooter.unpack() to create a PyFooter from packed data",
@@ -47,6 +53,11 @@ impl PyFooter {
     }
 
     #[getter]
+    /// footer_size - footer size.
+    ///
+    /// Description:
+    ///
+    /// Return: the u64
     fn footer_size(&self) -> u64 {
         if self.format_version >= 3 {
             format::V3_FOOTER_SIZE
@@ -55,10 +66,20 @@ impl PyFooter {
         }
     }
 
+    /// is_signed - check whether signed.
+    ///
+    /// Description:
+    ///
+    /// Return: true or false
     fn is_signed(&self) -> bool {
         self.flags & format::FLAG_SIGNED != 0
     }
 
+    /// sha256_hex - sha256 hex.
+    ///
+    /// Description:
+    ///
+    /// Return: the resulting string
     fn sha256_hex(&self) -> String {
         self.payload_sha256
             .iter()
@@ -109,6 +130,12 @@ impl PyFooter {
     }
 
     #[staticmethod]
+    /// unpack - unpack.
+    /// @data: data
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing PyResult<Self>
     fn unpack(data: &[u8]) -> PyResult<Self> {
         let mut sig_offset = 0u64;
         let core = if data.len() == format::V3_FOOTER_SIZE as usize {
@@ -182,12 +209,23 @@ impl PyFooter {
         })
     }
 
+    /// __repr__ -   repr  .
+    ///
+    /// Description:
+    ///
+    /// Return: the resulting string
     fn __repr__(&self) -> String {
         format!("Footer(version={}, arch={:#04x}, flags={:#04x}, payload_offset={}, payload_csize={}, payload_usize={}, meta_offset={}, meta_size={}, sig_offset={})", self.format_version, self.arch, self.flags, self.payload_offset, self.payload_csize, self.payload_usize, self.meta_offset, self.meta_size, self.sig_offset,)
     }
 }
 
 #[pyfunction]
+/// py_read_footer - py read footer.
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: Result containing PyResult<PyFooter>
 fn py_read_footer(path: &str) -> PyResult<PyFooter> {
     let mut f = std::fs::File::open(path)
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
@@ -246,61 +284,133 @@ fn py_decompress<'py>(py: Python<'py>, data: &[u8]) -> PyResult<Bound<'py, PyByt
 // ─── detect ──────────────────────────────────────────────────────────────
 
 #[pyfunction]
+/// py_detect_runtime - py detect runtime.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn py_detect_runtime(app_dir: &str) -> Option<String> {
     detect::detect_runtime(Path::new(app_dir)).map(|r| r.name().to_string())
 }
 
 #[pyfunction]
+/// py_detect_python - py detect python.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_python(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Python)
 }
 
 #[pyfunction]
+/// py_detect_deno - py detect deno.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_deno(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Deno)
 }
 
 #[pyfunction]
+/// py_detect_node - py detect node.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_node(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Node)
 }
 
 #[pyfunction]
+/// py_detect_java - py detect java.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_java(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Java)
 }
 
 #[pyfunction]
+/// py_detect_ruby - py detect ruby.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_ruby(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Ruby)
 }
 
 #[pyfunction]
+/// py_detect_dotnet - py detect dotnet.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_dotnet(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Dotnet)
 }
 
 #[pyfunction]
+/// py_detect_go - py detect go.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_go(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Go)
 }
 
 #[pyfunction]
+/// py_detect_php - py detect php.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_php(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Php)
 }
 
 #[pyfunction]
+/// py_detect_perl - py detect perl.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_perl(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Perl)
 }
 
 #[pyfunction]
+/// py_detect_electron - py detect electron.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_electron(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Electron)
 }
 
 #[pyfunction]
+/// py_detect_binary - py detect binary.
+/// @app_dir: app dir
+///
+/// Description:
+///
+/// Return: true or false
 fn py_detect_binary(app_dir: &str) -> bool {
     detect::detect_runtime(Path::new(app_dir)) == Some(Runtime::Binary)
 }
@@ -308,21 +418,46 @@ fn py_detect_binary(app_dir: &str) -> bool {
 // ─── pkgmgr ──────────────────────────────────────────────────────────────
 
 #[pyfunction]
+/// py_detect_python_pkgmgr - py detect python pkgmgr.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn py_detect_python_pkgmgr(dir: &str) -> Option<String> {
     pkgmgr::detect_python_pkgmgr(Path::new(dir)).map(|p| p.name().to_string())
 }
 
 #[pyfunction]
+/// py_detect_node_pkgmgr - py detect node pkgmgr.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn py_detect_node_pkgmgr(dir: &str) -> Option<String> {
     pkgmgr::detect_node_pkgmgr(Path::new(dir)).map(|p| p.name().to_string())
 }
 
 #[pyfunction]
+/// py_detect_pkgmgr - py detect pkgmgr.
+/// @dir: directory path
+/// @runtime: runtime
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn py_detect_pkgmgr(dir: &str, runtime: &str) -> Option<String> {
     pkgmgr::detect_pkgmgr(Path::new(dir), runtime).map(|p| p.name().to_string())
 }
 
 #[pyfunction]
+/// py_pkgmgr_install_cmd - py pkgmgr install cmd.
+/// @mgr: mgr
+///
+/// Description:
+///
+/// Return: vector of Vec<String>
 fn py_pkgmgr_install_cmd(mgr: &str) -> Vec<String> {
     let name = match mgr {
         "uv" => Some(PkgMgr::Uv),
@@ -359,6 +494,11 @@ fn py_create_tar_zstd<'py>(py: Python<'py>, root: &str) -> PyResult<Bound<'py, P
 
 #[pyfunction]
 #[pyo3(signature = (out_path, stub_bytes, payload, meta_bytes, squashfs=false, target_arch=None))]
+/// py_assemble_daedalus - py assemble daedalus.
+///
+/// Description:
+///
+/// Return: nothing
 fn py_assemble_daedalus(
     out_path: &str,
     stub_bytes: &[u8],
@@ -385,6 +525,12 @@ fn py_assemble_daedalus(
 // ─── module ──────────────────────────────────────────────────────────────
 
 #[pymodule]
+/// daedalus_core - daedalus core.
+/// @m: m
+///
+/// Description:
+///
+/// Return: Result containing PyResult<()>
 fn daedalus_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // format
     m.add("MAGIC", format::MAGIC)?;

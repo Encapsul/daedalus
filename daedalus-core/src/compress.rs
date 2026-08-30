@@ -49,6 +49,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// roundtrip - roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn roundtrip() {
         let original = b"hello daedalus compression test data ".repeat(100);
         let compressed = compress(&original).unwrap();
@@ -58,6 +63,11 @@ mod tests {
     }
 
     #[test]
+    /// roundtrip_with_level - roundtrip with level.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn roundtrip_with_level() {
         let original = b"level test data ".repeat(200);
         let fast = compress_with_level(&original, 3).unwrap();
@@ -71,6 +81,11 @@ mod tests {
     }
 
     #[test]
+    /// compress_produces_smaller_output - compress produces smaller output.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn compress_produces_smaller_output() {
         let data = b"aaaaaaaaaaaa".repeat(1000);
         let compressed = compress(&data).unwrap();

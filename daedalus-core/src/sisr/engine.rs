@@ -43,6 +43,12 @@ pub struct DirectoryChunkFetcher {
 }
 
 impl DirectoryChunkFetcher {
+    /// new - new.
+    /// @root: root
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     pub fn new(root: &Path) -> Self {
         let store = crate::cas::DiskObjectStore::new(root)
             .expect("cas dir creation should not fail for a writable temp dir");
@@ -54,6 +60,14 @@ impl DirectoryChunkFetcher {
 }
 
 impl ChunkFetcher for DirectoryChunkFetcher {
+    /// fetch - fetch.
+    /// @hash: hash value
+    /// @_length:  length
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<Vec<u8>>
     fn fetch(&self, hash: &[u8; 32], _length: usize) -> io::Result<Vec<u8>> {
         let bytes = self
             .store
@@ -68,6 +82,11 @@ impl ChunkFetcher for DirectoryChunkFetcher {
         Ok(bytes)
     }
 
+    /// bytes_fetched - bytes fetched.
+    ///
+    /// Description:
+    ///
+    /// Return: the u64
     fn bytes_fetched(&self) -> u64 {
         self.fetched.get()
     }
@@ -332,6 +351,11 @@ fn resolve_chunk_bytes(
     Ok((bytes, false))
 }
 
+/// fetch_verified - fetch verified.
+///
+/// Description:
+///
+/// Return: nothing
 fn fetch_verified(
     fetcher: &dyn ChunkFetcher,
     chunk: &crate::manifest::ChunkEntry,
@@ -362,10 +386,26 @@ fn write_footer(w: &mut File, footer: &Footer) -> io::Result<()> {
     w.write_all(&footer.pack())
 }
 
+/// read_at - read at.
+/// @f: f
+/// @off: off
+/// @len: length
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<Vec<u8>>
 fn read_at(f: &mut File, off: u64, len: usize) -> io::Result<Vec<u8>> {
     crate::format::read_at(f, off, len)
 }
 
+/// err - err.
+/// @msg: message
+/// @io: io
+///
+/// Description:
+///
+/// Return: the io::Error
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -379,6 +419,13 @@ mod tests {
     use crate::assembly::assemble_daedalus;
     use crate::sisr_stage::SisrBuildConfig;
 
+    /// random_buf - random buf.
+    /// @len: length
+    /// @seed: seed
+    ///
+    /// Description:
+    ///
+    /// Return: vector of Vec<u8>
     fn random_buf(len: usize, seed: u64) -> Vec<u8> {
         let mut state = seed;
         (0..len)
@@ -401,6 +448,11 @@ mod tests {
     }
 
     impl MapFetcher {
+        /// new - new.
+        ///
+        /// Description:
+        ///
+        /// Return: the Self
         fn new() -> Self {
             Self {
                 map: Map::new(),
@@ -408,12 +460,27 @@ mod tests {
             }
         }
 
+        /// put - put.
+        /// @hash: hash value
+        /// @bytes: bytes
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn put(&mut self, hash: [u8; 32], bytes: Vec<u8>) {
             self.map.insert(hash, bytes);
         }
     }
 
     impl ChunkFetcher for MapFetcher {
+        /// fetch - fetch.
+        /// @hash: hash value
+        /// @_length:  length
+        /// @io: io
+        ///
+        /// Description:
+        ///
+        /// Return: Result containing io::Result<Vec<u8>>
         fn fetch(&self, hash: &[u8; 32], _length: usize) -> io::Result<Vec<u8>> {
             let bytes =
                 self.map.get(hash).cloned().ok_or_else(|| {
@@ -424,11 +491,25 @@ mod tests {
             Ok(bytes)
         }
 
+        /// bytes_fetched - bytes fetched.
+        ///
+        /// Description:
+        ///
+        /// Return: the u64
         fn bytes_fetched(&self) -> u64 {
             self.fetched.get()
         }
     }
 
+    /// build_current_bin - build current bin.
+    /// @dir: directory path
+    /// @payload: payload data
+    /// @meta: metadata
+    /// @chunk: chunk
+    ///
+    /// Description:
+    ///
+    /// Return: the PathBuf
     fn build_current_bin(dir: &Path, payload: &[u8], meta: &[u8], chunk: usize) -> PathBuf {
         let out = dir.join("app.daedalus");
         let config = SisrBuildConfig {
@@ -453,12 +534,24 @@ mod tests {
         out
     }
 
+    /// read_current_manifest - read current manifest.
+    /// @path: file or directory path
+    ///
+    /// Description:
+    ///
+    /// Return: the DeltaManifest
     fn read_current_manifest(path: &Path) -> DeltaManifest {
         let data = fs::read(path).unwrap();
         let (_, manifest) = read_sisr(&mut Cursor::new(&data)).unwrap().unwrap();
         manifest
     }
 
+    /// rebuilt_payload - rebuilt payload.
+    /// @path: file or directory path
+    ///
+    /// Description:
+    ///
+    /// Return: vector of Vec<u8>
     fn rebuilt_payload(path: &Path) -> Vec<u8> {
         let data = fs::read(path).unwrap();
         let footer = Footer::read_from(&mut Cursor::new(&data)).unwrap();
@@ -471,6 +564,11 @@ mod tests {
     }
 
     #[test]
+    /// reuse_80_percent_fetches_only_the_rest - reuse 80 percent fetches only the rest.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn reuse_80_percent_fetches_only_the_rest() {
         let tmp = tempfile::tempdir().unwrap();
         let payload = random_buf(40_000, 1);
@@ -527,6 +625,11 @@ mod tests {
     }
 
     #[test]
+    /// interrupted_update_leaves_original_binary_intact - interrupted update leaves original binary intact.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn interrupted_update_leaves_original_binary_intact() {
         let tmp = tempfile::tempdir().unwrap();
         let payload = random_buf(10_000, 2);
@@ -560,6 +663,11 @@ mod tests {
     }
 
     #[test]
+    /// fetched_chunk_with_wrong_hash_is_rejected - fetched chunk with wrong hash is rejected.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn fetched_chunk_with_wrong_hash_is_rejected() {
         let tmp = tempfile::tempdir().unwrap();
         let payload = random_buf(2_000, 3);
@@ -585,6 +693,11 @@ mod tests {
     }
 
     #[test]
+    /// manifest_length_mismatch_is_rejected - manifest length mismatch is rejected.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn manifest_length_mismatch_is_rejected() {
         let tmp = tempfile::tempdir().unwrap();
         let cur = build_current_bin(tmp.path(), b"payload", b"{}", 4096);
@@ -601,6 +714,11 @@ mod tests {
     }
 
     #[test]
+    /// full_fetch_when_current_binary_has_no_sisr_section - full fetch when current binary has no sisr section.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn full_fetch_when_current_binary_has_no_sisr_section() {
         let tmp = tempfile::tempdir().unwrap();
         let payload = random_buf(8_000, 5);
@@ -641,6 +759,11 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    /// replaced_binary_keeps_the_executable_bit - replaced binary keeps the executable bit.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn replaced_binary_keeps_the_executable_bit() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -674,6 +797,11 @@ mod tests {
     /// footer's hash exactly — on a mixed delta (reuse + fetch) — without
     /// touching the binary.
     #[test]
+    /// dry_run_hash_matches_rebuilt_footer_without_writes - dry run hash matches rebuilt footer without writes.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn dry_run_hash_matches_rebuilt_footer_without_writes() {
         let tmp = tempfile::tempdir().unwrap();
         let payload = random_buf(12_000, 11);
@@ -719,6 +847,11 @@ mod tests {
     }
 
     #[test]
+    /// directory_fetcher_reads_hex_hash_files_and_counts - directory fetcher reads hex hash files and counts.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn directory_fetcher_reads_hex_hash_files_and_counts() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("chunks");
@@ -735,6 +868,11 @@ mod tests {
     }
 
     #[test]
+    /// corrupted_reused_chunk_falls_back_to_fetch - corrupted reused chunk falls back to fetch.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn corrupted_reused_chunk_falls_back_to_fetch() {
         let tmp = tempfile::tempdir().unwrap();
         let payload = random_buf(16_000, 6);
@@ -772,6 +910,11 @@ mod tests {
     /// tail → some chunks fetched), signed by the publisher, must produce a
     /// binary that verifies offline against the trusted key — and only it.
     #[test]
+    /// applied_update_stays_authentic_at_rest - applied update stays authentic at rest.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn applied_update_stays_authentic_at_rest() {
         let tmp = tempfile::tempdir().unwrap();
         let meta = br#"{"name":"test"}"#;

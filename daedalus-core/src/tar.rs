@@ -89,6 +89,15 @@ fn collect_entries(root: &Path) -> io::Result<Vec<String>> {
     Ok(entries)
 }
 
+/// collect_recursive - collect recursive.
+/// @base: base
+/// @current: current
+/// @entries: entries
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn collect_recursive(base: &Path, current: &Path, entries: &mut Vec<String>) -> io::Result<()> {
     let read_dir = match std::fs::read_dir(current) {
         Ok(rd) => rd,
@@ -243,6 +252,11 @@ mod tests {
     use std::fs;
 
     #[test]
+    /// create_tar_from_empty_dir - create tar from empty dir.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn create_tar_from_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let tar = create_deterministic_tar(tmp.path()).unwrap();
@@ -250,6 +264,11 @@ mod tests {
     }
 
     #[test]
+    /// create_tar_with_files - create tar with files.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn create_tar_with_files() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
@@ -272,6 +291,11 @@ mod tests {
     }
 
     #[test]
+    /// tar_zstd_roundtrip - tar zstd roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn tar_zstd_roundtrip() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
@@ -290,6 +314,11 @@ mod tests {
     }
 
     #[test]
+    /// tar_is_deterministic - tar is deterministic.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn tar_is_deterministic() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
@@ -302,6 +331,11 @@ mod tests {
     }
 
     #[test]
+    /// symlink_preserved_as_symlink_entry - symlink preserved as symlink entry.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn symlink_preserved_as_symlink_entry() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
@@ -328,6 +362,11 @@ mod tests {
     }
 
     #[test]
+    /// escaping_symlink_target_is_dropped - escaping symlink target is dropped.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn escaping_symlink_target_is_dropped() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
@@ -349,6 +388,11 @@ mod tests {
     }
 
     #[test]
+    /// git_dir_excluded_but_gitignore_kept - git dir excluded but gitignore kept.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn git_dir_excluded_but_gitignore_kept() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
@@ -374,6 +418,11 @@ mod tests {
     }
 
     #[test]
+    /// tar_zstd_is_byte_deterministic - tar zstd is byte deterministic.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn tar_zstd_is_byte_deterministic() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
@@ -388,6 +437,11 @@ mod tests {
     }
 
     #[test]
+    /// extract_tar_gz_roundtrip - extract tar gz roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn extract_tar_gz_roundtrip() {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("src");

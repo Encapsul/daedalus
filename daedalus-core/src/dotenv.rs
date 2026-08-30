@@ -17,6 +17,13 @@ static SECRET_RE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid regex")
 });
 
+/// parse_dotenv - parse dotenv.
+/// @path: file or directory path
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<HashMap<String, String>>
 pub fn parse_dotenv(path: &Path) -> io::Result<HashMap<String, String>> {
     let content = fs::read_to_string(path)?;
     let mut env = HashMap::new();
@@ -41,6 +48,12 @@ pub fn parse_dotenv(path: &Path) -> io::Result<HashMap<String, String>> {
     Ok(env)
 }
 
+/// parse_line - parse line.
+/// @line: line
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 fn parse_line(line: &str) -> Option<(String, String)> {
     let eq_idx = line.find('=')?;
     let key = line[..eq_idx].trim();
@@ -54,6 +67,12 @@ fn parse_line(line: &str) -> Option<(String, String)> {
     Some((key.to_string(), value.clone()))
 }
 
+/// strip_quotes - strip quotes.
+/// @s: s
+///
+/// Description:
+///
+/// Return: the resulting string
 fn strip_quotes(s: &str) -> String {
     if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
         return s[1..s.len() - 1].to_string();
@@ -68,6 +87,11 @@ pub fn detect_secret_keys<S: BuildHasher>(env: &HashMap<String, String, S>) -> V
         .collect()
 }
 
+/// load_dotenv - load dotenv.
+///
+/// Description:
+///
+/// Return: nothing
 pub fn load_dotenv(
     app_dir: &Path,
     env_file: Option<&str>,
@@ -101,6 +125,11 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    /// test_parse_simple - test parse simple.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_simple() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join(".env");
@@ -112,6 +141,11 @@ mod tests {
     }
 
     #[test]
+    /// test_parse_export_prefix - test parse export prefix.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_export_prefix() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join(".env");
@@ -122,6 +156,11 @@ mod tests {
     }
 
     #[test]
+    /// test_parse_quotes - test parse quotes.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_quotes() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join(".env");
@@ -133,6 +172,11 @@ mod tests {
     }
 
     #[test]
+    /// test_parse_comments - test parse comments.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_comments() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join(".env");
@@ -144,6 +188,11 @@ mod tests {
     }
 
     #[test]
+    /// test_detect_secrets - test detect secrets.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_detect_secrets() {
         let mut env = HashMap::new();
         env.insert("DATABASE_URL".into(), "postgres://...".into());
@@ -157,6 +206,11 @@ mod tests {
     }
 
     #[test]
+    /// test_load_dotenv_not_found - test load dotenv not found.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_load_dotenv_not_found() {
         let dir = TempDir::new().unwrap();
         let env = load_dotenv(dir.path(), None, false);

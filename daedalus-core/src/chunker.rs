@@ -76,6 +76,11 @@ impl FastCDC {
 }
 
 impl Default for FastCDC {
+    /// default - default.
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     fn default() -> Self {
         // 2 KiB / 8 KiB / 32 KiB — valid by construction (min > 0, ordered).
         Self {
@@ -87,6 +92,12 @@ impl Default for FastCDC {
 }
 
 impl Chunker for FastCDC {
+    /// chunk - chunk.
+    /// @data: data
+    ///
+    /// Description:
+    ///
+    /// Return: vector of Vec<ChunkDescriptor>
     fn chunk(&self, data: &[u8]) -> Vec<ChunkDescriptor> {
         let mask_small = (1u64 << self.avg.ilog2()) - 1;
         let mask_large = (1u64 << self.max.ilog2()) - 1;
@@ -168,11 +179,21 @@ mod tests {
             .collect()
     }
 
+    /// chunker - chunker.
+    ///
+    /// Description:
+    ///
+    /// Return: the FastCDC
     fn chunker() -> FastCDC {
         FastCDC::new(1024).expect("valid average size")
     }
 
     #[test]
+    /// chunks_cover_buffer_exactly - chunks cover buffer exactly.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn chunks_cover_buffer_exactly() {
         let data = random_buf(100_000, 42);
         let chunks = chunker().chunk(&data);
@@ -186,6 +207,11 @@ mod tests {
     }
 
     #[test]
+    /// chunk_sizes_within_bounds - chunk sizes within bounds.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn chunk_sizes_within_bounds() {
         let c = chunker();
         let chunks = c.chunk(&random_buf(100_000, 7));
@@ -198,12 +224,22 @@ mod tests {
     }
 
     #[test]
+    /// deterministic_across_instances_and_runs - deterministic across instances and runs.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn deterministic_across_instances_and_runs() {
         let data = random_buf(50_000, 99);
         assert_eq!(chunker().chunk(&data), chunker().chunk(&data));
     }
 
     #[test]
+    /// hashes_match_content - hashes match content.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn hashes_match_content() {
         let data = random_buf(30_000, 5);
         for chunk in chunker().chunk(&data) {
@@ -214,6 +250,11 @@ mod tests {
     }
 
     #[test]
+    /// edit_is_local_to_touched_chunks - edit is local to touched chunks.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn edit_is_local_to_touched_chunks() {
         let data = random_buf(80_000, 3);
         let chunks = chunker().chunk(&data);
@@ -230,6 +271,11 @@ mod tests {
     }
 
     #[test]
+    /// tiny_input_is_single_chunk - tiny input is single chunk.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn tiny_input_is_single_chunk() {
         let chunks = chunker().chunk(b"hello");
         assert_eq!(chunks.len(), 1);
@@ -237,11 +283,21 @@ mod tests {
     }
 
     #[test]
+    /// empty_input_yields_no_chunks - empty input yields no chunks.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn empty_input_yields_no_chunks() {
         assert!(chunker().chunk(&[]).is_empty());
     }
 
     #[test]
+    /// invalid_bounds_rejected - invalid bounds rejected.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn invalid_bounds_rejected() {
         assert!(FastCDC::with_bounds(0, 100, 200).is_err());
         assert!(FastCDC::with_bounds(100, 50, 200).is_err());

@@ -36,14 +36,31 @@ const SKIP_DIRS: &[&str] = &[
 const JS_EXTS: &[&str] = &["js", "mjs", "cjs", "ts", "jsx", "tsx"];
 const CSS_EXTS: &[&str] = &["css"];
 
+/// is_skip_dir - check whether skip dir.
+/// @name: name
+///
+/// Description:
+///
+/// Return: true or false
 fn is_skip_dir(name: &str) -> bool {
     SKIP_DIRS.contains(&name)
 }
 
+/// has_terser - check whether terser.
+///
+/// Description:
+///
+/// Return: true or false
 fn has_terser() -> bool {
     which("terser").map(|p| p.is_file()).unwrap_or(false)
 }
 
+/// minify_js_file - minify js file.
+/// @path: file or directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn minify_js_file(path: &Path) -> bool {
     if !has_terser() {
         return false;
@@ -59,6 +76,12 @@ fn minify_js_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// minify_css - minify css.
+/// @content: content
+///
+/// Description:
+///
+/// Return: the resulting string
 pub fn minify_css(content: &str) -> String {
     let result = CSS_COMMENTS.replace_all(content, "");
     let result = CSS_WS.replace_all(&result, " ");
@@ -69,6 +92,14 @@ pub fn minify_css(content: &str) -> String {
     result.trim().to_string()
 }
 
+/// minify_app_dir - minify app dir.
+/// @app_dir: app dir
+/// @verbose: verbose
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<usize>
 pub fn minify_app_dir(app_dir: &Path, verbose: bool) -> io::Result<usize> {
     let mut minified = 0;
 
@@ -127,6 +158,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// test_minify_css_strips_comments - test minify css strips comments.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_minify_css_strips_comments() {
         let input = "/* comment */ body { color: red; }";
         let result = minify_css(input);
@@ -134,6 +170,11 @@ mod tests {
     }
 
     #[test]
+    /// test_minify_css_collapse_whitespace - test minify css collapse whitespace.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_minify_css_collapse_whitespace() {
         let input = "  body   {   color  :  red  ;  }  ";
         let result = minify_css(input);
@@ -141,6 +182,11 @@ mod tests {
     }
 
     #[test]
+    /// test_minify_css_realistic - test minify css realistic.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_minify_css_realistic() {
         let input = r"
             /* Main stylesheet */

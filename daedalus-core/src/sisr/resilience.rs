@@ -85,6 +85,12 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     #[cfg(unix)]
+    /// bin_and_backup - bin and backup.
+    /// @tmp: tmp
+    ///
+    /// Description:
+    ///
+    /// Return: the (PathBuf, PathBuf)
     fn bin_and_backup(tmp: &Path) -> (PathBuf, PathBuf) {
         let bin = tmp.join("app.daedalus");
         fs::write(&bin, b"v1-bytes").unwrap();
@@ -93,6 +99,11 @@ mod tests {
     }
 
     #[test]
+    /// backup_path_is_co_located - backup path is co located.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn backup_path_is_co_located() {
         let bin = Path::new("/home/u/app.daedalus");
         assert_eq!(
@@ -107,6 +118,11 @@ mod tests {
     }
 
     #[test]
+    /// backup_path_handles_extensionless_binary - backup path handles extensionless binary.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn backup_path_handles_extensionless_binary() {
         let bin = Path::new("/srv/runner");
         assert_eq!(backup_path_for(bin), PathBuf::from("/srv/runner.bak"));
@@ -114,6 +130,11 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    /// create_backup_snapshots_bytes_and_mode - create backup snapshots bytes and mode.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn create_backup_snapshots_bytes_and_mode() {
         let tmp = tempfile::tempdir().unwrap();
         let (bin, bak) = bin_and_backup(tmp.path());
@@ -133,6 +154,11 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    /// restore_backup_swaps_bytes_back_atomically - restore backup swaps bytes back atomically.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn restore_backup_swaps_bytes_back_atomically() {
         let tmp = tempfile::tempdir().unwrap();
         let (bin, bak) = bin_and_backup(tmp.path());
@@ -145,6 +171,11 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    /// restore_backup_errors_when_snapshot_missing - restore backup errors when snapshot missing.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn restore_backup_errors_when_snapshot_missing() {
         let tmp = tempfile::tempdir().unwrap();
         let (bin, bak) = bin_and_backup(tmp.path());
@@ -155,6 +186,11 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    /// discard_backup_removes_and_is_idempotent - discard backup removes and is idempotent.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn discard_backup_removes_and_is_idempotent() {
         let tmp = tempfile::tempdir().unwrap();
         let (bin, bak) = bin_and_backup(tmp.path());

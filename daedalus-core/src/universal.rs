@@ -34,6 +34,12 @@ pub struct UniversalFooter {
 impl UniversalFooter {
     pub const SIZE: usize = 26;
 
+    /// pack - pack.
+    /// @Self: Self
+    ///
+    /// Description:
+    ///
+    /// Return: the [u8; Self::SIZE]
     pub fn pack(&self) -> [u8; Self::SIZE] {
         let mut out = [0u8; Self::SIZE];
         out[0..4].copy_from_slice(&self.magic.to_le_bytes());
@@ -44,6 +50,13 @@ impl UniversalFooter {
         out
     }
 
+    /// parse - parse.
+    /// @buf: buffer
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<Self>
     pub fn parse(buf: &[u8]) -> io::Result<Self> {
         if buf.len() < Self::SIZE {
             return Err(io_err(
@@ -79,10 +92,23 @@ pub struct UniversalManifest {
 }
 
 impl UniversalManifest {
+    /// to_json - to json.
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<Vec<u8>>
     pub fn to_json(&self) -> io::Result<Vec<u8>> {
         serde_json::to_vec_pretty(self).map_err(|e| io_err(io::ErrorKind::Other, &e.to_string()))
     }
 
+    /// from_json - from json.
+    /// @buf: buffer
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<Self>
     pub fn from_json(buf: &[u8]) -> io::Result<Self> {
         serde_json::from_slice(buf).map_err(|e| io_err(io::ErrorKind::InvalidData, &e.to_string()))
     }
@@ -248,6 +274,15 @@ pub fn hex_sha256(data: &[u8]) -> String {
     s
 }
 
+/// io_err - io err.
+/// @kind: kind
+/// @io: io
+/// @msg: message
+/// @io: io
+///
+/// Description:
+///
+/// Return: the io::Error
 fn io_err(kind: io::ErrorKind, msg: &str) -> io::Error {
     io::Error::new(kind, msg)
 }
@@ -257,6 +292,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// universal_footer_roundtrip - universal footer roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn universal_footer_roundtrip() {
         let footer = UniversalFooter {
             magic: UNIV_FOOTER_MAGIC,
@@ -274,6 +314,11 @@ mod tests {
     }
 
     #[test]
+    /// assemble_universal_layout - assemble universal layout.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn assemble_universal_layout() {
         let slices: Vec<(&str, &str, &str, &[u8])> = vec![
             (
@@ -313,6 +358,11 @@ mod tests {
     }
 
     #[test]
+    /// hex_sha256_correct - hex sha256 correct.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn hex_sha256_correct() {
         let hash = hex_sha256(b"hello world");
         assert_eq!(
@@ -322,6 +372,11 @@ mod tests {
     }
 
     #[test]
+    /// launcher_has_case_for_each_arch - launcher has case for each arch.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn launcher_has_case_for_each_arch() {
         let launcher = make_launcher(&[
             ArchSlice {
@@ -348,6 +403,11 @@ mod tests {
     }
 
     #[test]
+    /// launcher_includes_darwin_cases - launcher includes darwin cases.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn launcher_includes_darwin_cases() {
         let launcher = make_launcher(&[
             ArchSlice {
@@ -376,6 +436,11 @@ mod tests {
     }
 
     #[test]
+    /// assemble_universal_with_macos_slices - assemble universal with macos slices.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn assemble_universal_with_macos_slices() {
         let slices: Vec<(&str, &str, &str, &[u8])> = vec![
             (
