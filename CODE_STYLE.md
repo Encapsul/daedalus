@@ -412,6 +412,97 @@ easier by catching obvious cases automatically.
 
 ---
 
+## CLI UX (clig.dev)
+
+We follow [clig.dev](https://clig.dev) for CLI design. These are the concrete
+rules we enforce in daedalus:
+
+### Help text
+
+- `--help` and `-h` show extensive help. They must work on every command
+  and subcommand, and ignoring any other flags when present.
+- Running with no args shows concise help: description + 1-2 examples +
+  instruction to pass `--help`.
+- Support paths (website/GitHub) must appear in top-level help.
+- Lead with examples, not internals.
+
+### Output streams
+
+- `stdout`: primary output, machine-readable output, JSON.
+- `stderr`: logs, errors, progress. Never log-level prefixes (`[ERROR]`)
+  unless in verbose mode.
+- If stdout is not a TTY, disable colors, animations, and progress bars.
+- Respect `NO_COLOR` and `--no-color`.
+
+### Exit codes
+
+Defined in `daedalus-cli/src/error.rs`:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Usage / verification error |
+| 3 | Data error |
+| 4 | Permission error |
+| 5 | Not found |
+
+### Flags and arguments
+
+- Prefer flags over positional args where practical.
+- Every flag has a full `--long-form` version.
+- One-letter flags only for the most common options.
+- Standard names: `--force`, `--quiet`/`-q`, `--json`, `--output`/`-o`,
+  `--dry-run`/`-n`, `--no-input`, `--version`.
+- Never read secrets from flags. Use files or stdin instead.
+
+### Interactivity
+
+- Only prompt when `stdin` is a TTY.
+- `--force` bypasses all prompts.
+- `--no-input` disables all interactivity; fail with a clear message if
+  input is required.
+- Confirm before destructive operations (`rm`-like, `clean`, `sign`).
+
+### Subcommands
+
+- Verb-noun or noun-verb pattern, pick one and be consistent.
+- Same flag names mean the same thing across subcommands.
+- No ambiguous aliases or catch-all subcommands.
+
+### Errors
+
+- Catch errors and rewrite for humans. Guide toward the fix.
+- Don't print stack traces by default. Write debug info to a file.
+- Signal-to-noise: important info last, red used sparingly.
+
+### Current compliance status
+
+| Rule | Status |
+|------|--------|
+| clap for arg parsing | ✅ |
+| `--version` | ✅ |
+| `--help` / `-h` | ✅ |
+| Concise help by default | ✅ |
+| stderr for errors | ✅ |
+| stdout for output | ✅ |
+| Exit codes mapped | ✅ |
+| `--force` for dangerous ops | ✅ |
+| `--quiet` / `-q` | ✅ |
+| `--no-color` + `NO_COLOR` | ✅ |
+| `--json` on structured commands | ⚠️ partial (sign, verify, doctor only) |
+| Man pages | ✅ |
+| TTY detection before prompt | ✅ |
+| No secrets in flags | ✅ |
+| `--no-input` | ❌ missing |
+| `--plain` for tabular output | ❌ missing |
+| Pager for long output | ❌ missing |
+| `-` for stdin/stdout in file ops | ❌ missing |
+| `--dry-run` / `-n` | ❌ missing |
+| Web docs link in help | ❌ missing |
+
+---
+
 ## Quick reference
 
 | Rule | Rust | Python |
