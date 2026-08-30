@@ -101,10 +101,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
             println!("format\tv{}", footer.format_version);
             println!("arch\t{arch_name}");
             println!("signed\t{}", footer.is_signed());
-            println!(
-                "payload_compressed\t{}",
-                format_size(footer.payload_csize)
-            );
+            println!("payload_compressed\t{}", format_size(footer.payload_csize));
             println!(
                 "payload_uncompressed\t{}",
                 format_size(footer.payload_usize)

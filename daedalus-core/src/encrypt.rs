@@ -20,7 +20,7 @@ pub struct EncryptMetadata {
     pub tag_offset: usize,
 }
 
-/// hkdf_derive_key - hkdf derive key.
+/// `hkdf_derive_key` - hkdf derive key.
 ///
 /// Description:
 ///
@@ -36,7 +36,7 @@ pub fn hkdf_derive_key(
     Ok(key)
 }
 
-/// encrypt_payload - encrypt payload.
+/// `encrypt_payload` - encrypt payload.
 ///
 /// Description:
 ///
@@ -71,7 +71,7 @@ pub fn encrypt_payload(
     Ok((ciphertext, metadata))
 }
 
-/// decrypt_payload - decrypt payload.
+/// `decrypt_payload` - decrypt payload.
 ///
 /// Description:
 ///
@@ -266,7 +266,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// test_hkdf_deterministic - test hkdf deterministic.
+    /// `test_hkdf_deterministic` - test hkdf deterministic.
     ///
     /// Description:
     ///
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    /// test_hkdf_wrong_length_panics - test hkdf wrong length panics.
+    /// `test_hkdf_wrong_length_panics` - test hkdf wrong length panics.
     ///
     /// Description:
     ///
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    /// test_roundtrip - test roundtrip.
+    /// `test_roundtrip` - test roundtrip.
     ///
     /// Description:
     ///
@@ -312,7 +312,7 @@ mod tests {
     }
 
     #[test]
-    /// test_different_seeds_produce_different_ciphertext - test different seeds produce different ciphertext.
+    /// `test_different_seeds_produce_different_ciphertext` - test different seeds produce different ciphertext.
     ///
     /// Description:
     ///
@@ -329,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    /// test_decrypt_wrong_key_fails - test decrypt wrong key fails.
+    /// `test_decrypt_wrong_key_fails` - test decrypt wrong key fails.
     ///
     /// Description:
     ///
@@ -345,7 +345,7 @@ mod tests {
         assert!(result.is_err());
     }
     #[test]
-    /// test_chunked_roundtrip - test chunked roundtrip.
+    /// `test_chunked_roundtrip` - test chunked roundtrip.
     ///
     /// Description:
     ///
@@ -368,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    /// test_chunked_single_chunk - test chunked single chunk.
+    /// `test_chunked_single_chunk` - test chunked single chunk.
     ///
     /// Description:
     ///
@@ -386,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    /// test_chunked_wrong_key_fails - test chunked wrong key fails.
+    /// `test_chunked_wrong_key_fails` - test chunked wrong key fails.
     ///
     /// Description:
     ///
@@ -405,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    /// test_chunked_corrupted_tag_fails - test chunked corrupted tag fails.
+    /// `test_chunked_corrupted_tag_fails` - test chunked corrupted tag fails.
     ///
     /// Description:
     ///

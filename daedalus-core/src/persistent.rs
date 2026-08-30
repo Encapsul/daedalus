@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-/// get_persist_dir - get persist dir.
-/// @app_name: app name
+/// `get_persist_dir` - get persist dir.
+/// `@app_name`: app name
 ///
 /// Description:
 ///
-/// Return: the PathBuf
+/// Return: the `PathBuf`
 pub fn get_persist_dir(app_name: &str) -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         return PathBuf::from(xdg).join("daedalus").join(app_name);
@@ -25,26 +25,26 @@ pub fn get_persist_dir(app_name: &str) -> PathBuf {
     PathBuf::from(format!("/tmp/daedalus/{app_name}"))
 }
 
-/// ensure_persist_dir - ensure persist dir.
-/// @app_name: app name
-/// @std: std
-/// @io: io
+/// `ensure_persist_dir` - ensure persist dir.
+/// `@app_name`: app name
+/// `@std`: std
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing std::io::Result<PathBuf>
+/// Return: Result containing `std::io::Result<PathBuf>`
 pub fn ensure_persist_dir(app_name: &str) -> std::io::Result<PathBuf> {
     let dir = get_persist_dir(app_name);
     fs::create_dir_all(&dir)?;
     Ok(dir)
 }
 
-/// get_persist_env - get persist env.
-/// @app_name: app name
+/// `get_persist_env` - get persist env.
+/// `@app_name`: app name
 ///
 /// Description:
 ///
-/// Return: the HashMap<String, String>
+/// Return: the `HashMap`<String, String>
 pub fn get_persist_env(app_name: &str) -> HashMap<String, String> {
     let dir = get_persist_dir(app_name);
     let mut env = HashMap::new();
@@ -61,7 +61,7 @@ mod tests {
     use std::env;
 
     #[test]
-    /// test_get_persist_dir_uses_xdg - test get persist dir uses xdg.
+    /// `test_get_persist_dir_uses_xdg` - test get persist dir uses xdg.
     ///
     /// Description:
     ///
@@ -80,7 +80,7 @@ mod tests {
     }
 
     #[test]
-    /// test_get_persist_dir_fallback - test get persist dir fallback.
+    /// `test_get_persist_dir_fallback` - test get persist dir fallback.
     ///
     /// Description:
     ///
@@ -107,7 +107,7 @@ mod tests {
     }
 
     #[test]
-    /// test_get_persist_env - test get persist env.
+    /// `test_get_persist_env` - test get persist env.
     ///
     /// Description:
     ///

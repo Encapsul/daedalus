@@ -48,7 +48,7 @@ pub struct Footer {
 }
 
 impl Footer {
-    /// is_signed - check whether signed.
+    /// `is_signed` - check whether signed.
     ///
     /// Description:
     ///
@@ -71,7 +71,7 @@ impl Footer {
         self.flags & FLAG_SISR != 0
     }
 
-    /// is_encrypted - check whether encrypted.
+    /// `is_encrypted` - check whether encrypted.
     ///
     /// Description:
     ///
@@ -108,14 +108,14 @@ impl Footer {
         Err(err("file too small to be a .daedalus"))
     }
 
-    /// parse - parse.
-    /// @buf: buffer
-    /// @sig_offset: sig offset
-    /// @io: io
+    /// `parse` - parse.
+    /// `@buf`: buffer
+    /// `@sig_offset`: sig offset
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing io::Result<Footer>
+    /// Return: Result containing `io::Result<Footer>`
     fn parse(buf: &[u8], sig_offset: u64) -> io::Result<Footer> {
         let footer_magic = u32::from_le_bytes(
             buf[80..84]
@@ -147,11 +147,11 @@ impl Footer {
         })
     }
 
-    /// pack - pack.
+    /// `pack` - pack.
     ///
     /// Description:
     ///
-    /// Return: the [u8; 84]
+    /// Return: the `[u8; 84]`
     pub fn pack(&self) -> [u8; 84] {
         let mut buf = [0u8; 84];
         buf[0..5].copy_from_slice(MAGIC);
@@ -181,11 +181,11 @@ impl Footer {
         buf
     }
 
-    /// sha256_hex - sha256 hex.
+    /// `sha256_hex` - sha256 hex.
     ///
     /// Description:
     ///
-    /// Return: the resulting string
+    /// Return: the `resulting` string
     pub fn sha256_hex(&self) -> String {
         self.payload_sha256
             .iter()
@@ -197,13 +197,13 @@ impl Footer {
     }
 }
 
-/// u64_le - u64 le.
-/// @b: b
-/// @io: io
+/// `u64_le` - u64 le.
+/// `@b`: b
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<u64>
+/// Return: Result containing `io::Result<u64>`
 fn u64_le(b: &[u8]) -> io::Result<u64> {
     Ok(u64::from_le_bytes(
         b.try_into().map_err(|_| err("truncated u64 field"))?,
@@ -237,13 +237,13 @@ pub fn read_at<R: Read + Seek>(f: &mut R, off: u64, len: usize) -> io::Result<Ve
     Ok(buf)
 }
 
-/// err - err.
-/// @msg: message
-/// @io: io
+/// `err` - err.
+/// `@msg`: message
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: the io::Error
+/// Return: the `std::io::Error`
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -254,7 +254,7 @@ mod tests {
     use std::io::Cursor;
 
     #[allow(clippy::too_many_arguments)]
-    /// build_v2_footer - build v2 footer.
+    /// `build_v2_footer` - build v2 footer.
     ///
     /// Description:
     ///
@@ -286,7 +286,7 @@ mod tests {
     }
 
     #[allow(clippy::too_many_arguments)]
-    /// build_v3_footer - build v3 footer.
+    /// `build_v3_footer` - build v3 footer.
     ///
     /// Description:
     ///
@@ -321,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    /// constants_are_correct - constants are correct.
+    /// `constants_are_correct` - constants are correct.
     ///
     /// Description:
     ///
@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_v2_footer - parse v2 footer.
+    /// `parse_v2_footer` - parse v2 footer.
     ///
     /// Description:
     ///
@@ -357,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_v3_footer_with_sig - parse v3 footer with sig.
+    /// `parse_v3_footer_with_sig` - parse v3 footer with sig.
     ///
     /// Description:
     ///
@@ -374,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    /// bad_footer_magic_returns_err - bad footer magic returns err.
+    /// `bad_footer_magic_returns_err` - bad footer magic returns err.
     ///
     /// Description:
     ///
@@ -387,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    /// unsupported_version_returns_err - unsupported version returns err.
+    /// `unsupported_version_returns_err` - unsupported version returns err.
     ///
     /// Description:
     ///
@@ -399,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    /// is_signed_checks_flag - check whether signed checks flag.
+    /// `is_signed_checks_flag` - check whether signed checks flag.
     ///
     /// Description:
     ///
@@ -423,7 +423,7 @@ mod tests {
     }
 
     #[test]
-    /// pack_full_roundtrips_v3_footer - pack full roundtrips v3 footer.
+    /// `pack_full_roundtrips_v3_footer` - pack full roundtrips v3 footer.
     ///
     /// Description:
     ///
@@ -454,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    /// sha256_hex_is_correct - sha256 hex is correct.
+    /// `sha256_hex_is_correct` - sha256 hex is correct.
     ///
     /// Description:
     ///
@@ -483,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    /// read_from_v2_file - read from v2 file.
+    /// `read_from_v2_file` - read from v2 file.
     ///
     /// Description:
     ///
@@ -501,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    /// read_from_v3_file - read from v3 file.
+    /// `read_from_v3_file` - read from v3 file.
     ///
     /// Description:
     ///
@@ -518,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    /// read_from_too_small - read from too small.
+    /// `read_from_too_small` - read from too small.
     ///
     /// Description:
     ///
@@ -531,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    /// read_from_bad_magic - read from bad magic.
+    /// `read_from_bad_magic` - read from bad magic.
     ///
     /// Description:
     ///
@@ -548,7 +548,7 @@ mod tests {
     }
 
     #[test]
-    /// read_at_reads_correct_bytes - read at reads correct bytes.
+    /// `read_at_reads_correct_bytes` - read at reads correct bytes.
     ///
     /// Description:
     ///
@@ -561,7 +561,7 @@ mod tests {
     }
 
     #[test]
-    /// read_at_rejects_oversized_len_without_allocating - read at rejects oversized len without allocating.
+    /// `read_at_rejects_oversized_len_without_allocating` - read at rejects oversized len without allocating.
     ///
     /// Description:
     ///
@@ -585,7 +585,7 @@ mod proptests {
 
     proptest! {
         #[test]
-        /// read_from_arbitrary_bytes_never_panics - read from arbitrary bytes never panics.
+        /// `read_from_arbitrary_bytes_never_panics` - read from arbitrary bytes never panics.
         ///
         /// Description:
         ///
@@ -597,7 +597,7 @@ mod proptests {
         }
 
         #[test]
-        /// pack_roundtrips - pack roundtrips.
+        /// `pack_roundtrips` - pack roundtrips.
         ///
         /// Description:
         ///

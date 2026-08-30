@@ -23,6 +23,10 @@ pub struct KeygenArgs {
     /// Output result as JSON
     #[arg(long)]
     pub json: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 /// run - run.

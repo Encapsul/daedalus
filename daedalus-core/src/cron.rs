@@ -2,12 +2,12 @@
 //!
 //! Supports `@every <duration>`, `@hourly`, `@daily`, `@weekly`, `@monthly`,
 //! `@yearly`, and standard 5-field cron expressions (currently partial).
-/// parse_schedule - parse schedule.
-/// @schedule: schedule
+/// `parse_schedule` - parse schedule.
+/// `@schedule`: schedule
 ///
 /// Description:
 ///
-/// Return: the u64
+/// Return: the `u64`
 pub fn parse_schedule(schedule: &str) -> u64 {
     let schedule = schedule.trim().to_lowercase();
 
@@ -39,12 +39,12 @@ pub fn parse_schedule(schedule: &str) -> u64 {
     60
 }
 
-/// parse_interval - parse interval.
-/// @val: value
+/// `parse_interval` - parse interval.
+/// `@val`: value
 ///
 /// Description:
 ///
-/// Return: the u64
+/// Return: the `u64`
 pub fn parse_interval(val: &str) -> u64 {
     let val = val.trim();
     if let Some(n) = val.strip_suffix('s') {
@@ -75,7 +75,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// test_parse_every_5m - test parse every 5m.
+    /// `test_parse_every_5m` - test parse every 5m.
     ///
     /// Description:
     ///
@@ -85,7 +85,7 @@ mod tests {
     }
 
     #[test]
-    /// test_parse_hourly - test parse hourly.
+    /// `test_parse_hourly` - test parse hourly.
     ///
     /// Description:
     ///
@@ -95,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    /// test_parse_daily - test parse daily.
+    /// `test_parse_daily` - test parse daily.
     ///
     /// Description:
     ///
@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    /// test_parse_weekly - test parse weekly.
+    /// `test_parse_weekly` - test parse weekly.
     ///
     /// Description:
     ///
@@ -115,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    /// test_parse_cron_style - test parse cron style.
+    /// `test_parse_cron_style` - test parse cron style.
     ///
     /// Description:
     ///
@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    /// test_parse_interval_seconds - test parse interval seconds.
+    /// `test_parse_interval_seconds` - test parse interval seconds.
     ///
     /// Description:
     ///
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    /// test_parse_interval_minutes - test parse interval minutes.
+    /// `test_parse_interval_minutes` - test parse interval minutes.
     ///
     /// Description:
     ///
@@ -145,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    /// test_parse_interval_hours - test parse interval hours.
+    /// `test_parse_interval_hours` - test parse interval hours.
     ///
     /// Description:
     ///

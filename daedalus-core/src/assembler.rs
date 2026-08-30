@@ -33,7 +33,7 @@ pub trait BinaryAssembler {
 pub struct DaedalusStitcher;
 
 impl BinaryAssembler for DaedalusStitcher {
-    /// assemble - assemble.
+    /// `assemble` - assemble.
     ///
     /// Description:
     ///
@@ -124,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    /// daedalus_stitcher_replaces_payload_region - daedalus stitcher replaces payload region.
+    /// `daedalus_stitcher_replaces_payload_region` - daedalus stitcher replaces payload region.
     ///
     /// Description:
     ///
@@ -149,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    /// daedalus_stitcher_rejects_invalid_base - daedalus stitcher rejects invalid base.
+    /// `daedalus_stitcher_rejects_invalid_base` - daedalus stitcher rejects invalid base.
     ///
     /// Description:
     ///
@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    /// daedalus_stitcher_rejects_truncated_base - daedalus stitcher rejects truncated base.
+    /// `daedalus_stitcher_rejects_truncated_base` - daedalus stitcher rejects truncated base.
     ///
     /// Description:
     ///
@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    /// daedalus_stitcher_rejects_out_of_bounds_offsets - daedalus stitcher rejects out of bounds offsets.
+    /// `daedalus_stitcher_rejects_out_of_bounds_offsets` - daedalus stitcher rejects out of bounds offsets.
     ///
     /// Description:
     ///

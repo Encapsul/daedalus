@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Entry point for the SISR E2E integration tests.
 //!
 //! Kept as a thin root so the real tests can live in the `e2e_sisr/`

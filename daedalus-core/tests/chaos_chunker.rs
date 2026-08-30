@@ -1,10 +1,11 @@
+#![allow(clippy::doc_markdown)]
 //! Chaos-monkey tests for the chunker (SISR delta-indexing).
 //!
 //! Invariants:
 //! - Chunk boundaries are deterministic for the same input + seed.
 //! - Empty input yields empty chunk list.
 //! - Single-byte input yields at most one chunk.
-//! - Chunk sizes are within [min_chunk, max_chunk].
+//! - Chunk sizes are within `[min_chunk, max_chunk]`.
 //! - Total chunked bytes equals original length.
 
 use daedalus_core::chunker::{Chunker, FastCDC};

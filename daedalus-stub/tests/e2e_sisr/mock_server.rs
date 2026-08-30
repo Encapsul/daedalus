@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! A std-only HTTP/1.1 mock server for the SISR E2E tests.
 //!
 //! Serves the content-addressed chunks and the `XBMR` manifest from an

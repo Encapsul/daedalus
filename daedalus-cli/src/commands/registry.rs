@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
+use serde_json;
 use std::path::{Path, PathBuf};
 
 use daedalus_core::layer::SerializableLayer;
@@ -9,6 +10,14 @@ use daedalus_core::registry::LayerRegistry;
 pub struct RegistryArgs {
     #[command(subcommand)]
     pub command: RegistryCommand,
+
+    /// Machine-readable plain output (no ANSI, no box drawing)
+    #[arg(long, global = true)]
+    pub plain: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 #[derive(Subcommand)]
@@ -46,6 +55,18 @@ pub struct RegistryPushArgs {
     /// Verbose output
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+
+    /// Machine-readable plain output (no ANSI, no box drawing)
+    #[arg(long, global = true)]
+    pub plain: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 #[derive(Args)]
@@ -73,6 +94,18 @@ pub struct RegistryPullArgs {
     /// Verbose output
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+
+    /// Machine-readable plain output (no ANSI, no box drawing)
+    #[arg(long, global = true)]
+    pub plain: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 #[derive(Args)]
@@ -84,6 +117,18 @@ pub struct RegistryListArgs {
     /// Verbose output
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+
+    /// Machine-readable plain output (no ANSI, no box drawing)
+    #[arg(long, global = true)]
+    pub plain: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 /// run - run.
@@ -94,9 +139,21 @@ pub struct RegistryListArgs {
 /// Return: Result containing Result<()>
 pub fn run(args: RegistryArgs) -> Result<()> {
     match args.command {
-        RegistryCommand::Push(sub) => run_push(sub),
-        RegistryCommand::Pull(sub) => run_pull(sub),
-        RegistryCommand::List(sub) => run_list(sub),
+        RegistryCommand::Push(mut sub) => {
+            sub.plain = args.plain;
+            sub.no_input = args.no_input;
+            run_push(sub)
+        }
+        RegistryCommand::Pull(mut sub) => {
+            sub.plain = args.plain;
+            sub.no_input = args.no_input;
+            run_pull(sub)
+        }
+        RegistryCommand::List(mut sub) => {
+            sub.plain = args.plain;
+            sub.no_input = args.no_input;
+            run_list(sub)
+        }
     }
 }
 
@@ -106,7 +163,7 @@ pub fn run(args: RegistryArgs) -> Result<()> {
 /// Description:
 ///
 /// Return: Result containing Result<()>
-fn run_push(args: RegistryPushArgs) -> Result<()> {
+fn run_push(mut args: RegistryPushArgs) -> Result<()> {
     let file = args.file.canonicalize().context("failed to find file")?;
 
     if file.extension().is_none_or(|e| e != "daedalus") {
@@ -125,7 +182,7 @@ fn run_push(args: RegistryPushArgs) -> Result<()> {
 
     match (&args.local, &args.registry) {
         (Some(local_dir), None) => {
-            push_local(local_dir, &layers, &file)?;
+            push_local(local_dir, &layers, &file, args.json)?;
         }
         (None, Some(registry_url)) => {
             if registry_url.contains("daedalus.example.com") {
@@ -137,6 +194,7 @@ fn run_push(args: RegistryPushArgs) -> Result<()> {
                 &file,
                 args.token.as_deref(),
                 args.verbose,
+                args.json,
             )?;
         }
         (None, None) => {
@@ -156,13 +214,13 @@ fn run_push(args: RegistryPushArgs) -> Result<()> {
 /// Description:
 ///
 /// Return: Result containing Result<()>
-fn run_pull(args: RegistryPullArgs) -> Result<()> {
+fn run_pull(mut args: RegistryPullArgs) -> Result<()> {
     std::fs::create_dir_all(&args.output).context("failed to create output directory")?;
 
     match (&args.local, &args.registry) {
         (Some(local_dir), None) => {
             let mut reg = local_registry(local_dir)?;
-            pull_from_store(&mut reg, &args.hash, &args.output, args.verbose)?;
+            pull_from_store(&mut reg, &args.hash, &args.output, args.verbose, args.json)?;
         }
         (None, Some(registry_url)) => {
             if registry_url.contains("daedalus.example.com") {
@@ -174,6 +232,7 @@ fn run_pull(args: RegistryPullArgs) -> Result<()> {
                 &args.output,
                 args.token.as_deref(),
                 args.verbose,
+                args.json,
             )?;
         }
         (None, None) => {
@@ -200,6 +259,16 @@ fn run_list(args: RegistryListArgs) -> Result<()> {
     let layers = reg.list_layers().unwrap_or_default();
     let count = layers.len();
 
+    if args.json {
+        let json_str = serde_json::to_string_pretty(&layers)?;
+        if args.plain {
+            println!("{json_str}");
+        } else {
+            println!("{json_str}");
+        }
+        return Ok(());
+    }
+
     if args.verbose {
         eprintln!("[daedalus] registry list: {}", dir.display());
         eprintln!("  {count} layers");
@@ -210,8 +279,17 @@ fn run_list(args: RegistryListArgs) -> Result<()> {
         return Ok(());
     }
 
-    for hash in &layers {
-        println!("{hash}");
+    if args.plain {
+        for hash in &layers {
+            println!("{hash}");
+        }
+    } else {
+        let mut output = String::new();
+        for hash in &layers {
+            output.push_str(hash);
+            output.push('\n');
+        }
+        crate::pager::page(&output)?;
     }
 
     Ok(())
@@ -233,18 +311,23 @@ fn local_registry(dir: &Path) -> Result<LayerRegistry> {
 /// @dir: directory path
 /// @layers: layers
 /// @bin: bin
+/// @json: json output
 ///
 /// Description:
 ///
 /// Return: Result containing Result<()>
-fn push_local(dir: &Path, layers: &[SerializableLayer], bin: &Path) -> Result<()> {
+fn push_local(dir: &Path, layers: &[SerializableLayer], bin: &Path, json: bool) -> Result<()> {
     let path = expand_tilde(dir);
     std::fs::create_dir_all(&path).context("failed to create local registry dir")?;
     let mut reg = LayerRegistry::disk(&path).context("failed to init local registry")?;
 
     for layer in layers {
         let hash = reg.push_layer(layer)?;
-        println!("pushed layer '{}' -> {hash}", layer.name());
+        if json {
+            println!("{{\"pushed\":\"{}\",\"hash\":\"{hash}\"}}", layer.name());
+        } else {
+            println!("pushed layer '{}' -> {hash}", layer.name());
+        }
     }
 
     let refs = build_layer_refs(&mut reg, layers)?;
@@ -257,7 +340,11 @@ fn push_local(dir: &Path, layers: &[SerializableLayer], bin: &Path) -> Result<()
         layers: refs,
     };
     let manifest_hash = reg.publish_artifact(&manifest)?;
-    println!("published artifact manifest -> {manifest_hash}");
+    if json {
+        println!("{{\"published_artifact_manifest\":\"{manifest_hash}\"}}");
+    } else {
+        println!("published artifact manifest -> {manifest_hash}");
+    }
     Ok(())
 }
 
@@ -272,6 +359,7 @@ fn push_remote(
     bin: &Path,
     token: Option<&str>,
     verbose: bool,
+    json: bool,
 ) -> Result<()> {
     let content = std::fs::read(bin).context("failed to read .daedalus file")?;
     let content_len = content.len();
@@ -300,7 +388,15 @@ fn push_remote(
         );
     }
 
-    println!("pushed {} to {} (HTTP {status})", bin.display(), url);
+    if json {
+        println!(
+            "{{\"pushed\":\"{}\",\"url\":\"{}\",\"status\":{status}}}",
+            bin.display(),
+            url
+        );
+    } else {
+        println!("pushed {} to {} (HTTP {status})", bin.display(), url);
+    }
     Ok(())
 }
 
@@ -351,6 +447,7 @@ fn pull_from_store(
     hash: &str,
     output: &Path,
     verbose: bool,
+    json: bool,
 ) -> Result<()> {
     if verbose {
         eprintln!("[daedalus] pulling layer {hash} from local registry");
@@ -359,13 +456,24 @@ fn pull_from_store(
     let out_file = output.join(format!("layer-{hash}.json"));
     std::fs::write(&out_file, serde_json::to_vec_pretty(&layer)?)
         .context("failed to write pulled layer")?;
-    println!("pulled layer {hash} -> {}", out_file.display());
+    if json {
+        println!(
+            "{{\"pulled\":\"{hash}\",\"file\":\"{}\"}}",
+            out_file.display()
+        );
+    } else {
+        println!("pulled layer {hash} -> {}", out_file.display());
+    }
 
     if let Ok(manifest) = reg.get_artifact(hash) {
-        println!(
-            "(also retrieved artifact manifest: {})",
-            manifest.artifact_name
-        );
+        if json {
+            println!("{{\"artifact_manifest\":\"{}\"}}", manifest.artifact_name);
+        } else {
+            println!(
+                "(also retrieved artifact manifest: {})",
+                manifest.artifact_name
+            );
+        }
     }
 
     Ok(())
@@ -382,6 +490,7 @@ fn pull_from_remote(
     output: &Path,
     token: Option<&str>,
     verbose: bool,
+    json: bool,
 ) -> Result<()> {
     let pull_url = format!("{url}/{hash}");
     if verbose {
@@ -410,11 +519,19 @@ fn pull_from_remote(
     let content = response.bytes().context("failed to read response body")?;
     let out_file = output.join(hash);
     std::fs::write(&out_file, &content).context("failed to write pulled content")?;
-    println!(
-        "pulled {hash} -> {} ({} bytes)",
-        out_file.display(),
-        content.len()
-    );
+    if json {
+        println!(
+            "{{\"pulled\":\"{hash}\",\"file\":\"{}\",\"bytes\":{}}}",
+            out_file.display(),
+            content.len()
+        );
+    } else {
+        println!(
+            "pulled {hash} -> {} ({} bytes)",
+            out_file.display(),
+            content.len()
+        );
+    }
     Ok(())
 }
 

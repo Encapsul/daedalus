@@ -85,12 +85,12 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     #[cfg(unix)]
-    /// bin_and_backup - bin and backup.
-    /// @tmp: tmp
+    /// `bin_and_backup` - bin and backup.
+    /// `@tmp`: tmp
     ///
     /// Description:
     ///
-    /// Return: the (PathBuf, PathBuf)
+    /// Return: the `(PathBuf, PathBuf)`
     fn bin_and_backup(tmp: &Path) -> (PathBuf, PathBuf) {
         let bin = tmp.join("app.daedalus");
         fs::write(&bin, b"v1-bytes").unwrap();
@@ -99,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    /// backup_path_is_co_located - backup path is co located.
+    /// `backup_path_is_co_located` - backup path is co located.
     ///
     /// Description:
     ///
@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    /// backup_path_handles_extensionless_binary - backup path handles extensionless binary.
+    /// `backup_path_handles_extensionless_binary` - backup path handles extensionless binary.
     ///
     /// Description:
     ///
@@ -130,7 +130,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    /// create_backup_snapshots_bytes_and_mode - create backup snapshots bytes and mode.
+    /// `create_backup_snapshots_bytes_and_mode` - create backup snapshots bytes and mode.
     ///
     /// Description:
     ///
@@ -154,7 +154,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    /// restore_backup_swaps_bytes_back_atomically - restore backup swaps bytes back atomically.
+    /// `restore_backup_swaps_bytes_back_atomically` - restore backup swaps bytes back atomically.
     ///
     /// Description:
     ///
@@ -171,7 +171,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    /// restore_backup_errors_when_snapshot_missing - restore backup errors when snapshot missing.
+    /// `restore_backup_errors_when_snapshot_missing` - restore backup errors when snapshot missing.
     ///
     /// Description:
     ///
@@ -186,7 +186,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    /// discard_backup_removes_and_is_idempotent - discard backup removes and is idempotent.
+    /// `discard_backup_removes_and_is_idempotent` - discard backup removes and is idempotent.
     ///
     /// Description:
     ///

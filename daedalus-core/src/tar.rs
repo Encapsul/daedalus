@@ -89,15 +89,15 @@ fn collect_entries(root: &Path) -> io::Result<Vec<String>> {
     Ok(entries)
 }
 
-/// collect_recursive - collect recursive.
-/// @base: base
-/// @current: current
-/// @entries: entries
-/// @io: io
+/// `collect_recursive` - collect recursive.
+/// `@base`: base
+/// `@current`: current
+/// `@entries`: entries
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<()>
+/// Return: Result containing `io::Result<()>`
 fn collect_recursive(base: &Path, current: &Path, entries: &mut Vec<String>) -> io::Result<()> {
     let read_dir = match std::fs::read_dir(current) {
         Ok(rd) => rd,
@@ -252,7 +252,7 @@ mod tests {
     use std::fs;
 
     #[test]
-    /// create_tar_from_empty_dir - create tar from empty dir.
+    /// `create_tar_from_empty_dir` - create tar from empty dir.
     ///
     /// Description:
     ///
@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    /// create_tar_with_files - create tar with files.
+    /// `create_tar_with_files` - create tar with files.
     ///
     /// Description:
     ///
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    /// tar_zstd_roundtrip - tar zstd roundtrip.
+    /// `tar_zstd_roundtrip` - tar zstd roundtrip.
     ///
     /// Description:
     ///
@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    /// tar_is_deterministic - tar is deterministic.
+    /// `tar_is_deterministic` - tar is deterministic.
     ///
     /// Description:
     ///
@@ -331,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    /// symlink_preserved_as_symlink_entry - symlink preserved as symlink entry.
+    /// `symlink_preserved_as_symlink_entry` - symlink preserved as symlink entry.
     ///
     /// Description:
     ///
@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    /// escaping_symlink_target_is_dropped - escaping symlink target is dropped.
+    /// `escaping_symlink_target_is_dropped` - escaping symlink target is dropped.
     ///
     /// Description:
     ///
@@ -388,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    /// git_dir_excluded_but_gitignore_kept - git dir excluded but gitignore kept.
+    /// `git_dir_excluded_but_gitignore_kept` - git dir excluded but gitignore kept.
     ///
     /// Description:
     ///
@@ -418,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    /// tar_zstd_is_byte_deterministic - tar zstd is byte deterministic.
+    /// `tar_zstd_is_byte_deterministic` - tar zstd is byte deterministic.
     ///
     /// Description:
     ///
@@ -437,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    /// extract_tar_gz_roundtrip - extract tar gz roundtrip.
+    /// `extract_tar_gz_roundtrip` - extract tar gz roundtrip.
     ///
     /// Description:
     ///

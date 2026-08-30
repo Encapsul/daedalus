@@ -2,6 +2,7 @@
 
 mod commands;
 mod error;
+mod pager;
 mod remote_cache;
 
 use clap::{CommandFactory, Parser, Subcommand};
@@ -158,10 +159,18 @@ fn main() -> ExitCode {
     let result = match cli.command {
         Commands::Build(args) => commands::build::run(*args, effective_verbose),
         Commands::Run(args) => commands::run::run(args),
-        Commands::Inspect(args) => commands::inspect::run(args),
+        Commands::Inspect(mut args) => {
+            if cli.plain {
+                args.plain = true;
+            }
+            commands::inspect::run(args)
+        }
         Commands::Keygen(mut args) => {
             if cli.quiet {
                 args.quiet = true;
+            }
+            if cli.no_input {
+                args.no_input = true;
             }
             commands::keygen::run(args)
         }
@@ -178,18 +187,35 @@ fn main() -> ExitCode {
             if cli.quiet {
                 args.quiet = true;
             }
+            if cli.no_input {
+                args.no_input = true;
+            }
             commands::verify::run(args)
         }
         Commands::Trust(mut args) => {
             if cli.quiet {
                 args.quiet = true;
             }
+            if cli.no_input {
+                args.no_input = true;
+            }
             commands::trust::run(args)
         }
-        Commands::Scan(args) => commands::scan::run(args),
+        Commands::Scan(mut args) => {
+            if cli.plain {
+                args.plain = true;
+            }
+            if cli.no_input {
+                args.no_input = true;
+            }
+            commands::scan::run(args)
+        }
         Commands::Doctor(mut args) => {
             if cli.quiet {
                 args.quiet = true;
+            }
+            if cli.plain {
+                args.plain = true;
             }
             if cli.no_input {
                 args.no_input = true;
@@ -207,6 +233,9 @@ fn main() -> ExitCode {
             if cli.quiet {
                 args.verbose = false;
             }
+            if cli.no_input {
+                args.no_input = true;
+            }
             commands::selftest::run(args)
         }
         Commands::Upgrade(mut args) => {
@@ -222,10 +251,29 @@ fn main() -> ExitCode {
             if cli.quiet {
                 args.quiet = true;
             }
+            if cli.no_input {
+                args.no_input = true;
+            }
             commands::upgrade_binary::run(args)
         }
-        Commands::Publish(args) => commands::publish::run(args),
-        Commands::Registry(args) => commands::registry::run(args),
+        Commands::Publish(mut args) => {
+            if cli.quiet {
+                args.verbose = false;
+            }
+            if cli.no_input {
+                args.no_input = true;
+            }
+            commands::publish::run(args)
+        }
+        Commands::Registry(mut args) => {
+            if cli.plain {
+                args.plain = true;
+            }
+            if cli.no_input {
+                args.no_input = true;
+            }
+            commands::registry::run(args)
+        }
         Commands::Serve(args) => commands::serve::run(args),
         Commands::Env(args) => commands::env::run(args),
         Commands::Feedback(args) => commands::feedback::run(args),
@@ -245,6 +293,9 @@ fn main() -> ExitCode {
         Commands::Swap(mut args) => {
             if cli.quiet {
                 args.quiet = true;
+            }
+            if cli.no_input {
+                args.no_input = true;
             }
             commands::swap::run(args)
         }

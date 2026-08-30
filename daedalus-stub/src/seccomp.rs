@@ -33,12 +33,12 @@ use arch_consts::AUDIT_ARCH;
 /// the 18 always-dangerous syscalls with no capability-based additions.
 #[cfg(target_os = "linux")]
 #[allow(dead_code)]
-/// install_seccomp_denylist - install seccomp denylist.
-/// @io: io
+/// `install_seccomp_denylist` - install seccomp denylist.
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<()>
+/// Return: Result containing `io::Result<()>`
 pub fn install_seccomp_denylist() -> io::Result<()> {
     install_seccomp_with_capabilities(&[])
 }
@@ -57,13 +57,13 @@ pub fn install_seccomp_denylist() -> io::Result<()> {
 /// execve-deny filter, its `execvp` fails with `SECCOMP_RET_KILL_PROCESS`,
 /// and the parent detects the child's exit to refuse the launch cleanly.
 #[cfg(target_os = "linux")]
-/// install_seccomp_with_capabilities - install seccomp with capabilities.
-/// @capabilities: capabilities
-/// @io: io
+/// `install_seccomp_with_capabilities` - install seccomp with capabilities.
+/// `@capabilities`: capabilities
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<()>
+/// Return: Result containing `io::Result<()>`
 pub fn install_seccomp_with_capabilities(capabilities: &[Capability]) -> io::Result<()> {
     let mut syscalls = always_deny_syscalls();
     let has_network = capabilities.contains(&Capability::Network);
@@ -101,7 +101,7 @@ pub fn install_seccomp_with_capabilities(capabilities: &[Capability]) -> io::Res
 
 /// Syscalls blocked unconditionally (no capability can enable them).
 #[cfg(target_os = "linux")]
-/// always_deny_syscalls - always deny syscalls.
+/// `always_deny_syscalls` - always deny syscalls.
 ///
 /// Description:
 ///
@@ -136,7 +136,7 @@ fn always_deny_syscalls() -> Vec<u32> {
 
 /// Syscalls blocked when `Capability::Network` is absent.
 #[cfg(target_os = "linux")]
-/// network_syscalls - network syscalls.
+/// `network_syscalls` - network syscalls.
 ///
 /// Description:
 ///
@@ -169,7 +169,7 @@ fn network_syscalls() -> &'static [u32] {
 /// an application should not be able to spawn children at all. `posix_spawn`
 /// internally calls `execve`/`clone`, so it is covered transitively.
 #[cfg(target_os = "linux")]
-/// exec_syscalls - exec syscalls.
+/// `exec_syscalls` - exec syscalls.
 ///
 /// Description:
 ///
@@ -199,9 +199,9 @@ fn exec_syscalls() -> &'static [u32] {
 
 /// Build a seccomp BPF filter denying the given syscall numbers.
 #[cfg(target_os = "linux")]
-/// build_seccomp_filter_for_syscalls - build seccomp filter for syscalls.
-/// @syscalls: syscalls
-/// @libc: libc
+/// `build_seccomp_filter_for_syscalls` - build seccomp filter for syscalls.
+/// `@syscalls`: syscalls
+/// `@libc`: libc
 ///
 /// Description:
 ///
@@ -281,7 +281,7 @@ mod tests {
     const BPF_K: u16 = 0x00;
 
     #[test]
-    /// validate_seccomp_filter_is_denylist_not_denyall - validate seccomp filter is denylist not denyall.
+    /// `validate_seccomp_filter_is_denylist_not_denyall` - validate seccomp filter is denylist not denyall.
     ///
     /// Description:
     ///
@@ -357,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    /// capability_filter_adds_network_deny_without_network_cap - capability filter adds network deny without network cap.
+    /// `capability_filter_adds_network_deny_without_network_cap` - capability filter adds network deny without network cap.
     ///
     /// Description:
     ///
@@ -386,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    /// capability_filter_without_network_cap_is_larger - capability filter without network cap is larger.
+    /// `capability_filter_without_network_cap_is_larger` - capability filter without network cap is larger.
     ///
     /// Description:
     ///
@@ -405,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    /// capability_filter_adds_exec_deny_without_exec_cap - capability filter adds exec deny without exec cap.
+    /// `capability_filter_adds_exec_deny_without_exec_cap` - capability filter adds exec deny without exec cap.
     ///
     /// Description:
     ///
@@ -434,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    /// exec_syscalls_list_is_arch_dependent - exec syscalls list is arch dependent.
+    /// `exec_syscalls_list_is_arch_dependent` - exec syscalls list is arch dependent.
     ///
     /// Description:
     ///

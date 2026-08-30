@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! End-to-end health-gate and automatic-rollback tests for the launcher.
 //!
 //! These drive the real `daedalus-stub` binary (embedded into a freshly built

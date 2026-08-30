@@ -206,7 +206,7 @@ mod tests {
     use crate::layer::{Capability, ConfigLayer, RuntimeLayer};
 
     #[test]
-    /// push_pull_layer_roundtrip - push pull layer roundtrip.
+    /// `push_pull_layer_roundtrip` - push pull layer roundtrip.
     ///
     /// Description:
     ///
@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    /// pull_missing_layer_returns_not_found - pull missing layer returns not found.
+    /// `pull_missing_layer_returns_not_found` - pull missing layer returns not found.
     ///
     /// Description:
     ///
@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    /// push_different_content_different_hash - push different content different hash.
+    /// `push_different_content_different_hash` - push different content different hash.
     ///
     /// Description:
     ///
@@ -279,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    /// build_and_publish_creates_manifest - build and publish creates manifest.
+    /// `build_and_publish_creates_manifest` - build and publish creates manifest.
     ///
     /// Description:
     ///
@@ -312,7 +312,7 @@ mod tests {
     }
 
     #[test]
-    /// hex_roundtrip - hex roundtrip.
+    /// `hex_roundtrip` - hex roundtrip.
     ///
     /// Description:
     ///
@@ -325,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    /// shared_runtime_layer_produces_same_hash - shared runtime layer produces same hash.
+    /// `shared_runtime_layer_produces_same_hash` - shared runtime layer produces same hash.
     ///
     /// Description:
     ///

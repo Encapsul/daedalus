@@ -9,3 +9,38 @@ codegen-units = 1
 strip = true
 panic = "abort"
 overflow-checks = true
+
+[workspace.lints]
+rust = { level = "allow" }
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_docs = "allow"
+doc_markdown = "allow"
+unused_variables = "allow"
+unused_mut = "allow"
+unused_imports = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+unwrap_used = "allow"
+expect_used = "allow"
+items_after_statements = "allow"
+format_push_string = "allow"
+uninlined_format_args = "allow"
+if_not_else = "allow"
+manual_let_else = "allow"
+io_other_error = "allow"
+map_unwrap_or = "allow"
+unnecessary_wraps = "allow"
+single_match_else = "allow"
+similar_names = "allow"
+redundant_closure_for_method_calls = "allow"
+option_if_let_else = "allow"
+needless_pass_by_value = "allow"
+unnecessary_map_or = "allow"
+enum_variant_names = "allow"
+unnecessary_cast = "allow"

@@ -36,8 +36,8 @@ const SKIP_DIRS: &[&str] = &[
 const JS_EXTS: &[&str] = &["js", "mjs", "cjs", "ts", "jsx", "tsx"];
 const CSS_EXTS: &[&str] = &["css"];
 
-/// is_skip_dir - check whether skip dir.
-/// @name: name
+/// `is_skip_dir` - check whether skip dir.
+/// `@name`: name
 ///
 /// Description:
 ///
@@ -46,7 +46,7 @@ fn is_skip_dir(name: &str) -> bool {
     SKIP_DIRS.contains(&name)
 }
 
-/// has_terser - check whether terser.
+/// `has_terser` - check whether terser.
 ///
 /// Description:
 ///
@@ -55,8 +55,8 @@ fn has_terser() -> bool {
     which("terser").map(|p| p.is_file()).unwrap_or(false)
 }
 
-/// minify_js_file - minify js file.
-/// @path: file or directory path
+/// `minify_js_file` - minify js file.
+/// `@path`: file or directory path
 ///
 /// Description:
 ///
@@ -76,12 +76,12 @@ fn minify_js_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// minify_css - minify css.
-/// @content: content
+/// `minify_css` - minify css.
+/// `@content`: content
 ///
 /// Description:
 ///
-/// Return: the resulting string
+/// Return: the `resulting` string
 pub fn minify_css(content: &str) -> String {
     let result = CSS_COMMENTS.replace_all(content, "");
     let result = CSS_WS.replace_all(&result, " ");
@@ -92,14 +92,14 @@ pub fn minify_css(content: &str) -> String {
     result.trim().to_string()
 }
 
-/// minify_app_dir - minify app dir.
-/// @app_dir: app dir
-/// @verbose: verbose
-/// @io: io
+/// `minify_app_dir` - minify app dir.
+/// `@app_dir`: app dir
+/// `@verbose`: verbose
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<usize>
+/// Return: Result containing `io::Result<usize>`
 pub fn minify_app_dir(app_dir: &Path, verbose: bool) -> io::Result<usize> {
     let mut minified = 0;
 
@@ -158,7 +158,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// test_minify_css_strips_comments - test minify css strips comments.
+    /// `test_minify_css_strips_comments` - test minify css strips comments.
     ///
     /// Description:
     ///
@@ -170,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    /// test_minify_css_collapse_whitespace - test minify css collapse whitespace.
+    /// `test_minify_css_collapse_whitespace` - test minify css collapse whitespace.
     ///
     /// Description:
     ///
@@ -182,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    /// test_minify_css_realistic - test minify css realistic.
+    /// `test_minify_css_realistic` - test minify css realistic.
     ///
     /// Description:
     ///

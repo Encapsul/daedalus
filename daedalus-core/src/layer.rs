@@ -53,24 +53,24 @@ impl SerializableLayer {
 }
 
 impl From<RuntimeLayer> for SerializableLayer {
-    /// from - from.
-    /// @layer: layer
+    /// `from` - from.
+    /// `@layer`: layer
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     fn from(layer: RuntimeLayer) -> Self {
         SerializableLayer::Runtime(layer)
     }
 }
 
 impl From<ConfigLayer> for SerializableLayer {
-    /// from - from.
-    /// @layer: layer
+    /// `from` - from.
+    /// `@layer`: layer
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     fn from(layer: ConfigLayer) -> Self {
         SerializableLayer::Config(layer)
     }
@@ -85,14 +85,14 @@ pub struct LayerEncryption {
 }
 
 impl LayerEncryption {
-    /// new - new.
-    /// @algorithm: algorithm
-    /// @key_id: key id
-    /// @nonce: nonce
+    /// `new` - new.
+    /// `@algorithm`: algorithm
+    /// `@key_id`: key id
+    /// `@nonce`: nonce
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     pub fn new(algorithm: String, key_id: Option<String>, nonce: [u8; 12]) -> Self {
         Self {
             algorithm,
@@ -138,7 +138,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// runtime_layer_serialization - runtime layer serialization.
+    /// `runtime_layer_serialization` - runtime layer serialization.
     ///
     /// Description:
     ///
@@ -159,7 +159,7 @@ mod tests {
     }
 
     #[test]
-    /// runtime_layer_kind - runtime layer kind.
+    /// `runtime_layer_kind` - runtime layer kind.
     ///
     /// Description:
     ///
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    /// serializable_layer_name_and_custom_roundtrip - serializable layer name and custom roundtrip.
+    /// `serializable_layer_name_and_custom_roundtrip` - serializable layer name and custom roundtrip.
     ///
     /// Description:
     ///
@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    /// config_layer_roundtrip - config layer roundtrip.
+    /// `config_layer_roundtrip` - config layer roundtrip.
     ///
     /// Description:
     ///
@@ -213,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    /// layer_encryption_nonce_fixed_size - layer encryption nonce fixed size.
+    /// `layer_encryption_nonce_fixed_size` - layer encryption nonce fixed size.
     ///
     /// Description:
     ///

@@ -26,7 +26,7 @@ pub enum Runtime {
 }
 
 impl Runtime {
-    /// name - name.
+    /// `name` - name.
     ///
     /// Description:
     ///
@@ -162,8 +162,8 @@ fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
     candidates
 }
 
-/// detect_python - detect python.
-/// @dir: directory path
+/// `detect_python` - detect python.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -177,9 +177,9 @@ fn detect_python(dir: &Path) -> bool {
         || dir.join("requirements.txt").is_file()
 }
 
-/// has_python_dep - check whether python dep.
-/// @dir: directory path
-/// @dep: dep
+/// `has_python_dep` - check whether python dep.
+/// `@dir`: directory path
+/// `@dep`: dep
 ///
 /// Description:
 ///
@@ -203,8 +203,8 @@ fn has_python_dep(dir: &Path, dep: &str) -> bool {
     false
 }
 
-/// detect_deno - detect deno.
-/// @dir: directory path
+/// `detect_deno` - detect deno.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -213,8 +213,8 @@ fn detect_deno(dir: &Path) -> bool {
     dir.join("deno.json").is_file() || dir.join("deno.jsonc").is_file()
 }
 
-/// detect_node - detect node.
-/// @dir: directory path
+/// `detect_node` - detect node.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -223,8 +223,8 @@ fn detect_node(dir: &Path) -> bool {
     dir.join("package.json").is_file()
 }
 
-/// detect_electron - detect electron.
-/// @dir: directory path
+/// `detect_electron` - detect electron.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -242,8 +242,8 @@ fn detect_electron(dir: &Path) -> bool {
     false
 }
 
-/// detect_java - detect java.
-/// @dir: directory path
+/// `detect_java` - detect java.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -254,8 +254,8 @@ fn detect_java(dir: &Path) -> bool {
         || dir.join("build.gradle.kts").is_file()
 }
 
-/// detect_ruby - detect ruby.
-/// @dir: directory path
+/// `detect_ruby` - detect ruby.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -264,8 +264,8 @@ fn detect_ruby(dir: &Path) -> bool {
     dir.join("Gemfile").is_file() || dir.join("_config.yml").is_file()
 }
 
-/// detect_dotnet - detect dotnet.
-/// @dir: directory path
+/// `detect_dotnet` - detect dotnet.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -280,8 +280,8 @@ fn detect_dotnet(dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// detect_rust - detect rust.
-/// @dir: directory path
+/// `detect_rust` - detect rust.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -293,8 +293,8 @@ fn detect_rust(dir: &Path) -> bool {
     dir.join("Cargo.toml").is_file()
 }
 
-/// detect_go - detect go.
-/// @dir: directory path
+/// `detect_go` - detect go.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -324,8 +324,8 @@ fn detect_go(dir: &Path) -> bool {
     false
 }
 
-/// detect_php - detect php.
-/// @dir: directory path
+/// `detect_php` - detect php.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -364,8 +364,8 @@ fn detect_php(dir: &Path) -> bool {
     false
 }
 
-/// detect_perl - detect perl.
-/// @dir: directory path
+/// `detect_perl` - detect perl.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -374,8 +374,8 @@ fn detect_perl(dir: &Path) -> bool {
     dir.join("Makefile.PL").is_file() || dir.join("cpanfile").is_file()
 }
 
-/// detect_hugo - detect hugo.
-/// @dir: directory path
+/// `detect_hugo` - detect hugo.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -386,8 +386,8 @@ fn detect_hugo(dir: &Path) -> bool {
         || dir.join("config.yaml").is_file()
 }
 
-/// detect_wasm - detect wasm.
-/// @dir: directory path
+/// `detect_wasm` - detect wasm.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -399,8 +399,8 @@ fn detect_wasm(dir: &Path) -> bool {
         || dir.extension().is_some_and(|ext| ext == "wasm")
 }
 
-/// detect_binary - detect binary.
-/// @dir: directory path
+/// `detect_binary` - detect binary.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -444,9 +444,9 @@ fn is_native_binary(path: &Path) -> bool {
 /// NOTE: intentionally >100 lines because this is the central dispatch for
 /// all supported runtimes (Python, Node, PHP, Ruby, Java, .NET, Go, …).
 #[allow(clippy::too_many_lines)]
-/// resolve_entrypoint - resolve entrypoint.
-/// @app_dir: app dir
-/// @runtime: runtime
+/// `resolve_entrypoint` - resolve entrypoint.
+/// `@app_dir`: app dir
+/// `@runtime`: runtime
 ///
 /// Description:
 ///
@@ -912,7 +912,7 @@ fn server_cmd(doc_root: &str) -> Vec<String> {
 
 /// Find the first existing file from a list of candidates.
 /// Returns the filename (not full path).
-fn find_first_file(dir: &Path, candidates: &[&str]) -> Option<String> {
+pub fn find_first_file(dir: &Path, candidates: &[&str]) -> Option<String> {
     for name in candidates {
         if dir.join(name).is_file() {
             return Some((*name).to_string());
@@ -1101,7 +1101,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    /// detect_python_app - detect python app.
+    /// `detect_python_app` - detect python app.
     ///
     /// Description:
     ///
@@ -1113,7 +1113,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_python_pyproject_only - detect python pyproject only.
+    /// `detect_python_pyproject_only` - detect python pyproject only.
     ///
     /// Description:
     ///
@@ -1129,7 +1129,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_python_setup_py - detect python setup py.
+    /// `detect_python_setup_py` - detect python setup py.
     ///
     /// Description:
     ///
@@ -1141,7 +1141,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_node_app - detect node app.
+    /// `detect_node_app` - detect node app.
     ///
     /// Description:
     ///
@@ -1153,7 +1153,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_deno_app - detect deno app.
+    /// `detect_deno_app` - detect deno app.
     ///
     /// Description:
     ///
@@ -1165,7 +1165,7 @@ mod tests {
     }
 
     #[test]
-    /// python_beats_node - python beats node.
+    /// `python_beats_node` - python beats node.
     ///
     /// Description:
     ///
@@ -1178,7 +1178,7 @@ mod tests {
     }
 
     #[test]
-    /// no_runtime_returns_none - no runtime returns none.
+    /// `no_runtime_returns_none` - no runtime returns none.
     ///
     /// Description:
     ///
@@ -1190,7 +1190,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_rust_cargo_toml - detect rust cargo toml.
+    /// `detect_rust_cargo_toml` - detect rust cargo toml.
     ///
     /// Description:
     ///
@@ -1208,7 +1208,7 @@ mod tests {
     /// A Cargo.toml next to a package.json (Tauri layout) stays Node: the JS
     /// toolchain owns the root manifest there.
     #[test]
-    /// node_beats_rust_when_package_json_present - node beats rust when package json present.
+    /// `node_beats_rust_when_package_json_present` - node beats rust when package json present.
     ///
     /// Description:
     ///
@@ -1222,7 +1222,7 @@ mod tests {
     }
 
     #[test]
-    /// rust_runtime_name_roundtrip - rust runtime name roundtrip.
+    /// `rust_runtime_name_roundtrip` - rust runtime name roundtrip.
     ///
     /// Description:
     ///
@@ -1235,7 +1235,7 @@ mod tests {
     /// After `cargo build`, the compiled ELF in the app dir is the entrypoint
     /// (same contract as Go/Binary).
     #[test]
-    /// rust_entrypoint_finds_built_binary - rust entrypoint finds built binary.
+    /// `rust_entrypoint_finds_built_binary` - rust entrypoint finds built binary.
     ///
     /// Description:
     ///
@@ -1252,7 +1252,7 @@ mod tests {
     }
 
     #[test]
-    /// php_beats_node_for_laravel - php beats node for laravel.
+    /// `php_beats_node_for_laravel` - php beats node for laravel.
     ///
     /// Description:
     ///
@@ -1266,7 +1266,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_hugo_app - detect hugo app.
+    /// `detect_hugo_app` - detect hugo app.
     ///
     /// Description:
     ///
@@ -1278,7 +1278,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_electron_app - detect electron app.
+    /// `detect_electron_app` - detect electron app.
     ///
     /// Description:
     ///
@@ -1294,7 +1294,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_electron_requires_dep - detect electron requires dep.
+    /// `detect_electron_requires_dep` - detect electron requires dep.
     ///
     /// Description:
     ///
@@ -1308,7 +1308,7 @@ mod tests {
     }
 
     #[test]
-    /// electron_entrypoint_uses_main_js - electron entrypoint uses main js.
+    /// `electron_entrypoint_uses_main_js` - electron entrypoint uses main js.
     ///
     /// Description:
     ///
@@ -1328,7 +1328,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_pe_exe_as_binary - detect pe exe as binary.
+    /// `detect_pe_exe_as_binary` - detect pe exe as binary.
     ///
     /// Description:
     ///
@@ -1344,7 +1344,7 @@ mod tests {
     }
 
     #[test]
-    /// pe_and_elf_is_not_binary - pe and elf is not binary.
+    /// `pe_and_elf_is_not_binary` - pe and elf is not binary.
     ///
     /// Description:
     ///
@@ -1357,7 +1357,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_wasm_by_filename - detect wasm by filename.
+    /// `detect_wasm_by_filename` - detect wasm by filename.
     ///
     /// Description:
     ///
@@ -1369,7 +1369,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_wasm_by_extension - detect wasm by extension.
+    /// `detect_wasm_by_extension` - detect wasm by extension.
     ///
     /// Description:
     ///
@@ -1381,7 +1381,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_wasm_entrypoint - detect wasm entrypoint.
+    /// `detect_wasm_entrypoint` - detect wasm entrypoint.
     ///
     /// Description:
     ///
@@ -1394,7 +1394,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_python_fastapi_module_entrypoint - detect python fastapi module entrypoint.
+    /// `detect_python_fastapi_module_entrypoint` - detect python fastapi module entrypoint.
     ///
     /// Description:
     ///
@@ -1420,7 +1420,7 @@ entrypoint = "app.main:app"
     }
 
     #[test]
-    /// detect_python_package_main_entrypoint - detect python package main entrypoint.
+    /// `detect_python_package_main_entrypoint` - detect python package main entrypoint.
     ///
     /// Description:
     ///
@@ -1438,7 +1438,7 @@ entrypoint = "app.main:app"
     }
 
     #[test]
-    /// detect_python_script_fallback - detect python script fallback.
+    /// `detect_python_script_fallback` - detect python script fallback.
     ///
     /// Description:
     ///
@@ -1451,7 +1451,7 @@ entrypoint = "app.main:app"
     }
 
     #[test]
-    /// detect_django_manage_py - detect django manage py.
+    /// `detect_django_manage_py` - detect django manage py.
     ///
     /// Description:
     ///
@@ -1473,7 +1473,7 @@ entrypoint = "app.main:app"
     }
 
     #[test]
-    /// detect_fastapi_uvicorn_entrypoint - detect fastapi uvicorn entrypoint.
+    /// `detect_fastapi_uvicorn_entrypoint` - detect fastapi uvicorn entrypoint.
     ///
     /// Description:
     ///
@@ -1497,7 +1497,7 @@ entrypoint = "app.main:app"
     }
 
     #[test]
-    /// detect_python_pyproject_scripts - detect python pyproject scripts.
+    /// `detect_python_pyproject_scripts` - detect python pyproject scripts.
     ///
     /// Description:
     ///
@@ -1517,7 +1517,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// detect_node_express_bin_www - detect node express bin www.
+    /// `detect_node_express_bin_www` - detect node express bin www.
     ///
     /// Description:
     ///
@@ -1532,7 +1532,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// detect_node_nestjs_dist_main - detect node nestjs dist main.
+    /// `detect_node_nestjs_dist_main` - detect node nestjs dist main.
     ///
     /// Description:
     ///
@@ -1547,7 +1547,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// detect_nextjs_standalone - detect nextjs standalone.
+    /// `detect_nextjs_standalone` - detect nextjs standalone.
     ///
     /// Description:
     ///
@@ -1575,7 +1575,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// detect_rails_bin_rails - detect rails bin rails.
+    /// `detect_rails_bin_rails` - detect rails bin rails.
     ///
     /// Description:
     ///
@@ -1603,7 +1603,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// detect_jekyll_entrypoint - detect jekyll entrypoint.
+    /// `detect_jekyll_entrypoint` - detect jekyll entrypoint.
     ///
     /// Description:
     ///
@@ -1627,7 +1627,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// jekyll_beats_rails - jekyll beats rails.
+    /// `jekyll_beats_rails` - jekyll beats rails.
     ///
     /// Description:
     ///
@@ -1648,7 +1648,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// detect_php_frankenphp - detect php frankenphp.
+    /// `detect_php_frankenphp` - detect php frankenphp.
     ///
     /// Description:
     ///
@@ -1667,7 +1667,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// detect_php_listen_port_is_env_overridable - detect php listen port is env overridable.
+    /// `detect_php_listen_port_is_env_overridable` - detect php listen port is env overridable.
     ///
     /// Description:
     ///
@@ -1692,7 +1692,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// detect_dotnet_self_contained - detect dotnet self contained.
+    /// `detect_dotnet_self_contained` - detect dotnet self contained.
     ///
     /// Description:
     ///
@@ -1715,7 +1715,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// java_opts_split_into_individual_args - java opts split into individual args.
+    /// `java_opts_split_into_individual_args` - java opts split into individual args.
     ///
     /// Description:
     ///
@@ -1740,7 +1740,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// java_entrypoint_emits_port_placeholder - java entrypoint emits port placeholder.
+    /// `java_entrypoint_emits_port_placeholder` - java entrypoint emits port placeholder.
     ///
     /// Description:
     ///
@@ -1755,7 +1755,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// bun_exact_bun_falls_through_to_file_search - bun exact bun falls through to file search.
+    /// `bun_exact_bun_falls_through_to_file_search` - bun exact bun falls through to file search.
     ///
     /// Description:
     ///
@@ -1773,7 +1773,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_tsx_script_start - node tsx script start.
+    /// `node_tsx_script_start` - node tsx script start.
     ///
     /// Description:
     ///
@@ -1795,7 +1795,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_ts_node_script_start - node ts node script start.
+    /// `node_ts_node_script_start` - node ts node script start.
     ///
     /// Description:
     ///
@@ -1817,7 +1817,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_npx_tsx_script_start - node npx tsx script start.
+    /// `node_npx_tsx_script_start` - node npx tsx script start.
     ///
     /// Description:
     ///
@@ -1836,7 +1836,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_node_ts_import_tsx - node node ts import tsx.
+    /// `node_node_ts_import_tsx` - node node ts import tsx.
     ///
     /// Description:
     ///
@@ -1858,7 +1858,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// python_streamlit_entrypoint - python streamlit entrypoint.
+    /// `python_streamlit_entrypoint` - python streamlit entrypoint.
     ///
     /// Description:
     ///
@@ -1883,7 +1883,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// python_streamlit_with_hyphen - python streamlit with hyphen.
+    /// `python_streamlit_with_hyphen` - python streamlit with hyphen.
     ///
     /// Description:
     ///
@@ -1901,7 +1901,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// from_name_roundtrips_all_runtimes - from name roundtrips all runtimes.
+    /// `from_name_roundtrips_all_runtimes` - from name roundtrips all runtimes.
     ///
     /// Description:
     ///
@@ -1930,7 +1930,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_monorepo_workspace_glob_pattern - node monorepo workspace glob pattern.
+    /// `node_monorepo_workspace_glob_pattern` - node monorepo workspace glob pattern.
     ///
     /// Description:
     ///
@@ -1964,7 +1964,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_monorepo_workspace_direct_path - node monorepo workspace direct path.
+    /// `node_monorepo_workspace_direct_path` - node monorepo workspace direct path.
     ///
     /// Description:
     ///
@@ -1996,7 +1996,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_monorepo_workspace_script_start - node monorepo workspace script start.
+    /// `node_monorepo_workspace_script_start` - node monorepo workspace script start.
     ///
     /// Description:
     ///
@@ -2033,7 +2033,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_monorepo_workspace_string_pattern - node monorepo workspace string pattern.
+    /// `node_monorepo_workspace_string_pattern` - node monorepo workspace string pattern.
     ///
     /// Description:
     ///
@@ -2070,7 +2070,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_monorepo_workspace_tsx_runner - node monorepo workspace tsx runner.
+    /// `node_monorepo_workspace_tsx_runner` - node monorepo workspace tsx runner.
     ///
     /// Description:
     ///
@@ -2111,7 +2111,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_monorepo_no_workspaces_falls_through - node monorepo no workspaces falls through.
+    /// `node_monorepo_no_workspaces_falls_through` - node monorepo no workspaces falls through.
     ///
     /// Description:
     ///
@@ -2126,7 +2126,7 @@ start = "uvicorn main:app"
     }
 
     #[test]
-    /// node_monorepo_empty_workspaces_falls_through - node monorepo empty workspaces falls through.
+    /// `node_monorepo_empty_workspaces_falls_through` - node monorepo empty workspaces falls through.
     ///
     /// Description:
     ///

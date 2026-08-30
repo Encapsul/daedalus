@@ -272,8 +272,8 @@ fn elf_interpreter_path(interp_path: &Path) -> io::Result<Option<PathBuf>> {
         .lines()
         .find_map(parse_loader_line))
 }
-/// resolve_lib_dirs - resolve lib dirs.
-/// @rootfs: rootfs
+/// `resolve_lib_dirs` - resolve lib dirs.
+/// `@rootfs`: rootfs
 ///
 /// Description:
 ///
@@ -1324,7 +1324,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// parse_loader_line_glibc - parse loader line glibc.
+    /// `parse_loader_line_glibc` - parse loader line glibc.
     ///
     /// Description:
     ///
@@ -1338,7 +1338,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_loader_line_musl - parse loader line musl.
+    /// `parse_loader_line_musl` - parse loader line musl.
     ///
     /// Description:
     ///
@@ -1352,7 +1352,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_loader_line_rejects_regular_deps - parse loader line rejects regular deps.
+    /// `parse_loader_line_rejects_regular_deps` - parse loader line rejects regular deps.
     ///
     /// Description:
     ///
@@ -1367,7 +1367,7 @@ mod tests {
     }
 
     #[test]
-    /// update_ini_value_existing - update ini value existing.
+    /// `update_ini_value_existing` - update ini value existing.
     ///
     /// Description:
     ///
@@ -1380,7 +1380,7 @@ mod tests {
     }
 
     #[test]
-    /// update_ini_value_missing - update ini value missing.
+    /// `update_ini_value_missing` - update ini value missing.
     ///
     /// Description:
     ///
@@ -1392,7 +1392,7 @@ mod tests {
     }
 
     #[test]
-    /// count_dir_files_empty - count dir files empty.
+    /// `count_dir_files_empty` - count dir files empty.
     ///
     /// Description:
     ///
@@ -1403,7 +1403,7 @@ mod tests {
     }
 
     #[test]
-    /// count_dir_files_nested - count dir files nested.
+    /// `count_dir_files_nested` - count dir files nested.
     ///
     /// Description:
     ///
