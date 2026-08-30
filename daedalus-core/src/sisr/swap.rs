@@ -63,6 +63,11 @@ impl AtomicWriter {
 }
 
 impl Drop for AtomicWriter {
+    /// drop - drop.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn drop(&mut self) {
         if !self.committed {
             let _ = fs::remove_file(&self.path);
@@ -84,6 +89,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// commit_replaces_destination_and_cleans_tmp - commit replaces destination and cleans tmp.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn commit_replaces_destination_and_cleans_tmp() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
@@ -101,6 +111,11 @@ mod tests {
     }
 
     #[test]
+    /// drop_without_commit_leaves_destination_untouched - drop without commit leaves destination untouched.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn drop_without_commit_leaves_destination_untouched() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
@@ -124,6 +139,11 @@ mod tests {
     }
 
     #[test]
+    /// commit_error_leaves_destination_untouched - commit error leaves destination untouched.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn commit_error_leaves_destination_untouched() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
@@ -139,6 +159,11 @@ mod tests {
     }
 
     #[test]
+    /// atomic_replace_overwrites_existing_file - atomic replace overwrites existing file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn atomic_replace_overwrites_existing_file() {
         let tmp = tempfile::tempdir().unwrap();
         let src = tmp.path().join("new.daedalus");
@@ -152,6 +177,11 @@ mod tests {
     }
 
     #[test]
+    /// atomic_replace_missing_source_errors - atomic replace missing source errors.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn atomic_replace_missing_source_errors() {
         let tmp = tempfile::tempdir().unwrap();
         let dst = tmp.path().join("app.daedalus");

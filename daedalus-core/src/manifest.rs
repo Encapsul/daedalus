@@ -128,6 +128,13 @@ fn fixed<const N: usize>(b: &[u8]) -> io::Result<[u8; N]> {
         .map_err(|_| err("truncated delta manifest field"))
 }
 
+/// err - err.
+/// @msg: message
+/// @io: io
+///
+/// Description:
+///
+/// Return: the io::Error
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -136,6 +143,11 @@ fn err(msg: &str) -> io::Error {
 mod tests {
     use super::*;
 
+    /// sample - sample.
+    ///
+    /// Description:
+    ///
+    /// Return: the DeltaManifest
     fn sample() -> DeltaManifest {
         DeltaManifest {
             version: VERSION,
@@ -154,12 +166,22 @@ mod tests {
     }
 
     #[test]
+    /// constants_match_layout - constants match layout.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn constants_match_layout() {
         assert_eq!(MAGIC, b"XBMD");
         assert_eq!(ENTRY_SIZE, 32 + 4);
     }
 
     #[test]
+    /// serialize_parse_roundtrip_is_bit_exact - serialize parse roundtrip is bit exact.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn serialize_parse_roundtrip_is_bit_exact() {
         let m = sample();
         let parsed = DeltaManifest::parse(&m.serialize().unwrap()).unwrap();
@@ -171,6 +193,11 @@ mod tests {
     }
 
     #[test]
+    /// empty_manifest_roundtrips - empty manifest roundtrips.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn empty_manifest_roundtrips() {
         let m = DeltaManifest {
             version: VERSION,
@@ -183,12 +210,22 @@ mod tests {
     }
 
     #[test]
+    /// encoded_len_matches_serialized_len - encoded len matches serialized len.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn encoded_len_matches_serialized_len() {
         let m = sample();
         assert_eq!(m.encoded_len(), m.serialize().unwrap().len());
     }
 
     #[test]
+    /// parse_rejects_truncated_buffer - parse rejects truncated buffer.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_rejects_truncated_buffer() {
         let bytes = sample().serialize().unwrap();
         assert!(DeltaManifest::parse(&bytes[..bytes.len() - 1]).is_err());
@@ -197,6 +234,11 @@ mod tests {
     }
 
     #[test]
+    /// parse_rejects_bad_magic - parse rejects bad magic.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_rejects_bad_magic() {
         let mut bytes = sample().serialize().unwrap();
         bytes[0..4].copy_from_slice(b"XXXX");
@@ -204,6 +246,11 @@ mod tests {
     }
 
     #[test]
+    /// parse_rejects_unsupported_version - parse rejects unsupported version.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_rejects_unsupported_version() {
         let mut bytes = sample().serialize().unwrap();
         bytes[4] = VERSION + 1;
@@ -211,6 +258,11 @@ mod tests {
     }
 
     #[test]
+    /// parse_rejects_trailing_garbage - parse rejects trailing garbage.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_rejects_trailing_garbage() {
         let mut bytes = sample().serialize().unwrap();
         bytes.push(0x00);
@@ -218,6 +270,11 @@ mod tests {
     }
 
     #[test]
+    /// parse_rejects_huge_chunk_count_without_allocating - parse rejects huge chunk count without allocating.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_rejects_huge_chunk_count_without_allocating() {
         let mut bytes = vec![0u8; HEADER_SIZE];
         bytes[0..4].copy_from_slice(MAGIC);
@@ -227,6 +284,11 @@ mod tests {
     }
 
     #[test]
+    /// parse_rejects_chunk_count_larger_than_buffer - parse rejects chunk count larger than buffer.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn parse_rejects_chunk_count_larger_than_buffer() {
         let mut bytes = vec![0u8; HEADER_SIZE + ENTRY_SIZE];
         bytes[0..4].copy_from_slice(MAGIC);
@@ -241,6 +303,11 @@ mod proptests {
     use super::*;
     use proptest::prelude::*;
 
+    /// chunk - chunk.
+    ///
+    /// Description:
+    ///
+    /// Return: the impl Strategy<Value = ChunkEntry>
     fn chunk() -> impl Strategy<Value = ChunkEntry> {
         (prop::array::uniform32(any::<u8>()), 1u32..=32 << 20)
             .prop_map(|(hash, length)| ChunkEntry { hash, length })
@@ -248,6 +315,11 @@ mod proptests {
 
     proptest! {
         #[test]
+        /// arbitrary_bytes_never_panic - arbitrary bytes never panic.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn arbitrary_bytes_never_panic(
             buf in prop::collection::vec(any::<u8>(), 0..4096),
         ) {
@@ -255,6 +327,11 @@ mod proptests {
         }
 
         #[test]
+        /// serialize_roundtrips - serialize roundtrips.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn serialize_roundtrips(
             payload_len in any::<u64>(),
             chunks in prop::collection::vec(chunk(), 0..64),

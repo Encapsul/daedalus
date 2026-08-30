@@ -42,6 +42,16 @@ pub fn resolve_arch(target_arch: Option<&str>) -> u8 {
     }
 }
 
+/// apply_meta_options - apply meta options.
+/// @meta: metadata
+/// @serde_json: serde json
+/// @options: options
+/// @std: std
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing std::io::Result<()>
 fn apply_meta_options(meta: &mut serde_json::Value, options: &MetaOptions) -> std::io::Result<()> {
     if let Some(v) = &options.version {
         meta["version"] = serde_json::Value::String(v.clone());
@@ -104,6 +114,11 @@ fn apply_meta_options(meta: &mut serde_json::Value, options: &MetaOptions) -> st
 
 /// Build the metadata JSON bytes.
 #[allow(clippy::too_many_arguments)]
+/// build_meta_json - build meta json.
+///
+/// Description:
+///
+/// Return: nothing
 pub fn build_meta_json(
     name: &str,
     runtime: &str,
@@ -362,6 +377,13 @@ struct FooterConfig {
     encrypted: bool,
 }
 
+/// build_footer - build footer.
+/// @cfg: cfg
+/// @input: input data
+///
+/// Description:
+///
+/// Return: the Footer
 fn build_footer(cfg: FooterConfig, input: &AssemblyInput<'_>) -> Footer {
     Footer {
         format_version: cfg.fmt_ver,
@@ -398,6 +420,14 @@ fn write_footer(f: &mut dyn Write, footer: &Footer) -> std::io::Result<()> {
     }
 }
 
+/// io_err - io err.
+/// @msg: message
+/// @std: std
+/// @io: io
+///
+/// Description:
+///
+/// Return: the std::io::Error
 fn io_err(msg: &str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
 }
@@ -431,6 +461,13 @@ fn chrono_now() -> String {
         .unwrap_or_default()
 }
 
+/// env_map - env map.
+/// @env: environment variables
+/// @serde_json: serde json
+///
+/// Description:
+///
+/// Return: the serde_json::Value
 fn env_map(env: &[(String, String)]) -> serde_json::Value {
     let map: serde_json::Map<String, serde_json::Value> = env
         .iter()
@@ -444,31 +481,61 @@ mod tests {
     use super::*;
 
     #[test]
+    /// fmt_version_squashfs_is_5 - fmt version squashfs is 5.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn fmt_version_squashfs_is_5() {
         assert_eq!(fmt_version(true, false), 5);
     }
 
     #[test]
+    /// fmt_version_signed_is_3 - fmt version signed is 3.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn fmt_version_signed_is_3() {
         assert_eq!(fmt_version(false, true), 3);
     }
 
     #[test]
+    /// fmt_version_default_is_2 - fmt version default is 2.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn fmt_version_default_is_2() {
         assert_eq!(fmt_version(false, false), 2);
     }
 
     #[test]
+    /// resolve_arch_aarch64 - resolve arch aarch64.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_arch_aarch64() {
         assert_eq!(resolve_arch(Some("aarch64")), format::ARCH_AARCH64);
     }
 
     #[test]
+    /// resolve_arch_x86_64 - resolve arch x86 64.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_arch_x86_64() {
         assert_eq!(resolve_arch(Some("x86_64")), format::ARCH_X86_64);
     }
 
     #[test]
+    /// assemble_creates_valid_file - assemble creates valid file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn assemble_creates_valid_file() {
         let tmp = tempfile::tempdir().unwrap();
         let out = tmp.path().join("test.daedalus");
@@ -500,6 +567,11 @@ mod tests {
     }
 
     #[test]
+    /// assemble_v3plus_footer_roundtrips_sig_offset - assemble v3plus footer roundtrips sig offset.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn assemble_v3plus_footer_roundtrips_sig_offset() {
         // Regression: v3+ files must end with the 92-byte `pack_full` footer
         // (sig_offset prefix + 84-byte core). Writing the bare 84-byte core
@@ -533,6 +605,11 @@ mod tests {
     }
 
     #[test]
+    /// build_meta_json_produces_valid_json - build meta json produces valid json.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_meta_json_produces_valid_json() {
         let opts = MetaOptions {
             version: Some("1.0".into()),
@@ -580,6 +657,11 @@ mod tests {
     }
 
     #[test]
+    /// chrono_now_produces_iso8601 - chrono now produces iso8601.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn chrono_now_produces_iso8601() {
         let ts = chrono_now();
         assert!(ts.ends_with('Z'), "timestamp should end with Z: {ts}");
@@ -590,6 +672,11 @@ mod tests {
     }
 
     #[test]
+    /// disabled_sisr_is_byte_identical_to_classic - disabled sisr is byte identical to classic.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn disabled_sisr_is_byte_identical_to_classic() {
         let tmp = tempfile::tempdir().unwrap();
         let stub = b"STUB_DATA_HERE";
@@ -632,6 +719,11 @@ mod tests {
     }
 
     #[test]
+    /// enabled_sisr_writes_section_and_remote_manifest - enabled sisr writes section and remote manifest.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn enabled_sisr_writes_section_and_remote_manifest() {
         use crate::format::Footer;
         use crate::sisr_header::read_sisr;

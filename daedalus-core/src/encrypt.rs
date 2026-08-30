@@ -20,6 +20,11 @@ pub struct EncryptMetadata {
     pub tag_offset: usize,
 }
 
+/// hkdf_derive_key - hkdf derive key.
+///
+/// Description:
+///
+/// Return: nothing
 pub fn hkdf_derive_key(
     encryption_key: &[u8; 32],
     salt: &[u8; 32],
@@ -31,6 +36,11 @@ pub fn hkdf_derive_key(
     Ok(key)
 }
 
+/// encrypt_payload - encrypt payload.
+///
+/// Description:
+///
+/// Return: nothing
 pub fn encrypt_payload(
     plaintext: &[u8],
     encryption_key: &[u8; 32],
@@ -61,6 +71,11 @@ pub fn encrypt_payload(
     Ok((ciphertext, metadata))
 }
 
+/// decrypt_payload - decrypt payload.
+///
+/// Description:
+///
+/// Return: nothing
 pub fn decrypt_payload(
     ciphertext: &[u8],
     encryption_key: &[u8; 32],
@@ -251,6 +266,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// test_hkdf_deterministic - test hkdf deterministic.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_hkdf_deterministic() {
         let seed = [0x42u8; 32];
         let salt = [0x01u8; 32]; // Deterministic salt for test
@@ -261,6 +281,11 @@ mod tests {
     }
 
     #[test]
+    /// test_hkdf_wrong_length_panics - test hkdf wrong length panics.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_hkdf_wrong_length_panics() {
         let seed = vec![0u8; 16];
         let result: Result<&[u8; 32], _> = seed.as_slice().try_into();
@@ -268,6 +293,11 @@ mod tests {
     }
 
     #[test]
+    /// test_roundtrip - test roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_roundtrip() {
         let seed = [0xABu8; 32];
         let plaintext = b"hello daedalus encryption test data";
@@ -282,6 +312,11 @@ mod tests {
     }
 
     #[test]
+    /// test_different_seeds_produce_different_ciphertext - test different seeds produce different ciphertext.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_different_seeds_produce_different_ciphertext() {
         let seed1 = [0x01u8; 32];
         let seed2 = [0x02u8; 32];
@@ -294,6 +329,11 @@ mod tests {
     }
 
     #[test]
+    /// test_decrypt_wrong_key_fails - test decrypt wrong key fails.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_decrypt_wrong_key_fails() {
         let seed1 = [0x01u8; 32];
         let seed2 = [0x02u8; 32];
@@ -305,6 +345,11 @@ mod tests {
         assert!(result.is_err());
     }
     #[test]
+    /// test_chunked_roundtrip - test chunked roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_chunked_roundtrip() {
         let seed = [0xABu8; 32];
         let salt = [0xCDu8; 32];
@@ -323,6 +368,11 @@ mod tests {
     }
 
     #[test]
+    /// test_chunked_single_chunk - test chunked single chunk.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_chunked_single_chunk() {
         let seed = [0x11u8; 32];
         let salt = [0x22u8; 32];
@@ -336,6 +386,11 @@ mod tests {
     }
 
     #[test]
+    /// test_chunked_wrong_key_fails - test chunked wrong key fails.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_chunked_wrong_key_fails() {
         let seed1 = [0x01u8; 32];
         let seed2 = [0x02u8; 32];
@@ -350,6 +405,11 @@ mod tests {
     }
 
     #[test]
+    /// test_chunked_corrupted_tag_fails - test chunked corrupted tag fails.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_chunked_corrupted_tag_fails() {
         let seed = [0xAAu8; 32];
         let salt = [0xBBu8; 32];

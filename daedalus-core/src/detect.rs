@@ -26,6 +26,11 @@ pub enum Runtime {
 }
 
 impl Runtime {
+    /// name - name.
+    ///
+    /// Description:
+    ///
+    /// Return: the &'static str
     pub fn name(&self) -> &'static str {
         match self {
             Self::Python => "python",
@@ -157,6 +162,12 @@ fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
     candidates
 }
 
+/// detect_python - detect python.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_python(dir: &Path) -> bool {
     ["app.py", "main.py", "__main__.py", "server.py"]
         .iter()
@@ -166,6 +177,13 @@ fn detect_python(dir: &Path) -> bool {
         || dir.join("requirements.txt").is_file()
 }
 
+/// has_python_dep - check whether python dep.
+/// @dir: directory path
+/// @dep: dep
+///
+/// Description:
+///
+/// Return: true or false
 fn has_python_dep(dir: &Path, dep: &str) -> bool {
     if let Ok(content) = std::fs::read_to_string(dir.join("requirements.txt")) {
         return content.lines().any(|line| {
@@ -185,14 +203,32 @@ fn has_python_dep(dir: &Path, dep: &str) -> bool {
     false
 }
 
+/// detect_deno - detect deno.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_deno(dir: &Path) -> bool {
     dir.join("deno.json").is_file() || dir.join("deno.jsonc").is_file()
 }
 
+/// detect_node - detect node.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_node(dir: &Path) -> bool {
     dir.join("package.json").is_file()
 }
 
+/// detect_electron - detect electron.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_electron(dir: &Path) -> bool {
     let package_json = dir.join("package.json");
     if !package_json.is_file() {
@@ -206,16 +242,34 @@ fn detect_electron(dir: &Path) -> bool {
     false
 }
 
+/// detect_java - detect java.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_java(dir: &Path) -> bool {
     dir.join("pom.xml").is_file()
         || dir.join("build.gradle").is_file()
         || dir.join("build.gradle.kts").is_file()
 }
 
+/// detect_ruby - detect ruby.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_ruby(dir: &Path) -> bool {
     dir.join("Gemfile").is_file() || dir.join("_config.yml").is_file()
 }
 
+/// detect_dotnet - detect dotnet.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_dotnet(dir: &Path) -> bool {
     std::fs::read_dir(dir)
         .map(|entries| {
@@ -226,6 +280,12 @@ fn detect_dotnet(dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// detect_rust - detect rust.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_rust(dir: &Path) -> bool {
     // Cargo.toml is the authoritative indicator. A Cargo.toml next to a
     // package.json (e.g. Tauri) stays Node by priority — the JS toolchain
@@ -233,6 +293,12 @@ fn detect_rust(dir: &Path) -> bool {
     dir.join("Cargo.toml").is_file()
 }
 
+/// detect_go - detect go.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_go(dir: &Path) -> bool {
     // 1. go.mod is the authoritative indicator
     if dir.join("go.mod").is_file() {
@@ -258,6 +324,12 @@ fn detect_go(dir: &Path) -> bool {
     false
 }
 
+/// detect_php - detect php.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_php(dir: &Path) -> bool {
     // 1. Composer projects (most common)
     if dir.join("composer.json").is_file() {
@@ -292,16 +364,34 @@ fn detect_php(dir: &Path) -> bool {
     false
 }
 
+/// detect_perl - detect perl.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_perl(dir: &Path) -> bool {
     dir.join("Makefile.PL").is_file() || dir.join("cpanfile").is_file()
 }
 
+/// detect_hugo - detect hugo.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_hugo(dir: &Path) -> bool {
     dir.join("config.toml").is_file()
         || dir.join("hugo.toml").is_file()
         || dir.join("config.yaml").is_file()
 }
 
+/// detect_wasm - detect wasm.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_wasm(dir: &Path) -> bool {
     dir.join("index.wasm").is_file()
         || dir.join("app.wasm").is_file()
@@ -309,6 +399,12 @@ fn detect_wasm(dir: &Path) -> bool {
         || dir.extension().is_some_and(|ext| ext == "wasm")
 }
 
+/// detect_binary - detect binary.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: true or false
 fn detect_binary(dir: &Path) -> bool {
     let mut native_count = 0;
     let entries = match std::fs::read_dir(dir) {
@@ -348,6 +444,13 @@ fn is_native_binary(path: &Path) -> bool {
 /// NOTE: intentionally >100 lines because this is the central dispatch for
 /// all supported runtimes (Python, Node, PHP, Ruby, Java, .NET, Go, …).
 #[allow(clippy::too_many_lines)]
+/// resolve_entrypoint - resolve entrypoint.
+/// @app_dir: app dir
+/// @runtime: runtime
+///
+/// Description:
+///
+/// Return: Some(...) if present, None otherwise
 pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String>> {
     match runtime {
         Runtime::Python => {
@@ -998,6 +1101,11 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    /// detect_python_app - detect python app.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_python_app() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("app.py"), "print('hi')").unwrap();
@@ -1005,6 +1113,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_python_pyproject_only - detect python pyproject only.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_python_pyproject_only() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1016,6 +1129,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_python_setup_py - detect python setup py.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_python_setup_py() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("setup.py"), "").unwrap();
@@ -1023,6 +1141,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_node_app - detect node app.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_node_app() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
@@ -1030,6 +1153,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_deno_app - detect deno app.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_deno_app() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("deno.json"), "{}").unwrap();
@@ -1037,6 +1165,11 @@ mod tests {
     }
 
     #[test]
+    /// python_beats_node - python beats node.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn python_beats_node() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("app.py"), "").unwrap();
@@ -1045,6 +1178,11 @@ mod tests {
     }
 
     #[test]
+    /// no_runtime_returns_none - no runtime returns none.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn no_runtime_returns_none() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("README.md"), "hi").unwrap();
@@ -1052,6 +1190,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_rust_cargo_toml - detect rust cargo toml.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_rust_cargo_toml() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1065,6 +1208,11 @@ mod tests {
     /// A Cargo.toml next to a package.json (Tauri layout) stays Node: the JS
     /// toolchain owns the root manifest there.
     #[test]
+    /// node_beats_rust_when_package_json_present - node beats rust when package json present.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_beats_rust_when_package_json_present() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"a\"\n").unwrap();
@@ -1074,6 +1222,11 @@ mod tests {
     }
 
     #[test]
+    /// rust_runtime_name_roundtrip - rust runtime name roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn rust_runtime_name_roundtrip() {
         assert_eq!(Runtime::Rust.name(), "rust");
         assert_eq!(Runtime::from_name("rust"), Some(Runtime::Rust));
@@ -1082,6 +1235,11 @@ mod tests {
     /// After `cargo build`, the compiled ELF in the app dir is the entrypoint
     /// (same contract as Go/Binary).
     #[test]
+    /// rust_entrypoint_finds_built_binary - rust entrypoint finds built binary.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn rust_entrypoint_finds_built_binary() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"a\"\n").unwrap();
@@ -1094,6 +1252,11 @@ mod tests {
     }
 
     #[test]
+    /// php_beats_node_for_laravel - php beats node for laravel.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn php_beats_node_for_laravel() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
@@ -1103,6 +1266,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_hugo_app - detect hugo app.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_hugo_app() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("config.toml"), "[server]").unwrap();
@@ -1110,6 +1278,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_electron_app - detect electron app.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_electron_app() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1121,6 +1294,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_electron_requires_dep - detect electron requires dep.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_electron_requires_dep() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
@@ -1130,6 +1308,11 @@ mod tests {
     }
 
     #[test]
+    /// electron_entrypoint_uses_main_js - electron entrypoint uses main js.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn electron_entrypoint_uses_main_js() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1145,6 +1328,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_pe_exe_as_binary - detect pe exe as binary.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_pe_exe_as_binary() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("app.exe"), b"MZ\x90\x00").unwrap();
@@ -1156,6 +1344,11 @@ mod tests {
     }
 
     #[test]
+    /// pe_and_elf_is_not_binary - pe and elf is not binary.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn pe_and_elf_is_not_binary() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("app.exe"), b"MZ\x90\x00").unwrap();
@@ -1164,6 +1357,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_wasm_by_filename - detect wasm by filename.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_wasm_by_filename() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("app.wasm"), b"\x00asm").unwrap();
@@ -1171,6 +1369,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_wasm_by_extension - detect wasm by extension.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_wasm_by_extension() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("main.wasm"), b"\x00asm").unwrap();
@@ -1178,6 +1381,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_wasm_entrypoint - detect wasm entrypoint.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_wasm_entrypoint() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("index.wasm"), b"\x00asm").unwrap();
@@ -1186,6 +1394,11 @@ mod tests {
     }
 
     #[test]
+    /// detect_python_fastapi_module_entrypoint - detect python fastapi module entrypoint.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_python_fastapi_module_entrypoint() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1207,6 +1420,11 @@ entrypoint = "app.main:app"
     }
 
     #[test]
+    /// detect_python_package_main_entrypoint - detect python package main entrypoint.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_python_package_main_entrypoint() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("__main__.py"), "print('hi')").unwrap();
@@ -1220,6 +1438,11 @@ entrypoint = "app.main:app"
     }
 
     #[test]
+    /// detect_python_script_fallback - detect python script fallback.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_python_script_fallback() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("app.py"), "print('hi')").unwrap();
@@ -1228,6 +1451,11 @@ entrypoint = "app.main:app"
     }
 
     #[test]
+    /// detect_django_manage_py - detect django manage py.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_django_manage_py() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("manage.py"), "#!/usr/bin/env python\n").unwrap();
@@ -1245,6 +1473,11 @@ entrypoint = "app.main:app"
     }
 
     #[test]
+    /// detect_fastapi_uvicorn_entrypoint - detect fastapi uvicorn entrypoint.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_fastapi_uvicorn_entrypoint() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("requirements.txt"), "fastapi\nuvicorn\n").unwrap();
@@ -1264,6 +1497,11 @@ entrypoint = "app.main:app"
     }
 
     #[test]
+    /// detect_python_pyproject_scripts - detect python pyproject scripts.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_python_pyproject_scripts() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1279,6 +1517,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// detect_node_express_bin_www - detect node express bin www.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_node_express_bin_www() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
@@ -1289,6 +1532,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// detect_node_nestjs_dist_main - detect node nestjs dist main.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_node_nestjs_dist_main() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
@@ -1299,6 +1547,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// detect_nextjs_standalone - detect nextjs standalone.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_nextjs_standalone() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
@@ -1322,6 +1575,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// detect_rails_bin_rails - detect rails bin rails.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_rails_bin_rails() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("Gemfile"), "gem 'rails'\n").unwrap();
@@ -1345,6 +1603,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// detect_jekyll_entrypoint - detect jekyll entrypoint.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_jekyll_entrypoint() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("_config.yml"), "title: My Site\n").unwrap();
@@ -1364,6 +1627,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// jekyll_beats_rails - jekyll beats rails.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn jekyll_beats_rails() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("Gemfile"), "gem 'jekyll'\n").unwrap();
@@ -1380,6 +1648,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// detect_php_frankenphp - detect php frankenphp.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_php_frankenphp() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("composer.json"), "{}").unwrap();
@@ -1394,6 +1667,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// detect_php_listen_port_is_env_overridable - detect php listen port is env overridable.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_php_listen_port_is_env_overridable() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("index.php"), "<?php").unwrap();
@@ -1414,6 +1692,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// detect_dotnet_self_contained - detect dotnet self contained.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn detect_dotnet_self_contained() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("app.csproj"), "<Project />").unwrap();
@@ -1432,6 +1715,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// java_opts_split_into_individual_args - java opts split into individual args.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn java_opts_split_into_individual_args() {
         std::env::set_var("JAVA_OPTS", "-Xmx512m -XX:+UseG1GC");
         let dir = TempDir::new().unwrap();
@@ -1452,6 +1740,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// java_entrypoint_emits_port_placeholder - java entrypoint emits port placeholder.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn java_entrypoint_emits_port_placeholder() {
         // The `$PORT` placeholder must stay unexpanded at build time — the stub
         // substitutes the run-time PORT value when the app launches.
@@ -1462,6 +1755,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// bun_exact_bun_falls_through_to_file_search - bun exact bun falls through to file search.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn bun_exact_bun_falls_through_to_file_search() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1475,6 +1773,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_tsx_script_start - node tsx script start.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_tsx_script_start() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1492,6 +1795,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_ts_node_script_start - node ts node script start.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_ts_node_script_start() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1509,6 +1817,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_npx_tsx_script_start - node npx tsx script start.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_npx_tsx_script_start() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1523,6 +1836,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_node_ts_import_tsx - node node ts import tsx.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_node_ts_import_tsx() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1540,6 +1858,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// python_streamlit_entrypoint - python streamlit entrypoint.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn python_streamlit_entrypoint() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("app.py"), "").unwrap();
@@ -1560,6 +1883,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// python_streamlit_with_hyphen - python streamlit with hyphen.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn python_streamlit_with_hyphen() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("main.py"), "").unwrap();
@@ -1573,6 +1901,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// from_name_roundtrips_all_runtimes - from name roundtrips all runtimes.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn from_name_roundtrips_all_runtimes() {
         for runtime in [
             Runtime::Python,
@@ -1597,6 +1930,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_monorepo_workspace_glob_pattern - node monorepo workspace glob pattern.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_monorepo_workspace_glob_pattern() {
         let dir = TempDir::new().unwrap();
         // Root package.json with workspaces glob
@@ -1626,6 +1964,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_monorepo_workspace_direct_path - node monorepo workspace direct path.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_monorepo_workspace_direct_path() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1653,6 +1996,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_monorepo_workspace_script_start - node monorepo workspace script start.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_monorepo_workspace_script_start() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1685,6 +2033,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_monorepo_workspace_string_pattern - node monorepo workspace string pattern.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_monorepo_workspace_string_pattern() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1717,6 +2070,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_monorepo_workspace_tsx_runner - node monorepo workspace tsx runner.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_monorepo_workspace_tsx_runner() {
         let dir = TempDir::new().unwrap();
         std::fs::write(
@@ -1753,6 +2111,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_monorepo_no_workspaces_falls_through - node monorepo no workspaces falls through.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_monorepo_no_workspaces_falls_through() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
@@ -1763,6 +2126,11 @@ start = "uvicorn main:app"
     }
 
     #[test]
+    /// node_monorepo_empty_workspaces_falls_through - node monorepo empty workspaces falls through.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn node_monorepo_empty_workspaces_falls_through() {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("package.json"), r#"{"workspaces": []}"#).unwrap();

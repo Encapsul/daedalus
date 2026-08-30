@@ -33,6 +33,11 @@ pub trait BinaryAssembler {
 pub struct DaedalusStitcher;
 
 impl BinaryAssembler for DaedalusStitcher {
+    /// assemble - assemble.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn assemble(
         &self,
         base_exec: &[u8],
@@ -119,6 +124,11 @@ mod tests {
     }
 
     #[test]
+    /// daedalus_stitcher_replaces_payload_region - daedalus stitcher replaces payload region.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn daedalus_stitcher_replaces_payload_region() {
         let stub = b"ELF-stub-here";
         let old_payload = b"old-squashfs";
@@ -139,6 +149,11 @@ mod tests {
     }
 
     #[test]
+    /// daedalus_stitcher_rejects_invalid_base - daedalus stitcher rejects invalid base.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn daedalus_stitcher_rejects_invalid_base() {
         let mut output = Vec::new();
         assert!(DaedalusStitcher
@@ -147,6 +162,11 @@ mod tests {
     }
 
     #[test]
+    /// daedalus_stitcher_rejects_truncated_base - daedalus stitcher rejects truncated base.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn daedalus_stitcher_rejects_truncated_base() {
         let base = build_base(b"stub", b"payload", b"meta");
         let mut output = Vec::new();
@@ -156,6 +176,11 @@ mod tests {
     }
 
     #[test]
+    /// daedalus_stitcher_rejects_out_of_bounds_offsets - daedalus stitcher rejects out of bounds offsets.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn daedalus_stitcher_rejects_out_of_bounds_offsets() {
         let base = build_base(b"stub", b"payload", b"meta");
         let mut corrupted = base.clone();

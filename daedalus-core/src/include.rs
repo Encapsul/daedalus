@@ -80,6 +80,14 @@ pub fn copy_include_paths(sources: &[PathBuf], dest: &Path, base_dir: &Path) -> 
     Ok(count)
 }
 
+/// copy_dir_recursive - copy dir recursive.
+/// @src: source
+/// @dst: destination
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
@@ -153,6 +161,12 @@ pub fn hash_lock_file(app_dir: &Path) -> String {
     String::new()
 }
 
+/// walk_dir_sorted - walk dir sorted.
+/// @dir: directory path
+///
+/// Description:
+///
+/// Return: vector of Vec<PathBuf>
 fn walk_dir_sorted(dir: &Path) -> Vec<PathBuf> {
     let mut result = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
@@ -184,6 +198,11 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    /// test_hash_app_files_deterministic - test hash app files deterministic.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_hash_app_files_deterministic() {
         let dir = TempDir::new().unwrap();
         fs::write(dir.path().join("app.py"), "print('hello')").unwrap();
@@ -193,6 +212,11 @@ mod tests {
     }
 
     #[test]
+    /// test_hash_app_files_ignores_env - test hash app files ignores env.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_hash_app_files_ignores_env() {
         let dir = TempDir::new().unwrap();
         fs::write(dir.path().join("app.py"), "print('hello')").unwrap();
@@ -208,12 +232,22 @@ mod tests {
     }
 
     #[test]
+    /// test_hash_lock_file_empty - test hash lock file empty.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_hash_lock_file_empty() {
         let dir = TempDir::new().unwrap();
         assert_eq!(hash_lock_file(dir.path()), "");
     }
 
     #[test]
+    /// test_hash_lock_file_requirements - test hash lock file requirements.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_hash_lock_file_requirements() {
         let dir = TempDir::new().unwrap();
         fs::write(dir.path().join("requirements.txt"), "flask\n").unwrap();
@@ -222,6 +256,11 @@ mod tests {
     }
 
     #[test]
+    /// test_copy_include_paths - test copy include paths.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_copy_include_paths() {
         let dir = TempDir::new().unwrap();
         let src = dir.path().join("src");
@@ -239,6 +278,11 @@ mod tests {
     }
 
     #[test]
+    /// test_include_outside_base_is_rejected - test include outside base is rejected.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_include_outside_base_is_rejected() {
         let dir = TempDir::new().unwrap();
         let app = dir.path().join("app");
@@ -258,6 +302,11 @@ mod tests {
     }
 
     #[test]
+    /// test_include_with_dotdot_component_is_rejected - test include with dotdot component is rejected.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_include_with_dotdot_component_is_rejected() {
         let dir = TempDir::new().unwrap();
         let app = dir.path().join("app");

@@ -2,6 +2,12 @@
 use std::path::{Path, PathBuf};
 
 #[allow(clippy::cast_precision_loss)]
+/// format_size - format size.
+/// @bytes: bytes
+///
+/// Description:
+///
+/// Return: the resulting string
 pub fn format_size(bytes: u64) -> String {
     if bytes < 1024 {
         return format!("{bytes}B");
@@ -12,6 +18,11 @@ pub fn format_size(bytes: u64) -> String {
     format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
 }
 
+/// cache_dir - cache dir.
+///
+/// Description:
+///
+/// Return: the PathBuf
 pub fn cache_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -75,6 +86,13 @@ impl BuildCache {
     /// `max_entries` caps the number of cached builds; oldest entries are
     /// evicted first when the limit is exceeded.
     #[must_use]
+    /// new - new.
+    /// @_app_dir:  app dir
+    /// @max_entries: max entries
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     pub fn new(_app_dir: &Path, max_entries: usize) -> Self {
         Self {
             base_dir: cache_dir().join("builds"),
@@ -136,6 +154,11 @@ impl BuildCache {
         Ok(())
     }
 
+    /// list_entries - list entries.
+    ///
+    /// Description:
+    ///
+    /// Return: Some(...) if present, None otherwise
     fn list_entries(&self) -> Option<Vec<PathBuf>> {
         let mut entries = Vec::new();
         for entry in std::fs::read_dir(&self.base_dir).ok()? {
@@ -147,6 +170,11 @@ impl BuildCache {
         Some(entries)
     }
 
+    /// evict_oldest - evict oldest.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn evict_oldest(&self) {
         let Some(mut entries) = self.list_entries() else {
             return;
@@ -199,6 +227,11 @@ impl BuildCache {
     }
 }
 
+/// default_key_dir - get default key dir.
+///
+/// Description:
+///
+/// Return: the PathBuf
 pub fn default_key_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         PathBuf::from(xdg).join("daedalus").join("keys")
@@ -245,7 +278,24 @@ pub fn trusted_keys_dir() -> PathBuf {
 /// URLs encode the hash directly: `{base}/{hash}`. No JSON metadata is needed
 /// on the wire because the hash is the content address.
 pub trait RemoteCacheBackend: Send + Sync {
+    /// get - get.
+    /// @hash: hash value
+    /// @std: std
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing std::io::Result<Option<Vec<u8>>>;
     fn get(&self, hash: &str) -> std::io::Result<Option<Vec<u8>>>;
+    /// put - put.
+    /// @hash: hash value
+    /// @bytes: bytes
+    /// @std: std
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing std::io::Result<()>;
     fn put(&self, hash: &str, bytes: &[u8]) -> std::io::Result<()>;
 }
 
@@ -258,12 +308,26 @@ pub struct FsRemoteCache {
 }
 
 impl FsRemoteCache {
+    /// new - new.
+    /// @root: root
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }
 }
 
 impl RemoteCacheBackend for FsRemoteCache {
+    /// get - get.
+    /// @hash: hash value
+    /// @std: std
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing std::io::Result<Option<Vec<u8>>>
     fn get(&self, hash: &str) -> std::io::Result<Option<Vec<u8>>> {
         let path = self.root.join(hash);
         match std::fs::read(&path) {
@@ -273,6 +337,15 @@ impl RemoteCacheBackend for FsRemoteCache {
         }
     }
 
+    /// put - put.
+    /// @hash: hash value
+    /// @bytes: bytes
+    /// @std: std
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing std::io::Result<()>
     fn put(&self, hash: &str, bytes: &[u8]) -> std::io::Result<()> {
         let path = self.root.join(hash);
         std::fs::create_dir_all(&self.root)?;
@@ -290,6 +363,11 @@ pub struct RemoteBuildCache {
 }
 
 impl RemoteBuildCache {
+    /// new - new.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     pub fn new(
         backend: impl RemoteCacheBackend + 'static,
         app_dir: &Path,
@@ -346,6 +424,11 @@ mod tests {
     }
 
     impl XdgGuard {
+        /// new - new.
+        ///
+        /// Description:
+        ///
+        /// Return: the Self
         fn new() -> Self {
             let guard = ENV_LOCK
                 .lock()
@@ -353,12 +436,23 @@ mod tests {
             let prev = std::env::var("XDG_CACHE_HOME").ok();
             Self { _lock: guard, prev }
         }
+        /// redirect - redirect.
+        /// @path: file or directory path
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn redirect(path: &Path) {
             std::env::set_var("XDG_CACHE_HOME", path);
         }
     }
 
     impl Drop for XdgGuard {
+        /// drop - drop.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn drop(&mut self) {
             match &self.prev {
                 Some(v) => std::env::set_var("XDG_CACHE_HOME", v),
@@ -373,20 +467,42 @@ mod tests {
         prev: Option<String>,
     }
     impl EnvGuard {
+        /// new - new.
+        /// @var: var
+        ///
+        /// Description:
+        ///
+        /// Return: the Self
         fn new(var: &'static str) -> Self {
             Self {
                 var,
                 prev: std::env::var(var).ok(),
             }
         }
+        /// set - set.
+        /// @val: value
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn set(&self, val: &str) {
             std::env::set_var(self.var, val);
         }
+        /// clear - clear.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn clear(&self) {
             std::env::remove_var(self.var);
         }
     }
     impl Drop for EnvGuard {
+        /// drop - drop.
+        ///
+        /// Description:
+        ///
+        /// Return: nothing
         fn drop(&mut self) {
             match &self.prev {
                 Some(v) => std::env::set_var(self.var, v),
@@ -396,6 +512,11 @@ mod tests {
     }
 
     #[test]
+    /// build_cache_store_and_find - build cache store and find.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_cache_store_and_find() {
         let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
@@ -414,6 +535,11 @@ mod tests {
     }
 
     #[test]
+    /// build_cache_targets_do_not_collide - build cache targets do not collide.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_cache_targets_do_not_collide() {
         let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
@@ -439,6 +565,11 @@ mod tests {
     }
 
     #[test]
+    /// build_cache_configs_do_not_collide - build cache configs do not collide.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_cache_configs_do_not_collide() {
         let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
@@ -463,6 +594,11 @@ mod tests {
     }
 
     #[test]
+    /// build_cache_miss - build cache miss.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_cache_miss() {
         let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
@@ -474,6 +610,11 @@ mod tests {
     }
 
     #[test]
+    /// build_cache_clear - build cache clear.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_cache_clear() {
         let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
@@ -491,6 +632,11 @@ mod tests {
     }
 
     #[test]
+    /// build_cache_eviction - build cache eviction.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_cache_eviction() {
         let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
@@ -513,6 +659,11 @@ mod tests {
     }
 
     #[test]
+    /// trusted_keys_dir_matches_stub_default - trusted keys dir matches stub default.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn trusted_keys_dir_matches_stub_default() {
         // $DAEDALUS_TRUSTED_DIR wins; else ~/.daedalus/trusted-keys (home-relative),
         // matching the stub launcher exactly (no XDG resolution).
@@ -534,6 +685,11 @@ mod tests {
     }
 
     #[test]
+    /// fs_remote_cache_roundtrip - fs remote cache roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn fs_remote_cache_roundtrip() {
         let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();
@@ -553,6 +709,11 @@ mod tests {
     }
 
     #[test]
+    /// fs_remote_cache_miss_falls_back_to_local - fs remote cache miss falls back to local.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn fs_remote_cache_miss_falls_back_to_local() {
         let _guard = XdgGuard::new();
         let tmp = tempfile::tempdir().unwrap();

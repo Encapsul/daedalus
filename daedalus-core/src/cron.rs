@@ -2,6 +2,12 @@
 //!
 //! Supports `@every <duration>`, `@hourly`, `@daily`, `@weekly`, `@monthly`,
 //! `@yearly`, and standard 5-field cron expressions (currently partial).
+/// parse_schedule - parse schedule.
+/// @schedule: schedule
+///
+/// Description:
+///
+/// Return: the u64
 pub fn parse_schedule(schedule: &str) -> u64 {
     let schedule = schedule.trim().to_lowercase();
 
@@ -33,6 +39,12 @@ pub fn parse_schedule(schedule: &str) -> u64 {
     60
 }
 
+/// parse_interval - parse interval.
+/// @val: value
+///
+/// Description:
+///
+/// Return: the u64
 pub fn parse_interval(val: &str) -> u64 {
     let val = val.trim();
     if let Some(n) = val.strip_suffix('s') {
@@ -63,41 +75,81 @@ mod tests {
     use super::*;
 
     #[test]
+    /// test_parse_every_5m - test parse every 5m.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_every_5m() {
         assert_eq!(parse_schedule("@every 5m"), 300);
     }
 
     #[test]
+    /// test_parse_hourly - test parse hourly.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_hourly() {
         assert_eq!(parse_schedule("@hourly"), 3600);
     }
 
     #[test]
+    /// test_parse_daily - test parse daily.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_daily() {
         assert_eq!(parse_schedule("@daily"), 86400);
     }
 
     #[test]
+    /// test_parse_weekly - test parse weekly.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_weekly() {
         assert_eq!(parse_schedule("@weekly"), 604_800);
     }
 
     #[test]
+    /// test_parse_cron_style - test parse cron style.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_cron_style() {
         assert_eq!(parse_schedule("*/5 * * * *"), 300);
     }
 
     #[test]
+    /// test_parse_interval_seconds - test parse interval seconds.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_interval_seconds() {
         assert_eq!(parse_interval("30s"), 30);
     }
 
     #[test]
+    /// test_parse_interval_minutes - test parse interval minutes.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_interval_minutes() {
         assert_eq!(parse_interval("5m"), 300);
     }
 
     #[test]
+    /// test_parse_interval_hours - test parse interval hours.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_parse_interval_hours() {
         assert_eq!(parse_interval("2h"), 7200);
     }

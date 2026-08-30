@@ -131,6 +131,13 @@ pub fn upgrade_binary(
     })
 }
 
+/// set_executable - set executable.
+/// @path: file or directory path
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn set_executable(path: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {
@@ -142,6 +149,13 @@ fn set_executable(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// err - err.
+/// @msg: message
+/// @io: io
+///
+/// Description:
+///
+/// Return: the io::Error
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -154,6 +168,14 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use std::io::Cursor;
 
+    /// fixture_v1 - fixture v1.
+    /// @dir: directory path
+    /// @std: std
+    /// @path: file or directory path
+    ///
+    /// Description:
+    ///
+    /// Return: the std::path::PathBuf
     fn fixture_v1(dir: &Path) -> std::path::PathBuf {
         let out = dir.join("legacy.daedalus");
         assemble_daedalus(
@@ -172,6 +194,11 @@ mod tests {
         out
     }
 
+    /// config - config.
+    ///
+    /// Description:
+    ///
+    /// Return: the SisrBuildConfig
     fn config() -> SisrBuildConfig {
         SisrBuildConfig {
             enabled: true,
@@ -181,6 +208,11 @@ mod tests {
     }
 
     #[test]
+    /// upgrade_preserves_segments_and_sets_sisr - upgrade preserves segments and sets sisr.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn upgrade_preserves_segments_and_sets_sisr() {
         let tmp = tempfile::tempdir().unwrap();
         let input = fixture_v1(tmp.path());
@@ -226,6 +258,11 @@ mod tests {
     }
 
     #[test]
+    /// upgrade_rejects_already_sisr - upgrade rejects already sisr.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn upgrade_rejects_already_sisr() {
         let tmp = tempfile::tempdir().unwrap();
         let input = tmp.path().join("sisr.daedalus");
@@ -249,6 +286,11 @@ mod tests {
     }
 
     #[test]
+    /// upgrade_rejects_signed_input - upgrade rejects signed input.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn upgrade_rejects_signed_input() {
         let tmp = tempfile::tempdir().unwrap();
         let input = fixture_v1(tmp.path());
@@ -263,6 +305,11 @@ mod tests {
     }
 
     #[test]
+    /// upgrade_rejects_non_daedalus - upgrade rejects non daedalus.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn upgrade_rejects_non_daedalus() {
         let tmp = tempfile::tempdir().unwrap();
         let input = tmp.path().join("junk.bin");

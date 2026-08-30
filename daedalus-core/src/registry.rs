@@ -206,6 +206,11 @@ mod tests {
     use crate::layer::{Capability, ConfigLayer, RuntimeLayer};
 
     #[test]
+    /// push_pull_layer_roundtrip - push pull layer roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn push_pull_layer_roundtrip() {
         let mut reg = LayerRegistry::new(Box::new(crate::cas::MemoryStore::new()));
         let layer = SerializableLayer::Runtime(RuntimeLayer {
@@ -234,6 +239,11 @@ mod tests {
     }
 
     #[test]
+    /// pull_missing_layer_returns_not_found - pull missing layer returns not found.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn pull_missing_layer_returns_not_found() {
         let reg = LayerRegistry::new(Box::new(crate::cas::MemoryStore::new()));
         let absent_hash = format_hex(&[0u8; 32]);
@@ -243,6 +253,11 @@ mod tests {
     }
 
     #[test]
+    /// push_different_content_different_hash - push different content different hash.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn push_different_content_different_hash() {
         let mut reg = LayerRegistry::new(Box::new(crate::cas::MemoryStore::new()));
         let layer_a = SerializableLayer::Runtime(RuntimeLayer {
@@ -264,6 +279,11 @@ mod tests {
     }
 
     #[test]
+    /// build_and_publish_creates_manifest - build and publish creates manifest.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn build_and_publish_creates_manifest() {
         let mut reg = LayerRegistry::new(Box::new(crate::cas::MemoryStore::new()));
         let runtime = SerializableLayer::Runtime(RuntimeLayer {
@@ -292,6 +312,11 @@ mod tests {
     }
 
     #[test]
+    /// hex_roundtrip - hex roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn hex_roundtrip() {
         let hash = content_hash(b"hello");
         let hex = format_hex(&hash);
@@ -300,6 +325,11 @@ mod tests {
     }
 
     #[test]
+    /// shared_runtime_layer_produces_same_hash - shared runtime layer produces same hash.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn shared_runtime_layer_produces_same_hash() {
         // Use case: two apps sharing the same python3 runtime layer.
         // Both push identical RuntimeLayer → same content hash → stored once.

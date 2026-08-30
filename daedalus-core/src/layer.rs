@@ -53,12 +53,24 @@ impl SerializableLayer {
 }
 
 impl From<RuntimeLayer> for SerializableLayer {
+    /// from - from.
+    /// @layer: layer
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     fn from(layer: RuntimeLayer) -> Self {
         SerializableLayer::Runtime(layer)
     }
 }
 
 impl From<ConfigLayer> for SerializableLayer {
+    /// from - from.
+    /// @layer: layer
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     fn from(layer: ConfigLayer) -> Self {
         SerializableLayer::Config(layer)
     }
@@ -73,6 +85,14 @@ pub struct LayerEncryption {
 }
 
 impl LayerEncryption {
+    /// new - new.
+    /// @algorithm: algorithm
+    /// @key_id: key id
+    /// @nonce: nonce
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     pub fn new(algorithm: String, key_id: Option<String>, nonce: [u8; 12]) -> Self {
         Self {
             algorithm,
@@ -118,6 +138,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// runtime_layer_serialization - runtime layer serialization.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn runtime_layer_serialization() {
         let layer = RuntimeLayer {
             name: "python3".into(),
@@ -134,6 +159,11 @@ mod tests {
     }
 
     #[test]
+    /// runtime_layer_kind - runtime layer kind.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn runtime_layer_kind() {
         let layer = RuntimeLayer {
             name: "python3".into(),
@@ -147,6 +177,11 @@ mod tests {
     }
 
     #[test]
+    /// serializable_layer_name_and_custom_roundtrip - serializable layer name and custom roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn serializable_layer_name_and_custom_roundtrip() {
         let custom = SerializableLayer::Custom {
             name: "my-data".into(),
@@ -160,6 +195,11 @@ mod tests {
     }
 
     #[test]
+    /// config_layer_roundtrip - config layer roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn config_layer_roundtrip() {
         let layer = ConfigLayer {
             name: "app-config".into(),
@@ -173,6 +213,11 @@ mod tests {
     }
 
     #[test]
+    /// layer_encryption_nonce_fixed_size - layer encryption nonce fixed size.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn layer_encryption_nonce_fixed_size() {
         let nonce = [0x42u8; 12];
         let enc = LayerEncryption::new("aes-256-gcm".into(), None, nonce);
