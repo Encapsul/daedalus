@@ -108,7 +108,7 @@ Chargé à la demande via SISR chunks.
 
 ### OCI multi-format output (Position B deprecation)
 
-Le `--to [oci|appimage|wasm]` du IDEAS.md Section 2 est **déprécié**.
+Le `--to [oci|appimage|wasm]` (Position B) est **déprécié**.
 Raisons : diluition de focus, l'OCI n'est concurrent qu'au-delà du réseau,
 et le format `.daedalus` existant répond déjà au besoin de distribution.
 
