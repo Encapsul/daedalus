@@ -15,6 +15,10 @@ pub struct UpgradeArgs {
     #[arg(short, long)]
     pub force: bool,
 
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
+
     /// Do not use sudo; fail if binary is not writable
     #[arg(long)]
     pub no_sudo: bool,
@@ -133,10 +137,10 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
             install_dir.display()
         );
     }
-    if needs_sudo && !args.force {
+    if needs_sudo && !args.force && !args.no_input {
         if !is_interactive() {
             anyhow::bail!(
-                "sudo required for {}; pass --force for non-interactive use",
+                "sudo required for {}; pass --force or --no-input for non-interactive use",
                 install_dir.display()
             );
         }
@@ -150,6 +154,8 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
             eprintln!("Aborted");
             return Ok(());
         }
+    } else if needs_sudo && args.no_input && !args.force {
+        anyhow::bail!("--no-input passed but sudo is required; pass --force to skip or --no-sudo to fail fast");
     }
 
     for entry in std::fs::read_dir(&bin_dir).context("failed to read bin/ directory")? {

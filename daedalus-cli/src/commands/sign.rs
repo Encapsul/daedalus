@@ -20,9 +20,13 @@ pub struct SignArgs {
     #[arg(short, long)]
     pub quiet: bool,
 
-    /// Force overwrite without confirmation
+    /// Skip confirmation prompt
     #[arg(short, long)]
     pub force: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 
     /// Output result as JSON
     #[arg(long)]
@@ -54,9 +58,9 @@ pub fn run(args: SignArgs) -> Result<()> {
         }
     };
 
-    if !args.force && !args.quiet {
+    if !args.force && !args.quiet && !args.no_input {
         if !is_interactive() {
-            anyhow::bail!("interactive prompt required; pass --force for non-interactive use");
+            anyhow::bail!("interactive prompt required; pass --force or --no-input for non-interactive use");
         }
         eprint!("Sign {}? [y/N] ", args.file.display());
         let mut input = String::new();
@@ -65,6 +69,8 @@ pub fn run(args: SignArgs) -> Result<()> {
             eprintln!("Aborted");
             return Ok(());
         }
+    } else if args.no_input && !args.force && !args.quiet {
+        anyhow::bail!("--no-input passed but operation requires confirmation; pass --force to skip");
     }
 
     sign_file(&args.file, &key_path, args.quiet)?;

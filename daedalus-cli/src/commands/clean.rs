@@ -15,6 +15,10 @@ pub struct CleanArgs {
     /// Skip confirmation
     #[arg(short, long)]
     pub force: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 /// run - run.
@@ -40,9 +44,9 @@ pub fn run(args: CleanArgs) -> Result<()> {
 
     let size = dir_size(&cache_dir)?;
 
-    if !args.force {
+    if !args.force && !args.no_input {
         if !is_interactive() {
-            anyhow::bail!("interactive prompt required; pass --force for non-interactive use");
+            anyhow::bail!("interactive prompt required; pass --force or --no-input for non-interactive use");
         }
         eprintln!(
             "This will remove {} ({})",
@@ -56,6 +60,8 @@ pub fn run(args: CleanArgs) -> Result<()> {
             eprintln!("Aborted");
             return Ok(());
         }
+    } else if args.no_input && !args.force {
+        anyhow::bail!("--no-input passed but operation requires confirmation; pass --force to skip");
     }
 
     std::fs::remove_dir_all(&cache_dir)
