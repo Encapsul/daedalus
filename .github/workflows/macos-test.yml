@@ -1,0 +1,144 @@
+name: macOS Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # Native macOS testing (recommended - simplest and most reliable)
+  native-macos:
+    name: Native macOS (macos-latest)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build CLI (x86_64)
+        run: cargo build --release -p daedalus-cli --target x86_64-apple-darwin
+
+      - name: Build CLI (aarch64)
+        run: cargo build --release -p daedalus-cli --target aarch64-apple-darwin
+
+      - name: Build stub (x86_64)
+        run: cargo build --release -p daedalus-stub --target x86_64-apple-darwin
+
+      - name: Build stub (aarch64)
+        run: cargo build --release -p daedalus-stub --target aarch64-apple-darwin
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Smoke test (x86_64)
+        run: |
+          /tmp/daedalus-stub-target/release/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.de 2>&1
+          /tmp/hello-web.de &
+          PID=$!
+          sleep 5
+          curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "smoke test passed" || { echo "smoke test failed"; kill $PID; exit 1; }
+          kill $PID || true
+
+      - name: Verify artifacts
+        run: |
+          file target/x86_64-apple-darwin/release/daedalus
+          file target/aarch64-apple-darwin/release/daedalus
+          file target/x86_64-apple-darwin/release/daedalus-stub
+          file target/aarch64-apple-darwin/release/daedalus-stub
+
+  # darwin-vm testing (advanced - for specific macOS versions / kernel debugging)
+  darwin-vm:
+    name: darwin-vm (macOS VM via QEMU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: false  # Set to true to enable
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm qemu-utils python3 jq wget
+
+      - name: Clone darwin-vm
+        run: |
+          git clone https://github.com/jprx/darwin-vm.git
+          cd darwin-vm
+          git submodule update --init
+
+      - name: Build QEMU-SPTM
+        run: |
+          cd darwin-vm/qemu-sptm
+          mkdir -p build
+          cd build
+          ../configure --target-list=aarch64-softmmu
+          make -j$(nproc)
+
+      - name: Download macOS firmware (requires pre-built artifacts)
+        run: |
+          echo "This step requires pre-built firmware artifacts."
+          echo "Run on a Mac: ./get_files.sh DEVNAME='Mac16,10' URL='<macOS_IPSW_URL>'"
+          echo "Then archive the firmware/ directory as CI artifact."
+          exit 0  # Skip for now - requires Mac for firmware prep
+
+  # Cross-compilation test (from Linux to macOS)
+  cross-macos:
+    name: Cross-compile macOS (Linux → macOS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Install zig + cargo-zigbuild
+        uses: mlugg/setup-zig@v2
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Download macOS SDK
+        run: |
+          mkdir -p /tmp/macos-sdk
+          curl -sL -o /tmp/macos-sdk/sdk.tar.xz \
+            https://github.com/roblabla/MacOSX-SDKs/releases/download/13.1/MacOSX13.1.sdk.tar.xz
+          tar xf /tmp/macos-sdk/sdk.tar.xz -C /tmp/macos-sdk
+          echo "SDKROOT=/tmp/macos-sdk/MacOSX13.1.sdk" >> "$GITHUB_ENV"
+
+      - name: Build stub (x86_64-apple-darwin)
+        run: cargo zigbuild --release -p daedalus-stub --target x86_64-apple-darwin
+
+      - name: Build stub (aarch64-apple-darwin)
+        run: cargo zigbuild --release -p daedalus-stub --target aarch64-apple-darwin
+
+      - name: Build CLI (x86_64-apple-darwin)
+        run: cargo zigbuild --release -p daedalus-cli --target x86_64-apple-darwin
+
+      - name: Build CLI (aarch64-apple-darwin)
+        run: cargo zigbuild --release -p daedalus-cli --target aarch64-apple-darwin
+
+      - name: Verify artifacts
+        run: |
+          file target/x86_64-apple-darwin/release/daedalus-stub
+          file target/aarch64-apple-darwin/release/daedalus-stub
+          file target/x86_64-apple-darwin/release/daedalus
+          file target/aarch64-apple-darwin/release/daedalus
