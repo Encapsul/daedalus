@@ -17,7 +17,7 @@ CRYPTO_ALT := target/$(TARGET)/release/daedalus-crypto
 # Architectures to build for in `dist` target
 ARCHS := x86_64 aarch64
 
-.PHONY: all preflight stub cli install example run inspect docs docs-serve lint fmt clean dist release help
+.PHONY: all preflight stub cli install example run inspect docs docs-serve lint fmt clean dist release check-standards help
 
 all: stub cli
 
@@ -104,9 +104,18 @@ lint:
 	cargo clippy -p daedalus-core --all-targets -- -D warnings
 	cargo clippy -p daedalus-stub -- -D warnings
 	cargo clippy -p daedalus-cli -- -D warnings
+	bash scripts/check-standards.sh
 
 fmt:
 	cargo fmt --all
+
+# Check for competing standards (XKCD 927): multiple files covering the same topic.
+check-standards:
+	@echo "Checking for competing standards (XKCD 927)..."
+	@bash scripts/check-standards.sh
+	@echo ""
+	@echo "Philosophy reminder: 1 topic = 1 file = 1 truth."
+	@echo "If you're tempted to create a new file, ask: does this already exist?"
 
 clean:
 	cargo clean
@@ -199,6 +208,7 @@ help:
 	@echo "  make fmt         Format all Rust code"
 	@echo "  make docs        Build mdbook documentation"
 	@echo "  make clean       Clean build artifacts"
+	@echo "  make check-standards  Check for XKCD 927 competing files (philosophy reminder)"
 	@echo ""
 	@echo "Naming convention for release assets:"
 	@echo "  daedalus_<version>_<os>_<arch>.<ext>"

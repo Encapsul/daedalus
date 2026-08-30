@@ -353,6 +353,65 @@ PRs that fail CI cannot be merged.
 
 ---
 
+## Anti-XKCD 927: one topic, one file, one truth
+
+[XKCD 927](https://xkcd.com/927/) captures a universal truth: when a new standard
+is created to solve a problem, it doesn't replace the old one — it adds to it.
+The result is 14 competing standards, none of which work well.
+
+We treat this as a **philosophical commitment**, not a checklist. The default
+human impulse when something is messy is to create a new file to "organize" it.
+That impulse is wrong. The correct response is to **consolidate**, not to add.
+
+### The principle
+
+**1 topic = 1 file = 1 truth.**
+
+If you find yourself thinking "I'll create a new file to document this", stop
+and ask:
+- Does an existing file already cover this topic?
+- If yes → update that file.
+- If no → ask whether this topic deserves to exist at all.
+
+### Anti-patterns and their corrections
+
+| What you're tempted to do | What you actually do |
+|---|---|
+| "The roadmap is messy, I'll create ROADMAP-CONSOLIDATED.md" | Fix ROADMAP.md in place. Delete the mess. |
+| "I'll keep the old MISSION_LOG.md for reference" | Delete it. Git is the archive. |
+| "docs/src/roadmap.md needs its own copy of the content" | docs/src/roadmap.md includes ROADMAP.md. No copy-paste. |
+| "I'll add a new ARCHITECTURE.md to be thorough" | Check if an existing doc already covers architecture. |
+| "I'll create a -v2 suffix once this changes" | Edit the existing file. Versions live in git, not filenames. |
+
+### Why this matters
+
+Competing standards fragment knowledge. When two files claim to be "the
+roadmap", no one knows which to trust. When architecture is split across
+ARCHITECTURE.md, DESIGN.md, and TECH-STACK.md, they drift apart and become
+wrong in different ways. The cognitive overhead of knowing which file is
+current exceeds the cost of maintaining a single canonical one.
+
+### The tool: `scripts/check-standards.sh`
+
+We have a local script that catches the most common XKCD-927 anti-patterns:
+- Multiple roadmap files
+- Suffix-based versioning (`-v2`, `-final`, `-consolidated`)
+- Duplicate architecture docs
+- Archive directories
+
+This is a **reminder of the philosophy**, not a substitute for it. The script
+can't catch every case — you still need to apply judgment.
+
+```bash
+make check-standards   # run locally before committing
+```
+
+The real enforcement is cultural: if you create a competing standard, you
+will be asked to consolidate it. The script just makes that conversation
+easier by catching obvious cases automatically.
+
+---
+
 ## Quick reference
 
 | Rule | Rust | Python |
@@ -365,3 +424,4 @@ PRs that fail CI cannot be merged.
 | Nesting | Early returns / guard clauses | Early returns / guard clauses |
 | Unsafe | Soundness comment required | N/A |
 | Enforcement | `make lint` / `make fmt` | `make lint` / `make fmt` |
+| Standards | 1 topic = 1 file = 1 truth | 1 topic = 1 file = 1 truth |
