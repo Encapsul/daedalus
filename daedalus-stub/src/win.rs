@@ -53,6 +53,11 @@ struct ProcessInformation {
 }
 
 extern "system" {
+    /// CreateProcessW - CreateProcessW.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn CreateProcessW(
         lp_application_name: *const u16,
         lp_command_line: *mut u16,
@@ -65,9 +70,34 @@ extern "system" {
         lp_startup_info: *mut StartupInfoW,
         lp_process_information: *mut ProcessInformation,
     ) -> i32;
+    /// WaitForSingleObject - WaitForSingleObject.
+    /// @h_handle: h handle
+    /// @dw_milliseconds: dw milliseconds
+    ///
+    /// Description:
+    ///
+    /// Return: the u32;
     fn WaitForSingleObject(h_handle: *mut c_void, dw_milliseconds: u32) -> u32;
+    /// GetExitCodeProcess - GetExitCodeProcess.
+    /// @h_process: h process
+    /// @lp_exit_code: lp exit code
+    ///
+    /// Description:
+    ///
+    /// Return: the i32;
     fn GetExitCodeProcess(h_process: *mut c_void, lp_exit_code: *mut u32) -> i32;
+    /// CloseHandle - CloseHandle.
+    /// @h_object: h object
+    ///
+    /// Description:
+    ///
+    /// Return: the i32;
     fn CloseHandle(h_object: *mut c_void) -> i32;
+    /// GetLastError - GetLastError.
+    ///
+    /// Description:
+    ///
+    /// Return: the u32;
     fn GetLastError() -> u32;
 }
 
@@ -78,6 +108,11 @@ pub struct Child {
 }
 
 impl Drop for Child {
+    /// drop - drop.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn drop(&mut self) {
         // SAFETY: CloseHandle(2) on a valid process handle from
         // CreateProcessW. Closing the handle does not kill the process.
@@ -207,6 +242,13 @@ pub fn try_wait(child: &Child) -> io::Result<Option<i32>> {
     ))
 }
 
+/// exit_code - exit code.
+/// @child: child
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<i32>
 fn exit_code(child: &Child) -> io::Result<i32> {
     let mut code: u32 = 0;
     // SAFETY: GetExitCodeProcess writes the exit code after success.
@@ -222,6 +264,11 @@ fn exit_code(child: &Child) -> io::Result<i32> {
     Ok(if code == STILL_ACTIVE { 0 } else { code as i32 })
 }
 
+/// last_error - last error.
+///
+/// Description:
+///
+/// Return: the resulting string
 fn last_error() -> String {
     // SAFETY: GetLastError has no preconditions.
     format!("error {}", unsafe { GetLastError() })
@@ -258,10 +305,22 @@ fn build_env_block(env: &BTreeMap<String, String>) -> io::Result<Vec<u16>> {
     Ok(block)
 }
 
+/// to_wide - to wide.
+/// @s: s
+///
+/// Description:
+///
+/// Return: vector of Vec<u16>
 fn to_wide(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
 }
 
+/// to_wide_null - to wide null.
+/// @s: s
+///
+/// Description:
+///
+/// Return: vector of Vec<u16>
 fn to_wide_null(s: &OsStr) -> Vec<u16> {
     let mut v: Vec<u16> = s.encode_wide().collect();
     v.push(0);

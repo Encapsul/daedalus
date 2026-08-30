@@ -9,6 +9,8 @@
 //! optional seccomp BPF denylist. See `enter_namespace_if_needed()`,
 //! `pivot_root_into()`, and `install_seccomp_denylist()`.
 
+#![warn(missing_docs)]
+
 mod config;
 mod crypto;
 mod exec;
@@ -234,6 +236,12 @@ pub struct LayerManifestEntry {
 }
 
 impl LayerManifest {
+    /// from_metadata - from metadata.
+    /// @meta: metadata
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     fn from_metadata(meta: &Metadata) -> Self {
         let layers = meta
             .layers
@@ -251,6 +259,14 @@ impl LayerManifest {
     }
 }
 
+/// layer_kind_str - layer kind str.
+/// @kind: kind
+/// @daedalus_core: daedalus core
+/// @layer: layer
+///
+/// Description:
+///
+/// Return: the resulting string
 fn layer_kind_str(kind: daedalus_core::layer::LayerKind) -> String {
     match kind {
         daedalus_core::layer::LayerKind::Runtime => "runtime",
@@ -300,6 +316,11 @@ pub struct HealthCheckMeta {
     enabled: bool,
 }
 
+/// default_health_endpoint - get default health endpoint.
+///
+/// Description:
+///
+/// Return: the resulting string
 fn default_health_endpoint() -> String {
     "/health".to_string()
 }
@@ -324,6 +345,11 @@ pub struct Hooks {
     pub post: Vec<String>,
 }
 
+/// main - main.
+///
+/// Description:
+///
+/// Return: nothing
 fn main() {
     if let Err(e) = run() {
         eprintln!("[daedalus] error: {e}");
@@ -331,6 +357,12 @@ fn main() {
     }
 }
 
+/// run - run.
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn run() -> io::Result<()> {
     let verbose = std::env::var_os("DAEDALUS_VERBOSE").is_some();
 
@@ -774,6 +806,11 @@ enum ChildStatus {
 ///   after `max_attempts`), restore the pre-update binary from the snapshot,
 ///   and re-exec it so the user is running a known-good version.
 #[cfg(unix)]
+/// supervised_launch - supervised launch.
+///
+/// Description:
+///
+/// Return: nothing
 fn supervised_launch(
     meta: &Metadata,
     rootfs: &Path,
@@ -840,6 +877,11 @@ fn supervised_launch(
 /// `policy.timeout_ms`, with the same confirm-vs-rollback semantics as the
 /// unix `fork`/`waitpid` version.
 #[cfg(windows)]
+/// supervised_launch - supervised launch.
+///
+/// Description:
+///
+/// Return: nothing
 fn supervised_launch(
     meta: &Metadata,
     rootfs: &Path,
@@ -902,6 +944,14 @@ fn supervised_launch(
 
 /// Polls `pid` with `WNOHANG` until it exits or `timeout_ms` elapses.
 #[cfg(unix)]
+/// wait_for_child_status - wait for child status.
+/// @pid: pid
+/// @timeout_ms: timeout ms
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<ChildStatus>
 fn wait_for_child_status(pid: i32, timeout_ms: u64) -> io::Result<ChildStatus> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     loop {
@@ -932,6 +982,13 @@ fn wait_for_child_status(pid: i32, timeout_ms: u64) -> io::Result<ChildStatus> {
 
 /// Blocks until `pid` exits and returns its process exit code.
 #[cfg(unix)]
+/// wait_child_exit_code - wait child exit code.
+/// @pid: pid
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<i32>
 fn wait_child_exit_code(pid: i32) -> io::Result<i32> {
     let mut status: i32 = 0;
     // SAFETY: waitpid(2) blocks until `pid` exits; status is filled by the
@@ -944,6 +1001,12 @@ fn wait_child_exit_code(pid: i32) -> io::Result<i32> {
 }
 
 #[cfg(unix)]
+/// decode_exit_status - decode exit status.
+/// @status: status code
+///
+/// Description:
+///
+/// Return: the i32
 fn decode_exit_status(status: i32) -> i32 {
     if libc::WIFSIGNALED(status) {
         128 + libc::WTERMSIG(status)
@@ -982,6 +1045,13 @@ fn rollback_to_previous(bin_path: &Path, verbose: bool) -> io::Result<()> {
 
 /// Re-execs the current stub binary (a `.daedalus` file) with the original argv.
 #[cfg(unix)]
+/// exec_again - exec again.
+/// @bin_path: bin path
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn exec_again(bin_path: &Path) -> io::Result<()> {
     let prog = cstr(bin_path.as_os_str().as_bytes())?;
     let mut argv: Vec<CString> = Vec::new();
@@ -1002,6 +1072,13 @@ fn exec_again(bin_path: &Path) -> io::Result<()> {
 /// Re-runs the current stub binary as a detached child and exits (Windows has
 /// no exec: the launcher cannot replace its own process image).
 #[cfg(windows)]
+/// exec_again - exec again.
+/// @bin_path: bin path
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn exec_again(bin_path: &Path) -> io::Result<()> {
     let argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
@@ -1123,6 +1200,13 @@ struct HttpChunkFetcher {
 
 #[cfg(target_os = "linux")]
 impl HttpChunkFetcher {
+    /// new - new.
+    /// @base: base
+    /// @total: total
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     fn new(base: &str, total: usize) -> Self {
         Self {
             base: base.to_string(),
@@ -1135,6 +1219,14 @@ impl HttpChunkFetcher {
 
 #[cfg(target_os = "linux")]
 impl daedalus_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
+    /// fetch - fetch.
+    /// @hash: hash value
+    /// @length: length
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<Vec<u8>>
     fn fetch(&self, hash: &[u8; 32], length: usize) -> io::Result<Vec<u8>> {
         let url = format!("{}/{}", self.base, hex::encode(hash));
         let bytes = http_get_bytes(&url)?;
@@ -1153,6 +1245,11 @@ impl daedalus_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
         Ok(bytes)
     }
 
+    /// bytes_fetched - bytes fetched.
+    ///
+    /// Description:
+    ///
+    /// Return: the u64
     fn bytes_fetched(&self) -> u64 {
         self.bytes.get()
     }
@@ -1176,6 +1273,13 @@ fn env_timeout_ms(name: &str, default_ms: u64) -> u64 {
 /// Only caller-verified content is consumed (signed manifest, hash-checked
 /// chunks), so the transport is a convenience — never a trust anchor.
 #[cfg(target_os = "linux")]
+/// http_get_bytes - http get bytes.
+/// @url: URL
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<Vec<u8>>
 fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
     const DEFAULT_MAX: u64 = 64 * 1024 * 1024; // 64 MiB
     let ms = |name, default| std::time::Duration::from_millis(env_timeout_ms(name, default));
@@ -1205,6 +1309,12 @@ fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
 }
 
 #[allow(dead_code)]
+/// human_bytes - human bytes.
+/// @bytes: bytes
+///
+/// Description:
+///
+/// Return: the resulting string
 fn human_bytes(bytes: u64) -> String {
     const KIB: u64 = 1024;
     const MIB: u64 = 1024 * 1024;
@@ -1262,6 +1372,13 @@ struct GcLock {
 }
 
 impl GcLock {
+    /// acquire - acquire.
+    /// @base: base
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<Option<GcLock>>
     fn acquire(base: &Path) -> io::Result<Option<GcLock>> {
         fs::create_dir_all(base)?;
         let file = fs::File::create(base.join(".gc.lock"))?;
@@ -1312,10 +1429,26 @@ fn gc_extraction_cache(max_entries: usize) -> io::Result<()> {
     Ok(())
 }
 
+/// extract_atomic - extract atomic.
+/// @blobs: blobs
+/// @cache_root: cache root
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
     extraction::extract_atomic(blobs, cache_root)
 }
 
+/// extract_squashfs_atomic - extract squashfs atomic.
+/// @blobs: blobs
+/// @cache_root: cache root
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
     extraction::extract_squashfs_atomic(blobs, cache_root)
 }
@@ -1324,6 +1457,13 @@ fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()>
 // Seccomp BPF denylist
 // ---------------------------------------------------------------------------
 #[cfg(target_os = "linux")]
+/// pivot_root_into - pivot root into.
+/// @rootfs: rootfs
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
     let new_root = std::fs::canonicalize(rootfs)?;
     let new_root_c = cstr(new_root.as_os_str().as_bytes())?;
@@ -1370,18 +1510,38 @@ fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
 }
 
 #[cfg(unix)]
+/// cstr - cstr.
+/// @bytes: bytes
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<CString>
 fn cstr(bytes: &[u8]) -> io::Result<CString> {
     CString::new(bytes)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "path contains null byte"))
 }
 
 #[cfg(unix)]
+/// to_ptr_vec - to ptr vec.
+/// @v: v
+/// @core: core
+/// @ffi: ffi
+///
+/// Description:
+///
+/// Return: vector of Vec<*const core::ffi::c_char>
 fn to_ptr_vec(v: &[CString]) -> Vec<*const core::ffi::c_char> {
     let mut ptrs: Vec<*const core::ffi::c_char> = v.iter().map(|c| c.as_ptr()).collect();
     ptrs.push(std::ptr::null());
     ptrs
 }
 
+/// nanos - nanos.
+///
+/// Description:
+///
+/// Return: the u128
 pub fn nanos() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1391,6 +1551,13 @@ pub fn nanos() -> u128 {
 
 /// Acquire an exclusive advisory lock (flock(2)) on `f`.
 #[cfg(unix)]
+/// flock_exclusive - flock exclusive.
+/// @f: f
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn flock_exclusive(f: &File) -> io::Result<()> {
     use std::os::unix::io::AsRawFd;
     const LOCK_EX: i32 = 2;
@@ -1407,6 +1574,13 @@ fn flock_exclusive(f: &File) -> io::Result<()> {
 /// starts of the same binary; the atomic tmp→cache rename means both writers
 /// produce identical content, so a lost lock only wastes duplicate work.
 #[cfg(windows)]
+/// flock_exclusive - flock exclusive.
+/// @_f:  f
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn flock_exclusive(_f: &File) -> io::Result<()> {
     Ok(())
 }
@@ -1414,17 +1588,47 @@ fn flock_exclusive(_f: &File) -> io::Result<()> {
 #[cfg(unix)]
 extern "C" {
     #[link_name = "execvp"]
+    /// libc_execvp - libc execvp.
+    /// @path: file or directory path
+    /// @core: core
+    /// @ffi: ffi
+    /// @argv: argv
+    /// @core: core
+    /// @ffi: ffi
+    ///
+    /// Description:
+    ///
+    /// Return: the i32;
     fn libc_execvp(path: *const core::ffi::c_char, argv: *const *const core::ffi::c_char) -> i32;
     #[link_name = "execve"]
+    /// libc_execve - libc execve.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn libc_execve(
         path: *const core::ffi::c_char,
         argv: *const *const core::ffi::c_char,
         envp: *const *const core::ffi::c_char,
     ) -> i32;
     #[link_name = "flock"]
+    /// libc_flock - libc flock.
+    /// @fd: fd
+    /// @operation: operation
+    ///
+    /// Description:
+    ///
+    /// Return: the i32;
     fn libc_flock(fd: i32, operation: i32) -> i32;
 }
 
+/// err - err.
+/// @msg: message
+/// @io: io
+///
+/// Description:
+///
+/// Return: the io::Error
 fn err(msg: impl AsRef<str>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg.as_ref())
 }
@@ -1438,6 +1642,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// human_bytes_formats_all_scales - human bytes formats all scales.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn human_bytes_formats_all_scales() {
         assert_eq!(human_bytes(0), "0 B");
         assert_eq!(human_bytes(512), "512 B");
@@ -1448,6 +1657,11 @@ mod tests {
     }
 
     #[test]
+    /// env_timeout_ms_reads_int_and_falls_back - env timeout ms reads int and falls back.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn env_timeout_ms_reads_int_and_falls_back() {
         std::env::set_var("DAEDALUS_HTTP_TIMEOUT_TEST", "2500");
         assert_eq!(env_timeout_ms("DAEDALUS_HTTP_TIMEOUT_TEST", 10_000), 2500);
@@ -1459,6 +1673,11 @@ mod tests {
     }
 
     #[test]
+    /// gc_extraction_cache_never_evicts_in_progress_extraction - gc extraction cache never evicts in progress extraction.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn gc_extraction_cache_never_evicts_in_progress_extraction() {
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("XDG_CACHE_HOME", tmp.path());
@@ -1516,6 +1735,11 @@ mod tests {
     }
 
     #[test]
+    /// downgrade_reject_detects_leftover_sig_block - downgrade reject detects leftover sig block.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn downgrade_reject_detects_leftover_sig_block() {
         let mut leftover = Vec::new();
         leftover.extend_from_slice(&(format::SIG_LEN as u32).to_le_bytes());
@@ -1543,6 +1767,11 @@ mod tests {
     }
 
     #[test]
+    /// downgrade_reject_accepts_clean_v2_layout - downgrade reject accepts clean v2 layout.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn downgrade_reject_accepts_clean_v2_layout() {
         let data = build_v2_bytes(b"payload", b"{}", &[]);
         let footer = Footer::read_from(&mut std::io::Cursor::new(&data)).unwrap();
@@ -1551,6 +1780,11 @@ mod tests {
     }
 
     #[test]
+    /// downgrade_reject_ignores_unrelated_gaps - downgrade reject ignores unrelated gaps.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn downgrade_reject_ignores_unrelated_gaps() {
         let data = build_v2_bytes(b"payload", b"{}", &[0x00; 20]);
         let footer = Footer::read_from(&mut std::io::Cursor::new(&data)).unwrap();
@@ -1567,6 +1801,11 @@ mod tests {
     }
 
     #[test]
+    /// layer_manifest_roundtrip_from_metadata - layer manifest roundtrip from metadata.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn layer_manifest_roundtrip_from_metadata() {
         let rt = daedalus_core::layer::RuntimeLayer {
             name: "python3".into(),
@@ -1623,6 +1862,11 @@ mod tests {
     }
 
     #[test]
+    /// write_layer_manifest_creates_file - write layer manifest creates file.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn write_layer_manifest_creates_file() {
         let tmp = tempfile::tempdir().unwrap();
         let meta = Metadata {

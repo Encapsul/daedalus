@@ -52,6 +52,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// normalize_base_url_accepts_http_and_https - normalize base url accepts http and https.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn normalize_base_url_accepts_http_and_https() {
         assert_eq!(
             normalize_base_url("https://updates.example.com/app").unwrap(),
@@ -68,6 +73,11 @@ mod tests {
     }
 
     #[test]
+    /// normalize_base_url_rejects_unsupported_schemes - normalize base url rejects unsupported schemes.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn normalize_base_url_rejects_unsupported_schemes() {
         assert!(normalize_base_url("ftp://updates.example.com").is_err());
         assert!(normalize_base_url("file:///tmp/updates").is_err());
@@ -76,6 +86,11 @@ mod tests {
     }
 
     #[test]
+    /// resolve_update_url_prefers_the_equals_argument - resolve update url prefers the equals argument.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_update_url_prefers_the_equals_argument() {
         let args = vec![
             OsString::from("--daedalus-update=https://arg.example/app"),
@@ -112,6 +127,11 @@ mod tests {
     }
 
     #[test]
+    /// resolve_update_url_does_not_swallow_app_positional_arg - resolve update url does not swallow app positional arg.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_update_url_does_not_swallow_app_positional_arg() {
         // `--daedalus-update serve` must NOT treat `serve` as the URL — the next
         // positional argv belongs to the app and is never consumed.
@@ -147,6 +167,11 @@ mod tests {
     }
 
     #[test]
+    /// resolve_update_url_falls_back_to_embedded_metadata - resolve update url falls back to embedded metadata.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_update_url_falls_back_to_embedded_metadata() {
         let args = vec![OsString::from("--daedalus-update")];
         let meta = Metadata {
@@ -180,6 +205,11 @@ mod tests {
     }
 
     #[test]
+    /// resolve_update_url_errors_without_any_source - resolve update url errors without any source.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_update_url_errors_without_any_source() {
         let args = vec![OsString::from("--daedalus-update")];
         let meta = Metadata {
@@ -213,6 +243,11 @@ mod tests {
     }
 
     #[test]
+    /// resolve_update_url_handles_equals_syntax - resolve update url handles equals syntax.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn resolve_update_url_handles_equals_syntax() {
         let args = vec![OsString::from("--daedalus-update=https://arg.example/app")];
         let meta = Metadata {

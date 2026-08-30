@@ -31,6 +31,11 @@ struct ExtractLimits {
 }
 
 impl ExtractLimits {
+    /// from_env - from env.
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     fn from_env() -> Self {
         let max_bytes = std::env::var("DAEDALUS_MAX_EXTRACT_SIZE")
             .ok()
@@ -55,6 +60,12 @@ impl ExtractLimits {
 /// 0o777 dir means someone else could have planted the rootfs). On non-Unix
 /// platforms there is no permission model to inspect, so we trust the cache.
 #[cfg(unix)]
+/// cache_root_trustworthy - cache root trustworthy.
+/// @cache_root: cache root
+///
+/// Description:
+///
+/// Return: true or false
 pub fn cache_root_trustworthy(cache_root: &Path) -> bool {
     use std::os::unix::fs::MetadataExt;
 
@@ -74,6 +85,12 @@ pub fn cache_root_trustworthy(cache_root: &Path) -> bool {
 
 /// Non-Unix platforms have no permission model to inspect — trust the cache.
 #[cfg(not(unix))]
+/// cache_root_trustworthy - cache root trustworthy.
+/// @_cache_root:  cache root
+///
+/// Description:
+///
+/// Return: true or false
 pub fn cache_root_trustworthy(_cache_root: &Path) -> bool {
     true
 }
@@ -269,12 +286,24 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// write_app - write app.
+    /// @tmp_rootfs: tmp rootfs
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<()>
     fn write_app(tmp_rootfs: &Path) -> io::Result<()> {
         fs::create_dir_all(tmp_rootfs.join("app"))?;
         fs::write(tmp_rootfs.join("app/app.py"), b"print('hi')")
     }
 
     #[test]
+    /// extract_creates_marker_and_rootfs - extract creates marker and rootfs.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn extract_creates_marker_and_rootfs() {
         let dir = TempDir::new().unwrap();
         let cache_root = dir.path().join("hash");
@@ -286,6 +315,11 @@ mod tests {
     }
 
     #[test]
+    /// stale_cache_root_is_wiped_and_retried - stale cache root is wiped and retried.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn stale_cache_root_is_wiped_and_retried() {
         let dir = TempDir::new().unwrap();
         let cache_root = dir.path().join("hash");
@@ -301,6 +335,11 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    /// valid_marker_survives_rename_failure - valid marker survives rename failure.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn valid_marker_survives_rename_failure() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -320,6 +359,11 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    /// trustworthy_cache_requires_private_permissions - trustworthy cache requires private permissions.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn trustworthy_cache_requires_private_permissions() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -345,6 +389,12 @@ mod tests {
     /// Chaos: tar symlinks with absolute targets or `..` traversal must be
     /// rejected to prevent path traversal outside the rootfs.
     #[cfg(unix)]
+    /// build_symlink_tar - build symlink tar.
+    /// @link_target: link target
+    ///
+    /// Description:
+    ///
+    /// Return: vector of Vec<u8>
     fn build_symlink_tar(link_target: &str) -> Vec<u8> {
         let mut tar = tar::Builder::new(Vec::new());
         let mut header = tar::Header::new_gnu();
@@ -357,12 +407,23 @@ mod tests {
         tar.into_inner().unwrap()
     }
 
+    /// compress_zstd - compress zstd.
+    /// @data: data
+    ///
+    /// Description:
+    ///
+    /// Return: vector of Vec<u8>
     fn compress_zstd(data: &[u8]) -> Vec<u8> {
         let cursor = std::io::Cursor::new(data);
         zstd::stream::encode_all(cursor, 0).unwrap()
     }
 
     #[test]
+    /// extract_rejects_absolute_symlink - extract rejects absolute symlink.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn extract_rejects_absolute_symlink() {
         let dir = TempDir::new().unwrap();
         let cache_root = dir.path().join("hash");
@@ -377,6 +438,11 @@ mod tests {
     }
 
     #[test]
+    /// extract_rejects_traversal_symlink - extract rejects traversal symlink.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn extract_rejects_traversal_symlink() {
         let dir = TempDir::new().unwrap();
         let cache_root = dir.path().join("hash");
@@ -389,6 +455,11 @@ mod tests {
     }
 
     #[test]
+    /// extract_allows_safe_relative_symlink - extract allows safe relative symlink.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn extract_allows_safe_relative_symlink() {
         let dir = TempDir::new().unwrap();
         let cache_root = dir.path().join("hash");

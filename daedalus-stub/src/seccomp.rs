@@ -33,6 +33,12 @@ use arch_consts::AUDIT_ARCH;
 /// the 18 always-dangerous syscalls with no capability-based additions.
 #[cfg(target_os = "linux")]
 #[allow(dead_code)]
+/// install_seccomp_denylist - install seccomp denylist.
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 pub fn install_seccomp_denylist() -> io::Result<()> {
     install_seccomp_with_capabilities(&[])
 }
@@ -51,6 +57,13 @@ pub fn install_seccomp_denylist() -> io::Result<()> {
 /// execve-deny filter, its `execvp` fails with `SECCOMP_RET_KILL_PROCESS`,
 /// and the parent detects the child's exit to refuse the launch cleanly.
 #[cfg(target_os = "linux")]
+/// install_seccomp_with_capabilities - install seccomp with capabilities.
+/// @capabilities: capabilities
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 pub fn install_seccomp_with_capabilities(capabilities: &[Capability]) -> io::Result<()> {
     let mut syscalls = always_deny_syscalls();
     let has_network = capabilities.contains(&Capability::Network);
@@ -88,6 +101,11 @@ pub fn install_seccomp_with_capabilities(capabilities: &[Capability]) -> io::Res
 
 /// Syscalls blocked unconditionally (no capability can enable them).
 #[cfg(target_os = "linux")]
+/// always_deny_syscalls - always deny syscalls.
+///
+/// Description:
+///
+/// Return: vector of Vec<u32>
 fn always_deny_syscalls() -> Vec<u32> {
     let mut v = vec![
         libc::SYS_ptrace as u32,
@@ -118,6 +136,11 @@ fn always_deny_syscalls() -> Vec<u32> {
 
 /// Syscalls blocked when `Capability::Network` is absent.
 #[cfg(target_os = "linux")]
+/// network_syscalls - network syscalls.
+///
+/// Description:
+///
+/// Return: the &'static [u32]
 fn network_syscalls() -> &'static [u32] {
     &[
         libc::SYS_socket as u32,
@@ -146,6 +169,11 @@ fn network_syscalls() -> &'static [u32] {
 /// an application should not be able to spawn children at all. `posix_spawn`
 /// internally calls `execve`/`clone`, so it is covered transitively.
 #[cfg(target_os = "linux")]
+/// exec_syscalls - exec syscalls.
+///
+/// Description:
+///
+/// Return: the &'static [u32]
 fn exec_syscalls() -> &'static [u32] {
     #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))]
     {
@@ -171,6 +199,13 @@ fn exec_syscalls() -> &'static [u32] {
 
 /// Build a seccomp BPF filter denying the given syscall numbers.
 #[cfg(target_os = "linux")]
+/// build_seccomp_filter_for_syscalls - build seccomp filter for syscalls.
+/// @syscalls: syscalls
+/// @libc: libc
+///
+/// Description:
+///
+/// Return: vector of Vec<libc::sock_filter>
 fn build_seccomp_filter_for_syscalls(syscalls: &[u32]) -> Vec<libc::sock_filter> {
     const BPF_LD: u16 = 0x00;
     const BPF_W: u16 = 0x00;
@@ -246,6 +281,11 @@ mod tests {
     const BPF_K: u16 = 0x00;
 
     #[test]
+    /// validate_seccomp_filter_is_denylist_not_denyall - validate seccomp filter is denylist not denyall.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn validate_seccomp_filter_is_denylist_not_denyall() {
         let filter = build_seccomp_filter();
         let n = always_deny_syscalls().len();
@@ -317,6 +357,11 @@ mod tests {
     }
 
     #[test]
+    /// capability_filter_adds_network_deny_without_network_cap - capability filter adds network deny without network cap.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn capability_filter_adds_network_deny_without_network_cap() {
         let filter = build_seccomp_filter_for_syscalls(&{
             let mut v = always_deny_syscalls();
@@ -341,6 +386,11 @@ mod tests {
     }
 
     #[test]
+    /// capability_filter_without_network_cap_is_larger - capability filter without network cap is larger.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn capability_filter_without_network_cap_is_larger() {
         let base = build_seccomp_filter();
         let with_caps = {
@@ -355,6 +405,11 @@ mod tests {
     }
 
     #[test]
+    /// capability_filter_adds_exec_deny_without_exec_cap - capability filter adds exec deny without exec cap.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn capability_filter_adds_exec_deny_without_exec_cap() {
         let filter = build_seccomp_filter_for_syscalls(&{
             let mut v = always_deny_syscalls();
@@ -379,6 +434,11 @@ mod tests {
     }
 
     #[test]
+    /// exec_syscalls_list_is_arch_dependent - exec syscalls list is arch dependent.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn exec_syscalls_list_is_arch_dependent() {
         let execs = exec_syscalls();
         assert!(!execs.is_empty(), "exec syscall list must not be empty");

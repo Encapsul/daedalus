@@ -8,6 +8,11 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use zeroize::Zeroizing;
 
+/// main - main.
+///
+/// Description:
+///
+/// Return: nothing
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
@@ -26,6 +31,12 @@ fn main() {
     std::process::exit(rc);
 }
 
+/// cmd_keygen - cmd keygen.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: the i32
 fn cmd_keygen(args: &[String]) -> i32 {
     let key_dir = if args.len() == 2 && args[0] == "--key-dir" {
         PathBuf::from(&args[1])
@@ -75,6 +86,12 @@ fn cmd_keygen(args: &[String]) -> i32 {
     0
 }
 
+/// cmd_sign - cmd sign.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: the i32
 fn cmd_sign(args: &[String]) -> i32 {
     if args.len() != 1 {
         eprintln!("Usage: daedalus-crypto sign <keyfile>");
@@ -116,6 +133,12 @@ fn cmd_sign(args: &[String]) -> i32 {
     0
 }
 
+/// cmd_verify - cmd verify.
+/// @args: command arguments
+///
+/// Description:
+///
+/// Return: the i32
 fn cmd_verify(args: &[String]) -> i32 {
     if args.len() != 1 {
         eprintln!("Usage: daedalus-crypto verify <pubkey>");

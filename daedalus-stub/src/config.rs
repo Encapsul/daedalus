@@ -38,6 +38,11 @@ pub struct DatabaseConfig {
 
 #[allow(dead_code)]
 impl AppConfig {
+    /// load - load.
+    ///
+    /// Description:
+    ///
+    /// Return: the Self
     pub fn load() -> Self {
         let mut config = Self::default();
 
@@ -66,6 +71,11 @@ impl AppConfig {
         config
     }
 
+    /// find_local_config - find local config.
+    ///
+    /// Description:
+    ///
+    /// Return: Some(...) if present, None otherwise
     fn find_local_config() -> Option<PathBuf> {
         // Check daedalus.toml in same directory as binary
         let exe_path = env::current_exe().ok()?;
@@ -84,6 +94,11 @@ impl AppConfig {
         None
     }
 
+    /// find_global_config - find global config.
+    ///
+    /// Description:
+    ///
+    /// Return: Some(...) if present, None otherwise
     fn find_global_config() -> Option<PathBuf> {
         let home = env::var("HOME").ok()?;
         let config_dir = PathBuf::from(home).join(".daedalus");
@@ -95,6 +110,13 @@ impl AppConfig {
         None
     }
 
+    /// load_from_file - load from file.
+    /// @path: file or directory path
+    /// @io: io
+    ///
+    /// Description:
+    ///
+    /// Return: Result containing io::Result<Self>
     fn load_from_file(path: &PathBuf) -> io::Result<Self> {
         let contents = fs::read_to_string(path)?;
         let config: Self =
@@ -124,6 +146,13 @@ impl AppConfig {
         None
     }
 
+    /// warn_if_unsafe_config - warn if unsafe config.
+    /// @path: file or directory path
+    /// @role: role
+    ///
+    /// Description:
+    ///
+    /// Return: true or false
     fn warn_if_unsafe_config(path: &Path, role: &str) -> bool {
         if let Some(reason) = Self::config_file_perilous(path) {
             eprintln!(
@@ -135,6 +164,12 @@ impl AppConfig {
         false
     }
 
+    /// merge - merge.
+    /// @other: other
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn merge(&mut self, other: Self) {
         // Fill-in semantics: fields already present in `self` (higher
         // precedence) win; `other` only fills the gaps. `load()` merges local
@@ -174,6 +209,11 @@ impl AppConfig {
         }
     }
 
+    /// apply_env_overrides - apply env overrides.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn apply_env_overrides(&mut self) {
         // Database URL from environment
         if let Ok(url) = env::var("DATABASE_URL") {
@@ -220,6 +260,14 @@ impl AppConfig {
 
 /// Prompt for missing secrets with masked input
 #[allow(dead_code)]
+/// prompt_for_secrets - prompt for secrets.
+/// @config: configuration
+/// @required: required
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 pub fn prompt_for_secrets(config: &mut AppConfig, required: &[String]) -> io::Result<()> {
     if !std::io::stdin().is_terminal() {
         return Ok(());
@@ -289,10 +337,23 @@ fn read_line_masked() -> io::Result<String> {
 
 #[allow(dead_code)]
 impl AppConfig {
+    /// get_secret - get secret.
+    /// @key: key
+    ///
+    /// Description:
+    ///
+    /// Return: Some(...) if present, None otherwise
     pub fn get_secret(&self, key: &str) -> Option<&String> {
         self.secrets.as_ref()?.get(key)
     }
 
+    /// set_secret - set secret.
+    /// @key: key
+    /// @value: value
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     pub fn set_secret(&mut self, key: &str, value: String) {
         if self.secrets.is_none() {
             self.secrets = Some(HashMap::new());
@@ -303,6 +364,11 @@ impl AppConfig {
             .insert(key.to_string(), value);
     }
 
+    /// get_database_url - get database url.
+    ///
+    /// Description:
+    ///
+    /// Return: Some(...) if present, None otherwise
     pub fn get_database_url(&self) -> Option<String> {
         self.database.as_ref()?.url.clone()
     }
@@ -313,6 +379,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// test_config_default - test config default.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_config_default() {
         let config = AppConfig::default();
         assert!(config.database.is_none());
@@ -321,6 +392,11 @@ mod tests {
     }
 
     #[test]
+    /// test_config_merge - test config merge.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_config_merge() {
         let config1 = AppConfig {
             database: Some(DatabaseConfig {
@@ -359,6 +435,11 @@ mod tests {
     }
 
     #[test]
+    /// test_set_secret_creates_map - test set secret creates map.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_set_secret_creates_map() {
         let mut config = AppConfig::default();
         assert!(config.secrets.is_none());
@@ -369,6 +450,11 @@ mod tests {
     }
 
     #[test]
+    /// test_merge_local_wins_over_global - test merge local wins over global.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_merge_local_wins_over_global() {
         let mut local = AppConfig {
             database: Some(DatabaseConfig {
@@ -416,6 +502,11 @@ mod tests {
     }
 
     #[test]
+    /// test_load_from_toml - test load from toml.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn test_load_from_toml() {
         let toml_str = r#"
 [database]
@@ -437,6 +528,11 @@ db_password = "secret"
     }
 
     #[test]
+    /// generic_config_name_is_perilous - generic config name is perilous.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn generic_config_name_is_perilous() {
         #[cfg(unix)]
         use std::os::unix::fs::PermissionsExt;
@@ -457,6 +553,11 @@ db_password = "secret"
 
     #[cfg(unix)]
     #[test]
+    /// world_writable_config_is_perilous - world writable config is perilous.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn world_writable_config_is_perilous() {
         use std::os::unix::fs::PermissionsExt;
 

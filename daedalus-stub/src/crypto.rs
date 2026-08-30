@@ -101,6 +101,14 @@ pub fn trusted_keys_dir() -> PathBuf {
 /// Uses an XOR-fold accumulation instead of early-exit comparison to prevent
 /// timing side-channels on the integrity digest.
 #[allow(dead_code)]
+/// verify_sha256 - verify sha256.
+/// @data: data
+/// @expected: expected
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 pub fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> {
     let mut h = Sha256::new();
     h.update(data);
@@ -140,6 +148,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// verify_sha256_accepts_matching_digest - verify sha256 accepts matching digest.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn verify_sha256_accepts_matching_digest() {
         let data = b"hello";
         let hash = Sha256::digest(data);
@@ -148,6 +161,11 @@ mod tests {
     }
 
     #[test]
+    /// verify_sha256_rejects_mismatch - verify sha256 rejects mismatch.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn verify_sha256_rejects_mismatch() {
         let data = b"hello";
         let mut expected = [0u8; 32];

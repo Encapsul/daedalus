@@ -166,6 +166,14 @@ pub fn extract_squashfs_layers(blobs: &[&[u8]], dest: &Path) -> io::Result<()> {
 /// Set file permissions from a squashfs mode (u16, POSIX mode bits).
 /// No-op on Windows (no POSIX permissions).
 #[cfg(unix)]
+/// set_permissions - set permissions.
+/// @path: file or directory path
+/// @mode: mode
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn set_permissions(path: &Path, mode: u16) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let perms = std::fs::Permissions::from_mode(u32::from(mode));
@@ -173,6 +181,14 @@ fn set_permissions(path: &Path, mode: u16) -> io::Result<()> {
 }
 
 #[cfg(windows)]
+/// set_permissions - set permissions.
+/// @_path:  path
+/// @_mode:  mode
+/// @io: io
+///
+/// Description:
+///
+/// Return: Result containing io::Result<()>
 fn set_permissions(_path: &Path, _mode: u16) -> io::Result<()> {
     Ok(())
 }
@@ -182,6 +198,11 @@ mod tests {
     use super::*;
 
     #[test]
+    /// safe_join_accepts_normal_relative_paths - safe join accepts normal relative paths.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn safe_join_accepts_normal_relative_paths() {
         let dest = Path::new("/tmp/daedalus_test_rootfs");
         let rel = Path::new("usr/bin/foo");
@@ -190,6 +211,11 @@ mod tests {
     }
 
     #[test]
+    /// safe_join_accepts_single_dot - safe join accepts single dot.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn safe_join_accepts_single_dot() {
         let dest = Path::new("/tmp/daedalus_test_rootfs");
         let got = safe_join(dest, Path::new("a/./b")).unwrap();
@@ -197,6 +223,11 @@ mod tests {
     }
 
     #[test]
+    /// safe_join_rejects_parent_dir_traversal - safe join rejects parent dir traversal.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn safe_join_rejects_parent_dir_traversal() {
         let dest = Path::new("/tmp/daedalus_test_rootfs");
         let err = safe_join(dest, Path::new("a/../b")).unwrap_err();
@@ -204,6 +235,11 @@ mod tests {
     }
 
     #[test]
+    /// safe_join_rejects_absolute_escaped_path - safe join rejects absolute escaped path.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
     fn safe_join_rejects_absolute_escaped_path() {
         let dest = Path::new("/tmp/daedalus_test_rootfs");
         // A relative path cannot contain RootDir; if one sneaks in, it is
