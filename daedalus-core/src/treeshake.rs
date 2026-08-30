@@ -32,7 +32,7 @@ const SKIP_DIRS: &[&str] = &[
 
 const JS_EXTS: &[&str] = &["js", "ts", "jsx", "tsx", "mjs", "cjs"];
 
-/// req_re - req re.
+/// `req_re` - req re.
 ///
 /// Description:
 ///
@@ -41,7 +41,7 @@ fn req_re() -> &'static Regex {
     &REQ_RE
 }
 
-/// import_re - import re.
+/// `import_re` - import re.
 ///
 /// Description:
 ///
@@ -50,8 +50,8 @@ fn import_re() -> &'static Regex {
     &IMPORT_RE
 }
 
-/// is_skip_dir - check whether skip dir.
-/// @name: name
+/// `is_skip_dir` - check whether skip dir.
+/// `@name`: name
 ///
 /// Description:
 ///
@@ -60,8 +60,8 @@ fn is_skip_dir(name: &str) -> bool {
     SKIP_DIRS.contains(&name)
 }
 
-/// is_js_ext - check whether js ext.
-/// @ext: ext
+/// `is_js_ext` - check whether js ext.
+/// `@ext`: ext
 ///
 /// Description:
 ///
@@ -70,8 +70,8 @@ fn is_js_ext(ext: &str) -> bool {
     JS_EXTS.contains(&ext)
 }
 
-/// is_package_spec - check whether package spec.
-/// @spec: spec
+/// `is_package_spec` - check whether package spec.
+/// `@spec`: spec
 ///
 /// Description:
 ///
@@ -86,12 +86,12 @@ pub fn is_package_spec(spec: &str) -> bool {
     true
 }
 
-/// extract_package_name - extract package name.
-/// @spec: spec
+/// `extract_package_name` - extract package name.
+/// `@spec`: spec
 ///
 /// Description:
 ///
-/// Return: the resulting string
+/// Return: the `resulting` string
 pub fn extract_package_name(spec: &str) -> String {
     if spec.starts_with('@') {
         let parts: Vec<&str> = spec.split('/').collect();
@@ -103,12 +103,12 @@ pub fn extract_package_name(spec: &str) -> String {
     spec.split('/').next().unwrap_or(spec).to_string()
 }
 
-/// parse_package_json - parse package json.
-/// @app_dir: app dir
+/// `parse_package_json` - parse package json.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
-/// Return: the HashMap<String, String>
+/// Return: the `HashMap`<String, String>
 fn parse_package_json(app_dir: &Path) -> HashMap<String, String> {
     let pkg = app_dir.join("package.json");
     if !pkg.is_file() {
@@ -140,12 +140,12 @@ fn parse_package_json(app_dir: &Path) -> HashMap<String, String> {
     deps
 }
 
-/// scan_imports_in_file - scan imports in file.
-/// @path: file or directory path
+/// `scan_imports_in_file` - scan imports in file.
+/// `@path`: file or directory path
 ///
 /// Description:
 ///
-/// Return: the HashSet<String>
+/// Return: the `HashSet`<String>
 fn scan_imports_in_file(path: &Path) -> HashSet<String> {
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
@@ -168,12 +168,12 @@ fn scan_imports_in_file(path: &Path) -> HashSet<String> {
     found
 }
 
-/// detect_used_packages - detect used packages.
-/// @app_dir: app dir
+/// `detect_used_packages` - detect used packages.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
-/// Return: the HashSet<String>
+/// Return: the `HashSet`<String>
 pub fn detect_used_packages(app_dir: &Path) -> HashSet<String> {
     let pkg_deps = parse_package_json(app_dir);
     if pkg_deps.is_empty() {
@@ -224,14 +224,14 @@ pub fn detect_used_packages(app_dir: &Path) -> HashSet<String> {
     used
 }
 
-/// prune_node_modules - prune node modules.
-/// @app_dir: app dir
-/// @verbose: verbose
-/// @io: io
+/// `prune_node_modules` - prune node modules.
+/// `@app_dir`: app dir
+/// `@verbose`: verbose
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<usize>
+/// Return: Result containing `io::Result<usize>`
 pub fn prune_node_modules(app_dir: &Path, verbose: bool) -> io::Result<usize> {
     let nm = app_dir.join("node_modules");
     if !nm.is_dir() {
@@ -294,7 +294,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    /// test_is_package_spec - test is package spec.
+    /// `test_is_package_spec` - test is package spec.
     ///
     /// Description:
     ///
@@ -310,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    /// test_extract_package_name_scoped - test extract package name scoped.
+    /// `test_extract_package_name_scoped` - test extract package name scoped.
     ///
     /// Description:
     ///
@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    /// test_scan_imports_require - test scan imports require.
+    /// `test_scan_imports_require` - test scan imports require.
     ///
     /// Description:
     ///
@@ -348,7 +348,7 @@ const local = require('./helper');
     }
 
     #[test]
-    /// test_scan_imports_esm - test scan imports esm.
+    /// `test_scan_imports_esm` - test scan imports esm.
     ///
     /// Description:
     ///
@@ -374,7 +374,7 @@ import lodash from '@scope/pkg';
     }
 
     #[test]
-    /// test_detect_package_json_deps - test detect package json deps.
+    /// `test_detect_package_json_deps` - test detect package json deps.
     ///
     /// Description:
     ///
@@ -396,7 +396,7 @@ import lodash from '@scope/pkg';
     }
 
     #[test]
-    /// test_prune_removes_unused - test prune removes unused.
+    /// `test_prune_removes_unused` - test prune removes unused.
     ///
     /// Description:
     ///
@@ -426,7 +426,7 @@ import lodash from '@scope/pkg';
     }
 
     #[test]
-    /// test_prune_keeps_used - test prune keeps used.
+    /// `test_prune_keeps_used` - test prune keeps used.
     ///
     /// Description:
     ///

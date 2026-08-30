@@ -63,7 +63,7 @@ impl AtomicWriter {
 }
 
 impl Drop for AtomicWriter {
-    /// drop - drop.
+    /// `drop` - drop.
     ///
     /// Description:
     ///
@@ -89,7 +89,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// commit_replaces_destination_and_cleans_tmp - commit replaces destination and cleans tmp.
+    /// `commit_replaces_destination_and_cleans_tmp` - commit replaces destination and cleans tmp.
     ///
     /// Description:
     ///
@@ -111,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    /// drop_without_commit_leaves_destination_untouched - drop without commit leaves destination untouched.
+    /// `drop_without_commit_leaves_destination_untouched` - drop without commit leaves destination untouched.
     ///
     /// Description:
     ///
@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    /// commit_error_leaves_destination_untouched - commit error leaves destination untouched.
+    /// `commit_error_leaves_destination_untouched` - commit error leaves destination untouched.
     ///
     /// Description:
     ///
@@ -159,7 +159,7 @@ mod tests {
     }
 
     #[test]
-    /// atomic_replace_overwrites_existing_file - atomic replace overwrites existing file.
+    /// `atomic_replace_overwrites_existing_file` - atomic replace overwrites existing file.
     ///
     /// Description:
     ///
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    /// atomic_replace_missing_source_errors - atomic replace missing source errors.
+    /// `atomic_replace_missing_source_errors` - atomic replace missing source errors.
     ///
     /// Description:
     ///

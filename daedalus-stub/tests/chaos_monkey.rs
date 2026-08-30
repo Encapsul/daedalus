@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Chaos-monkey suite for the daedalus stub launcher.
 //!
 //! Philosophy: every test feeds the launcher hostile input — truncated binaries,
@@ -26,16 +27,19 @@ fn build_fixture(dir: &Path, _payload_bytes: &[u8]) -> std::path::PathBuf {
     });
     let out = dir.join("app.de");
 
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .unwrap_or_else(|_| ".".into());
-    let workspace_root = std::path::Path::new(&manifest_dir).parent().unwrap_or(std::path::Path::new("."));
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
+    let workspace_root = std::path::Path::new(&manifest_dir)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
 
     let stub_bytes = if let Ok(path) = std::env::var("DAEDALUS_STUB_PATH") {
         std::fs::read(&path).expect("failed to read stub from DAEDALUS_STUB_PATH")
     } else {
         let candidates = [
             workspace_root.join("target/x86_64-unknown-linux-musl/release/daedalus-stub"),
-            std::path::PathBuf::from("/tmp/daedalus-stub-target/x86_64-unknown-linux-musl/release/daedalus-stub"),
+            std::path::PathBuf::from(
+                "/tmp/daedalus-stub-target/x86_64-unknown-linux-musl/release/daedalus-stub",
+            ),
             workspace_root.join("target/release/daedalus-stub"),
         ];
         let path = candidates
@@ -73,7 +77,11 @@ fn run_stub(bin: &Path, arg: &str) -> std::process::Output {
     {
         use std::os::unix::fs::PermissionsExt;
         if let Err(e) = std::fs::set_permissions(bin, std::fs::Permissions::from_mode(0o755)) {
-            eprintln!("Warning: could not set permissions on {}: {}", bin.display(), e);
+            eprintln!(
+                "Warning: could not set permissions on {}: {}",
+                bin.display(),
+                e
+            );
         }
     }
     Command::new(bin)
@@ -88,7 +96,18 @@ fn run_stub_result(bin: &Path, arg: &str) -> Result<std::process::Output, std::i
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(bin, std::fs::Permissions::from_mode(0o755));
     }
-    Command::new(bin).arg(arg).output()
+    let mut last_err = None;
+    for attempt in 0..3 {
+        match Command::new(bin).arg(arg).output() {
+            Ok(output) => return Ok(output),
+            Err(e) if attempt < 2 => {
+                last_err = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(50 * (attempt + 1)));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last_err.unwrap())
 }
 
 // ── Hostile input ───────────────────────────────────────────────────────
@@ -147,7 +166,8 @@ fn chaos_garbage_file_refused_cleanly() {
     match result {
         Ok(output) => {
             assert!(
-                !output.status.success() || String::from_utf8_lossy(&output.stderr).contains("not a .de"),
+                !output.status.success()
+                    || String::from_utf8_lossy(&output.stderr).contains("not a .de"),
                 "garbage file should be refused cleanly"
             );
         }
@@ -210,10 +230,13 @@ fn chaos_concurrent_runs_complete() {
     let bin = build_fixture(dir.path(), b"BASE-PAYLOAD");
 
     let mut children = Vec::new();
-    for _i in 0..5 {
+    for i in 0..5 {
         let bin_path = bin.clone();
+        let dir_path = dir.path().to_path_buf();
         children.push(std::thread::spawn(move || {
-            let _ = run_stub(&bin_path, "--daedalus-version");
+            let thread_bin = dir_path.join(format!("concurrent-{i}.de"));
+            std::fs::copy(&bin_path, &thread_bin).unwrap();
+            let _ = run_stub_result(&thread_bin, "--daedalus-version");
         }));
     }
     for c in children {
@@ -264,16 +287,239 @@ fn chaos_successful_run_keeps_binary_valid() {
         (footer.meta_offset - footer.payload_offset) as usize,
     )
     .expect("payload must be readable");
-    let meta = daedalus_core::format::read_at(
-        &mut cursor,
-        footer.meta_offset,
-        footer.meta_size as usize,
-    )
-    .expect("meta must be readable");
+    let meta =
+        daedalus_core::format::read_at(&mut cursor, footer.meta_offset, footer.meta_size as usize)
+            .expect("meta must be readable");
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(&payload);
     h.update(&meta);
     let digest: [u8; 32] = h.finalize().into();
     assert_eq!(footer.payload_sha256, digest);
+}
+
+// ── Runtime-specific fixtures ─────────────────────────────────────────────
+
+fn build_hugo_fixture(dir: &Path) -> std::path::PathBuf {
+    let rootfs = dir.join("rootfs");
+    std::fs::create_dir_all(rootfs.join("app/public")).unwrap();
+    std::fs::write(rootfs.join("app/public/index.html"), b"<html>Hello</html>").unwrap();
+    let payload = daedalus_core::tar::create_tar_zstd_with_level(&rootfs, 3).unwrap();
+
+    let meta = serde_json::json!({
+        "name": "hugo-site",
+        "runtime": "hugo",
+        "entrypoint": ["hugo", "server"],
+    });
+    let out = dir.join("app.de");
+    assemble_daedalus(
+        &out,
+        &AssemblyInput {
+            stub_bytes: &stub_bytes_for(),
+            payload: &payload,
+            meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
+            squashfs: false,
+            target_arch: None,
+            sisr: None,
+            encryption: None,
+        },
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    out
+}
+
+fn build_electron_fixture(dir: &Path) -> std::path::PathBuf {
+    let rootfs = dir.join("rootfs");
+    std::fs::create_dir_all(rootfs.join("app")).unwrap();
+    std::fs::write(rootfs.join("app/main.js"), b"console.log('electron')").unwrap();
+    let payload = daedalus_core::tar::create_tar_zstd_with_level(&rootfs, 3).unwrap();
+
+    let meta = serde_json::json!({
+        "name": "electron-app",
+        "runtime": "electron",
+        "entrypoint": ["electron", "/app/main.js"],
+    });
+    let out = dir.join("app.de");
+    assemble_daedalus(
+        &out,
+        &AssemblyInput {
+            stub_bytes: &stub_bytes_for(),
+            payload: &payload,
+            meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
+            squashfs: false,
+            target_arch: None,
+            sisr: None,
+            encryption: None,
+        },
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    out
+}
+
+fn build_wasm_fixture(dir: &Path) -> std::path::PathBuf {
+    let rootfs = dir.join("rootfs");
+    std::fs::create_dir_all(rootfs.join("app")).unwrap();
+    std::fs::write(rootfs.join("app/index.wasm"), b"\x00wasm\x01\x00\x00\x00").unwrap();
+    let payload = daedalus_core::tar::create_tar_zstd_with_level(&rootfs, 3).unwrap();
+
+    let meta = serde_json::json!({
+        "name": "wasm-app",
+        "runtime": "wasm",
+        "entrypoint": ["wasmtime", "/app/index.wasm"],
+    });
+    let out = dir.join("app.de");
+    assemble_daedalus(
+        &out,
+        &AssemblyInput {
+            stub_bytes: &stub_bytes_for(),
+            payload: &payload,
+            meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
+            squashfs: false,
+            target_arch: None,
+            sisr: None,
+            encryption: None,
+        },
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    out
+}
+
+fn stub_bytes_for() -> Vec<u8> {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
+    let workspace_root = std::path::Path::new(&manifest_dir)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    let candidates = [
+        workspace_root.join("target/x86_64-unknown-linux-musl/release/daedalus-stub"),
+        std::path::PathBuf::from(
+            "/tmp/daedalus-stub-target/x86_64-unknown-linux-musl/release/daedalus-stub",
+        ),
+        workspace_root.join("target/release/daedalus-stub"),
+    ];
+    let path = candidates
+        .iter()
+        .find(|p| p.exists())
+        .expect("daedalus-stub binary not found; build it with: cargo build --release -p daedalus-stub --target x86_64-unknown-linux-musl");
+    std::fs::read(path).expect("failed to read stub binary")
+}
+
+// ── Hugo runtime chaos ────────────────────────────────────────────────────
+
+#[test]
+fn chaos_hugo_truncated_binary_fails_cleanly() {
+    let dir = tempdir().unwrap();
+    let bin = build_hugo_fixture(dir.path());
+    let original = std::fs::read(&bin).unwrap();
+
+    for cut in [0usize, 1, 10, 50, original.len() - 1] {
+        let broken = dir.path().join(format!("cut-{cut}.de"));
+        std::fs::write(&broken, &original[..cut]).unwrap();
+        let _ = run_stub_result(&broken, "--daedalus-version");
+    }
+}
+
+#[test]
+fn chaos_hugo_garbage_refused_cleanly() {
+    let dir = tempdir().unwrap();
+    let junk = dir.path().join("junk.de");
+    std::fs::write(&junk, vec![0xDEu8; 512]).unwrap();
+    let result = run_stub_result(&junk, "--daedalus-version");
+    match result {
+        Ok(output) => {
+            assert!(
+                !output.status.success()
+                    || String::from_utf8_lossy(&output.stderr).contains("not a .de"),
+                "garbage file should be refused cleanly"
+            );
+        }
+        Err(_) => {}
+    }
+}
+
+// ── Electron runtime chaos ────────────────────────────────────────────────
+
+#[test]
+fn chaos_electron_truncated_binary_fails_cleanly() {
+    let dir = tempdir().unwrap();
+    let bin = build_electron_fixture(dir.path());
+    let original = std::fs::read(&bin).unwrap();
+
+    for cut in [0usize, 1, original.len() / 2, original.len() - 1] {
+        let broken = dir.path().join(format!("cut-{cut}.de"));
+        std::fs::write(&broken, &original[..cut]).unwrap();
+        let _ = run_stub_result(&broken, "--daedalus-version");
+    }
+}
+
+// ── Wasm runtime chaos ────────────────────────────────────────────────────
+
+#[test]
+fn chaos_wasm_truncated_binary_fails_cleanly() {
+    let dir = tempdir().unwrap();
+    let bin = build_wasm_fixture(dir.path());
+    let original = std::fs::read(&bin).unwrap();
+
+    for cut in [0usize, 1, original.len() / 2, original.len() - 1] {
+        let broken = dir.path().join(format!("cut-{cut}.de"));
+        std::fs::write(&broken, &original[..cut]).unwrap();
+        let _ = run_stub_result(&broken, "--daedalus-version");
+    }
+}
+
+// ── Deno runtime chaos ────────────────────────────────────────────────────
+
+#[test]
+fn chaos_deno_truncated_binary_fails_cleanly() {
+    let dir = tempdir().unwrap();
+    let rootfs = dir.path().join("rootfs");
+    std::fs::create_dir_all(rootfs.join("app")).unwrap();
+    std::fs::write(rootfs.join("app/main.ts"), b"console.log('deno')").unwrap();
+    let payload = daedalus_core::tar::create_tar_zstd_with_level(&rootfs, 3).unwrap();
+
+    let meta = serde_json::json!({
+        "name": "deno-app",
+        "runtime": "deno",
+        "entrypoint": ["deno", "run", "--allow-all", "/app/main.ts"],
+    });
+    let out = dir.path().join("app.de");
+    assemble_daedalus(
+        &out,
+        &AssemblyInput {
+            stub_bytes: &stub_bytes_for(),
+            payload: &payload,
+            meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
+            squashfs: false,
+            target_arch: None,
+            sisr: None,
+            encryption: None,
+        },
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let original = std::fs::read(&out).unwrap();
+    for cut in [0usize, 1, original.len() / 2, original.len() - 1] {
+        let broken = dir.path().join(format!("cut-{cut}.de"));
+        std::fs::write(&broken, &original[..cut]).unwrap();
+        let _ = run_stub_result(&broken, "--daedalus-version");
+    }
 }

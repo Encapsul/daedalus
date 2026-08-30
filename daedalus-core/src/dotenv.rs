@@ -17,13 +17,13 @@ static SECRET_RE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid regex")
 });
 
-/// parse_dotenv - parse dotenv.
-/// @path: file or directory path
-/// @io: io
+/// `parse_dotenv` - parse dotenv.
+/// `@path`: file or directory path
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<HashMap<String, String>>
+/// Return: Result containing `io::Result<HashMap<String, String>`>
 pub fn parse_dotenv(path: &Path) -> io::Result<HashMap<String, String>> {
     let content = fs::read_to_string(path)?;
     let mut env = HashMap::new();
@@ -48,8 +48,8 @@ pub fn parse_dotenv(path: &Path) -> io::Result<HashMap<String, String>> {
     Ok(env)
 }
 
-/// parse_line - parse line.
-/// @line: line
+/// `parse_line` - parse line.
+/// `@line`: line
 ///
 /// Description:
 ///
@@ -67,12 +67,12 @@ fn parse_line(line: &str) -> Option<(String, String)> {
     Some((key.to_string(), value.clone()))
 }
 
-/// strip_quotes - strip quotes.
-/// @s: s
+/// `strip_quotes` - strip quotes.
+/// `@s`: s
 ///
 /// Description:
 ///
-/// Return: the resulting string
+/// Return: the `resulting` string
 fn strip_quotes(s: &str) -> String {
     if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
         return s[1..s.len() - 1].to_string();
@@ -87,7 +87,7 @@ pub fn detect_secret_keys<S: BuildHasher>(env: &HashMap<String, String, S>) -> V
         .collect()
 }
 
-/// load_dotenv - load dotenv.
+/// `load_dotenv` - load dotenv.
 ///
 /// Description:
 ///
@@ -125,7 +125,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    /// test_parse_simple - test parse simple.
+    /// `test_parse_simple` - test parse simple.
     ///
     /// Description:
     ///
@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    /// test_parse_export_prefix - test parse export prefix.
+    /// `test_parse_export_prefix` - test parse export prefix.
     ///
     /// Description:
     ///
@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    /// test_parse_quotes - test parse quotes.
+    /// `test_parse_quotes` - test parse quotes.
     ///
     /// Description:
     ///
@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    /// test_parse_comments - test parse comments.
+    /// `test_parse_comments` - test parse comments.
     ///
     /// Description:
     ///
@@ -188,7 +188,7 @@ mod tests {
     }
 
     #[test]
-    /// test_detect_secrets - test detect secrets.
+    /// `test_detect_secrets` - test detect secrets.
     ///
     /// Description:
     ///
@@ -206,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    /// test_load_dotenv_not_found - test load dotenv not found.
+    /// `test_load_dotenv_not_found` - test load dotenv not found.
     ///
     /// Description:
     ///

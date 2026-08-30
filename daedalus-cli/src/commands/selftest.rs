@@ -25,6 +25,10 @@ pub struct SelftestArgs {
     /// Verbose output
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 /// run - run.

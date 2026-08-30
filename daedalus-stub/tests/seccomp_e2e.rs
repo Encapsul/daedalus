@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Seccomp e2e tests: verify --seccomp flag installs a denylist (not deny-all)
 //! and the packaged app can still execute allowed syscalls.
 

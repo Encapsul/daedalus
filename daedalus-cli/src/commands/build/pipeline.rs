@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 
 use super::args::{config_fingerprint, parse_target, BuildArgs, BuildPlan};
 use super::deps::{
-    check_php_platform_reqs, ensure_composer, ensure_go, ensure_node, ensure_python,
-    has_workspace_protocol, is_command_available,
+    check_php_platform_reqs, ensure_composer, ensure_deno, ensure_go, ensure_hugo, ensure_node,
+    ensure_python, ensure_wasmtime, has_workspace_protocol, is_command_available,
 };
 use super::payload::{copy_dir_recursive_with, create_squashfs_payload, include_points_to_env};
 use super::sign::sign_macos_binary;
@@ -179,6 +179,8 @@ pub(crate) fn build_single_target(
     let rust_binary_name = build_rust_binary(plan, target.as_deref(), &rootfs)?;
     let java_jar_name = build_java_binary(plan, &rootfs)?;
     let dotnet_binary_name = build_dotnet_binary(plan, target.as_deref(), &rootfs)?;
+    let hugo_binary_name = build_hugo_binary(plan, target.as_deref(), &rootfs)?;
+    let _deno_binary_name = build_deno_binary(plan, target.as_deref(), &rootfs)?;
 
     // ── Embed interpreter / N-API addons / RoadRunner into the rootfs ──
     // Skip when reusing rootfs — interpreter already present in payload.
@@ -203,7 +205,8 @@ pub(crate) fn build_single_target(
             .as_deref()
             .or(rust_binary_name.as_deref())
             .or(java_jar_name.as_deref())
-            .or(dotnet_binary_name.as_deref()),
+            .or(dotnet_binary_name.as_deref())
+            .or(hugo_binary_name.as_deref()),
     );
 
     let bun_features = build_bun_features(args, plan)?;
@@ -988,6 +991,94 @@ fn build_dotnet_binary(
     Ok(Some(binary_name))
 }
 
+/// Build a Hugo static site: run `hugo` to produce `public/`, then stage it
+/// into `rootfs/app/public/`. Returns the binary name for entrypoint resolution.
+fn build_hugo_binary(
+    plan: &BuildPlan,
+    target: Option<&str>,
+    rootfs: &Path,
+) -> Result<Option<String>> {
+    if plan.runtime != detect::Runtime::Hugo || plan.no_install {
+        return Ok(None);
+    }
+    let app_dir = &plan.app_dir;
+    let verbose = plan.verbose;
+
+    let hugo_bin_dir = ensure_hugo(target, verbose)?;
+    let hugo_bin = if cfg!(windows) {
+        hugo_bin_dir.join("hugo.exe")
+    } else {
+        hugo_bin_dir.join("hugo")
+    };
+
+    if verbose {
+        eprintln!("  building Hugo site...");
+    }
+    let status = std::process::Command::new(&hugo_bin)
+        .current_dir(app_dir)
+        .env("HUGO_ENV", "production")
+        .status()
+        .context("failed to run `hugo` — is hugo.toml/config.toml valid?")?;
+    if !status.success() {
+        anyhow::bail!("`hugo` build failed with exit code {status}");
+    }
+
+    let public_src = app_dir.join("public");
+    if !public_src.is_dir() {
+        anyhow::bail!("`hugo` did not produce public/ — check your config");
+    }
+
+    let public_dst = rootfs.join("app").join("public");
+    std::fs::create_dir_all(&public_dst).context("failed to create public/ staging dir")?;
+    copy_dir_recursive_with(&public_src, &public_dst, verbose)?;
+
+    if verbose {
+        eprintln!("  Hugo site built and staged to app/public");
+    }
+    Ok(Some("hugo".to_string()))
+}
+
+/// Pre-cache Deno dependencies with `deno cache`. No binary is produced;
+/// the cached deps are staged into rootfs for offline execution.
+fn build_deno_binary(
+    plan: &BuildPlan,
+    target: Option<&str>,
+    rootfs: &Path,
+) -> Result<Option<String>> {
+    if plan.runtime != detect::Runtime::Deno || plan.no_install {
+        return Ok(None);
+    }
+    let app_dir = &plan.app_dir;
+    let verbose = plan.verbose;
+
+    let deno_bin_dir = ensure_deno(target, verbose)?;
+    let deno_bin = if cfg!(windows) {
+        deno_bin_dir.join("deno.exe")
+    } else {
+        deno_bin_dir.join("deno")
+    };
+
+    let entry = detect::find_first_file(app_dir, &["main.ts", "main.js", "index.ts", "index.js"])
+        .context("no Deno entrypoint found (main.ts, main.js, index.ts, index.js)")?;
+
+    if verbose {
+        eprintln!("  caching Deno dependencies for {entry}...");
+    }
+    let status = std::process::Command::new(&deno_bin)
+        .args(["cache", &format!("/app/{}", entry)])
+        .current_dir(app_dir)
+        .status()
+        .context("failed to run `deno cache`")?;
+    if !status.success() {
+        anyhow::bail!("`deno cache` failed with exit code {status}");
+    }
+
+    if verbose {
+        eprintln!("  Deno dependencies cached");
+    }
+    Ok(None)
+}
+
 /// Map daedalus `--target` shorthand to .NET Runtime Identifier (RID).
 /// Full RIDs (e.g. `linux-musl-x64`) are passed through unchanged.
 fn dotnet_rid_from_target(target: Option<&str>) -> String {
@@ -1277,6 +1368,33 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
                         None
                     }
                 },
+                "deno" => match ensure_deno(target, verbose) {
+                    Ok(p) => Some(p.join("deno")),
+                    Err(e) => {
+                        eprintln!(
+                            "[daedalus] warning: failed to download cross-compiled deno: {e}"
+                        );
+                        None
+                    }
+                },
+                "hugo" => match ensure_hugo(target, verbose) {
+                    Ok(p) => Some(p.join("hugo")),
+                    Err(e) => {
+                        eprintln!("[daedalus] warning: failed to download hugo binary: {e}");
+                        None
+                    }
+                },
+                "electron" => {
+                    eprintln!("[daedalus] warning: no cross-compiled electron available, falling back to host");
+                    None
+                }
+                "wasmtime" => match ensure_wasmtime(target, verbose) {
+                    Ok(p) => Some(p.join("wasmtime")),
+                    Err(e) => {
+                        eprintln!("[daedalus] warning: failed to download wasmtime binary: {e}");
+                        None
+                    }
+                },
                 other => {
                     eprintln!("[daedalus] warning: no cross-compiled {other} available, falling back to host");
                     None
@@ -1323,6 +1441,9 @@ fn resolve_embed_interpreter(args: &BuildArgs, runtime_name: &str) -> Option<Str
         "php" => Some("php".to_string()),
         "ruby" => Some("ruby".to_string()),
         "deno" => Some("deno".to_string()),
+        "hugo" => Some("hugo".to_string()),
+        "electron" => Some("electron".to_string()),
+        "wasm" => Some("wasmtime".to_string()),
         _ => None,
     }
 }

@@ -49,7 +49,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// roundtrip - roundtrip.
+    /// `roundtrip` - roundtrip.
     ///
     /// Description:
     ///
@@ -63,7 +63,7 @@ mod tests {
     }
 
     #[test]
-    /// roundtrip_with_level - roundtrip with level.
+    /// `roundtrip_with_level` - roundtrip with level.
     ///
     /// Description:
     ///
@@ -81,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    /// compress_produces_smaller_output - compress produces smaller output.
+    /// `compress_produces_smaller_output` - compress produces smaller output.
     ///
     /// Description:
     ///

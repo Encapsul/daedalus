@@ -42,16 +42,16 @@ pub fn resolve_arch(target_arch: Option<&str>) -> u8 {
     }
 }
 
-/// apply_meta_options - apply meta options.
-/// @meta: metadata
-/// @serde_json: serde json
-/// @options: options
-/// @std: std
-/// @io: io
+/// `apply_meta_options` - apply meta options.
+/// `@meta`: metadata
+/// `@serde_json`: serde json
+/// `@options`: options
+/// `@std`: std
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing std::io::Result<()>
+/// Return: `Result` containing `std::io::Result<()>`
 fn apply_meta_options(meta: &mut serde_json::Value, options: &MetaOptions) -> std::io::Result<()> {
     if let Some(v) = &options.version {
         meta["version"] = serde_json::Value::String(v.clone());
@@ -114,7 +114,7 @@ fn apply_meta_options(meta: &mut serde_json::Value, options: &MetaOptions) -> st
 
 /// Build the metadata JSON bytes.
 #[allow(clippy::too_many_arguments)]
-/// build_meta_json - build meta json.
+/// `build_meta_json` - build meta json.
 ///
 /// Description:
 ///
@@ -377,13 +377,13 @@ struct FooterConfig {
     encrypted: bool,
 }
 
-/// build_footer - build footer.
-/// @cfg: cfg
-/// @input: input data
+/// `build_footer` - build footer.
+/// `@cfg`: cfg
+/// `@input`: input data
 ///
 /// Description:
 ///
-/// Return: the Footer
+/// Return: the `Footer`
 fn build_footer(cfg: FooterConfig, input: &AssemblyInput<'_>) -> Footer {
     Footer {
         format_version: cfg.fmt_ver,
@@ -420,14 +420,14 @@ fn write_footer(f: &mut dyn Write, footer: &Footer) -> std::io::Result<()> {
     }
 }
 
-/// io_err - io err.
-/// @msg: message
-/// @std: std
-/// @io: io
+/// `io_err` - io err.
+/// `@msg`: message
+/// `@std`: std
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: the std::io::Error
+/// Return: the `std::io::Error`
 fn io_err(msg: &str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
 }
@@ -461,13 +461,13 @@ fn chrono_now() -> String {
         .unwrap_or_default()
 }
 
-/// env_map - env map.
-/// @env: environment variables
-/// @serde_json: serde json
+/// `env_map` - env map.
+/// `@env`: environment variables
+/// `@serde_json`: serde json
 ///
 /// Description:
 ///
-/// Return: the serde_json::Value
+/// Return: the `serde_json::Value`
 fn env_map(env: &[(String, String)]) -> serde_json::Value {
     let map: serde_json::Map<String, serde_json::Value> = env
         .iter()
@@ -481,7 +481,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// fmt_version_squashfs_is_5 - fmt version squashfs is 5.
+    /// `fmt_version_squashfs_is_5` - fmt version squashfs is 5.
     ///
     /// Description:
     ///
@@ -491,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    /// fmt_version_signed_is_3 - fmt version signed is 3.
+    /// `fmt_version_signed_is_3` - fmt version signed is 3.
     ///
     /// Description:
     ///
@@ -501,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    /// fmt_version_default_is_2 - fmt version default is 2.
+    /// `fmt_version_default_is_2` - fmt version default is 2.
     ///
     /// Description:
     ///
@@ -511,7 +511,7 @@ mod tests {
     }
 
     #[test]
-    /// resolve_arch_aarch64 - resolve arch aarch64.
+    /// `resolve_arch_aarch64` - resolve arch aarch64.
     ///
     /// Description:
     ///
@@ -521,7 +521,7 @@ mod tests {
     }
 
     #[test]
-    /// resolve_arch_x86_64 - resolve arch x86 64.
+    /// `resolve_arch_x86_64` - resolve arch x86 64.
     ///
     /// Description:
     ///
@@ -531,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    /// assemble_creates_valid_file - assemble creates valid file.
+    /// `assemble_creates_valid_file` - assemble creates valid file.
     ///
     /// Description:
     ///
@@ -567,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    /// assemble_v3plus_footer_roundtrips_sig_offset - assemble v3plus footer roundtrips sig offset.
+    /// `assemble_v3plus_footer_roundtrips_sig_offset` - assemble v3plus footer roundtrips sig offset.
     ///
     /// Description:
     ///
@@ -605,7 +605,7 @@ mod tests {
     }
 
     #[test]
-    /// build_meta_json_produces_valid_json - build meta json produces valid json.
+    /// `build_meta_json_produces_valid_json` - build meta json produces valid json.
     ///
     /// Description:
     ///
@@ -657,7 +657,7 @@ mod tests {
     }
 
     #[test]
-    /// chrono_now_produces_iso8601 - chrono now produces iso8601.
+    /// `chrono_now_produces_iso8601` - chrono now produces iso8601.
     ///
     /// Description:
     ///
@@ -672,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    /// disabled_sisr_is_byte_identical_to_classic - disabled sisr is byte identical to classic.
+    /// `disabled_sisr_is_byte_identical_to_classic` - disabled sisr is byte identical to classic.
     ///
     /// Description:
     ///
@@ -719,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    /// enabled_sisr_writes_section_and_remote_manifest - enabled sisr writes section and remote manifest.
+    /// `enabled_sisr_writes_section_and_remote_manifest` - enabled sisr writes section and remote manifest.
     ///
     /// Description:
     ///

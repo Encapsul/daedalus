@@ -2,12 +2,12 @@
 use std::path::{Path, PathBuf};
 
 #[allow(clippy::cast_precision_loss)]
-/// format_size - format size.
-/// @bytes: bytes
+/// `format_size` - format size.
+/// `@bytes`: bytes
 ///
 /// Description:
 ///
-/// Return: the resulting string
+/// Return: the `resulting` string
 pub fn format_size(bytes: u64) -> String {
     if bytes < 1024 {
         return format!("{bytes}B");
@@ -18,11 +18,11 @@ pub fn format_size(bytes: u64) -> String {
     format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
 }
 
-/// cache_dir - cache dir.
+/// `cache_dir` - cache dir.
 ///
 /// Description:
 ///
-/// Return: the PathBuf
+/// Return: the `PathBuf`
 pub fn cache_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -86,13 +86,13 @@ impl BuildCache {
     /// `max_entries` caps the number of cached builds; oldest entries are
     /// evicted first when the limit is exceeded.
     #[must_use]
-    /// new - new.
-    /// @_app_dir:  app dir
-    /// @max_entries: max entries
+    /// `new` - new.
+    /// `@_app_dir`:  app dir
+    /// `@max_entries`: max entries
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     pub fn new(_app_dir: &Path, max_entries: usize) -> Self {
         Self {
             base_dir: cache_dir().join("builds"),
@@ -154,7 +154,7 @@ impl BuildCache {
         Ok(())
     }
 
-    /// list_entries - list entries.
+    /// `list_entries` - list entries.
     ///
     /// Description:
     ///
@@ -170,7 +170,7 @@ impl BuildCache {
         Some(entries)
     }
 
-    /// evict_oldest - evict oldest.
+    /// `evict_oldest` - evict oldest.
     ///
     /// Description:
     ///
@@ -227,11 +227,11 @@ impl BuildCache {
     }
 }
 
-/// default_key_dir - get default key dir.
+/// `default_key_dir` - get default key dir.
 ///
 /// Description:
 ///
-/// Return: the PathBuf
+/// Return: the `PathBuf`
 pub fn default_key_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
         PathBuf::from(xdg).join("daedalus").join("keys")
@@ -278,24 +278,24 @@ pub fn trusted_keys_dir() -> PathBuf {
 /// URLs encode the hash directly: `{base}/{hash}`. No JSON metadata is needed
 /// on the wire because the hash is the content address.
 pub trait RemoteCacheBackend: Send + Sync {
-    /// get - get.
-    /// @hash: hash value
-    /// @std: std
-    /// @io: io
+    /// `get` - get.
+    /// `@hash`: hash value
+    /// `@std`: std
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing std::io::Result<Option<Vec<u8>>>;
+    /// Return: Result containing `std::io::Result<Option<Vec<u8>>>`
     fn get(&self, hash: &str) -> std::io::Result<Option<Vec<u8>>>;
-    /// put - put.
-    /// @hash: hash value
-    /// @bytes: bytes
-    /// @std: std
-    /// @io: io
+    /// `put` - put.
+    /// `@hash`: hash value
+    /// `@bytes`: bytes
+    /// `@std`: std
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing std::io::Result<()>;
+    /// Return: Result containing `std::io::Result<()>`;
     fn put(&self, hash: &str, bytes: &[u8]) -> std::io::Result<()>;
 }
 
@@ -308,26 +308,26 @@ pub struct FsRemoteCache {
 }
 
 impl FsRemoteCache {
-    /// new - new.
-    /// @root: root
+    /// `new` - new.
+    /// `@root`: root
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }
 }
 
 impl RemoteCacheBackend for FsRemoteCache {
-    /// get - get.
-    /// @hash: hash value
-    /// @std: std
-    /// @io: io
+    /// `get` - get.
+    /// `@hash`: hash value
+    /// `@std`: std
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing std::io::Result<Option<Vec<u8>>>
+    /// Return: Result containing `std::io::Result<Option<Vec<u8>`>>
     fn get(&self, hash: &str) -> std::io::Result<Option<Vec<u8>>> {
         let path = self.root.join(hash);
         match std::fs::read(&path) {
@@ -337,15 +337,15 @@ impl RemoteCacheBackend for FsRemoteCache {
         }
     }
 
-    /// put - put.
-    /// @hash: hash value
-    /// @bytes: bytes
-    /// @std: std
-    /// @io: io
+    /// `put` - put.
+    /// `@hash`: hash value
+    /// `@bytes`: bytes
+    /// `@std`: std
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing std::io::Result<()>
+    /// Return: Result containing `std::io::Result<()>`
     fn put(&self, hash: &str, bytes: &[u8]) -> std::io::Result<()> {
         let path = self.root.join(hash);
         std::fs::create_dir_all(&self.root)?;
@@ -363,7 +363,7 @@ pub struct RemoteBuildCache {
 }
 
 impl RemoteBuildCache {
-    /// new - new.
+    /// `new` - new.
     ///
     /// Description:
     ///
@@ -424,11 +424,11 @@ mod tests {
     }
 
     impl XdgGuard {
-        /// new - new.
+        /// `new` - new.
         ///
         /// Description:
         ///
-        /// Return: the Self
+        /// Return: the `Self`
         fn new() -> Self {
             let guard = ENV_LOCK
                 .lock()
@@ -436,8 +436,8 @@ mod tests {
             let prev = std::env::var("XDG_CACHE_HOME").ok();
             Self { _lock: guard, prev }
         }
-        /// redirect - redirect.
-        /// @path: file or directory path
+        /// `redirect` - redirect.
+        /// `@path`: file or directory path
         ///
         /// Description:
         ///
@@ -448,7 +448,7 @@ mod tests {
     }
 
     impl Drop for XdgGuard {
-        /// drop - drop.
+        /// `drop` - drop.
         ///
         /// Description:
         ///
@@ -467,20 +467,20 @@ mod tests {
         prev: Option<String>,
     }
     impl EnvGuard {
-        /// new - new.
-        /// @var: var
+        /// `new` - new.
+        /// `@var`: var
         ///
         /// Description:
         ///
-        /// Return: the Self
+        /// Return: the `Self`
         fn new(var: &'static str) -> Self {
             Self {
                 var,
                 prev: std::env::var(var).ok(),
             }
         }
-        /// set - set.
-        /// @val: value
+        /// `set` - set.
+        /// `@val`: value
         ///
         /// Description:
         ///
@@ -488,7 +488,7 @@ mod tests {
         fn set(&self, val: &str) {
             std::env::set_var(self.var, val);
         }
-        /// clear - clear.
+        /// `clear` - clear.
         ///
         /// Description:
         ///
@@ -498,7 +498,7 @@ mod tests {
         }
     }
     impl Drop for EnvGuard {
-        /// drop - drop.
+        /// `drop` - drop.
         ///
         /// Description:
         ///
@@ -512,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    /// build_cache_store_and_find - build cache store and find.
+    /// `build_cache_store_and_find` - build cache store and find.
     ///
     /// Description:
     ///
@@ -535,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    /// build_cache_targets_do_not_collide - build cache targets do not collide.
+    /// `build_cache_targets_do_not_collide` - build cache targets do not collide.
     ///
     /// Description:
     ///
@@ -565,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    /// build_cache_configs_do_not_collide - build cache configs do not collide.
+    /// `build_cache_configs_do_not_collide` - build cache configs do not collide.
     ///
     /// Description:
     ///
@@ -594,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    /// build_cache_miss - build cache miss.
+    /// `build_cache_miss` - build cache miss.
     ///
     /// Description:
     ///
@@ -610,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    /// build_cache_clear - build cache clear.
+    /// `build_cache_clear` - build cache clear.
     ///
     /// Description:
     ///
@@ -632,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    /// build_cache_eviction - build cache eviction.
+    /// `build_cache_eviction` - build cache eviction.
     ///
     /// Description:
     ///
@@ -659,7 +659,7 @@ mod tests {
     }
 
     #[test]
-    /// trusted_keys_dir_matches_stub_default - trusted keys dir matches stub default.
+    /// `trusted_keys_dir_matches_stub_default` - trusted keys dir matches stub default.
     ///
     /// Description:
     ///
@@ -685,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    /// fs_remote_cache_roundtrip - fs remote cache roundtrip.
+    /// `fs_remote_cache_roundtrip` - fs remote cache roundtrip.
     ///
     /// Description:
     ///
@@ -709,7 +709,7 @@ mod tests {
     }
 
     #[test]
-    /// fs_remote_cache_miss_falls_back_to_local - fs remote cache miss falls back to local.
+    /// `fs_remote_cache_miss_falls_back_to_local` - fs remote cache miss falls back to local.
     ///
     /// Description:
     ///

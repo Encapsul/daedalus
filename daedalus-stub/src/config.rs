@@ -38,11 +38,11 @@ pub struct DatabaseConfig {
 
 #[allow(dead_code)]
 impl AppConfig {
-    /// load - load.
+    /// `load` - load.
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     pub fn load() -> Self {
         let mut config = Self::default();
 
@@ -71,7 +71,7 @@ impl AppConfig {
         config
     }
 
-    /// find_local_config - find local config.
+    /// `find_local_config` - find local config.
     ///
     /// Description:
     ///
@@ -94,7 +94,7 @@ impl AppConfig {
         None
     }
 
-    /// find_global_config - find global config.
+    /// `find_global_config` - find global config.
     ///
     /// Description:
     ///
@@ -110,13 +110,13 @@ impl AppConfig {
         None
     }
 
-    /// load_from_file - load from file.
-    /// @path: file or directory path
-    /// @io: io
+    /// `load_from_file` - load from file.
+    /// `@path`: file or directory path
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing io::Result<Self>
+    /// Return: Result containing `io::Result<Self>`
     fn load_from_file(path: &PathBuf) -> io::Result<Self> {
         let contents = fs::read_to_string(path)?;
         let config: Self =
@@ -146,9 +146,9 @@ impl AppConfig {
         None
     }
 
-    /// warn_if_unsafe_config - warn if unsafe config.
-    /// @path: file or directory path
-    /// @role: role
+    /// `warn_if_unsafe_config` - warn if unsafe config.
+    /// `@path`: file or directory path
+    /// `@role`: role
     ///
     /// Description:
     ///
@@ -164,8 +164,8 @@ impl AppConfig {
         false
     }
 
-    /// merge - merge.
-    /// @other: other
+    /// `merge` - merge.
+    /// `@other`: other
     ///
     /// Description:
     ///
@@ -209,7 +209,7 @@ impl AppConfig {
         }
     }
 
-    /// apply_env_overrides - apply env overrides.
+    /// `apply_env_overrides` - apply env overrides.
     ///
     /// Description:
     ///
@@ -260,14 +260,14 @@ impl AppConfig {
 
 /// Prompt for missing secrets with masked input
 #[allow(dead_code)]
-/// prompt_for_secrets - prompt for secrets.
-/// @config: configuration
-/// @required: required
-/// @io: io
+/// `prompt_for_secrets` - prompt for secrets.
+/// `@config`: configuration
+/// `@required`: required
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<()>
+/// Return: Result containing `io::Result<()>`
 pub fn prompt_for_secrets(config: &mut AppConfig, required: &[String]) -> io::Result<()> {
     if !std::io::stdin().is_terminal() {
         return Ok(());
@@ -337,8 +337,8 @@ fn read_line_masked() -> io::Result<String> {
 
 #[allow(dead_code)]
 impl AppConfig {
-    /// get_secret - get secret.
-    /// @key: key
+    /// `get_secret` - get secret.
+    /// `@key`: key
     ///
     /// Description:
     ///
@@ -347,9 +347,9 @@ impl AppConfig {
         self.secrets.as_ref()?.get(key)
     }
 
-    /// set_secret - set secret.
-    /// @key: key
-    /// @value: value
+    /// `set_secret` - set secret.
+    /// `@key`: key
+    /// `@value`: value
     ///
     /// Description:
     ///
@@ -364,7 +364,7 @@ impl AppConfig {
             .insert(key.to_string(), value);
     }
 
-    /// get_database_url - get database url.
+    /// `get_database_url` - get database url.
     ///
     /// Description:
     ///
@@ -379,7 +379,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// test_config_default - test config default.
+    /// `test_config_default` - test config default.
     ///
     /// Description:
     ///
@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    /// test_config_merge - test config merge.
+    /// `test_config_merge` - test config merge.
     ///
     /// Description:
     ///
@@ -435,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    /// test_set_secret_creates_map - test set secret creates map.
+    /// `test_set_secret_creates_map` - test set secret creates map.
     ///
     /// Description:
     ///
@@ -450,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    /// test_merge_local_wins_over_global - test merge local wins over global.
+    /// `test_merge_local_wins_over_global` - test merge local wins over global.
     ///
     /// Description:
     ///
@@ -502,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    /// test_load_from_toml - test load from toml.
+    /// `test_load_from_toml` - test load from toml.
     ///
     /// Description:
     ///
@@ -528,7 +528,7 @@ db_password = "secret"
     }
 
     #[test]
-    /// generic_config_name_is_perilous - generic config name is perilous.
+    /// `generic_config_name_is_perilous` - generic config name is perilous.
     ///
     /// Description:
     ///
@@ -553,7 +553,7 @@ db_password = "secret"
 
     #[cfg(unix)]
     #[test]
-    /// world_writable_config_is_perilous - world writable config is perilous.
+    /// `world_writable_config_is_perilous` - world writable config is perilous.
     ///
     /// Description:
     ///

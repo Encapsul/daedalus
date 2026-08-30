@@ -8,6 +8,10 @@ pub struct DoctorArgs {
     #[arg(long)]
     pub json: bool,
 
+    /// Machine-readable plain output (tab-separated key=value)
+    #[arg(long)]
+    pub plain: bool,
+
     /// Quiet output
     #[arg(short, long)]
     pub quiet: bool,
@@ -128,7 +132,9 @@ pub fn run(args: DoctorArgs) -> Result<()> {
                 return Ok(());
             }
         } else if args.no_input && !args.force {
-            anyhow::bail!("--no-input passed but --fix requires confirmation; pass --force to skip");
+            anyhow::bail!(
+                "--no-input passed but --fix requires confirmation; pass --force to skip"
+            );
         }
 
         for check in &mut checks {

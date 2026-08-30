@@ -52,7 +52,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// normalize_base_url_accepts_http_and_https - normalize base url accepts http and https.
+    /// `normalize_base_url_accepts_http_and_https` - normalize base url accepts http and https.
     ///
     /// Description:
     ///
@@ -73,7 +73,7 @@ mod tests {
     }
 
     #[test]
-    /// normalize_base_url_rejects_unsupported_schemes - normalize base url rejects unsupported schemes.
+    /// `normalize_base_url_rejects_unsupported_schemes` - normalize base url rejects unsupported schemes.
     ///
     /// Description:
     ///
@@ -86,7 +86,7 @@ mod tests {
     }
 
     #[test]
-    /// resolve_update_url_prefers_the_equals_argument - resolve update url prefers the equals argument.
+    /// `resolve_update_url_prefers_the_equals_argument` - resolve update url prefers the equals argument.
     ///
     /// Description:
     ///
@@ -127,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    /// resolve_update_url_does_not_swallow_app_positional_arg - resolve update url does not swallow app positional arg.
+    /// `resolve_update_url_does_not_swallow_app_positional_arg` - resolve update url does not swallow app positional arg.
     ///
     /// Description:
     ///
@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    /// resolve_update_url_falls_back_to_embedded_metadata - resolve update url falls back to embedded metadata.
+    /// `resolve_update_url_falls_back_to_embedded_metadata` - resolve update url falls back to embedded metadata.
     ///
     /// Description:
     ///
@@ -205,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    /// resolve_update_url_errors_without_any_source - resolve update url errors without any source.
+    /// `resolve_update_url_errors_without_any_source` - resolve update url errors without any source.
     ///
     /// Description:
     ///
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    /// resolve_update_url_handles_equals_syntax - resolve update url handles equals syntax.
+    /// `resolve_update_url_handles_equals_syntax` - resolve update url handles equals syntax.
     ///
     /// Description:
     ///

@@ -1,3 +1,4 @@
+#![allow(clippy::doc_markdown)]
 //! Chaos-monkey properties for the AES-256-GCM payload encryption path.
 //!
 //! Corrupted input must fail CLOSED: every bit-flip, truncation, or key

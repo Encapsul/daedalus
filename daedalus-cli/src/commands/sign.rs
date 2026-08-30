@@ -60,7 +60,9 @@ pub fn run(args: SignArgs) -> Result<()> {
 
     if !args.force && !args.quiet && !args.no_input {
         if !is_interactive() {
-            anyhow::bail!("interactive prompt required; pass --force or --no-input for non-interactive use");
+            anyhow::bail!(
+                "interactive prompt required; pass --force or --no-input for non-interactive use"
+            );
         }
         eprint!("Sign {}? [y/N] ", args.file.display());
         let mut input = String::new();
@@ -70,7 +72,9 @@ pub fn run(args: SignArgs) -> Result<()> {
             return Ok(());
         }
     } else if args.no_input && !args.force && !args.quiet {
-        anyhow::bail!("--no-input passed but operation requires confirmation; pass --force to skip");
+        anyhow::bail!(
+            "--no-input passed but operation requires confirmation; pass --force to skip"
+        );
     }
 
     sign_file(&args.file, &key_path, args.quiet)?;

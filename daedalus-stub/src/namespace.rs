@@ -17,7 +17,7 @@ use std::path::Path;
 /// container can fake these files. Combined with namespace isolation and
 /// Landlock/seccomp, it raises the bar against container escapes.
 #[cfg(target_os = "linux")]
-/// running_in_container - running in container.
+/// `running_in_container` - running in container.
 ///
 /// Description:
 ///
@@ -35,12 +35,12 @@ pub fn running_in_container() -> bool {
 
 /// Enter a new user + mount namespace (unprivileged). Linux-only.
 #[cfg(target_os = "linux")]
-/// enter_userns - enter userns.
-/// @io: io
+/// `enter_userns` - enter userns.
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<()>
+/// Return: Result containing `io::Result<()>`
 pub fn enter_userns() -> io::Result<()> {
     // SAFETY: getuid(2) and getgid(2) are always safe, returning the
     // caller's UID/GID.
@@ -66,14 +66,14 @@ pub fn enter_userns() -> io::Result<()> {
 
 /// Write a procfs file (`uid_map`/`gid_map`). Linux-only.
 #[cfg(target_os = "linux")]
-/// write_proc - write proc.
-/// @path: file or directory path
-/// @contents: contents
-/// @io: io
+/// `write_proc` - write proc.
+/// `@path`: file or directory path
+/// `@contents`: contents
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<()>
+/// Return: Result containing `io::Result<()>`
 pub fn write_proc(path: &str, contents: &str) -> io::Result<()> {
     let mut f = File::create(path)?;
     f.write_all(contents.as_bytes())?;

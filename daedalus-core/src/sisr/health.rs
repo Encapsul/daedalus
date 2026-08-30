@@ -35,11 +35,11 @@ pub struct HealthCheckPolicy {
 }
 
 impl Default for HealthCheckPolicy {
-    /// default - default.
+    /// `default` - default.
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     fn default() -> Self {
         Self {
             timeout_ms: DEFAULT_TIMEOUT_MS,
@@ -92,12 +92,12 @@ impl HealthStore {
         &self.dir
     }
 
-    /// record_path - record path.
-    /// @version_id: version id
+    /// `record_path` - record path.
+    /// `@version_id`: version id
     ///
     /// Description:
     ///
-    /// Return: the PathBuf
+    /// Return: the `PathBuf`
     fn record_path(&self, version_id: &str) -> PathBuf {
         self.dir.join(format!("{version_id}.json"))
     }
@@ -211,13 +211,13 @@ impl HealthStore {
         Ok(false)
     }
 
-    /// save - save.
-    /// @status: status code
-    /// @io: io
+    /// `save` - save.
+    /// `@status`: status code
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing io::Result<()>
+    /// Return: Result containing `io::Result<()>`
     fn save(&self, status: &HealthStatus) -> io::Result<()> {
         fs::create_dir_all(&self.dir)?;
         let tmp = self.dir.join(format!(".{}.tmp", status.version_id));
@@ -228,11 +228,11 @@ impl HealthStore {
     }
 }
 
-/// unix_secs - unix secs.
+/// `unix_secs` - unix secs.
 ///
 /// Description:
 ///
-/// Return: the u64
+/// Return: the `u64`
 fn unix_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -243,12 +243,12 @@ fn unix_secs() -> u64 {
 mod tests {
     use super::*;
 
-    /// store - store.
-    /// @tempfile: tempfile
+    /// `store` - store.
+    /// `@tempfile`: tempfile
     ///
     /// Description:
     ///
-    /// Return: the (tempfile::TempDir, HealthStore)
+    /// Return: the `(tempfile::TempDir, HealthStore)`
     fn store() -> (tempfile::TempDir, HealthStore) {
         let tmp = tempfile::tempdir().unwrap();
         let store = HealthStore::new(&tmp.path().join("health"));
@@ -256,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    /// load_returns_none_for_unknown_version - load returns none for unknown version.
+    /// `load_returns_none_for_unknown_version` - load returns none for unknown version.
     ///
     /// Description:
     ///
@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    /// begin_creates_pending_record - begin creates pending record.
+    /// `begin_creates_pending_record` - begin creates pending record.
     ///
     /// Description:
     ///
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    /// begin_preserves_failure_counter_across_reinstalls - begin preserves failure counter across reinstalls.
+    /// `begin_preserves_failure_counter_across_reinstalls` - begin preserves failure counter across reinstalls.
     ///
     /// Description:
     ///
@@ -295,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    /// begin_will_not_rearm_a_quarantined_version - begin will not rearm a quarantined version.
+    /// `begin_will_not_rearm_a_quarantined_version` - begin will not rearm a quarantined version.
     ///
     /// Description:
     ///
@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    /// confirm_marks_healthy - confirm marks healthy.
+    /// `confirm_marks_healthy` - confirm marks healthy.
     ///
     /// Description:
     ///
@@ -326,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    /// record_failure_quarantines_at_threshold - record failure quarantines at threshold.
+    /// `record_failure_quarantines_at_threshold` - record failure quarantines at threshold.
     ///
     /// Description:
     ///
@@ -341,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    /// zero_max_attempts_never_quarantines - zero max attempts never quarantines.
+    /// `zero_max_attempts_never_quarantines` - zero max attempts never quarantines.
     ///
     /// Description:
     ///
@@ -354,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    /// has_quarantined_scans_the_store - check whether quarantined scans the store.
+    /// `has_quarantined_scans_the_store` - check whether quarantined scans the store.
     ///
     /// Description:
     ///
@@ -369,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    /// has_quarantined_is_false_for_missing_dir - check whether quarantined is false for missing dir.
+    /// `has_quarantined_is_false_for_missing_dir` - check whether quarantined is false for missing dir.
     ///
     /// Description:
     ///

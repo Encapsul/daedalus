@@ -80,14 +80,14 @@ pub fn copy_include_paths(sources: &[PathBuf], dest: &Path, base_dir: &Path) -> 
     Ok(count)
 }
 
-/// copy_dir_recursive - copy dir recursive.
-/// @src: source
-/// @dst: destination
-/// @io: io
+/// `copy_dir_recursive` - copy dir recursive.
+/// `@src`: source
+/// `@dst`: destination
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<()>
+/// Return: Result containing `io::Result<()>`
 fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
@@ -161,8 +161,8 @@ pub fn hash_lock_file(app_dir: &Path) -> String {
     String::new()
 }
 
-/// walk_dir_sorted - walk dir sorted.
-/// @dir: directory path
+/// `walk_dir_sorted` - walk dir sorted.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -198,7 +198,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    /// test_hash_app_files_deterministic - test hash app files deterministic.
+    /// `test_hash_app_files_deterministic` - test hash app files deterministic.
     ///
     /// Description:
     ///
@@ -212,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    /// test_hash_app_files_ignores_env - test hash app files ignores env.
+    /// `test_hash_app_files_ignores_env` - test hash app files ignores env.
     ///
     /// Description:
     ///
@@ -232,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    /// test_hash_lock_file_empty - test hash lock file empty.
+    /// `test_hash_lock_file_empty` - test hash lock file empty.
     ///
     /// Description:
     ///
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    /// test_hash_lock_file_requirements - test hash lock file requirements.
+    /// `test_hash_lock_file_requirements` - test hash lock file requirements.
     ///
     /// Description:
     ///
@@ -256,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    /// test_copy_include_paths - test copy include paths.
+    /// `test_copy_include_paths` - test copy include paths.
     ///
     /// Description:
     ///
@@ -278,7 +278,7 @@ mod tests {
     }
 
     #[test]
-    /// test_include_outside_base_is_rejected - test include outside base is rejected.
+    /// `test_include_outside_base_is_rejected` - test include outside base is rejected.
     ///
     /// Description:
     ///
@@ -302,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    /// test_include_with_dotdot_component_is_rejected - test include with dotdot component is rejected.
+    /// `test_include_with_dotdot_component_is_rejected` - test include with dotdot component is rejected.
     ///
     /// Description:
     ///

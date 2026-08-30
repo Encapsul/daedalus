@@ -138,13 +138,13 @@ fn fixed<const N: usize>(b: &[u8]) -> io::Result<[u8; N]> {
         .map_err(|_| err("truncated SISR footer extension"))
 }
 
-/// err - err.
-/// @msg: message
-/// @io: io
+/// `err` - err.
+/// `@msg`: message
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: the io::Error
+/// Return: the `std::io::Error`
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -154,11 +154,11 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
-    /// ext - ext.
+    /// `ext` - ext.
     ///
     /// Description:
     ///
-    /// Return: the SisrFooterExt
+    /// Return: the `SisrFooterExt`
     fn ext() -> SisrFooterExt {
         SisrFooterExt {
             sisr_version: SISR_VERSION,
@@ -169,12 +169,12 @@ mod tests {
         }
     }
 
-    /// v3_footer - v3 footer.
-    /// @flags: flags
+    /// `v3_footer` - v3 footer.
+    /// `@flags`: flags
     ///
     /// Description:
     ///
-    /// Return: the [u8; 92]
+    /// Return: the `[u8; 92]`
     fn v3_footer(flags: u8) -> [u8; 92] {
         let core = format::Footer {
             format_version: 5,
@@ -195,17 +195,17 @@ mod tests {
         full
     }
 
-    /// footer_size_hint - footer size hint.
+    /// `footer_size_hint` - footer size hint.
     ///
     /// Description:
     ///
-    /// Return: the u64
+    /// Return: the `u64`
     fn footer_size_hint() -> u64 {
         format::V3_FOOTER_SIZE
     }
 
     #[test]
-    /// size_is_110_bytes - size is 110 bytes.
+    /// `size_is_110_bytes` - size is 110 bytes.
     ///
     /// Description:
     ///
@@ -216,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    /// header_overhead_stays_under_4kib - header overhead stays under 4kib.
+    /// `header_overhead_stays_under_4kib` - header overhead stays under 4kib.
     ///
     /// Description:
     ///
@@ -240,7 +240,7 @@ mod tests {
     }
 
     #[test]
-    /// pack_parse_roundtrip_is_bit_exact - pack parse roundtrip is bit exact.
+    /// `pack_parse_roundtrip_is_bit_exact` - pack parse roundtrip is bit exact.
     ///
     /// Description:
     ///
@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_rejects_short_buffer - parse rejects short buffer.
+    /// `parse_rejects_short_buffer` - parse rejects short buffer.
     ///
     /// Description:
     ///
@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    /// read_from_locates_ext_before_footer - read from locates ext before footer.
+    /// `read_from_locates_ext_before_footer` - read from locates ext before footer.
     ///
     /// Description:
     ///
@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    /// read_from_returns_none_when_absent - read from returns none when absent.
+    /// `read_from_returns_none_when_absent` - read from returns none when absent.
     ///
     /// Description:
     ///
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    /// read_from_returns_none_for_small_files - read from returns none for small files.
+    /// `read_from_returns_none_for_small_files` - read from returns none for small files.
     ///
     /// Description:
     ///
@@ -312,7 +312,7 @@ mod tests {
     }
 
     #[test]
-    /// read_sisr_roundtrip_full_file - read sisr roundtrip full file.
+    /// `read_sisr_roundtrip_full_file` - read sisr roundtrip full file.
     ///
     /// Description:
     ///
@@ -345,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    /// read_sisr_returns_none_for_legacy_file - read sisr returns none for legacy file.
+    /// `read_sisr_returns_none_for_legacy_file` - read sisr returns none for legacy file.
     ///
     /// Description:
     ///
@@ -358,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    /// read_sisr_preserves_legacy_footer_semantics - read sisr preserves legacy footer semantics.
+    /// `read_sisr_preserves_legacy_footer_semantics` - read sisr preserves legacy footer semantics.
     ///
     /// Description:
     ///
@@ -390,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    /// read_sisr_rejects_out_of_bounds_chunk_table - read sisr rejects out of bounds chunk table.
+    /// `read_sisr_rejects_out_of_bounds_chunk_table` - read sisr rejects out of bounds chunk table.
     ///
     /// Description:
     ///
@@ -411,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    /// read_sisr_rejects_offset_overflow - read sisr rejects offset overflow.
+    /// `read_sisr_rejects_offset_overflow` - read sisr rejects offset overflow.
     ///
     /// Description:
     ///
@@ -432,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    /// read_sisr_rejects_missing_manifest_for_set_flag - read sisr rejects missing manifest for set flag.
+    /// `read_sisr_rejects_missing_manifest_for_set_flag` - read sisr rejects missing manifest for set flag.
     ///
     /// Description:
     ///
@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    /// read_sisr_rejects_oversized_manifest - read sisr rejects oversized manifest.
+    /// `read_sisr_rejects_oversized_manifest` - read sisr rejects oversized manifest.
     ///
     /// Description:
     ///
@@ -483,11 +483,11 @@ mod proptests {
     use proptest::prelude::*;
     use std::io::Cursor;
 
-    /// signature - signature.
+    /// `signature` - signature.
     ///
     /// Description:
     ///
-    /// Return: the impl Strategy<Value = [u8; 64]>
+    /// Return: the `impl` Strategy<Value = [u8; 64]>
     fn signature() -> impl Strategy<Value = [u8; 64]> {
         prop::collection::vec(any::<u8>(), 64).prop_map(|v| {
             let mut arr = [0u8; 64];
@@ -498,7 +498,7 @@ mod proptests {
 
     proptest! {
         #[test]
-        /// arbitrary_bytes_never_panic - arbitrary bytes never panic.
+        /// `arbitrary_bytes_never_panic` - arbitrary bytes never panic.
         ///
         /// Description:
         ///
@@ -510,7 +510,7 @@ mod proptests {
         }
 
         #[test]
-        /// truncated_buf_is_rejected - truncated buf is rejected.
+        /// `truncated_buf_is_rejected` - truncated buf is rejected.
         ///
         /// Description:
         ///
@@ -524,7 +524,7 @@ mod proptests {
         }
 
         #[test]
-        /// pack_roundtrips - pack roundtrips.
+        /// `pack_roundtrips` - pack roundtrips.
         ///
         /// Description:
         ///
@@ -548,7 +548,7 @@ mod proptests {
         }
 
         #[test]
-        /// read_sisr_arbitrary_bytes_never_panic - read sisr arbitrary bytes never panic.
+        /// `read_sisr_arbitrary_bytes_never_panic` - read sisr arbitrary bytes never panic.
         ///
         /// Description:
         ///

@@ -48,6 +48,10 @@ pub struct VerifyArgs {
     /// Write JSON output to file (requires --json)
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 /// run - run.

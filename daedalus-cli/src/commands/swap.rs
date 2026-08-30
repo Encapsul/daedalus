@@ -38,6 +38,10 @@ pub struct SwapArgs {
     /// Quiet output
     #[arg(short, long, default_value = "false", hide = true)]
     pub quiet: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 /// run - run.
@@ -279,6 +283,7 @@ mod tests {
             new_file: PathBuf::from("/tmp/new-runtime"),
             output: None,
             quiet: false,
+            no_input: false,
         };
         assert_eq!(args.binary, PathBuf::from("/tmp/app.daedalus"));
         assert_eq!(args.layer_name, "runtime");
@@ -322,6 +327,7 @@ mod tests {
             new_file: new_file.clone(),
             output: Some(output.clone()),
             quiet: true,
+            no_input: false,
         };
         run(args).expect("swap should succeed");
 
@@ -357,6 +363,7 @@ mod tests {
             new_file: tmp.path().join("new.txt"),
             output: Some(tmp.path().join("out.daedalus")),
             quiet: true,
+            no_input: false,
         };
         let result = run(args);
         assert!(result.is_err(), "swap should reject SISR binary");

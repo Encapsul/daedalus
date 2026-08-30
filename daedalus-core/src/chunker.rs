@@ -76,11 +76,11 @@ impl FastCDC {
 }
 
 impl Default for FastCDC {
-    /// default - default.
+    /// `default` - default.
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     fn default() -> Self {
         // 2 KiB / 8 KiB / 32 KiB — valid by construction (min > 0, ordered).
         Self {
@@ -92,8 +92,8 @@ impl Default for FastCDC {
 }
 
 impl Chunker for FastCDC {
-    /// chunk - chunk.
-    /// @data: data
+    /// `chunk` - chunk.
+    /// `@data`: data
     ///
     /// Description:
     ///
@@ -179,17 +179,17 @@ mod tests {
             .collect()
     }
 
-    /// chunker - chunker.
+    /// `chunker` - chunker.
     ///
     /// Description:
     ///
-    /// Return: the FastCDC
+    /// Return: the `FastCDC`
     fn chunker() -> FastCDC {
         FastCDC::new(1024).expect("valid average size")
     }
 
     #[test]
-    /// chunks_cover_buffer_exactly - chunks cover buffer exactly.
+    /// `chunks_cover_buffer_exactly` - chunks cover buffer exactly.
     ///
     /// Description:
     ///
@@ -207,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    /// chunk_sizes_within_bounds - chunk sizes within bounds.
+    /// `chunk_sizes_within_bounds` - chunk sizes within bounds.
     ///
     /// Description:
     ///
@@ -224,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    /// deterministic_across_instances_and_runs - deterministic across instances and runs.
+    /// `deterministic_across_instances_and_runs` - deterministic across instances and runs.
     ///
     /// Description:
     ///
@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    /// hashes_match_content - hashes match content.
+    /// `hashes_match_content` - hashes match content.
     ///
     /// Description:
     ///
@@ -250,7 +250,7 @@ mod tests {
     }
 
     #[test]
-    /// edit_is_local_to_touched_chunks - edit is local to touched chunks.
+    /// `edit_is_local_to_touched_chunks` - edit is local to touched chunks.
     ///
     /// Description:
     ///
@@ -271,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    /// tiny_input_is_single_chunk - tiny input is single chunk.
+    /// `tiny_input_is_single_chunk` - tiny input is single chunk.
     ///
     /// Description:
     ///
@@ -283,7 +283,7 @@ mod tests {
     }
 
     #[test]
-    /// empty_input_yields_no_chunks - empty input yields no chunks.
+    /// `empty_input_yields_no_chunks` - empty input yields no chunks.
     ///
     /// Description:
     ///
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    /// invalid_bounds_rejected - invalid bounds rejected.
+    /// `invalid_bounds_rejected` - invalid bounds rejected.
     ///
     /// Description:
     ///

@@ -128,13 +128,13 @@ fn fixed<const N: usize>(b: &[u8]) -> io::Result<[u8; N]> {
         .map_err(|_| err("truncated delta manifest field"))
 }
 
-/// err - err.
-/// @msg: message
-/// @io: io
+/// `err` - err.
+/// `@msg`: message
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: the io::Error
+/// Return: the `std::io::Error`
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -143,11 +143,11 @@ fn err(msg: &str) -> io::Error {
 mod tests {
     use super::*;
 
-    /// sample - sample.
+    /// `sample` - sample.
     ///
     /// Description:
     ///
-    /// Return: the DeltaManifest
+    /// Return: the `DeltaManifest`
     fn sample() -> DeltaManifest {
         DeltaManifest {
             version: VERSION,
@@ -166,7 +166,7 @@ mod tests {
     }
 
     #[test]
-    /// constants_match_layout - constants match layout.
+    /// `constants_match_layout` - constants match layout.
     ///
     /// Description:
     ///
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    /// serialize_parse_roundtrip_is_bit_exact - serialize parse roundtrip is bit exact.
+    /// `serialize_parse_roundtrip_is_bit_exact` - serialize parse roundtrip is bit exact.
     ///
     /// Description:
     ///
@@ -193,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    /// empty_manifest_roundtrips - empty manifest roundtrips.
+    /// `empty_manifest_roundtrips` - empty manifest roundtrips.
     ///
     /// Description:
     ///
@@ -210,7 +210,7 @@ mod tests {
     }
 
     #[test]
-    /// encoded_len_matches_serialized_len - encoded len matches serialized len.
+    /// `encoded_len_matches_serialized_len` - encoded len matches serialized len.
     ///
     /// Description:
     ///
@@ -221,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_rejects_truncated_buffer - parse rejects truncated buffer.
+    /// `parse_rejects_truncated_buffer` - parse rejects truncated buffer.
     ///
     /// Description:
     ///
@@ -234,7 +234,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_rejects_bad_magic - parse rejects bad magic.
+    /// `parse_rejects_bad_magic` - parse rejects bad magic.
     ///
     /// Description:
     ///
@@ -246,7 +246,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_rejects_unsupported_version - parse rejects unsupported version.
+    /// `parse_rejects_unsupported_version` - parse rejects unsupported version.
     ///
     /// Description:
     ///
@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_rejects_trailing_garbage - parse rejects trailing garbage.
+    /// `parse_rejects_trailing_garbage` - parse rejects trailing garbage.
     ///
     /// Description:
     ///
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_rejects_huge_chunk_count_without_allocating - parse rejects huge chunk count without allocating.
+    /// `parse_rejects_huge_chunk_count_without_allocating` - parse rejects huge chunk count without allocating.
     ///
     /// Description:
     ///
@@ -284,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    /// parse_rejects_chunk_count_larger_than_buffer - parse rejects chunk count larger than buffer.
+    /// `parse_rejects_chunk_count_larger_than_buffer` - parse rejects chunk count larger than buffer.
     ///
     /// Description:
     ///
@@ -303,11 +303,11 @@ mod proptests {
     use super::*;
     use proptest::prelude::*;
 
-    /// chunk - chunk.
+    /// `chunk` - chunk.
     ///
     /// Description:
     ///
-    /// Return: the impl Strategy<Value = ChunkEntry>
+    /// Return: the `impl Strategy<Value = ChunkEntry>`
     fn chunk() -> impl Strategy<Value = ChunkEntry> {
         (prop::array::uniform32(any::<u8>()), 1u32..=32 << 20)
             .prop_map(|(hash, length)| ChunkEntry { hash, length })
@@ -315,7 +315,7 @@ mod proptests {
 
     proptest! {
         #[test]
-        /// arbitrary_bytes_never_panic - arbitrary bytes never panic.
+        /// `arbitrary_bytes_never_panic` - arbitrary bytes never panic.
         ///
         /// Description:
         ///
@@ -327,7 +327,7 @@ mod proptests {
         }
 
         #[test]
-        /// serialize_roundtrips - serialize roundtrips.
+        /// `serialize_roundtrips` - serialize roundtrips.
         ///
         /// Description:
         ///

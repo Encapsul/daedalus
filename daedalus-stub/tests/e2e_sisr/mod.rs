@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! SISR end-to-end integration tests against a mock HTTP update channel.
 //!
 //! The full reconstruction loop is exercised with the **real** launcher

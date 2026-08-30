@@ -282,9 +282,9 @@ pub(crate) fn ct_eq_hash(a: &[u8; 32], b: &[u8; 32]) -> bool {
     a.ct_eq(b).into()
 }
 
-/// signing_message - signing message.
-/// @merkle_root: merkle root
-/// @manifest_bytes: manifest bytes
+/// `signing_message` - signing message.
+/// `@merkle_root`: merkle root
+/// `@manifest_bytes`: manifest bytes
 ///
 /// Description:
 ///
@@ -301,13 +301,13 @@ fn fixed<const N: usize>(b: &[u8]) -> io::Result<[u8; N]> {
         .map_err(|_| err("truncated remote manifest field"))
 }
 
-/// err - err.
-/// @msg: message
-/// @io: io
+/// `err` - err.
+/// `@msg`: message
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: the io::Error
+/// Return: the `std::io::Error`
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -316,12 +316,12 @@ fn err(msg: &str) -> io::Error {
 mod tests {
     use super::*;
 
-    /// manifest_with - manifest with.
-    /// @hashes: hashes
+    /// `manifest_with` - manifest with.
+    /// `@hashes`: hashes
     ///
     /// Description:
     ///
-    /// Return: the DeltaManifest
+    /// Return: the `DeltaManifest`
     fn manifest_with(hashes: &[[u8; 32]]) -> DeltaManifest {
         DeltaManifest {
             version: manifest::VERSION,
@@ -336,9 +336,9 @@ mod tests {
         }
     }
 
-    /// random_buf - random buf.
-    /// @len: length
-    /// @seed: seed
+    /// `random_buf` - random buf.
+    /// `@len`: length
+    /// `@seed`: seed
     ///
     /// Description:
     ///
@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    /// merkle_root_is_deterministic_and_content_binding - merkle root is deterministic and content binding.
+    /// `merkle_root_is_deterministic_and_content_binding` - merkle root is deterministic and content binding.
     ///
     /// Description:
     ///
@@ -370,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    /// merkle_root_of_two_leaves_matches_manual_hash - merkle root of two leaves matches manual hash.
+    /// `merkle_root_of_two_leaves_matches_manual_hash` - merkle root of two leaves matches manual hash.
     ///
     /// Description:
     ///
@@ -386,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    /// merkle_root_of_single_leaf_is_the_leaf - merkle root of single leaf is the leaf.
+    /// `merkle_root_of_single_leaf_is_the_leaf` - merkle root of single leaf is the leaf.
     ///
     /// Description:
     ///
@@ -397,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    /// chunk_payload_tiles_payload_and_hashes_content - chunk payload tiles payload and hashes content.
+    /// `chunk_payload_tiles_payload_and_hashes_content` - chunk payload tiles payload and hashes content.
     ///
     /// Description:
     ///
@@ -416,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    /// sign_verify_roundtrip_with_known_key - sign verify roundtrip with known key.
+    /// `sign_verify_roundtrip_with_known_key` - sign verify roundtrip with known key.
     ///
     /// Description:
     ///
@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    /// build_artifacts_signs_when_key_present - build artifacts signs when key present.
+    /// `build_artifacts_signs_when_key_present` - build artifacts signs when key present.
     ///
     /// Description:
     ///
@@ -458,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    /// build_artifacts_without_key_zero_signature - build artifacts without key zero signature.
+    /// `build_artifacts_without_key_zero_signature` - build artifacts without key zero signature.
     ///
     /// Description:
     ///
@@ -474,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    /// remote_manifest_roundtrip_and_verification - remote manifest roundtrip and verification.
+    /// `remote_manifest_roundtrip_and_verification` - remote manifest roundtrip and verification.
     ///
     /// Description:
     ///
@@ -502,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    /// remote_manifest_verify_any_accepts_any_trusted_key - remote manifest verify any accepts any trusted key.
+    /// `remote_manifest_verify_any_accepts_any_trusted_key` - remote manifest verify any accepts any trusted key.
     ///
     /// Description:
     ///
@@ -528,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    /// remote_manifest_rejects_tampering - remote manifest rejects tampering.
+    /// `remote_manifest_rejects_tampering` - remote manifest rejects tampering.
     ///
     /// Description:
     ///
@@ -555,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    /// remote_manifest_rejects_bad_magic_and_truncation - remote manifest rejects bad magic and truncation.
+    /// `remote_manifest_rejects_bad_magic_and_truncation` - remote manifest rejects bad magic and truncation.
     ///
     /// Description:
     ///
@@ -572,7 +572,7 @@ mod tests {
     /// payload so the < 5 % build-overhead budget can be verified.
     #[test]
     #[ignore = "manual perf measurement"]
-    /// perf_sisr_on_100_mib - perf sisr on 100 mib.
+    /// `perf_sisr_on_100_mib` - perf sisr on 100 mib.
     ///
     /// Description:
     ///
@@ -619,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    /// verify_embedded_sisr_accepts_a_signed_section - verify embedded sisr accepts a signed section.
+    /// `verify_embedded_sisr_accepts_a_signed_section` - verify embedded sisr accepts a signed section.
     ///
     /// Description:
     ///
@@ -632,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    /// verify_embedded_sisr_rejects_zero_signature - verify embedded sisr rejects zero signature.
+    /// `verify_embedded_sisr_rejects_zero_signature` - verify embedded sisr rejects zero signature.
     ///
     /// Description:
     ///
@@ -649,7 +649,7 @@ mod tests {
     }
 
     #[test]
-    /// verify_embedded_sisr_rejects_untrusted_key - verify embedded sisr rejects untrusted key.
+    /// `verify_embedded_sisr_rejects_untrusted_key` - verify embedded sisr rejects untrusted key.
     ///
     /// Description:
     ///
@@ -666,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    /// verify_embedded_sisr_rejects_tampered_payload - verify embedded sisr rejects tampered payload.
+    /// `verify_embedded_sisr_rejects_tampered_payload` - verify embedded sisr rejects tampered payload.
     ///
     /// Description:
     ///
@@ -684,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    /// verify_embedded_sisr_rejects_wrong_payload_length - verify embedded sisr rejects wrong payload length.
+    /// `verify_embedded_sisr_rejects_wrong_payload_length` - verify embedded sisr rejects wrong payload length.
     ///
     /// Description:
     ///
@@ -701,7 +701,7 @@ mod tests {
     }
 
     #[test]
-    /// verify_embedded_sisr_rejects_merkle_mismatch - verify embedded sisr rejects merkle mismatch.
+    /// `verify_embedded_sisr_rejects_merkle_mismatch` - verify embedded sisr rejects merkle mismatch.
     ///
     /// Description:
     ///

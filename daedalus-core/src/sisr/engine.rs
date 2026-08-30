@@ -43,12 +43,12 @@ pub struct DirectoryChunkFetcher {
 }
 
 impl DirectoryChunkFetcher {
-    /// new - new.
-    /// @root: root
+    /// `new` - new.
+    /// `@root`: root
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     pub fn new(root: &Path) -> Self {
         let store = crate::cas::DiskObjectStore::new(root)
             .expect("cas dir creation should not fail for a writable temp dir");
@@ -60,14 +60,14 @@ impl DirectoryChunkFetcher {
 }
 
 impl ChunkFetcher for DirectoryChunkFetcher {
-    /// fetch - fetch.
-    /// @hash: hash value
-    /// @_length:  length
-    /// @io: io
+    /// `fetch` - fetch.
+    /// `@hash`: hash value
+    /// `@_length`:  length
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing io::Result<Vec<u8>>
+    /// Return: Result containing `io::Result<Vec<u8>`>
     fn fetch(&self, hash: &[u8; 32], _length: usize) -> io::Result<Vec<u8>> {
         let bytes = self
             .store
@@ -82,11 +82,11 @@ impl ChunkFetcher for DirectoryChunkFetcher {
         Ok(bytes)
     }
 
-    /// bytes_fetched - bytes fetched.
+    /// `bytes_fetched` - bytes fetched.
     ///
     /// Description:
     ///
-    /// Return: the u64
+    /// Return: the `u64`
     fn bytes_fetched(&self) -> u64 {
         self.fetched.get()
     }
@@ -351,7 +351,7 @@ fn resolve_chunk_bytes(
     Ok((bytes, false))
 }
 
-/// fetch_verified - fetch verified.
+/// `fetch_verified` - fetch verified.
 ///
 /// Description:
 ///
@@ -386,26 +386,26 @@ fn write_footer(w: &mut File, footer: &Footer) -> io::Result<()> {
     w.write_all(&footer.pack())
 }
 
-/// read_at - read at.
-/// @f: f
-/// @off: off
-/// @len: length
-/// @io: io
+/// `read_at` - read at.
+/// `@f`: f
+/// `@off`: off
+/// `@len`: length
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<Vec<u8>>
+/// Return: Result containing `io::Result<Vec<u8>`>
 fn read_at(f: &mut File, off: u64, len: usize) -> io::Result<Vec<u8>> {
     crate::format::read_at(f, off, len)
 }
 
-/// err - err.
-/// @msg: message
-/// @io: io
+/// `err` - err.
+/// `@msg`: message
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: the io::Error
+/// Return: the `std::io::Error`
 fn err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
 }
@@ -419,9 +419,9 @@ mod tests {
     use crate::assembly::assemble_daedalus;
     use crate::sisr_stage::SisrBuildConfig;
 
-    /// random_buf - random buf.
-    /// @len: length
-    /// @seed: seed
+    /// `random_buf` - random buf.
+    /// `@len`: length
+    /// `@seed`: seed
     ///
     /// Description:
     ///
@@ -448,11 +448,11 @@ mod tests {
     }
 
     impl MapFetcher {
-        /// new - new.
+        /// `new` - new.
         ///
         /// Description:
         ///
-        /// Return: the Self
+        /// Return: the `Self`
         fn new() -> Self {
             Self {
                 map: Map::new(),
@@ -460,9 +460,9 @@ mod tests {
             }
         }
 
-        /// put - put.
-        /// @hash: hash value
-        /// @bytes: bytes
+        /// `put` - put.
+        /// `@hash`: hash value
+        /// `@bytes`: bytes
         ///
         /// Description:
         ///
@@ -473,14 +473,14 @@ mod tests {
     }
 
     impl ChunkFetcher for MapFetcher {
-        /// fetch - fetch.
-        /// @hash: hash value
-        /// @_length:  length
-        /// @io: io
+        /// `fetch` - fetch.
+        /// `@hash`: hash value
+        /// `@_length`:  length
+        /// `@io`: io
         ///
         /// Description:
         ///
-        /// Return: Result containing io::Result<Vec<u8>>
+        /// Return: Result containing `io::Result<Vec<u8>`>
         fn fetch(&self, hash: &[u8; 32], _length: usize) -> io::Result<Vec<u8>> {
             let bytes =
                 self.map.get(hash).cloned().ok_or_else(|| {
@@ -491,25 +491,25 @@ mod tests {
             Ok(bytes)
         }
 
-        /// bytes_fetched - bytes fetched.
+        /// `bytes_fetched` - bytes fetched.
         ///
         /// Description:
         ///
-        /// Return: the u64
+        /// Return: the `u64`
         fn bytes_fetched(&self) -> u64 {
             self.fetched.get()
         }
     }
 
-    /// build_current_bin - build current bin.
-    /// @dir: directory path
-    /// @payload: payload data
-    /// @meta: metadata
-    /// @chunk: chunk
+    /// `build_current_bin` - build current bin.
+    /// `@dir`: directory path
+    /// `@payload`: payload data
+    /// `@meta`: metadata
+    /// `@chunk`: chunk
     ///
     /// Description:
     ///
-    /// Return: the PathBuf
+    /// Return: the `PathBuf`
     fn build_current_bin(dir: &Path, payload: &[u8], meta: &[u8], chunk: usize) -> PathBuf {
         let out = dir.join("app.daedalus");
         let config = SisrBuildConfig {
@@ -534,20 +534,20 @@ mod tests {
         out
     }
 
-    /// read_current_manifest - read current manifest.
-    /// @path: file or directory path
+    /// `read_current_manifest` - read current manifest.
+    /// `@path`: file or directory path
     ///
     /// Description:
     ///
-    /// Return: the DeltaManifest
+    /// Return: the `DeltaManifest`
     fn read_current_manifest(path: &Path) -> DeltaManifest {
         let data = fs::read(path).unwrap();
         let (_, manifest) = read_sisr(&mut Cursor::new(&data)).unwrap().unwrap();
         manifest
     }
 
-    /// rebuilt_payload - rebuilt payload.
-    /// @path: file or directory path
+    /// `rebuilt_payload` - rebuilt payload.
+    /// `@path`: file or directory path
     ///
     /// Description:
     ///
@@ -564,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    /// reuse_80_percent_fetches_only_the_rest - reuse 80 percent fetches only the rest.
+    /// `reuse_80_percent_fetches_only_the_rest` - reuse 80 percent fetches only the rest.
     ///
     /// Description:
     ///
@@ -625,7 +625,7 @@ mod tests {
     }
 
     #[test]
-    /// interrupted_update_leaves_original_binary_intact - interrupted update leaves original binary intact.
+    /// `interrupted_update_leaves_original_binary_intact` - interrupted update leaves original binary intact.
     ///
     /// Description:
     ///
@@ -663,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    /// fetched_chunk_with_wrong_hash_is_rejected - fetched chunk with wrong hash is rejected.
+    /// `fetched_chunk_with_wrong_hash_is_rejected` - fetched chunk with wrong hash is rejected.
     ///
     /// Description:
     ///
@@ -693,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    /// manifest_length_mismatch_is_rejected - manifest length mismatch is rejected.
+    /// `manifest_length_mismatch_is_rejected` - manifest length mismatch is rejected.
     ///
     /// Description:
     ///
@@ -714,7 +714,7 @@ mod tests {
     }
 
     #[test]
-    /// full_fetch_when_current_binary_has_no_sisr_section - full fetch when current binary has no sisr section.
+    /// `full_fetch_when_current_binary_has_no_sisr_section` - full fetch when current binary has no sisr section.
     ///
     /// Description:
     ///
@@ -759,7 +759,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    /// replaced_binary_keeps_the_executable_bit - replaced binary keeps the executable bit.
+    /// `replaced_binary_keeps_the_executable_bit` - replaced binary keeps the executable bit.
     ///
     /// Description:
     ///
@@ -797,7 +797,7 @@ mod tests {
     /// footer's hash exactly — on a mixed delta (reuse + fetch) — without
     /// touching the binary.
     #[test]
-    /// dry_run_hash_matches_rebuilt_footer_without_writes - dry run hash matches rebuilt footer without writes.
+    /// `dry_run_hash_matches_rebuilt_footer_without_writes` - dry run hash matches rebuilt footer without writes.
     ///
     /// Description:
     ///
@@ -847,7 +847,7 @@ mod tests {
     }
 
     #[test]
-    /// directory_fetcher_reads_hex_hash_files_and_counts - directory fetcher reads hex hash files and counts.
+    /// `directory_fetcher_reads_hex_hash_files_and_counts` - directory fetcher reads hex hash files and counts.
     ///
     /// Description:
     ///
@@ -868,7 +868,7 @@ mod tests {
     }
 
     #[test]
-    /// corrupted_reused_chunk_falls_back_to_fetch - corrupted reused chunk falls back to fetch.
+    /// `corrupted_reused_chunk_falls_back_to_fetch` - corrupted reused chunk falls back to fetch.
     ///
     /// Description:
     ///
@@ -910,7 +910,7 @@ mod tests {
     /// tail → some chunks fetched), signed by the publisher, must produce a
     /// binary that verifies offline against the trusted key — and only it.
     #[test]
-    /// applied_update_stays_authentic_at_rest - applied update stays authentic at rest.
+    /// `applied_update_stays_authentic_at_rest` - applied update stays authentic at rest.
     ///
     /// Description:
     ///

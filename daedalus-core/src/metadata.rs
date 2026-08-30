@@ -16,11 +16,11 @@ pub struct HealthCheck {
 }
 
 impl Default for HealthCheck {
-    /// default - default.
+    /// `default` - default.
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     fn default() -> Self {
         Self {
             port: 0,
@@ -55,11 +55,11 @@ pub struct BuildCacheConfig {
 
 #[allow(clippy::derivable_impls)]
 impl Default for BuildCacheConfig {
-    /// default - default.
+    /// `default` - default.
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     fn default() -> Self {
         Self {
             enabled: true,
@@ -89,11 +89,11 @@ pub struct BunFeatures {
 
 #[allow(clippy::derivable_impls)]
 impl Default for BunFeatures {
-    /// default - default.
+    /// `default` - default.
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     fn default() -> Self {
         Self {
             embedded_runtime: EmbeddedRuntimeConfig::default(),
@@ -107,25 +107,25 @@ impl Default for BunFeatures {
 
 impl BunFeatures {
     #[must_use]
-    /// with_embedded_runtime - with embedded runtime.
-    /// @interpreter: interpreter
+    /// `with_embedded_runtime` - with embedded runtime.
+    /// `@interpreter`: interpreter
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     pub fn with_embedded_runtime(mut self, interpreter: EmbeddedInterpreter) -> Self {
         self.embedded_runtime.interpreter = Some(interpreter);
         self
     }
 
     #[must_use]
-    /// with_health_check - with health check.
-    /// @port: port number
-    /// @endpoint: endpoint
+    /// `with_health_check` - with health check.
+    /// `@port`: port number
+    /// `@endpoint`: endpoint
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     pub fn with_health_check(mut self, port: u16, endpoint: Option<String>) -> Self {
         self.health_check.enabled = true;
         self.health_check.port = port;
@@ -136,12 +136,12 @@ impl BunFeatures {
     }
 
     #[must_use]
-    /// with_wasm - with wasm.
-    /// @wasmtime_path: wasmtime path
+    /// `with_wasm` - with wasm.
+    /// `@wasmtime_path`: wasmtime path
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     pub fn with_wasm(mut self, wasmtime_path: Option<String>) -> Self {
         self.wasm.enabled = true;
         self.wasm.wasmtime_path = wasmtime_path;
@@ -149,18 +149,18 @@ impl BunFeatures {
     }
 
     #[must_use]
-    /// with_cross_compile - with cross compile.
-    /// @targets: targets
+    /// `with_cross_compile` - with cross compile.
+    /// `@targets`: targets
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     pub fn with_cross_compile(mut self, targets: Vec<String>) -> Self {
         self.cross_compile_targets = targets;
         self
     }
 
-    /// validate - validate.
+    /// `validate` - validate.
     ///
     /// Description:
     ///
@@ -229,16 +229,16 @@ pub enum EmbeddedInterpreter {
 }
 
 impl std::fmt::Display for EmbeddedInterpreter {
-    /// fmt - fmt.
-    /// @f: f
-    /// @std: std
-    /// @fmt: fmt
-    /// @std: std
-    /// @fmt: fmt
+    /// `fmt` - fmt.
+    /// `@f`: f
+    /// `@std`: std
+    /// `@fmt`: fmt
+    /// `@std`: std
+    /// `@fmt`: fmt
     ///
     /// Description:
     ///
-    /// Return: Result containing std::fmt::Result
+    /// Return: Result containing `std::fmt::Result`
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EmbeddedInterpreter::Python3 => write!(f, "python3"),
@@ -286,7 +286,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// embedded_interpreter_display - embedded interpreter display.
+    /// `embedded_interpreter_display` - embedded interpreter display.
     ///
     /// Description:
     ///
@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    /// health_check_defaults - health check defaults.
+    /// `health_check_defaults` - health check defaults.
     ///
     /// Description:
     ///
@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    /// wasm_config_defaults - wasm config defaults.
+    /// `wasm_config_defaults` - wasm config defaults.
     ///
     /// Description:
     ///
@@ -325,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    /// build_cache_defaults - build cache defaults.
+    /// `build_cache_defaults` - build cache defaults.
     ///
     /// Description:
     ///

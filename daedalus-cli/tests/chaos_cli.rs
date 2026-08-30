@@ -220,6 +220,8 @@ fn no_color_disables_ansi_codes() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined = format!("{}{}", stdout, stderr);
-    assert!(!combined.contains("\x1b[") && !combined.contains("\u{1b}["),
-            "output should not contain ANSI codes with --no-color");
+    assert!(
+        !combined.contains("\x1b[") && !combined.contains("\u{1b}["),
+        "output should not contain ANSI codes with --no-color"
+    );
 }

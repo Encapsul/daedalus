@@ -138,7 +138,7 @@ impl RootfsGuard {
 }
 
 impl Drop for RootfsGuard {
-    /// drop - drop.
+    /// `drop` - drop.
     ///
     /// Description:
     ///
@@ -202,13 +202,13 @@ pub fn sandbox_with_capabilities(
 /// Fail-closed: any error returns `Err` — the caller must not run the app
 /// without the requested filesystem sandbox.
 #[allow(dead_code)]
-/// sandbox - sandbox.
-/// @root: root
-/// @io: io
+/// `sandbox` - sandbox.
+/// `@root`: root
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<()>
+/// Return: Result containing `io::Result<()>`
 pub fn sandbox(root: &RootfsGuard) -> io::Result<()> {
     sandbox_with_capabilities(root, &[])
 }
@@ -281,15 +281,15 @@ fn add_fd_beneath(ruleset_fd: i32, parent_fd: i32, access: u64) -> io::Result<()
     }
 }
 
-/// add_path_beneath - add path beneath.
-/// @ruleset_fd: ruleset fd
-/// @path: file or directory path
-/// @access: access
-/// @io: io
+/// `add_path_beneath` - add path beneath.
+/// `@ruleset_fd`: ruleset fd
+/// `@path`: file or directory path
+/// `@access`: access
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<()>
+/// Return: Result containing `io::Result<()>`
 fn add_path_beneath(ruleset_fd: i32, path: &Path, access: u64) -> io::Result<()> {
     let path_cstr = to_cstr(path)?;
     // SAFETY: open(2) with O_PATH is safe; path_cstr is a valid null-terminated string.
@@ -308,13 +308,13 @@ fn add_path_beneath(ruleset_fd: i32, path: &Path, access: u64) -> io::Result<()>
     result
 }
 
-/// restrict_self - restrict self.
-/// @ruleset_fd: ruleset fd
-/// @io: io
+/// `restrict_self` - restrict self.
+/// `@ruleset_fd`: ruleset fd
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<()>
+/// Return: Result containing `io::Result<()>`
 fn restrict_self(ruleset_fd: i32) -> io::Result<()> {
     // SAFETY: landlock_restrict_self is a Linux syscall. After this call
     // succeeds, no further Landlock restrictions can be added by this process.
@@ -329,15 +329,15 @@ fn restrict_self(ruleset_fd: i32) -> io::Result<()> {
     }
 }
 
-/// to_cstr - to cstr.
-/// @path: file or directory path
-/// @io: io
-/// @std: std
-/// @ffi: ffi
+/// `to_cstr` - to cstr.
+/// `@path`: file or directory path
+/// `@io`: io
+/// `@std`: std
+/// `@ffi`: ffi
 ///
 /// Description:
 ///
-/// Return: Result containing io::Result<std::ffi::CString>
+/// Return: Result containing `io::Result<std::ffi::CString>`
 fn to_cstr(path: &Path) -> io::Result<std::ffi::CString> {
     std::ffi::CString::new(path.as_os_str().as_bytes())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains null byte"))

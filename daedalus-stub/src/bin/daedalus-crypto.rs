@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Standalone Ed25519 crypto tool for key generation, signing, and verification.
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand::RngCore;
@@ -8,7 +9,7 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use zeroize::Zeroizing;
 
-/// main - main.
+/// `main` - main.
 ///
 /// Description:
 ///
@@ -31,12 +32,12 @@ fn main() {
     std::process::exit(rc);
 }
 
-/// cmd_keygen - cmd keygen.
-/// @args: command arguments
+/// `cmd_keygen` - cmd keygen.
+/// `@args`: command arguments
 ///
 /// Description:
 ///
-/// Return: the i32
+/// Return: the `i32`
 fn cmd_keygen(args: &[String]) -> i32 {
     let key_dir = if args.len() == 2 && args[0] == "--key-dir" {
         PathBuf::from(&args[1])
@@ -64,7 +65,7 @@ fn cmd_keygen(args: &[String]) -> i32 {
 
     let seed = Zeroizing::new(signing_key.to_bytes());
     let key_path = key_dir.join(format!("{fp_hex}.key"));
-    fs::write(&key_path, &*seed).unwrap_or_else(|e| {
+    fs::write(&key_path, *seed).unwrap_or_else(|e| {
         eprintln!("error writing key file: {e}");
         std::process::exit(1);
     });
@@ -86,12 +87,12 @@ fn cmd_keygen(args: &[String]) -> i32 {
     0
 }
 
-/// cmd_sign - cmd sign.
-/// @args: command arguments
+/// `cmd_sign` - cmd sign.
+/// `@args`: command arguments
 ///
 /// Description:
 ///
-/// Return: the i32
+/// Return: the `i32`
 fn cmd_sign(args: &[String]) -> i32 {
     if args.len() != 1 {
         eprintln!("Usage: daedalus-crypto sign <keyfile>");
@@ -133,12 +134,12 @@ fn cmd_sign(args: &[String]) -> i32 {
     0
 }
 
-/// cmd_verify - cmd verify.
-/// @args: command arguments
+/// `cmd_verify` - cmd verify.
+/// `@args`: command arguments
 ///
 /// Description:
 ///
-/// Return: the i32
+/// Return: the `i32`
 fn cmd_verify(args: &[String]) -> i32 {
     if args.len() != 1 {
         eprintln!("Usage: daedalus-crypto verify <pubkey>");

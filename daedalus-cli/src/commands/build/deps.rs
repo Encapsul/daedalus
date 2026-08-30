@@ -991,6 +991,450 @@ fn extract_go_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Path)
     Ok(())
 }
 
+/// Ensure a Deno binary is available for the requested target.
+/// Downloads a static Deno binary from GitHub releases to
+/// `~/.cache/daedalus/build-tools/deno-{target}/` when not on PATH.
+pub(crate) fn ensure_deno(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
+    let suffix = target
+        .map(|t| {
+            let (arch, os) = parse_target(t);
+            format!("{os}-{arch}")
+        })
+        .unwrap_or_else(|| "host".to_string());
+    let tools_dir = cache_dir()
+        .join("build-tools")
+        .join(format!("deno-{suffix}"));
+    let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
+    let deno_name = if is_windows { "deno.exe" } else { "deno" };
+    let deno_bin = tools_dir.join("bin").join(deno_name);
+
+    if deno_bin.exists() {
+        if verbose {
+            eprintln!("  using cached deno from {}", tools_dir.display());
+        }
+        return Ok(tools_dir.join("bin"));
+    }
+
+    if verbose {
+        eprintln!("  downloading deno to {}...", tools_dir.display());
+    }
+
+    std::fs::create_dir_all(&tools_dir).context("failed to create build tools directory")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            tools_dir.parent().unwrap_or(tools_dir.as_path()),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .ok();
+    }
+
+    ensure_deno_download(&tools_dir, target, verbose)?;
+
+    if !deno_bin.exists() {
+        anyhow::bail!(
+            "downloaded deno archive missing deno binary — install manually: https://deno.land"
+        );
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&deno_bin, std::fs::Permissions::from_mode(0o755)).ok();
+    }
+
+    Ok(tools_dir.join("bin"))
+}
+
+/// Download a Deno binary for the target architecture from GitHub releases.
+fn ensure_deno_download(tools_dir: &Path, target_arch: Option<&str>, verbose: bool) -> Result<()> {
+    let (deno_arch, deno_os) = if let Some(target) = target_arch {
+        let (arch, os) = parse_target(target);
+        let da = match arch.as_str() {
+            "x86_64" | "amd64" => "x86_64",
+            "aarch64" | "arm64" => "aarch64",
+            _ => anyhow::bail!("unsupported cross-compile architecture for Deno: {arch}"),
+        };
+        let dos = match os.as_str() {
+            "linux" => "linux",
+            "darwin" => "apple-darwin",
+            "windows" => "windows",
+            _ => anyhow::bail!("unsupported cross-compile OS for Deno: {os}"),
+        };
+        (da.to_string(), dos.to_string())
+    } else {
+        let da = match std::env::consts::ARCH {
+            "x86_64" => "x86_64",
+            "aarch64" => "aarch64",
+            arch => arch,
+        };
+        let dos = match std::env::consts::OS {
+            "linux" => "linux",
+            "macos" => "apple-darwin",
+            "windows" => "windows",
+            os => os,
+        };
+        (da.to_string(), dos.to_string())
+    };
+
+    let ext = if deno_os == "windows" { "zip" } else { "zip" };
+    let asset_name = format!("deno-{deno_os}-{deno_arch}.{ext}");
+    let url = format!("https://github.com/denoland/deno/releases/latest/download/{asset_name}");
+
+    if verbose {
+        eprintln!("  downloading deno ({deno_os}-{deno_arch})...");
+    }
+
+    let response = reqwest::blocking::get(&url)
+        .with_context(|| format!("failed to download Deno from {url}"))?;
+    if !response.status().is_success() {
+        anyhow::bail!(
+            "failed to download Deno binary (HTTP {})",
+            response.status()
+        );
+    }
+
+    let bin_dir = tools_dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).context("failed to create bin directory")?;
+
+    if ext == "zip" {
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut std::io::BufReader::new(response), &mut bytes)
+            .context("failed to read deno zip")?;
+        extract_deno_zip(std::io::Cursor::new(bytes), &tools_dir)?;
+    } else {
+        let reader = std::io::BufReader::new(response);
+        let decoder = flate2::read::GzDecoder::new(reader);
+        let mut archive = tar::Archive::new(decoder);
+        for entry in archive
+            .entries()
+            .context("failed to read deno tarball entries")?
+        {
+            let mut entry = entry.context("failed to read tarball entry")?;
+            let path = entry.path()?.into_owned();
+            let stripped: PathBuf = path.components().skip(1).collect();
+            if stripped.components().count() == 0 {
+                continue;
+            }
+            let target = tools_dir.join(&stripped);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create directory {}", parent.display()))?;
+            }
+            entry
+                .unpack(&target)
+                .with_context(|| format!("failed to unpack {}", stripped.display()))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Extract a Deno zip (single binary) into `tools_dir/bin/`.
+fn extract_deno_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Path) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(reader).context("failed to read deno zip")?;
+    let bin_dir = tools_dir.join("bin");
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .with_context(|| format!("failed to read zip entry {i}"))?;
+        let name = std::path::Path::new(entry.name());
+        if name.is_absolute()
+            || name.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            })
+        {
+            continue;
+        }
+        let target = bin_dir.join(name.file_name().unwrap_or_default());
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
+        }
+        let mut file = std::fs::File::create(&target)
+            .with_context(|| format!("failed to create {}", target.display()))?;
+        std::io::copy(&mut entry, &mut file)
+            .with_context(|| format!("failed to unpack {}", target.display()))?;
+    }
+    Ok(())
+}
+
+/// Ensure a Hugo binary is available for the requested target.
+/// Downloads Hugo from GitHub releases to
+/// `~/.cache/daedalus/build-tools/hugo-{target}/` when not on PATH.
+pub(crate) fn ensure_hugo(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
+    let suffix = target
+        .map(|t| {
+            let (arch, os) = parse_target(t);
+            format!("{os}-{arch}")
+        })
+        .unwrap_or_else(|| "host".to_string());
+    let tools_dir = cache_dir()
+        .join("build-tools")
+        .join(format!("hugo-{suffix}"));
+    let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
+    let hugo_name = if is_windows { "hugo.exe" } else { "hugo" };
+    let hugo_bin = tools_dir.join("bin").join(hugo_name);
+
+    if hugo_bin.exists() {
+        if verbose {
+            eprintln!("  using cached hugo from {}", tools_dir.display());
+        }
+        return Ok(tools_dir.join("bin"));
+    }
+
+    if verbose {
+        eprintln!("  downloading hugo to {}...", tools_dir.display());
+    }
+
+    std::fs::create_dir_all(&tools_dir).context("failed to create build tools directory")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            tools_dir.parent().unwrap_or(tools_dir.as_path()),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .ok();
+    }
+
+    ensure_hugo_download(&tools_dir, target, verbose)?;
+
+    if !hugo_bin.exists() {
+        anyhow::bail!(
+            "downloaded hugo archive missing hugo binary — install manually: https://gohugo.io/installation/"
+        );
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hugo_bin, std::fs::Permissions::from_mode(0o755)).ok();
+    }
+
+    Ok(tools_dir.join("bin"))
+}
+
+/// Download a Hugo binary for the target architecture from GitHub releases.
+fn ensure_hugo_download(tools_dir: &Path, target_arch: Option<&str>, verbose: bool) -> Result<()> {
+    let (hugo_arch, hugo_os) = if let Some(target) = target_arch {
+        let (arch, os) = parse_target(target);
+        let ha = match arch.as_str() {
+            "x86_64" | "amd64" => "amd64",
+            "aarch64" | "arm64" => "arm64",
+            _ => anyhow::bail!("unsupported cross-compile architecture for Hugo: {arch}"),
+        };
+        let hos = match os.as_str() {
+            "linux" => "Linux",
+            "darwin" => "macOS",
+            "windows" => "Windows",
+            _ => anyhow::bail!("unsupported cross-compile OS for Hugo: {os}"),
+        };
+        (ha.to_string(), hos.to_string())
+    } else {
+        let ha = match std::env::consts::ARCH {
+            "x86_64" => "amd64",
+            "aarch64" => "arm64",
+            arch => arch,
+        };
+        let hos = match std::env::consts::OS {
+            "linux" => "Linux",
+            "macos" => "macOS",
+            "windows" => "Windows",
+            os => os,
+        };
+        (ha.to_string(), hos.to_string())
+    };
+
+    let ext = "tar.gz";
+    let asset_name = format!("hugo_extended_{hugo_os}-{hugo_arch}.{ext}");
+    let url = format!("https://github.com/gohugoio/hugo/releases/latest/download/{asset_name}");
+
+    if verbose {
+        eprintln!("  downloading hugo ({hugo_os}-{hugo_arch})...");
+    }
+
+    let response = reqwest::blocking::get(&url)
+        .with_context(|| format!("failed to download Hugo from {url}"))?;
+    if !response.status().is_success() {
+        anyhow::bail!(
+            "failed to download Hugo binary (HTTP {})",
+            response.status()
+        );
+    }
+
+    let reader = std::io::BufReader::new(response);
+    let decoder = flate2::read::GzDecoder::new(reader);
+    let mut archive = tar::Archive::new(decoder);
+    let bin_dir = tools_dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).context("failed to create bin directory")?;
+
+    for entry in archive
+        .entries()
+        .context("failed to read hugo tarball entries")?
+    {
+        let mut entry = entry.context("failed to read tarball entry")?;
+        let path = entry.path()?.into_owned();
+        let file_name = path.file_name().unwrap_or_default();
+        let target = bin_dir.join(file_name);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
+        }
+        entry
+            .unpack(&target)
+            .with_context(|| format!("failed to unpack {}", target.display()))?;
+    }
+
+    Ok(())
+}
+
+/// Ensure a Wasmtime binary is available for the requested target.
+/// Downloads Wasmtime from GitHub releases to
+/// `~/.cache/daedalus/build-tools/wasmtime-{target}/` when not on PATH.
+pub(crate) fn ensure_wasmtime(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
+    let suffix = target
+        .map(|t| {
+            let (arch, os) = parse_target(t);
+            format!("{os}-{arch}")
+        })
+        .unwrap_or_else(|| "host".to_string());
+    let tools_dir = cache_dir()
+        .join("build-tools")
+        .join(format!("wasmtime-{suffix}"));
+    let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
+    let wasmtime_name = if is_windows {
+        "wasmtime.exe"
+    } else {
+        "wasmtime"
+    };
+    let wasmtime_bin = tools_dir.join("bin").join(wasmtime_name);
+
+    if wasmtime_bin.exists() {
+        if verbose {
+            eprintln!("  using cached wasmtime from {}", tools_dir.display());
+        }
+        return Ok(tools_dir.join("bin"));
+    }
+
+    if verbose {
+        eprintln!("  downloading wasmtime to {}...", tools_dir.display());
+    }
+
+    std::fs::create_dir_all(&tools_dir).context("failed to create build tools directory")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            tools_dir.parent().unwrap_or(tools_dir.as_path()),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .ok();
+    }
+
+    ensure_wasmtime_download(&tools_dir, target, verbose)?;
+
+    if !wasmtime_bin.exists() {
+        anyhow::bail!(
+            "downloaded wasmtime archive missing wasmtime binary — install manually: https://wasmtime.dev"
+        );
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&wasmtime_bin, std::fs::Permissions::from_mode(0o755)).ok();
+    }
+
+    Ok(tools_dir.join("bin"))
+}
+
+/// Download a Wasmtime binary for the target architecture from GitHub releases.
+fn ensure_wasmtime_download(
+    tools_dir: &Path,
+    target_arch: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    let (wasmtime_arch, wasmtime_os) = if let Some(target) = target_arch {
+        let (arch, os) = parse_target(target);
+        let wa = match arch.as_str() {
+            "x86_64" | "amd64" => "x86_64",
+            "aarch64" | "arm64" => "aarch64",
+            _ => anyhow::bail!("unsupported cross-compile architecture for Wasmtime: {arch}"),
+        };
+        let wo = match os.as_str() {
+            "linux" => "linux",
+            "darwin" => "apple-darwin",
+            "windows" => "windows",
+            _ => anyhow::bail!("unsupported cross-compile OS for Wasmtime: {os}"),
+        };
+        (wa.to_string(), wo.to_string())
+    } else {
+        let wa = match std::env::consts::ARCH {
+            "x86_64" => "x86_64",
+            "aarch64" => "aarch64",
+            arch => arch,
+        };
+        let wo = match std::env::consts::OS {
+            "linux" => "linux",
+            "macos" => "apple-darwin",
+            "windows" => "windows",
+            os => os,
+        };
+        (wa.to_string(), wo.to_string())
+    };
+
+    let ext = "tar.gz";
+    let asset_name = format!("wasmtime-{wasmtime_os}-{wasmtime_arch}.{ext}");
+    let url = format!(
+        "https://github.com/bytecodealliance/wasmtime/releases/latest/download/{asset_name}"
+    );
+
+    if verbose {
+        eprintln!("  downloading wasmtime ({wasmtime_os}-{wasmtime_arch})...");
+    }
+
+    let response = reqwest::blocking::get(&url)
+        .with_context(|| format!("failed to download Wasmtime from {url}"))?;
+    if !response.status().is_success() {
+        anyhow::bail!(
+            "failed to download Wasmtime binary (HTTP {})",
+            response.status()
+        );
+    }
+
+    let reader = std::io::BufReader::new(response);
+    let decoder = flate2::read::GzDecoder::new(reader);
+    let mut archive = tar::Archive::new(decoder);
+    let bin_dir = tools_dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).context("failed to create bin directory")?;
+
+    for entry in archive
+        .entries()
+        .context("failed to read wasmtime tarball entries")?
+    {
+        let mut entry = entry.context("failed to read tarball entry")?;
+        let path = entry.path()?.into_owned();
+        let file_name = path.file_name().unwrap_or_default();
+        let target = bin_dir.join(file_name);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", target.display()))?;
+        }
+        entry
+            .unpack(&target)
+            .with_context(|| format!("failed to unpack {}", target.display()))?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

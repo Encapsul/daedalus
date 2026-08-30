@@ -1,3 +1,4 @@
+#![allow(clippy::doc_markdown)]
 //! Chaos-monkey and fuzz tests for `.daedalus` format parsing.
 //!
 //! Invariants:
@@ -6,7 +7,7 @@
 //! - Round-trip: pack → read_from → pack preserves bytes.
 //! - Truncation, bit-flips, and magic corruption all fail closed.
 
-use daedalus_core::format::{Footer, FOOTER_MAGIC, FLAG_ENCRYPTED, FLAG_SIGNED, MAGIC};
+use daedalus_core::format::{Footer, FLAG_ENCRYPTED, FLAG_SIGNED, FOOTER_MAGIC, MAGIC};
 use std::io::Cursor;
 
 fn pack_roundtrip(footer: &Footer) -> Vec<u8> {
@@ -180,7 +181,11 @@ fn v2_footer_with_exactly_84_bytes() {
     footer[80..84].copy_from_slice(&FOOTER_MAGIC.to_le_bytes());
     let mut cursor = Cursor::new(footer.to_vec());
     let result = Footer::read_from(&mut cursor);
-    assert!(result.is_ok(), "v2 footer should parse with exactly 84 bytes: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "v2 footer should parse with exactly 84 bytes: {:?}",
+        result
+    );
 }
 
 /// Extreme edge cases for v3 footer.
@@ -193,7 +198,11 @@ fn v3_footer_with_exactly_92_bytes() {
     footer[88..92].copy_from_slice(&FOOTER_MAGIC.to_le_bytes());
     let mut cursor = Cursor::new(footer.to_vec());
     let result = Footer::read_from(&mut cursor);
-    assert!(result.is_ok(), "v3 footer should parse with exactly 92 bytes: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "v3 footer should parse with exactly 92 bytes: {:?}",
+        result
+    );
 }
 
 /// All flags set should still parse.

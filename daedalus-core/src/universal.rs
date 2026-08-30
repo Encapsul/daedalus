@@ -34,12 +34,12 @@ pub struct UniversalFooter {
 impl UniversalFooter {
     pub const SIZE: usize = 26;
 
-    /// pack - pack.
-    /// @Self: Self
+    /// `pack` - pack.
+    /// `@Self`: Self
     ///
     /// Description:
     ///
-    /// Return: the [u8; Self::SIZE]
+    /// Return: the `[u8; Self::SIZE]`
     pub fn pack(&self) -> [u8; Self::SIZE] {
         let mut out = [0u8; Self::SIZE];
         out[0..4].copy_from_slice(&self.magic.to_le_bytes());
@@ -50,13 +50,13 @@ impl UniversalFooter {
         out
     }
 
-    /// parse - parse.
-    /// @buf: buffer
-    /// @io: io
+    /// `parse` - parse.
+    /// `@buf`: buffer
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing io::Result<Self>
+    /// Return: Result containing `io::Result<Self>`
     pub fn parse(buf: &[u8]) -> io::Result<Self> {
         if buf.len() < Self::SIZE {
             return Err(io_err(
@@ -92,23 +92,23 @@ pub struct UniversalManifest {
 }
 
 impl UniversalManifest {
-    /// to_json - to json.
-    /// @io: io
+    /// `to_json` - to json.
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing io::Result<Vec<u8>>
+    /// Return: Result containing `io::Result<Vec<u8>`>
     pub fn to_json(&self) -> io::Result<Vec<u8>> {
         serde_json::to_vec_pretty(self).map_err(|e| io_err(io::ErrorKind::Other, &e.to_string()))
     }
 
-    /// from_json - from json.
-    /// @buf: buffer
-    /// @io: io
+    /// `from_json` - from json.
+    /// `@buf`: buffer
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing io::Result<Self>
+    /// Return: Result containing `io::Result<Self>`
     pub fn from_json(buf: &[u8]) -> io::Result<Self> {
         serde_json::from_slice(buf).map_err(|e| io_err(io::ErrorKind::InvalidData, &e.to_string()))
     }
@@ -274,15 +274,15 @@ pub fn hex_sha256(data: &[u8]) -> String {
     s
 }
 
-/// io_err - io err.
-/// @kind: kind
-/// @io: io
-/// @msg: message
-/// @io: io
+/// `io_err` - io err.
+/// `@kind`: kind
+/// `@io`: io
+/// `@msg`: message
+/// `@io`: io
 ///
 /// Description:
 ///
-/// Return: the io::Error
+/// Return: the `std::io::Error`
 fn io_err(kind: io::ErrorKind, msg: &str) -> io::Error {
     io::Error::new(kind, msg)
 }
@@ -292,7 +292,7 @@ mod tests {
     use super::*;
 
     #[test]
-    /// universal_footer_roundtrip - universal footer roundtrip.
+    /// `universal_footer_roundtrip` - universal footer roundtrip.
     ///
     /// Description:
     ///
@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    /// assemble_universal_layout - assemble universal layout.
+    /// `assemble_universal_layout` - assemble universal layout.
     ///
     /// Description:
     ///
@@ -358,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    /// hex_sha256_correct - hex sha256 correct.
+    /// `hex_sha256_correct` - hex sha256 correct.
     ///
     /// Description:
     ///
@@ -372,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    /// launcher_has_case_for_each_arch - launcher has case for each arch.
+    /// `launcher_has_case_for_each_arch` - launcher has case for each arch.
     ///
     /// Description:
     ///
@@ -403,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    /// launcher_includes_darwin_cases - launcher includes darwin cases.
+    /// `launcher_includes_darwin_cases` - launcher includes darwin cases.
     ///
     /// Description:
     ///
@@ -436,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    /// assemble_universal_with_macos_slices - assemble universal with macos slices.
+    /// `assemble_universal_with_macos_slices` - assemble universal with macos slices.
     ///
     /// Description:
     ///

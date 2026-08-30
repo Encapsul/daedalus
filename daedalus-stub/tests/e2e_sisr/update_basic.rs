@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! E2E happy-path tests: remote update, local staging, and the delta
 //! bandwidth property (only the modified blocks + metadata overhead).
 

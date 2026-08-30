@@ -4,6 +4,8 @@ use daedalus_core::format::{Footer, ARCH_AARCH64, ARCH_X86_64};
 use daedalus_core::paths::{cache_dir, format_size};
 use std::path::{Path, PathBuf};
 
+use crate::pager;
+
 #[derive(Args)]
 pub struct ScanArgs {
     /// Directories to scan
@@ -13,6 +15,10 @@ pub struct ScanArgs {
     /// Output as JSON
     #[arg(long)]
     pub json: bool,
+
+    /// Machine-readable plain output (tab-separated key=value)
+    #[arg(long)]
+    pub plain: bool,
 
     /// Write JSON output to file (requires --json)
     #[arg(short, long)]
@@ -25,6 +31,10 @@ pub struct ScanArgs {
     /// Show cache statistics
     #[arg(long)]
     pub cache: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 /// run - run.
@@ -91,12 +101,8 @@ pub fn run(args: ScanArgs) -> Result<()> {
         let entries: Vec<_> = files.iter().filter_map(|f| inspect_file(f)).collect();
         let json_str = serde_json::to_string_pretty(&entries)?;
         write_json_output(&json_str, args.output.as_deref())?;
-    } else {
-        println!(
-            "{:<40} {:<10} {:<10} {:<10} {:<10} {:<8} {:<6}",
-            "FILE", "NAME", "RUNTIME", "ARCH", "CREATED", "SIZE", "SIGNED"
-        );
-        println!("{}", "-".repeat(100));
+    } else if args.plain {
+        println!("file\tname\truntime\tarch\tcreated\tsize\tsigned");
         for file in &files {
             if let Some(info) = inspect_file(file) {
                 let name: String = file
@@ -115,7 +121,43 @@ pub fn run(args: ScanArgs) -> Result<()> {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 println!(
-                    "{:<40} {:<10} {:<10} {:<10} {:<10} {:<8} {:<6}",
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    file.display(),
+                    app_name,
+                    runtime,
+                    arch,
+                    created,
+                    format_size(size),
+                    if signed { "yes" } else { "no" }
+                );
+            }
+        }
+    } else {
+        let mut output = String::new();
+        output.push_str(&format!(
+            "{:<40} {:<10} {:<10} {:<10} {:<10} {:<8} {:<6}\n",
+            "FILE", "NAME", "RUNTIME", "ARCH", "CREATED", "SIZE", "SIGNED"
+        ));
+        output.push_str(&format!("{}\n", "-".repeat(100)));
+        for file in &files {
+            if let Some(info) = inspect_file(file) {
+                let name: String = file
+                    .file_name()
+                    .map_or_else(|| "?".into(), |n| n.to_string_lossy().into());
+                let app_name = info.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                let runtime = info.get("runtime").and_then(|v| v.as_str()).unwrap_or("?");
+                let arch = info.get("arch").and_then(|v| v.as_str()).unwrap_or("?");
+                let created = info.get("created").and_then(|v| v.as_str()).unwrap_or("?");
+                let size = info
+                    .get("payload_compressed_size")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let signed = info
+                    .get("signed")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                output.push_str(&format!(
+                    "{:<40} {:<10} {:<10} {:<10} {:<10} {:<8} {:<6}\n",
                     if name.len() > 40 {
                         &name[name.len() - 37..]
                     } else {
@@ -131,10 +173,11 @@ pub fn run(args: ScanArgs) -> Result<()> {
                     created,
                     format_size(size),
                     if signed { "yes" } else { "no" }
-                );
+                ));
             }
         }
-        eprintln!("\n{} file(s) found", files.len());
+        output.push_str(&format!("\n{} file(s) found\n", files.len()));
+        pager::page(&output)?;
     }
 
     Ok(())

@@ -49,13 +49,13 @@ struct FaultInjectingFetcher<F> {
 }
 
 impl<F: ChunkFetcher> FaultInjectingFetcher<F> {
-    /// new - new.
-    /// @inner: inner
-    /// @faults: faults
+    /// `new` - new.
+    /// `@inner`: inner
+    /// `@faults`: faults
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     fn new(inner: F, faults: Faults) -> Self {
         Self {
             inner,
@@ -66,14 +66,14 @@ impl<F: ChunkFetcher> FaultInjectingFetcher<F> {
 }
 
 impl<F: ChunkFetcher> ChunkFetcher for FaultInjectingFetcher<F> {
-    /// fetch - fetch.
-    /// @hash: hash value
-    /// @length: length
-    /// @io: io
+    /// `fetch` - fetch.
+    /// `@hash`: hash value
+    /// `@length`: length
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing io::Result<Vec<u8>>
+    /// Return: Result containing `io::Result<Vec<u8>`>
     fn fetch(&self, hash: &[u8; 32], length: usize) -> io::Result<Vec<u8>> {
         if !self.faults.latency.is_zero() {
             thread::sleep(self.faults.latency);
@@ -103,11 +103,11 @@ impl<F: ChunkFetcher> ChunkFetcher for FaultInjectingFetcher<F> {
         Ok(bytes)
     }
 
-    /// bytes_fetched - bytes fetched.
+    /// `bytes_fetched` - bytes fetched.
     ///
     /// Description:
     ///
-    /// Return: the u64
+    /// Return: the `u64`
     fn bytes_fetched(&self) -> u64 {
         self.inner.bytes_fetched()
     }
@@ -120,11 +120,11 @@ struct MemoryFetcher {
 }
 
 impl MemoryFetcher {
-    /// new - new.
+    /// `new` - new.
     ///
     /// Description:
     ///
-    /// Return: the Self
+    /// Return: the `Self`
     fn new() -> Self {
         Self {
             map: HashMap::new(),
@@ -132,9 +132,9 @@ impl MemoryFetcher {
         }
     }
 
-    /// seed - seed.
-    /// @payload: payload data
-    /// @manifest: manifest
+    /// `seed` - seed.
+    /// `@payload`: payload data
+    /// `@manifest`: manifest
     ///
     /// Description:
     ///
@@ -150,14 +150,14 @@ impl MemoryFetcher {
 }
 
 impl ChunkFetcher for MemoryFetcher {
-    /// fetch - fetch.
-    /// @hash: hash value
-    /// @_length:  length
-    /// @io: io
+    /// `fetch` - fetch.
+    /// `@hash`: hash value
+    /// `@_length`:  length
+    /// `@io`: io
     ///
     /// Description:
     ///
-    /// Return: Result containing io::Result<Vec<u8>>
+    /// Return: Result containing `io::Result<Vec<u8>`>
     fn fetch(&self, hash: &[u8; 32], _length: usize) -> io::Result<Vec<u8>> {
         let bytes = self
             .map
@@ -169,19 +169,19 @@ impl ChunkFetcher for MemoryFetcher {
         Ok(bytes)
     }
 
-    /// bytes_fetched - bytes fetched.
+    /// `bytes_fetched` - bytes fetched.
     ///
     /// Description:
     ///
-    /// Return: the u64
+    /// Return: the `u64`
     fn bytes_fetched(&self) -> u64 {
         self.fetched.get()
     }
 }
 
-/// random_buf - random buf.
-/// @len: length
-/// @seed: seed
+/// `random_buf` - random buf.
+/// `@len`: length
+/// `@seed`: seed
 ///
 /// Description:
 ///
@@ -198,14 +198,14 @@ fn random_buf(len: usize, seed: u64) -> Vec<u8> {
         .collect()
 }
 
-/// build_current - build current.
-/// @dir: directory path
-/// @payload: payload data
-/// @chunk: chunk
+/// `build_current` - build current.
+/// `@dir`: directory path
+/// `@payload`: payload data
+/// `@chunk`: chunk
 ///
 /// Description:
 ///
-/// Return: the PathBuf
+/// Return: the `PathBuf`
 fn build_current(dir: &Path, payload: &[u8], chunk: usize) -> PathBuf {
     let out = dir.join("app.daedalus");
     let config = SisrBuildConfig {
@@ -230,13 +230,13 @@ fn build_current(dir: &Path, payload: &[u8], chunk: usize) -> PathBuf {
     out
 }
 
-/// manifest_for - manifest for.
-/// @payload: payload data
-/// @chunk: chunk
+/// `manifest_for` - manifest for.
+/// `@payload`: payload data
+/// `@chunk`: chunk
 ///
 /// Description:
 ///
-/// Return: the DeltaManifest
+/// Return: the `DeltaManifest`
 fn manifest_for(payload: &[u8], chunk: usize) -> DeltaManifest {
     let artifacts = build_artifacts(
         payload,
@@ -250,8 +250,8 @@ fn manifest_for(payload: &[u8], chunk: usize) -> DeltaManifest {
     artifacts.manifest
 }
 
-/// payload_of - payload of.
-/// @path: file or directory path
+/// `payload_of` - payload of.
+/// `@path`: file or directory path
 ///
 /// Description:
 ///
@@ -280,7 +280,7 @@ fn update_setup(dir: &Path, b_len: usize, chunk: usize) -> (PathBuf, DeltaManife
 }
 
 #[test]
-/// latency_does_not_change_the_result - latency does not change the result.
+/// `latency_does_not_change_the_result` - latency does not change the result.
 ///
 /// Description:
 ///
@@ -307,7 +307,7 @@ fn latency_does_not_change_the_result() {
 }
 
 #[test]
-/// connection_drop_leaves_binary_untouched - connection drop leaves binary untouched.
+/// `connection_drop_leaves_binary_untouched` - connection drop leaves binary untouched.
 ///
 /// Description:
 ///
@@ -340,7 +340,7 @@ fn connection_drop_leaves_binary_untouched() {
 }
 
 #[test]
-/// corrupted_packets_fail_sha256_verification - corrupted packets fail sha256 verification.
+/// `corrupted_packets_fail_sha256_verification` - corrupted packets fail sha256 verification.
 ///
 /// Description:
 ///
@@ -372,7 +372,7 @@ fn corrupted_packets_fail_sha256_verification() {
 }
 
 #[test]
-/// truncated_packets_are_rejected - truncated packets are rejected.
+/// `truncated_packets_are_rejected` - truncated packets are rejected.
 ///
 /// Description:
 ///
@@ -404,7 +404,7 @@ fn truncated_packets_are_rejected() {
 }
 
 #[test]
-/// slow_throughput_still_reconstructs - slow throughput still reconstructs.
+/// `slow_throughput_still_reconstructs` - slow throughput still reconstructs.
 ///
 /// Description:
 ///
@@ -431,7 +431,7 @@ fn slow_throughput_still_reconstructs() {
 }
 
 #[test]
-/// fetched_bytes_are_accounted - fetched bytes are accounted.
+/// `fetched_bytes_are_accounted` - fetched bytes are accounted.
 ///
 /// Description:
 ///

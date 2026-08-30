@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! E2E failure tests: every rejection path must leave the binary untouched
 //! and exit non-zero. Each scenario serves a *signed-looking but invalid*
 //! delta over the mock HTTP channel.

@@ -40,8 +40,8 @@ struct PyFooter {
 #[pymethods]
 impl PyFooter {
     #[new]
-    /// py_new - py new.
-    /// @_py:  py
+    /// `py_new` - py new.
+    /// `@_py`:  py
     ///
     /// Description:
     ///
@@ -53,11 +53,11 @@ impl PyFooter {
     }
 
     #[getter]
-    /// footer_size - footer size.
+    /// `footer_size` - footer size.
     ///
     /// Description:
     ///
-    /// Return: the u64
+    /// Return: the `u64`
     fn footer_size(&self) -> u64 {
         if self.format_version >= 3 {
             format::V3_FOOTER_SIZE
@@ -66,7 +66,7 @@ impl PyFooter {
         }
     }
 
-    /// is_signed - check whether signed.
+    /// `is_signed` - check whether signed.
     ///
     /// Description:
     ///
@@ -75,11 +75,11 @@ impl PyFooter {
         self.flags & format::FLAG_SIGNED != 0
     }
 
-    /// sha256_hex - sha256 hex.
+    /// `sha256_hex` - sha256 hex.
     ///
     /// Description:
     ///
-    /// Return: the resulting string
+    /// Return: the `resulting` string
     fn sha256_hex(&self) -> String {
         self.payload_sha256
             .iter()
@@ -130,8 +130,8 @@ impl PyFooter {
     }
 
     #[staticmethod]
-    /// unpack - unpack.
-    /// @data: data
+    /// `unpack` - unpack.
+    /// `@data`: data
     ///
     /// Description:
     ///
@@ -209,19 +209,19 @@ impl PyFooter {
         })
     }
 
-    /// __repr__ -   repr  .
+    /// `__repr__` -   repr  .
     ///
     /// Description:
     ///
-    /// Return: the resulting string
+    /// Return: the `resulting` string
     fn __repr__(&self) -> String {
         format!("Footer(version={}, arch={:#04x}, flags={:#04x}, payload_offset={}, payload_csize={}, payload_usize={}, meta_offset={}, meta_size={}, sig_offset={})", self.format_version, self.arch, self.flags, self.payload_offset, self.payload_csize, self.payload_usize, self.meta_offset, self.meta_size, self.sig_offset,)
     }
 }
 
 #[pyfunction]
-/// py_read_footer - py read footer.
-/// @path: file or directory path
+/// `py_read_footer` - py read footer.
+/// `@path`: file or directory path
 ///
 /// Description:
 ///
@@ -284,8 +284,8 @@ fn py_decompress<'py>(py: Python<'py>, data: &[u8]) -> PyResult<Bound<'py, PyByt
 // ─── detect ──────────────────────────────────────────────────────────────
 
 #[pyfunction]
-/// py_detect_runtime - py detect runtime.
-/// @app_dir: app dir
+/// `py_detect_runtime` - py detect runtime.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -295,8 +295,8 @@ fn py_detect_runtime(app_dir: &str) -> Option<String> {
 }
 
 #[pyfunction]
-/// py_detect_python - py detect python.
-/// @app_dir: app dir
+/// `py_detect_python` - py detect python.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -306,8 +306,8 @@ fn py_detect_python(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
-/// py_detect_deno - py detect deno.
-/// @app_dir: app dir
+/// `py_detect_deno` - py detect deno.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -317,8 +317,8 @@ fn py_detect_deno(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
-/// py_detect_node - py detect node.
-/// @app_dir: app dir
+/// `py_detect_node` - py detect node.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -328,8 +328,8 @@ fn py_detect_node(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
-/// py_detect_java - py detect java.
-/// @app_dir: app dir
+/// `py_detect_java` - py detect java.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -339,8 +339,8 @@ fn py_detect_java(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
-/// py_detect_ruby - py detect ruby.
-/// @app_dir: app dir
+/// `py_detect_ruby` - py detect ruby.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -350,8 +350,8 @@ fn py_detect_ruby(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
-/// py_detect_dotnet - py detect dotnet.
-/// @app_dir: app dir
+/// `py_detect_dotnet` - py detect dotnet.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -361,8 +361,8 @@ fn py_detect_dotnet(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
-/// py_detect_go - py detect go.
-/// @app_dir: app dir
+/// `py_detect_go` - py detect go.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -372,8 +372,8 @@ fn py_detect_go(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
-/// py_detect_php - py detect php.
-/// @app_dir: app dir
+/// `py_detect_php` - py detect php.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -383,8 +383,8 @@ fn py_detect_php(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
-/// py_detect_perl - py detect perl.
-/// @app_dir: app dir
+/// `py_detect_perl` - py detect perl.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -394,8 +394,8 @@ fn py_detect_perl(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
-/// py_detect_electron - py detect electron.
-/// @app_dir: app dir
+/// `py_detect_electron` - py detect electron.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -405,8 +405,8 @@ fn py_detect_electron(app_dir: &str) -> bool {
 }
 
 #[pyfunction]
-/// py_detect_binary - py detect binary.
-/// @app_dir: app dir
+/// `py_detect_binary` - py detect binary.
+/// `@app_dir`: app dir
 ///
 /// Description:
 ///
@@ -418,8 +418,8 @@ fn py_detect_binary(app_dir: &str) -> bool {
 // ─── pkgmgr ──────────────────────────────────────────────────────────────
 
 #[pyfunction]
-/// py_detect_python_pkgmgr - py detect python pkgmgr.
-/// @dir: directory path
+/// `py_detect_python_pkgmgr` - py detect python pkgmgr.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -429,8 +429,8 @@ fn py_detect_python_pkgmgr(dir: &str) -> Option<String> {
 }
 
 #[pyfunction]
-/// py_detect_node_pkgmgr - py detect node pkgmgr.
-/// @dir: directory path
+/// `py_detect_node_pkgmgr` - py detect node pkgmgr.
+/// `@dir`: directory path
 ///
 /// Description:
 ///
@@ -440,9 +440,9 @@ fn py_detect_node_pkgmgr(dir: &str) -> Option<String> {
 }
 
 #[pyfunction]
-/// py_detect_pkgmgr - py detect pkgmgr.
-/// @dir: directory path
-/// @runtime: runtime
+/// `py_detect_pkgmgr` - py detect pkgmgr.
+/// `@dir`: directory path
+/// `@runtime`: runtime
 ///
 /// Description:
 ///
@@ -452,8 +452,8 @@ fn py_detect_pkgmgr(dir: &str, runtime: &str) -> Option<String> {
 }
 
 #[pyfunction]
-/// py_pkgmgr_install_cmd - py pkgmgr install cmd.
-/// @mgr: mgr
+/// `py_pkgmgr_install_cmd` - py pkgmgr install cmd.
+/// `@mgr`: mgr
 ///
 /// Description:
 ///
@@ -494,7 +494,7 @@ fn py_create_tar_zstd<'py>(py: Python<'py>, root: &str) -> PyResult<Bound<'py, P
 
 #[pyfunction]
 #[pyo3(signature = (out_path, stub_bytes, payload, meta_bytes, squashfs=false, target_arch=None))]
-/// py_assemble_daedalus - py assemble daedalus.
+/// `py_assemble_daedalus` - py assemble daedalus.
 ///
 /// Description:
 ///
@@ -525,8 +525,8 @@ fn py_assemble_daedalus(
 // ─── module ──────────────────────────────────────────────────────────────
 
 #[pymodule]
-/// daedalus_core - daedalus core.
-/// @m: m
+/// `daedalus_core` - daedalus core.
+/// `@m`: m
 ///
 /// Description:
 ///

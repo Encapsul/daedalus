@@ -27,7 +27,7 @@ pub enum PkgMgr {
 }
 
 impl PkgMgr {
-    /// name - name.
+    /// `name` - name.
     ///
     /// Description:
     ///
@@ -48,7 +48,7 @@ impl PkgMgr {
         }
     }
 
-    /// install_cmd - install cmd.
+    /// `install_cmd` - install cmd.
     ///
     /// Description:
     ///
@@ -253,8 +253,8 @@ pub fn run_build_steps(app_dir: &Path, verbose: bool) -> io::Result<usize> {
     Ok(ran)
 }
 
-/// is_command_available - check whether command available.
-/// @name: name
+/// `is_command_available` - check whether command available.
+/// `@name`: name
 ///
 /// Description:
 ///
@@ -314,7 +314,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    /// uv_lock - uv lock.
+    /// `uv_lock` - uv lock.
     ///
     /// Description:
     ///
@@ -326,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    /// uv_beats_poetry - uv beats poetry.
+    /// `uv_beats_poetry` - uv beats poetry.
     ///
     /// Description:
     ///
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    /// pnpm_lock - pnpm lock.
+    /// `pnpm_lock` - pnpm lock.
     ///
     /// Description:
     ///
@@ -352,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    /// no_package_json_no_node - no package json no node.
+    /// `no_package_json_no_node` - no package json no node.
     ///
     /// Description:
     ///
@@ -363,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    /// detect_for_runtime - detect for runtime.
+    /// `detect_for_runtime` - detect for runtime.
     ///
     /// Description:
     ///
@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    /// composer_detection - composer detection.
+    /// `composer_detection` - composer detection.
     ///
     /// Description:
     ///
@@ -388,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    /// composer_lock_file - composer lock file.
+    /// `composer_lock_file` - composer lock file.
     ///
     /// Description:
     ///
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    /// bundler_detection - bundler detection.
+    /// `bundler_detection` - bundler detection.
     ///
     /// Description:
     ///
@@ -413,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    /// bundler_lock_file - bundler lock file.
+    /// `bundler_lock_file` - bundler lock file.
     ///
     /// Description:
     ///
@@ -426,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    /// php_runtime_detects_composer - php runtime detects composer.
+    /// `php_runtime_detects_composer` - php runtime detects composer.
     ///
     /// Description:
     ///
@@ -438,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    /// ruby_runtime_detects_bundler - ruby runtime detects bundler.
+    /// `ruby_runtime_detects_bundler` - ruby runtime detects bundler.
     ///
     /// Description:
     ///
@@ -450,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    /// secondary_node_mgr - secondary node mgr.
+    /// `secondary_node_mgr` - secondary node mgr.
     ///
     /// Description:
     ///
@@ -467,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    /// secondary_php_mgr - secondary php mgr.
+    /// `secondary_php_mgr` - secondary php mgr.
     ///
     /// Description:
     ///
@@ -484,7 +484,7 @@ mod tests {
     }
 
     #[test]
-    /// perl_runtime_detects_cpan - perl runtime detects cpan.
+    /// `perl_runtime_detects_cpan` - perl runtime detects cpan.
     ///
     /// Description:
     ///
@@ -496,7 +496,7 @@ mod tests {
     }
 
     #[test]
-    /// cpanfile_snapshot - cpanfile snapshot.
+    /// `cpanfile_snapshot` - cpanfile snapshot.
     ///
     /// Description:
     ///
@@ -508,7 +508,7 @@ mod tests {
     }
 
     #[test]
-    /// secondary_perl_mgr - secondary perl mgr.
+    /// `secondary_perl_mgr` - secondary perl mgr.
     ///
     /// Description:
     ///

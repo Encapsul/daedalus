@@ -227,6 +227,97 @@ fn test_registry_list_empty() {
 }
 
 #[test]
+fn test_scan_help_lists_plain_and_no_input() {
+    daedalus()
+        .args(["scan", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--plain"))
+        .stdout(predicate::str::contains("--no-input"))
+        .stdout(predicate::str::contains("--json"));
+}
+
+#[test]
+fn test_doctor_help_lists_plain() {
+    daedalus()
+        .args(["doctor", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--plain"))
+        .stdout(predicate::str::contains("--no-input"));
+}
+
+#[test]
+fn test_registry_help_lists_plain_and_json() {
+    daedalus()
+        .args(["registry", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--plain"))
+        .stdout(predicate::str::contains("--no-input"));
+}
+
+#[test]
+fn test_keygen_help_lists_no_input() {
+    daedalus()
+        .args(["keygen", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--no-input"));
+}
+
+#[test]
+fn test_no_input_flag_accepted_by_keygen() {
+    let tmp = tempdir().unwrap();
+    daedalus()
+        .args([
+            "keygen",
+            "--key-dir",
+            tmp.path().to_str().unwrap(),
+            "--no-input",
+            "--force",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Generated Ed25519 keypair"));
+}
+
+#[test]
+fn test_registry_list_json_empty() {
+    let tmp = tempdir().unwrap();
+    let dir = tmp.path().join("registry");
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let output = daedalus()
+        .args(["registry", "list", "--dir", dir.to_str().unwrap(), "--json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: Result<serde_json::Value, _> = serde_json::from_str(&stdout);
+    assert!(
+        parsed.is_ok(),
+        "registry list --json should output valid JSON"
+    );
+}
+
+#[test]
+fn test_plain_flag_disables_pager() {
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("app")).unwrap();
+    std::fs::write(tmp.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    let app_dir = tmp.path().join("app");
+    let output = daedalus()
+        .args(["build", app_dir.to_str().unwrap(), "--dry-run", "--plain"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("\x1b[") && !stderr.contains("\u{1b}["),
+        "--plain should disable ANSI colors"
+    );
+}
+
+#[test]
 fn test_registry_push_no_registry() {
     let tmp = tempdir().unwrap();
     let fake_file = tmp.path().join("fake.txt");
