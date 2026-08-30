@@ -13,6 +13,10 @@ pub struct InspectArgs {
     #[arg(long)]
     pub json: bool,
 
+    /// Machine-readable plain output (tab-separated key=value)
+    #[arg(long)]
+    pub plain: bool,
+
     /// Write JSON output to file (requires --json)
     #[arg(short, long)]
     pub output: Option<PathBuf>,
@@ -92,6 +96,72 @@ pub fn run(args: InspectArgs) -> Result<()> {
             std::fs::write(path, &json_str)
                 .with_context(|| format!("failed to write to {}", path.display()))?;
             eprintln!("Wrote JSON to {}", path.display());
+        } else if args.plain {
+            println!("file\t{}", args.file.display());
+            println!("format\tv{}", footer.format_version);
+            println!("arch\t{arch_name}");
+            println!("signed\t{}", footer.is_signed());
+            println!(
+                "payload_compressed\t{}",
+                format_size(footer.payload_csize)
+            );
+            println!(
+                "payload_uncompressed\t{}",
+                format_size(footer.payload_usize)
+            );
+            println!("sha256\t{}", &footer.sha256_hex()[..16]);
+            if footer.is_signed() {
+                let sig_block_offset = footer.payload_offset + footer.payload_csize;
+                println!("sig_offset\t0x{sig_block_offset:X}");
+                println!("sig_size\t64");
+            }
+            if let Some(name) = meta.get("name").and_then(|v| v.as_str()) {
+                println!("name\t{name}");
+            }
+            if let Some(rt) = meta.get("runtime").and_then(|v| v.as_str()) {
+                println!("runtime\t{rt}");
+            }
+            if let Some(v) = meta.get("version").and_then(|v| v.as_str()) {
+                println!("version\t{v}");
+            }
+            if let Some(a) = meta.get("author").and_then(|v| v.as_str()) {
+                println!("author\t{a}");
+            }
+            if let Some(d) = meta.get("description").and_then(|v| v.as_str()) {
+                println!("description\t{d}");
+            }
+            if let Some(l) = meta.get("license").and_then(|v| v.as_str()) {
+                println!("license\t{l}");
+            }
+            if let Some(iso) = meta.get("isolation").and_then(|v| v.as_u64()) {
+                println!("isolation\t{iso}");
+            }
+            if let Some(ep) = meta.get("entrypoint").and_then(|v| v.as_array()) {
+                let parts: Vec<&str> = ep.iter().filter_map(|v| v.as_str()).collect();
+                println!("entrypoint\t{}", parts.join(" "));
+            }
+            if let Some(created) = meta.get("created").and_then(|v| v.as_str()) {
+                println!("created\t{created}");
+            }
+            if let Some(env) = meta.get("env").and_then(|v| v.as_object()) {
+                for (k, v) in env {
+                    let val = v.as_str().unwrap_or("...");
+                    println!("env.{k}\t{val}");
+                }
+            }
+            if let Some(layers) = meta.get("layers").and_then(|v| v.as_array()) {
+                for (i, layer) in layers.iter().enumerate() {
+                    let name = layer.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                    let usize = layer.get("usize").and_then(|v| v.as_u64()).unwrap_or(0);
+                    println!("layer.{i}\t{name}\t{}", format_size(usize));
+                }
+            }
+            if let Some(app_hash) = meta.get("app_hash").and_then(|v| v.as_str()) {
+                println!("app_hash\t{}", &app_hash[..16.min(app_hash.len())]);
+            }
+            if let Some(rt_hash) = meta.get("rt_hash").and_then(|v| v.as_str()) {
+                println!("rt_hash\t{}", &rt_hash[..16.min(rt_hash.len())]);
+            }
         } else {
             println!("{json_str}");
         }

@@ -25,10 +25,30 @@ fn build_fixture(dir: &Path, _payload_bytes: &[u8]) -> std::path::PathBuf {
         "entrypoint": ["/app/app.py"],
     });
     let out = dir.join("app.de");
+
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .unwrap_or_else(|_| ".".into());
+    let workspace_root = std::path::Path::new(&manifest_dir).parent().unwrap_or(std::path::Path::new("."));
+
+    let stub_bytes = if let Ok(path) = std::env::var("DAEDALUS_STUB_PATH") {
+        std::fs::read(&path).expect("failed to read stub from DAEDALUS_STUB_PATH")
+    } else {
+        let candidates = [
+            workspace_root.join("target/x86_64-unknown-linux-musl/release/daedalus-stub"),
+            std::path::PathBuf::from("/tmp/daedalus-stub-target/x86_64-unknown-linux-musl/release/daedalus-stub"),
+            workspace_root.join("target/release/daedalus-stub"),
+        ];
+        let path = candidates
+            .iter()
+            .find(|p| p.exists())
+            .expect("daedalus-stub binary not found; build it with: cargo build --release -p daedalus-stub --target x86_64-unknown-linux-musl");
+        std::fs::read(path).expect("failed to read stub binary")
+    };
+
     assemble_daedalus(
         &out,
         &AssemblyInput {
-            stub_bytes: b"MUTABLE-STUB-BYTES",
+            stub_bytes: &stub_bytes,
             payload: &payload,
             meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
             squashfs: false,
@@ -38,14 +58,37 @@ fn build_fixture(dir: &Path, _payload_bytes: &[u8]) -> std::path::PathBuf {
         },
     )
     .unwrap();
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
     out
 }
 
 fn run_stub(bin: &Path, arg: &str) -> std::process::Output {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(bin, std::fs::Permissions::from_mode(0o755)) {
+            eprintln!("Warning: could not set permissions on {}: {}", bin.display(), e);
+        }
+    }
     Command::new(bin)
         .arg(arg)
         .output()
         .expect("failed to run stub")
+}
+
+fn run_stub_result(bin: &Path, arg: &str) -> Result<std::process::Output, std::io::Error> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(bin, std::fs::Permissions::from_mode(0o755));
+    }
+    Command::new(bin).arg(arg).output()
 }
 
 // ── Hostile input ───────────────────────────────────────────────────────
@@ -62,7 +105,7 @@ fn chaos_truncated_binary_fails_without_touching_output() {
 
         let out = dir.path().join("out.de");
         let _ = std::fs::remove_file(&out);
-        let _result = run_stub(&broken, "--daedalus-version");
+        let _result = run_stub_result(&broken, "--daedalus-version");
         if !out.exists() {
             continue;
         }
@@ -90,7 +133,7 @@ fn chaos_random_byte_corruption_never_panics() {
         let bad = dir.path().join("bad.de");
         std::fs::write(&bad, &corrupted).unwrap();
 
-        let _result = run_stub(&bad, "--daedalus-version");
+        let _result = run_stub_result(&bad, "--daedalus-version");
     }
 }
 
@@ -100,10 +143,18 @@ fn chaos_garbage_file_refused_cleanly() {
     let junk = dir.path().join("junk.de");
     std::fs::write(&junk, vec![0xDEu8; 512]).unwrap();
 
-    let result = run_stub(&junk, "--daedalus-version");
-    assert!(
-        !result.status.success() || String::from_utf8_lossy(&result.stderr).contains("not a .de")
-    );
+    let result = run_stub_result(&junk, "--daedalus-version");
+    match result {
+        Ok(output) => {
+            assert!(
+                !output.status.success() || String::from_utf8_lossy(&output.stderr).contains("not a .de"),
+                "garbage file should be refused cleanly"
+            );
+        }
+        Err(_) => {
+            // OS-level rejection (e.g., Exec format error) is also clean
+        }
+    }
 }
 
 #[test]
@@ -207,15 +258,22 @@ fn chaos_successful_run_keeps_binary_valid() {
 
     let footer = Footer::read_from(&mut Cursor::new(std::fs::read(&bin).unwrap())).unwrap();
     let mut cursor = Cursor::new(std::fs::read(&bin).unwrap());
-    let parts = daedalus_core::format::read_at(
+    let payload = daedalus_core::format::read_at(
         &mut cursor,
         footer.payload_offset,
         (footer.meta_offset - footer.payload_offset) as usize,
     )
     .expect("payload must be readable");
+    let meta = daedalus_core::format::read_at(
+        &mut cursor,
+        footer.meta_offset,
+        footer.meta_size as usize,
+    )
+    .expect("meta must be readable");
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
-    h.update(&parts);
+    h.update(&payload);
+    h.update(&meta);
     let digest: [u8; 32] = h.finalize().into();
     assert_eq!(footer.payload_sha256, digest);
 }

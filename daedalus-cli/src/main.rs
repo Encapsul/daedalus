@@ -17,7 +17,7 @@ use std::process::ExitCode;
     name = "daedalus",
     version,
     about = "Package any app into a single self-extracting binary",
-    long_about = "daedalus compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  daedalus build ./myapp -o myapp.de\n  daedalus run myapp.de\n  daedalus inspect myapp.de\n  daedalus keygen\n  daedalus sign myapp.de --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.de\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish"
+    long_about = "daedalus compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  daedalus build ./myapp -o myapp.de\n  daedalus run myapp.de\n  daedalus inspect myapp.de\n  daedalus keygen\n  daedalus sign myapp.de --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.de\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish\n\nDocumentation: https://github.com/Encapsul/daedalus/blob/main/README.md"
 )]
 struct Cli {
     /// Enable verbose output
@@ -31,6 +31,14 @@ struct Cli {
     /// Suppress non-error output
     #[arg(short, long, global = true)]
     quiet: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    no_input: bool,
+
+    /// Machine-readable plain output (no ANSI, no pager, no box drawing)
+    #[arg(long, global = true)]
+    plain: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -140,8 +148,8 @@ fn main() -> ExitCode {
 
     let cli = Cli::parse();
 
-    // Respect --no-color flag and NO_COLOR env var
-    if cli.no_color || std::env::var("NO_COLOR").is_ok() {
+    // Respect --no-color and --plain flags and NO_COLOR env var
+    if cli.no_color || cli.plain || std::env::var("NO_COLOR").is_ok() {
         std::env::set_var("NO_COLOR", "1");
     }
 
@@ -161,6 +169,9 @@ fn main() -> ExitCode {
             if cli.quiet {
                 args.quiet = true;
             }
+            if cli.no_input {
+                args.no_input = true;
+            }
             commands::sign::run(args)
         }
         Commands::Verify(mut args) => {
@@ -176,8 +187,21 @@ fn main() -> ExitCode {
             commands::trust::run(args)
         }
         Commands::Scan(args) => commands::scan::run(args),
-        Commands::Doctor(args) => commands::doctor::run(args),
-        Commands::Clean(args) => commands::clean::run(args),
+        Commands::Doctor(mut args) => {
+            if cli.quiet {
+                args.quiet = true;
+            }
+            if cli.no_input {
+                args.no_input = true;
+            }
+            commands::doctor::run(args)
+        }
+        Commands::Clean(mut args) => {
+            if cli.no_input {
+                args.no_input = true;
+            }
+            commands::clean::run(args)
+        }
         Commands::Dashboard(args) => commands::dashboard::run(&args),
         Commands::Selftest(mut args) => {
             if cli.quiet {
@@ -188,6 +212,9 @@ fn main() -> ExitCode {
         Commands::Upgrade(mut args) => {
             if cli.quiet {
                 args.verbose = false;
+            }
+            if cli.no_input {
+                args.no_input = true;
             }
             commands::upgrade::run(args)
         }

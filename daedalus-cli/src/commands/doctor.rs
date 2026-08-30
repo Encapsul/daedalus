@@ -23,6 +23,10 @@ pub struct DoctorArgs {
     /// Skip confirmation prompt for `--fix`
     #[arg(short, long)]
     pub force: bool,
+
+    /// Disable all interactive prompts (for CI/scripts)
+    #[arg(long, global = true)]
+    pub no_input: bool,
 }
 
 struct Check {
@@ -112,9 +116,9 @@ pub fn run(args: DoctorArgs) -> Result<()> {
 
     // Auto-fix missing prerequisites
     if args.r#fix {
-        if !args.force {
+        if !args.force && !args.no_input {
             if !is_interactive() {
-                anyhow::bail!("interactive prompt required; pass --force for non-interactive use");
+                anyhow::bail!("interactive prompt required; pass --force or --no-input for non-interactive use");
             }
             eprint!("This will attempt to install missing dependencies. Continue? [y/N] ");
             let mut input = String::new();
@@ -123,6 +127,8 @@ pub fn run(args: DoctorArgs) -> Result<()> {
                 eprintln!("Aborted");
                 return Ok(());
             }
+        } else if args.no_input && !args.force {
+            anyhow::bail!("--no-input passed but --fix requires confirmation; pass --force to skip");
         }
 
         for check in &mut checks {
