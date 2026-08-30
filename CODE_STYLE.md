@@ -124,6 +124,73 @@ Every `.rs` file starts with `//!` doc comments describing the module's
 purpose and its role in the system. This is already the pattern in
 `main.rs` and `format.rs`.
 
+### Function documentation: Unix man-page format
+
+Every function must have a doc comment in the Unix man-page style:
+
+```rust
+/// function_name - brief description of what the function does
+/// @param_name: description of the parameter
+///
+/// Description: longer description explaining the algorithm, invariants,
+/// and any non-obvious behavior.
+///
+/// Return: description of the return value, or "nothing" for ().
+```
+
+**Rules:**
+- First line: `function_name - brief description` (no period at the end).
+- One `@param` line per parameter, in declaration order.
+- Blank line before `Description:` and `Return:`.
+- `Return:` is mandatory even for `()` — write `Return: nothing`.
+- For functions with no parameters, omit the `@param` lines.
+- For functions returning `Result<T, E>`, describe both the success value
+  and the error conditions.
+
+**Examples:**
+
+```rust
+/// verify_ed25519 - verify an Ed25519 signature over the payload hash
+/// @footer: parsed footer containing signature metadata
+/// @trusted_keys: list of trusted public keys
+///
+/// Description: Reads the signature block from the binary, computes
+/// SHA-256(payload || meta_bytes), and verifies the signature against
+/// each trusted key. Returns Ok(()) on first match, Err on failure.
+///
+/// Return: Ok(()) if signature is valid, Err otherwise
+fn verify_ed25519(footer: &Footer, trusted_keys: &[VerifyingKey]) -> Result<()> {
+    ...
+}
+
+/// atomic_replace - atomically replace dst with contents of src
+/// @src: temporary file containing the new content
+/// @dst: final destination path
+///
+/// Description: Renames src to dst using std::fs::rename, which is
+/// atomic on the same filesystem. Permissions are preserved from src.
+///
+/// Return: nothing
+fn atomic_replace(src: &Path, dst: &Path) {
+    ...
+}
+
+/// is_runtime_detected - check whether a runtime was auto-detected
+///
+/// Description: Returns true if the build pipeline detected a runtime
+/// from the app directory (e.g., package.json, requirements.txt).
+///
+/// Return: true if runtime detected, false otherwise
+fn is_runtime_detected() -> bool {
+    ...
+}
+```
+
+This format is enforced by `clippy::doc_markdown` warnings in CI. Functions
+without doc comments will fail the lint check once `missing_docs` is enabled
+for the crate. For now, this is a manual convention; the goal is to enable
+`#![warn(missing_docs)]` once all public functions are documented.
+
 ---
 
 ## Python (cli/)
