@@ -3,7 +3,7 @@ use clap::Args;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
-const GITHUB_API: &str = "https://api.github.com/repos/Tednoob17/daedalus/releases/latest";
+const GITHUB_API: &str = "https://api.github.com/repos/Encapsul/daedalus/releases/latest";
 
 #[derive(Args)]
 pub struct UpgradeArgs {
@@ -58,7 +58,7 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
 
     let tag = format!("v{latest}");
     let asset = format!("daedalus-{latest}-{platform}.tar.gz");
-    let url = format!("https://github.com/Tednoob17/daedalus/releases/download/{tag}/{asset}");
+    let url = format!("https://github.com/Encapsul/daedalus/releases/download/{tag}/{asset}");
 
     if args.dry_run {
         eprintln!("Would upgrade from {current} to {latest}");

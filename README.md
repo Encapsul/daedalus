@@ -1,8 +1,8 @@
 # daedalus
 
-[![CI](https://img.shields.io/github/actions/workflow/status/Tednoob17/daedalus/ci.yml?branch=main&label=build)](https://github.com/Tednoob17/daedalus/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/Encapsul/daedalus/ci.yml?branch=main&label=build)](https://github.com/Encapsul/daedalus/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](https://github.com/Tednoob17/daedalus/releases)
+[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](https://github.com/Encapsul/daedalus/releases)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)]()
 [![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)
@@ -17,7 +17,7 @@ The binary format (`[stub][payload][metadata][footer]`) is a universal executabl
 
 ```bash
 # Install
-curl -fsSL https://raw.githubusercontent.com/Tednoob17/daedalus/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash
 
 # Build
 cd your-app && daedalus build . -o myapp.de
@@ -127,7 +127,7 @@ Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs).
 ### Build
 
 ```bash
-git clone https://github.com/Tednoob17/daedalus.git
+git clone https://github.com/Encapsul/daedalus.git
 cd daedalus
 cargo build --release
 # Binary at target/release/daedalus
@@ -197,5 +197,5 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ## Community
 
-- [GitHub Issues](https://github.com/Tednoob17/daedalus/issues) — report bugs or request features
+- [GitHub Issues](https://github.com/Encapsul/daedalus/issues) — report bugs or request features
 - `daedalus feedback --browser` — open the feedback page quickly

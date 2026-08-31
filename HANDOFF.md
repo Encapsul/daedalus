@@ -320,7 +320,7 @@ git push --force --tags origin
 **Workflow**: `.github/workflows/release.yml` triggers on `release: types: [published]` (toboggan pattern).
 
 **How to create a release**:
-1. Go to https://github.com/Tednoob17/daedalus/releases/new
+1. Go to https://github.com/Encapsul/daedalus/releases/new
 2. **Tag**: create new tag `vX.Y.Z` (or select existing)
 3. **Release title**: `daedalus vX.Y.Z` (or `daedalus vX.Y.Z — <codename>`)
 4. **Description**: write changelog, install instructions, etc.
@@ -803,7 +803,7 @@ Cargo.toml          (workspace root, [profile.release])
 - `macos-x64` (x86_64-apple-darwin) — queued, runner slow
 
 **Distribution**: Single binary, no `pip install` needed.
-`curl -fsSL https://raw.githubusercontent.com/Tednoob17/daedalus/main/scripts/install.sh | bash`
+`curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash`
 
 ### Benefits achieved
 
@@ -841,7 +841,7 @@ Stub now uses `daedalus-core` as a shared library dependency instead of its loca
   - Downloads tar.gz from releases, verifies SHA-256 checksum
   - Installs to `/usr/local/bin/` (or `$DAEDALUS_INSTALL_DIR`)
   - Idempotent: skips if already up-to-date
-  - Usage: `curl -fsSL https://raw.githubusercontent.com/Tednoob17/daedalus/main/scripts/install.sh | bash`
+  - Usage: `curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash`
 - **File**: `cli/daedalus/upgrade.py` — `daedalus upgrade` self-update command
   - Fetches latest version from GitHub API
   - Compares against current `_DAEDALUS_VERSION`

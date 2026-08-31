@@ -19,7 +19,7 @@ pub struct FeedbackArgs {
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: FeedbackArgs) -> Result<()> {
-    let repo_url = "https://github.com/Tednoob17/daedalus/issues/new";
+    let repo_url = "https://github.com/Encapsul/daedalus/issues/new";
 
     let mut url = repo_url.to_string();
     if let Some(title) = &args.title {

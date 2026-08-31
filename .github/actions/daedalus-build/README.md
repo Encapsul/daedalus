@@ -5,7 +5,7 @@ Package any app into a single self-extracting `.daedalus` binary directly in you
 ## Quick Start
 
 ```yaml
-- uses: Tednoob17/daedalus/.github/actions/daedalus-build@main
+- uses: Encapsul/daedalus/.github/actions/daedalus-build@main
   with:
     app-path: '.'
 
@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: Tednoob17/daedalus/.github/actions/daedalus-build@main
+      - uses: Encapsul/daedalus/.github/actions/daedalus-build@main
         with:
           app-path: '.'
           output: 'my-python-app.daedalus'
@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: Tednoob17/daedalus/.github/actions/daedalus-build@main
+      - uses: Encapsul/daedalus/.github/actions/daedalus-build@main
         with:
           app-path: '.'
           runtime: 'node'
@@ -76,7 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: Tednoob17/daedalus/.github/actions/daedalus-build@main
+      - uses: Encapsul/daedalus/.github/actions/daedalus-build@main
         with:
           app-path: '.'
           target: ${{ matrix.target }}
@@ -91,7 +91,7 @@ jobs:
 ### With extra files
 
 ```yaml
-- uses: Tednoob17/daedalus/.github/actions/daedalus-build@main
+- uses: Encapsul/daedalus/.github/actions/daedalus-build@main
   with:
     app-path: '.'
     include: |
@@ -104,7 +104,7 @@ jobs:
 ### Specific version
 
 ```yaml
-- uses: Tednoob17/daedalus/.github/actions/daedalus-build@main
+- uses: Encapsul/daedalus/.github/actions/daedalus-build@main
   with:
     app-path: '.'
     daedalus-version: 'v0.5.0'
@@ -123,7 +123,7 @@ jobs:
 | `include` | Extra files/dirs to include (newline-separated) | — |
 | `output` | Output binary path | `app.daedalus` |
 | `daedalus-version` | daedalus version to install | `latest` |
-| `daedalus-repo` | GitHub repo to download daedalus from | `Tednoob17/daedalus` |
+| `daedalus-repo` | GitHub repo to download daedalus from | `Encapsul/daedalus` |
 | `build-args` | Extra arguments to pass to daedalus build | — |
 
 ## Outputs
