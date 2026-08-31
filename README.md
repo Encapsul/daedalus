@@ -13,6 +13,8 @@
 
 The binary format (`[stub][payload][metadata][footer]`) is a universal executable artifact — capable of transporting any application, microservice, or plugin as a single portable unit.
 
+**Note**: the produced `.de` file is a Linux ELF binary. It runs natively on Linux, and can be run on macOS/Windows via WSL or a Linux VM. Building on Windows/macOS works (the CLI is cross-platform), but the output requires a Linux runtime to execute.
+
 ## Quick start
 
 ```bash
@@ -51,7 +53,9 @@ cd your-app && daedalus build . -o myapp.de
 [stub][payload][metadata][footer]
 ```
 
-- **Stub**: statically-linked launcher (ELF/Mach-O/PE) that reads its own binary, verifies integrity, extracts the payload, and `execvp`s the entrypoint
+- **Stub**: statically-linked launcher (currently Linux ELF only; macOS/Windows PE
+  support is planned) that reads its own binary, verifies integrity, extracts the
+  payload, and `execvp`s the entrypoint
 - **Payload**: zstd-compressed tar archive (or squashfs) of the application + runtime
 - **Metadata**: JSON with runtime info, entrypoint, layers, capabilities
 - **Footer**: magic `0xBEEF_CAFE`, format version, integrity SHA-256 hash
@@ -138,7 +142,7 @@ cargo build --release
 | Crate | Purpose |
 |-------|---------|
 | `daedalus-core` | Shared library: format, compression, detection, signing, assembly |
-| `daedalus-stub` | Self-extracting launcher (Linux ELF / macOS Mach-O / Windows PE) |
+| `daedalus-stub` | Self-extracting launcher (Linux ELF only today; macOS/Windows PE planned) |
 | `daedalus-cli` | CLI tool (cross-platform) |
 
 ## Configuration
