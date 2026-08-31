@@ -119,6 +119,7 @@ mod tests {
                 layers: Vec::new(),
                 entrypoint_layer: None,
                 hooks: None,
+                lazy_load: false,
                 encryption: None,
             }
         };
@@ -159,6 +160,7 @@ mod tests {
                 layers: Vec::new(),
                 entrypoint_layer: None,
                 hooks: None,
+                lazy_load: false,
                 encryption: None,
             }
         };
@@ -197,6 +199,7 @@ mod tests {
                 layers: Vec::new(),
                 entrypoint_layer: None,
                 hooks: None,
+                lazy_load: false,
                 encryption: None,
             }
         };
@@ -235,6 +238,7 @@ mod tests {
                 layers: Vec::new(),
                 entrypoint_layer: None,
                 hooks: None,
+                lazy_load: false,
                 encryption: None,
             }
         };
@@ -273,6 +277,7 @@ mod tests {
                 entrypoint_layer: None,
                 hooks: None,
                 layers: Vec::new(),
+                lazy_load: false,
                 encryption: None,
             }
         };

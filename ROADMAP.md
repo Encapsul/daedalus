@@ -74,6 +74,7 @@
 | Universal binary (`--universal`) | Done (polyglot shell launcher, multi-arch slices) |
 | Hot-swap layers (`daedalus swap`) | Done |
 | Registry CAS (`daedalus registry push/pull/list`) | Done |
+| Lazy loading (`--lazy-load`) | Done (priority extraction + background thread) |
 
 ## Security
 

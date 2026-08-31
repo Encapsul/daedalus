@@ -1795,6 +1795,7 @@ mod tests {
             entrypoint_layer: None,
             hooks: None,
             layers: Vec::new(),
+            lazy_load: false,
             encryption: None,
         };
 
@@ -1999,6 +2000,7 @@ mod tests {
             entrypoint_layer: None,
             hooks: None,
             layers: Vec::new(),
+            lazy_load: false,
             encryption: None,
         };
         let err = resolve_entrypoint(&meta, tmp.path(), false).unwrap_err();

@@ -264,6 +264,7 @@ pub(crate) fn build_single_target(
             post_hooks,
             layers: Some(layers),
             entrypoint_layer: Some(runtime_name.clone()),
+            lazy_load: args.lazy_load,
         },
         &bun_features,
     )?;

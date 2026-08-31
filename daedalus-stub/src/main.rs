@@ -121,6 +121,7 @@ const BIN_PATHS_ABS: &[&str] = &["/usr/bin", "/bin", "/usr/local/bin"];
 /// Used by the launcher to configure execution environment.
 ///
 /// Return: nothing
+#[allow(clippy::struct_excessive_bools)]
 pub struct Metadata {
     /// `name` - application name.
     ///
@@ -284,6 +285,15 @@ pub struct Metadata {
     /// Name of the layer containing the main entrypoint.
     #[serde(default)]
     entrypoint_layer: Option<String>,
+    #[serde(default)]
+    /// `lazy_load` - enable lazy loading.
+    ///
+    /// Description:
+    /// When true, the stub extracts priority files first and continues
+    /// extracting the rest in the background after the app starts.
+    ///
+    /// Return: nothing
+    lazy_load: bool,
     #[serde(default)]
     encryption: Option<daedalus_core::metadata::EncryptionMeta>,
 }
@@ -797,6 +807,9 @@ fn run() -> io::Result<()> {
         let is_squashfs = meta.payload_format == format::PAYLOAD_FORMAT_SQUASHFS;
         if is_squashfs {
             extract_squashfs_atomic(&[payload.as_slice()], &cache_root)?;
+        } else if meta.lazy_load {
+            let priority = priority_files(&meta);
+            extraction::extract_atomic_lazy(&[payload.as_slice()], &cache_root, &priority)?;
         } else {
             extract_atomic(&[payload.as_slice()], &cache_root)?;
         }
@@ -917,6 +930,50 @@ fn reject_downgraded_sig_block<R: Read + Seek>(exe: &mut R, footer: &Footer) -> 
 /// the file the update engine swaps in place.
 fn self_exe() -> io::Result<PathBuf> {
     fs::canonicalize(std::env::current_exe()?)
+}
+
+/// Compute priority files for lazy extraction.
+///
+/// Description:
+/// Returns the entrypoint path and the runtime interpreter path as the minimum
+/// set of files needed to start the app. The rest of the payload is extracted
+/// in the background.
+///
+/// Return: Vec of PathBuf
+fn priority_files(meta: &Metadata) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = Vec::new();
+
+    let entrypoint = meta.effective_entrypoint();
+    if let Some(first) = entrypoint.first() {
+        let prog = first.split_whitespace().next().unwrap_or(first);
+        if prog.starts_with('/') {
+            files.push(PathBuf::from(prog));
+        } else {
+            files.push(PathBuf::from("/app").join(prog));
+        }
+    }
+
+    let runtime = meta.effective_runtime();
+    let interpreter = match runtime {
+        "python" | "python3" => Some("python3"),
+        "node" => Some("node"),
+        "deno" => Some("deno"),
+        "java" => Some("java"),
+        "ruby" => Some("ruby"),
+        "php" => Some("php"),
+        "perl" => Some("perl"),
+        "go" => Some("go"),
+        "hugo" => Some("hugo"),
+        "wasm" => Some("wasmtime"),
+        "electron" => Some("electron"),
+        _ => None,
+    };
+
+    if let Some(interp) = interpreter {
+        files.push(PathBuf::from("/app").join(interp));
+    }
+
+    files
 }
 
 // ---------------------------------------------------------------------------
@@ -2120,6 +2177,7 @@ mod tests {
             ],
             entrypoint_layer: Some("python3".into()),
             hooks: None,
+            lazy_load: false,
             encryption: None,
         };
         let manifest = LayerManifest::from_metadata(&meta);
@@ -2166,6 +2224,7 @@ mod tests {
             layers: vec![],
             entrypoint_layer: None,
             hooks: None,
+            lazy_load: false,
             encryption: None,
         };
         write_layer_manifest(tmp.path(), &meta).unwrap();

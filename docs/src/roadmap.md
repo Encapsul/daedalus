@@ -78,9 +78,13 @@ ni Node, ni quoi que ce soit.
 - [x] Limitation documentée : zstd-tar v2 seulement, invalide la signature Ed25519
 - [x] Tests : remplacement de fichier, rejet de SISR binaire
 
-## Phase 5 — Lazy loading (NOT STARTED)
+## Phase 5 — Lazy loading ✅
 
-mmap/FUSE pour ne pas charger les gros assets au démarrage. Chargé à la demande via SISR chunks.
+- [x] `--lazy-load` flag on `daedalus build`
+- [x] Priority extraction in stub: entrypoint + runtime interpreter extracted first
+- [x] Background thread continues extracting remaining files after `.ready`
+- [x] `.lazy_done` marker when background extraction completes
+- [x] Works with zstd+tar payloads (squashfs falls back to full extraction)
 
 ## Phase 6 — Templates + multi-service (PARTIAL)
 
