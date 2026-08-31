@@ -37,10 +37,12 @@ pub struct ScanArgs {
     pub no_input: bool,
 }
 
-/// run - run.
+/// run - scan directories for .daedalus files and display their metadata.
 /// @args: command arguments
 ///
 /// Description:
+/// Recursively finds .daedalus files in the given paths (defaulting to the
+/// current directory) and displays their metadata in plain, JSON, or paged format.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: ScanArgs) -> Result<()> {
@@ -183,11 +185,13 @@ pub fn run(args: ScanArgs) -> Result<()> {
     Ok(())
 }
 
-/// find_daedalus_files - find daedalus files.
+/// find_daedalus_files - recursively find .daedalus files in a directory.
 /// @dir: directory path
 /// @files: files
 ///
 /// Description:
+/// Walks dir recursively, skipping .git, node_modules, __pycache__, and .venv.
+/// Appends .daedalus files to the files vector.
 ///
 /// Return: Result containing Result<()>
 fn find_daedalus_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
@@ -208,10 +212,11 @@ fn find_daedalus_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-/// is_daedalus_file - check whether daedalus file.
+/// is_daedalus_file - check whether a file is a valid .daedalus binary.
 /// @path: file or directory path
 ///
 /// Description:
+/// True when the extension is "daedalus" and the file is larger than the footer size.
 ///
 /// Return: true or false
 fn is_daedalus_file(path: &Path) -> bool {
@@ -219,11 +224,12 @@ fn is_daedalus_file(path: &Path) -> bool {
         && std::fs::metadata(path).map_or(false, |m| m.len() > 84)
 }
 
-/// inspect_file - inspect file.
+/// inspect_file - read metadata from a .daedalus file.
 /// @path: file or directory path
-/// @serde_json: serde json
 ///
 /// Description:
+/// Parses the footer and metadata JSON from a .daedalus binary and returns
+/// a JSON object with format version, arch, runtime, name, size, and signed status.
 ///
 /// Return: Some(...) if present, None otherwise
 fn inspect_file(path: &Path) -> Option<serde_json::Value> {
@@ -305,20 +311,23 @@ fn inspect_file(path: &Path) -> Option<serde_json::Value> {
     }))
 }
 
-/// is_leap - check whether leap.
+/// is_leap - check whether a year is a leap year.
 /// @year: year
 ///
 /// Description:
+/// Gregorian calendar leap year rule: divisible by 4, except centuries not
+/// divisible by 400.
 ///
 /// Return: true or false
 fn is_leap(year: u32) -> bool {
     year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
 }
 
-/// cache_stats - cache stats.
+/// cache_stats - count entries and total bytes under a cache directory.
 /// @dir: directory path
 ///
 /// Description:
+/// Recursively walks the directory tree, counting files and summing their sizes.
 ///
 /// Return: Result containing Result<(usize, u64)>
 fn cache_stats(dir: &Path) -> Result<(usize, u64)> {
@@ -340,11 +349,13 @@ fn cache_stats(dir: &Path) -> Result<(usize, u64)> {
     Ok((count, total))
 }
 
-/// write_json_output - write json output.
+/// write_json_output - write a JSON string to a file or stdout.
 /// @json_str: json str
 /// @output: output destination
 ///
 /// Description:
+/// If output is Some(path), writes the JSON to that file and logs the path.
+/// Otherwise prints to stdout.
 ///
 /// Return: Result containing Result<()>
 fn write_json_output(json_str: &str, output: Option<&Path>) -> Result<()> {

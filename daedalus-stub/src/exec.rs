@@ -22,11 +22,12 @@ use daedalus_core::layer::Capability;
 /// Enter user + mount namespace if isolation >= 2; no-op otherwise.
 /// No-op on non-Linux platforms (no namespaces available).
 #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
-/// `enter_namespace_if_needed` - enter namespace if needed.
-/// `@isolation`: isolation
-/// `@io`: io
+/// `enter_namespace_if_needed` - enter user+mount namespace when isolation >= 2.
+/// @isolation: isolation
 ///
 /// Description:
+/// On Linux, enters the user namespace (and mount namespace via pivot_root
+/// later) if isolation level is 2 or higher. No-op on other platforms.
 ///
 /// Return: Result containing `io::Result<()>`
 pub fn enter_namespace_if_needed(isolation: u8) -> io::Result<()> {
@@ -398,13 +399,13 @@ pub fn expand_env_arg(arg: &str, env: &BTreeMap<String, String>) -> Option<Strin
 
 /// Convert a `BTreeMap<String,String>` to a null-terminated `Vec<CString>` for execve.
 #[cfg(unix)]
-/// `env_to_cstrings` - env to cstrings.
-/// `@env`: environment variables
-/// `@io`: io
+/// `env_to_cstrings` - convert env map to null-terminated C strings for execve.
+/// @env: environment variables
 ///
 /// Description:
+/// Formats each KEY=VALUE pair as a CString suitable for execve.
 ///
-/// Return: Result containing `io::Result<Vec<CString>`>
+/// Return: Result containing `io::Result<Vec<CString>>`
 pub fn env_to_cstrings(env: &BTreeMap<String, String>) -> io::Result<Vec<CString>> {
     env.iter()
         .map(|(k, v)| cstr(format!("{k}={v}").as_bytes()))
@@ -414,10 +415,12 @@ pub fn env_to_cstrings(env: &BTreeMap<String, String>) -> io::Result<Vec<CString
 /// Check if an executable path exists and is executable.
 /// Searches PATH directories when given a bare name (no directory component).
 #[cfg(unix)]
-/// `is_executable` - check whether executable.
-/// `@prog`: prog
+/// `is_executable` - check whether a program is executable.
+/// @prog: prog
 ///
 /// Description:
+/// For paths with a directory component, checks the file directly. For bare
+/// names, searches each PATH directory for an executable match.
 ///
 /// Return: true or false
 pub fn is_executable(prog: &[u8]) -> bool {
@@ -461,16 +464,15 @@ pub fn check_executable(path: &str) -> bool {
 }
 
 /// Whether `prog` is runnable: on the host PATH or, for a bare interpreter
-/// name, inside the rootfs bin dirs (embedded-interpreter case). With
-/// `pivot_root` the rootfs PATH takes over before `execvp`, so a rootfs-only
-/// interpreter must pass the pre-flight even when the host lacks the runtime.
+/// name, inside the rootfs bin dirs (embedded-interpreter case).
 #[cfg(unix)]
-/// `entrypoint_is_executable` - entrypoint is executable.
-/// `@prog`: prog
-/// `@interpreter_name`: interpreter name
-/// `@rootfs`: rootfs
+/// `entrypoint_is_executable` - check whether the entrypoint interpreter is executable.
+/// @prog: prog
+/// @interpreter_name: interpreter name
+/// @rootfs: rootfs
 ///
 /// Description:
+/// Checks the host PATH first, then searches rootfs bin dirs for bare interpreter names.
 ///
 /// Return: true or false
 fn entrypoint_is_executable(prog: &[u8], interpreter_name: &str, rootfs: &Path) -> bool {
@@ -498,11 +500,11 @@ fn entrypoint_is_executable(prog: &[u8], interpreter_name: &str, rootfs: &Path) 
 /// socket) are silently skipped. This lets the same binary run on X11-only,
 /// Wayland-only, or mixed systems.
 #[cfg(target_os = "linux")]
-/// `bind_mount_gui_devices` - bind mount gui devices.
-/// `@rootfs`: rootfs
-/// `@io`: io
+/// `bind_mount_gui_devices` - bind-mount GUI devices into rootfs.
+/// @rootfs: rootfs
 ///
 /// Description:
+/// Mounts X11 sockets, Wayland sockets, and GPU render nodes into the rootfs.
 ///
 /// Return: Result containing `io::Result<()>`
 fn bind_mount_gui_devices(rootfs: &Path) -> io::Result<()> {
@@ -640,12 +642,13 @@ fn bind_mount_gui_devices(rootfs: &Path) -> io::Result<()> {
 /// mount tree swap. Bind-mounting must happen before `pivot_root` because the
 /// host filesystem is unreachable afterwards.
 #[cfg(target_os = "linux")]
-/// `enter_pivot_sandbox` - enter pivot sandbox.
-/// `@rootfs`: rootfs
-/// `@meta`: meta
-/// `@io`: io
+/// `enter_pivot_sandbox` - enter pivot root sandbox with optional landlock/seccomp.
+/// @rootfs: rootfs
+/// @meta: meta
 ///
 /// Description:
+/// Opens landlock O_PATH fd, bind-mounts GUI devices if requested, calls
+/// pivot_root, then installs seccomp and landlock filters.
 ///
 /// Return: Result containing `io::Result<()>`
 fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
@@ -692,11 +695,11 @@ fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
 /// The stub writes to the current process's cgroup (`/sys/fs/cgroup/.../cgroup.procs`
 /// for joining, `cpu.max`, `memory.max`, `pids.max` for limits).
 #[cfg(target_os = "linux")]
-/// `apply_cgroups` - apply cgroups.
-/// `@meta`: meta
-/// `@io`: io
+/// `apply_cgroups` - apply cgroup v2 resource limits.
+/// @meta: meta
 ///
 /// Description:
+/// Writes CPU, memory, and PID limits to cgroup v2 control files.
 ///
 /// Return: Result containing `io::Result<()>`
 fn apply_cgroups(meta: &Metadata) -> io::Result<()> {
@@ -760,11 +763,11 @@ fn apply_cgroups(meta: &Metadata) -> io::Result<()> {
 }
 
 #[cfg(not(target_os = "linux"))]
-/// `apply_cgroups` - apply cgroups.
-/// `@_meta`:  meta
-/// `@io`: io
+/// `apply_cgroups` - no-op cgroup application on non-Linux platforms.
+/// @_meta: meta
 ///
 /// Description:
+/// Cgroups are Linux-only; this is a no-op on other platforms.
 ///
 /// Return: Result containing `io::Result<()>`
 fn apply_cgroups(_meta: &Metadata) -> io::Result<()> {
@@ -1149,9 +1152,10 @@ pub fn resolve_entrypoint(
 /// Spawn the app as a child process on Windows (`CreateProcess`), returning the
 /// child handle. The caller decides whether to poll (health gate) or wait.
 #[cfg(windows)]
-/// `spawn_app_windows` - spawn app windows.
+/// `spawn_app_windows` - spawn the app as a Windows child process.
 ///
 /// Description:
+/// Resolves the entrypoint, builds the environment, and calls CreateProcess.
 ///
 /// Return: nothing
 pub fn spawn_app_windows(
@@ -1200,11 +1204,12 @@ pub fn spawn_app_windows(
 /// Resolve a bare interpreter/command name against the rootfs bin dirs,
 /// trying the `.exe` suffix on Windows.
 #[cfg(windows)]
-/// `find_in_bin_paths` - find in bin paths.
-/// `@rootfs`: rootfs
-/// `@name`: name
+/// `find_in_bin_paths` - find an executable in rootfs bin directories.
+/// @rootfs: rootfs
+/// @name: name
 ///
 /// Description:
+/// Searches BIN_PATHS under rootfs for the given name (with .exe on Windows).
 ///
 /// Return: Some(...) if present, None otherwise
 pub fn find_in_bin_paths(rootfs: &Path, name: &str) -> Option<PathBuf> {
@@ -1227,10 +1232,11 @@ pub fn find_in_bin_paths(rootfs: &Path, name: &str) -> Option<PathBuf> {
 
 /// `is_executable` for a `Path` (avoids unix-only `OsStr::as_bytes`).
 #[cfg(windows)]
-/// `is_executable_path` - check whether executable path.
-/// `@path`: file or directory path
+/// `is_executable_path` - check whether a Path points to an executable.
+/// @path: file or directory path
 ///
 /// Description:
+/// Delegates to the platform-specific executable check.
 ///
 /// Return: true or false
 pub fn is_executable_path(path: &Path) -> bool {
@@ -1250,9 +1256,11 @@ pub fn is_executable_path(path: &Path) -> bool {
 
 /// Supervise multiple services: fork+exec each, health-check ports, wait for all.
 #[cfg(unix)]
-/// `supervise_services` - supervise services.
+/// `supervise_services` - supervise multiple services on Unix.
 ///
 /// Description:
+/// Enters namespace/sandbox, forks each service, waits for health checks,
+/// installs signal handler, then waits for all children.
 ///
 /// Return: nothing
 pub fn supervise_services(
@@ -1294,9 +1302,10 @@ pub fn supervise_services(
 /// Supervise multiple services on Windows: spawn each with `CreateProcess`,
 /// health-check ports, then wait for all handles.
 #[cfg(windows)]
-/// `supervise_services` - supervise services.
+/// `supervise_services` - supervise multiple services on Windows.
 ///
 /// Description:
+/// Spawns each service, waits for health checks, then collects exit codes.
 ///
 /// Return: nothing
 pub fn supervise_services(
@@ -1360,9 +1369,11 @@ pub fn supervise_services(
 
 /// Fork+exec each service, returning (name, pid) pairs.
 #[cfg(unix)]
-/// `fork_services` - fork services.
+/// `fork_services` - fork and exec each service process.
 ///
 /// Description:
+/// For each service in metadata, resolves the command, builds argv and env,
+/// forks, and execs in the child. Returns (name, pid) pairs for the parent.
 ///
 /// Return: nothing
 pub fn fork_services(

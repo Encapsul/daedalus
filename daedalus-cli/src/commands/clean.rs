@@ -21,10 +21,12 @@ pub struct CleanArgs {
     pub no_input: bool,
 }
 
-/// run - run.
+/// run - clean the daedalus build cache.
 /// @args: command arguments
 ///
 /// Description:
+/// Removes the daedalus cache directory or garbage-collects expired entries.
+/// Prompts for confirmation unless --force or --no-input is passed.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: CleanArgs) -> Result<()> {
@@ -85,12 +87,11 @@ fn is_interactive() -> bool {
     std::io::stdin().is_terminal()
 }
 
-/// dir_size - dir size.
-/// @path: file or directory path
-/// @std: std
+/// dir_size - compute total size of a directory tree.
 /// @path: file or directory path
 ///
 /// Description:
+/// Recursively sums file sizes under path, including subdirectory contents.
 ///
 /// Return: Result containing Result<u64>
 fn dir_size(path: &std::path::Path) -> Result<u64> {

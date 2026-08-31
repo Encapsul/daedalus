@@ -33,10 +33,12 @@ struct BenchmarkRow {
     fetched_chunks: u64,
 }
 
-/// run - run.
+/// run - display the SISR benchmark TUI dashboard.
 /// @args: command arguments
 ///
 /// Description:
+/// Opens an interactive terminal UI showing SISR benchmark results (bandwidth
+/// savings, chunk reuse percentages) and daedalus cache status.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: &DashboardArgs) -> Result<()> {
@@ -83,10 +85,12 @@ impl Drop for ShutdownGuard {
     }
 }
 
-/// load_benchmarks - load benchmarks.
+/// load_benchmarks - load benchmark rows from a CSV file.
 /// @csv_path: csv path
 ///
 /// Description:
+/// Parses a benchmark results CSV, skipping the header row. Malformed rows
+/// are silently skipped.
 ///
 /// Return: Result containing Result<Vec<BenchmarkRow>>
 fn load_benchmarks(csv_path: &Option<PathBuf>) -> Result<Vec<BenchmarkRow>> {
@@ -123,10 +127,12 @@ struct CacheInfo {
     total_size_mb: f64,
 }
 
-/// load_cache_info - load cache info.
+/// load_cache_info - load daedalus cache information.
 /// @cache_path: cache path
 ///
 /// Description:
+/// Walks the daedalus cache directory and returns entry count and total size.
+/// Returns None if the directory cannot be read.
 ///
 /// Return: Some(...) if present, None otherwise
 fn load_cache_info(cache_path: &Option<PathBuf>) -> Option<CacheInfo> {
@@ -164,14 +170,13 @@ fn load_cache_info(cache_path: &Option<PathBuf>) -> Option<CacheInfo> {
     })
 }
 
-/// dir_size - dir size.
+/// dir_size - compute total size of a directory tree.
 /// @path: file or directory path
-/// @std: std
-/// @io: io
 ///
 /// Description:
+/// Recursively sums file sizes under path, including subdirectory contents.
 ///
-/// Return: Result containing std::io::Result<u64>
+/// Return: std::io::Result<u64>
 fn dir_size(path: &PathBuf) -> std::io::Result<u64> {
     let mut size = 0;
     if path.is_dir() {
@@ -349,11 +354,12 @@ where
     )
 }
 
-/// format_chunks_bar - format chunks bar.
+/// format_chunks_bar - build a visual bar showing chunk reuse ratio.
 /// @reused: reused
 /// @fetched: fetched
 ///
 /// Description:
+/// Returns a string like "██████  (64/128)" showing reused vs fetched chunks.
 ///
 /// Return: the resulting string
 fn format_chunks_bar(reused: u64, fetched: u64) -> String {

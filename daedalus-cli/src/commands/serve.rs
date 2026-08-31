@@ -39,10 +39,11 @@ pub struct ServeStartArgs {
     pub verbose: bool,
 }
 
-/// run - run.
+/// run - dispatch a serve subcommand.
 /// @args: command arguments
 ///
 /// Description:
+/// Currently supports the `start` subcommand to launch a local registry HTTP server.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: ServeArgs) -> Result<()> {
@@ -51,10 +52,12 @@ pub fn run(args: ServeArgs) -> Result<()> {
     }
 }
 
-/// run_start - run start.
+/// run_start - start a local layer registry HTTP server.
 /// @args: command arguments
 ///
 /// Description:
+/// Binds a TcpListener and spawns a thread per connection handling GET /list,
+/// GET /pull/<hash>, and POST /push.
 ///
 /// Return: Result containing Result<()>
 fn run_start(args: ServeStartArgs) -> Result<()> {
@@ -90,9 +93,11 @@ fn run_start(args: ServeStartArgs) -> Result<()> {
     Ok(())
 }
 
-/// handle_connection - handle connection.
+/// handle_connection - parse an HTTP request and dispatch to the handler.
 ///
 /// Description:
+/// Reads the first line of the request, extracts method and path, and routes
+/// to handle_list, handle_pull, or handle_push.
 ///
 /// Return: nothing
 fn handle_connection(
@@ -132,11 +137,12 @@ fn handle_connection(
     Ok(())
 }
 
-/// handle_list - handle list.
+/// handle_list - return all layer hashes in the registry as plain text.
 /// @stream: stream
 /// @reg: reg
 ///
 /// Description:
+/// Responds with 200 and a newline-separated list of layer hashes.
 ///
 /// Return: Result containing Result<()>
 fn handle_list(stream: &mut TcpStream, reg: &LayerRegistry) -> Result<()> {
@@ -145,9 +151,11 @@ fn handle_list(stream: &mut TcpStream, reg: &LayerRegistry) -> Result<()> {
     send_response(stream, 200, "OK", &body)
 }
 
-/// handle_pull - handle pull.
+/// handle_pull - return a layer's JSON by hash.
 ///
 /// Description:
+/// Looks up the hash in the registry and returns the serialized layer as
+/// application/json, or 404 if not found.
 ///
 /// Return: nothing
 fn handle_pull(
@@ -171,9 +179,11 @@ fn handle_pull(
     Ok(())
 }
 
-/// handle_push - handle push.
+/// handle_push - accept a layer JSON in the request body and store it.
 ///
 /// Description:
+/// Deserializes the request body as a SerializableLayer and stores it in the
+/// registry. Returns the layer hash on success.
 ///
 /// Return: nothing
 fn handle_push(
@@ -204,10 +214,11 @@ fn handle_push(
     send_response(stream, 201, "Created", &hash)
 }
 
-/// extract_body - extract body.
+/// extract_body - read the HTTP request body from a TcpStream.
 /// @stream: stream
 ///
 /// Description:
+/// Reads up to 4096 bytes from the stream and returns them as a Vec<u8>.
 ///
 /// Return: vector of Vec<u8>
 fn extract_body(stream: &mut TcpStream) -> Vec<u8> {
@@ -216,22 +227,29 @@ fn extract_body(stream: &mut TcpStream) -> Vec<u8> {
     buf[..n].to_vec()
 }
 
-/// send_response - send response.
+/// send_response - write a plain-text HTTP response to a TcpStream.
 /// @stream: stream
-/// @code: code
-/// @status: status code
+/// @code: status code
+/// @status: status text
 /// @body: body
 ///
 /// Description:
+/// Formats and sends a minimal HTTP/1.1 response with text/plain content type.
 ///
 /// Return: Result containing Result<()>
 fn send_response(stream: &mut TcpStream, code: u16, status: &str, body: &str) -> Result<()> {
     send_response_bytes(stream, code, status, body.as_bytes(), "text/plain")
 }
 
-/// send_response_bytes - send response bytes.
+/// send_response_bytes - write a raw-byte HTTP response to a TcpStream.
+/// @stream: stream
+/// @code: status code
+/// @status: status text
+/// @body: response body bytes
+/// @content_type: MIME content type
 ///
 /// Description:
+/// Formats and sends a minimal HTTP/1.1 response with the given content type.
 ///
 /// Return: nothing
 fn send_response_bytes(
@@ -250,10 +268,11 @@ fn send_response_bytes(
     Ok(())
 }
 
-/// expand_tilde - expand tilde.
+/// expand_tilde - expand a leading ~ to the user's home directory.
 /// @path: file or directory path
 ///
 /// Description:
+/// Replaces a leading "~/" with $HOME if set; otherwise returns the path unchanged.
 ///
 /// Return: the PathBuf
 fn expand_tilde(path: &Path) -> PathBuf {

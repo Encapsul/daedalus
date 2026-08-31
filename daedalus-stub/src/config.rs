@@ -38,9 +38,10 @@ pub struct DatabaseConfig {
 
 #[allow(dead_code)]
 impl AppConfig {
-    /// `load` - load.
+    /// `load` - load the layered application configuration.
     ///
     /// Description:
+    /// Merges local config, global config, and environment variables in priority order.
     ///
     /// Return: the `Self`
     pub fn load() -> Self {
@@ -71,9 +72,10 @@ impl AppConfig {
         config
     }
 
-    /// `find_local_config` - find local config.
+    /// `find_local_config` - locate the local daedalus config file.
     ///
     /// Description:
+    /// Checks for daedalus.toml or config.toml in the binary's directory.
     ///
     /// Return: Some(...) if present, None otherwise
     fn find_local_config() -> Option<PathBuf> {
@@ -94,9 +96,10 @@ impl AppConfig {
         None
     }
 
-    /// `find_global_config` - find global config.
+    /// `find_global_config` - locate the global daedalus config file.
     ///
     /// Description:
+    /// Checks for ~/.daedalus/config.toml.
     ///
     /// Return: Some(...) if present, None otherwise
     fn find_global_config() -> Option<PathBuf> {
@@ -110,11 +113,11 @@ impl AppConfig {
         None
     }
 
-    /// `load_from_file` - load from file.
-    /// `@path`: file or directory path
-    /// `@io`: io
+    /// `load_from_file` - parse a TOML config file.
+    /// @path: file or directory path
     ///
     /// Description:
+    /// Reads the file and deserializes it as AppConfig.
     ///
     /// Return: Result containing `io::Result<Self>`
     fn load_from_file(path: &PathBuf) -> io::Result<Self> {
@@ -146,11 +149,12 @@ impl AppConfig {
         None
     }
 
-    /// `warn_if_unsafe_config` - warn if unsafe config.
-    /// `@path`: file or directory path
-    /// `@role`: role
+    /// `warn_if_unsafe_config` - check whether a config file is unsafe to load.
+    /// @path: file or directory path
+    /// @role: role
     ///
     /// Description:
+    /// Rejects generic config.toml names and group/other-writable files.
     ///
     /// Return: true or false
     fn warn_if_unsafe_config(path: &Path, role: &str) -> bool {
@@ -164,10 +168,11 @@ impl AppConfig {
         false
     }
 
-    /// `merge` - merge.
-    /// `@other`: other
+    /// `merge` - fill missing fields from another config (lower precedence).
+    /// @other: other
     ///
     /// Description:
+    /// Only sets fields that are None in self, preserving higher-precedence values.
     ///
     /// Return: nothing
     fn merge(&mut self, other: Self) {
@@ -209,9 +214,11 @@ impl AppConfig {
         }
     }
 
-    /// `apply_env_overrides` - apply env overrides.
+    /// `apply_env_overrides` - override config fields from environment variables.
     ///
     /// Description:
+    /// Reads DATABASE_URL, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD and
+    /// applies them to the database config section.
     ///
     /// Return: nothing
     fn apply_env_overrides(&mut self) {
@@ -260,12 +267,13 @@ impl AppConfig {
 
 /// Prompt for missing secrets with masked input
 #[allow(dead_code)]
-/// `prompt_for_secrets` - prompt for secrets.
-/// `@config`: configuration
-/// `@required`: required
-/// `@io`: io
+/// `prompt_for_secrets` - interactively prompt for missing secrets.
+/// @config: configuration
+/// @required: required
 ///
 /// Description:
+/// For each key in required not already in config, prompts on stdin (masked
+/// on Unix via termios) and stores the value.
 ///
 /// Return: Result containing `io::Result<()>`
 pub fn prompt_for_secrets(config: &mut AppConfig, required: &[String]) -> io::Result<()> {
@@ -337,21 +345,23 @@ fn read_line_masked() -> io::Result<String> {
 
 #[allow(dead_code)]
 impl AppConfig {
-    /// `get_secret` - get secret.
-    /// `@key`: key
+    /// `get_secret` - retrieve a secret value by key.
+    /// @key: key
     ///
     /// Description:
+    /// Looks up the secrets map and returns a reference to the value.
     ///
     /// Return: Some(...) if present, None otherwise
     pub fn get_secret(&self, key: &str) -> Option<&String> {
         self.secrets.as_ref()?.get(key)
     }
 
-    /// `set_secret` - set secret.
-    /// `@key`: key
-    /// `@value`: value
+    /// `set_secret` - store a secret value by key.
+    /// @key: key
+    /// @value: value
     ///
     /// Description:
+    /// Creates the secrets map if absent and inserts the key-value pair.
     ///
     /// Return: nothing
     pub fn set_secret(&mut self, key: &str, value: String) {
@@ -364,9 +374,10 @@ impl AppConfig {
             .insert(key.to_string(), value);
     }
 
-    /// `get_database_url` - get database url.
+    /// `get_database_url` - retrieve the configured database URL.
     ///
     /// Description:
+    /// Returns the URL from the database config section if set.
     ///
     /// Return: Some(...) if present, None otherwise
     pub fn get_database_url(&self) -> Option<String> {

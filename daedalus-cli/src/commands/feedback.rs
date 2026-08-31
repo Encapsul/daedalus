@@ -12,10 +12,11 @@ pub struct FeedbackArgs {
     pub title: Option<String>,
 }
 
-/// run - run.
+/// run - open the daedalus GitHub issues page for feedback.
 /// @args: command arguments
 ///
 /// Description:
+/// Prints the GitHub issues URL, optionally opening it in the default browser.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: FeedbackArgs) -> Result<()> {
@@ -41,9 +42,10 @@ pub fn run(args: FeedbackArgs) -> Result<()> {
     Ok(())
 }
 
-/// open_browser - open browser.
+/// open_browser - detect and return a platform-specific browser opener.
 ///
 /// Description:
+/// Returns xdg-open on Linux, open on macOS, or cmd /C start on Windows.
 ///
 /// Return: Some(...) if present, None otherwise
 fn open_browser() -> Option<Box<dyn BrowserOpener>> {
@@ -66,12 +68,13 @@ fn open_browser() -> Option<Box<dyn BrowserOpener>> {
 }
 
 trait BrowserOpener {
-    /// open - open.
+    /// open - open a URL in the default browser.
     /// @url: URL
     ///
     /// Description:
+    /// Launches the system browser with the given URL.
     ///
-    /// Return: Result containing Result<()>;
+    /// Return: Result containing Result<()>
     fn open(&self, url: &str) -> Result<()>;
 }
 
@@ -81,10 +84,11 @@ struct ExternalBrowser {
 }
 
 impl BrowserOpener for ExternalBrowser {
-    /// open - open.
+    /// open - open a URL using the configured external browser command.
     /// @url: URL
     ///
     /// Description:
+    /// Spawns the browser command as a detached child process.
     ///
     /// Return: Result containing Result<()>
     fn open(&self, url: &str) -> Result<()> {

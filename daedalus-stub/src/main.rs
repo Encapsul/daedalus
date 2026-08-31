@@ -387,10 +387,11 @@ pub struct LayerManifestEntry {
 }
 
 impl LayerManifest {
-    /// `from_metadata` - from metadata.
-    /// `@meta`: metadata
+    /// `from_metadata` - build a LayerManifest from Metadata.
+    /// @meta: metadata
     ///
     /// Description:
+    /// Maps each SerializableLayer to a LayerManifestEntry with its rootfs path.
     ///
     /// Return: the `Self`
     fn from_metadata(meta: &Metadata) -> Self {
@@ -410,12 +411,11 @@ impl LayerManifest {
     }
 }
 
-/// `layer_kind_str` - layer kind str.
-/// `@kind`: kind
-/// `@daedalus_core`: daedalus core
-/// `@layer`: layer
+/// `layer_kind_str` - convert a LayerKind to its display string.
+/// @kind: kind
 ///
 /// Description:
+/// Maps Runtime→"runtime", Config→"config", Custom→"custom".
 ///
 /// Return: the `resulting` string
 fn layer_kind_str(kind: daedalus_core::layer::LayerKind) -> String {
@@ -579,9 +579,10 @@ pub struct Hooks {
     pub post: Vec<String>,
 }
 
-/// `main` - main.
+/// `main` - stub entry point.
 ///
 /// Description:
+/// Calls run() and exits with code 1 on error.
 ///
 /// Return: nothing
 fn main() {
@@ -591,10 +592,14 @@ fn main() {
     }
 }
 
-/// `run` - run.
-/// `@io`: io
+/// `run` - main launcher logic.
+/// @io: io
 ///
 /// Description:
+/// Reads the self-executable footer and metadata, validates the runtime,
+/// handles SISR self-update, verifies signature and integrity, extracts the
+/// payload to the cache, and execs the app (with health-gate rollback for
+/// SISR updates).
 ///
 /// Return: Result containing `io::Result<()>`
 fn run() -> io::Result<()> {
@@ -1040,9 +1045,11 @@ enum ChildStatus {
 ///   after `max_attempts`), restore the pre-update binary from the snapshot,
 ///   and re-exec it so the user is running a known-good version.
 #[cfg(unix)]
-/// `supervised_launch` - supervised launch.
+/// `supervised_launch` - run a newly-updated version under health-gate supervision.
 ///
 /// Description:
+/// Forks the app and monitors the crash window. Confirms the version on
+/// success or rolls back to the previous binary on failure.
 ///
 /// Return: nothing
 fn supervised_launch(
@@ -1111,9 +1118,10 @@ fn supervised_launch(
 /// `policy.timeout_ms`, with the same confirm-vs-rollback semantics as the
 /// unix `fork`/`waitpid` version.
 #[cfg(windows)]
-/// `supervised_launch` - supervised launch.
+/// `supervised_launch` - run a newly-updated version under health-gate supervision on Windows.
 ///
 /// Description:
+/// Spawns the app and polls for timeout_ms. Confirms on success, rolls back on failure.
 ///
 /// Return: nothing
 fn supervised_launch(
@@ -1178,12 +1186,12 @@ fn supervised_launch(
 
 /// Polls `pid` with `WNOHANG` until it exits or `timeout_ms` elapses.
 #[cfg(unix)]
-/// `wait_for_child_status` - wait for child status.
-/// `@pid`: pid
-/// `@timeout_ms`: timeout ms
-/// `@io`: io
+/// `wait_for_child_status` - poll child status with WNOHANG.
+/// @pid: pid
+/// @timeout_ms: timeout ms
 ///
 /// Description:
+/// Returns StillRunning if the timeout expires, Exited or Signaled otherwise.
 ///
 /// Return: Result containing `io::Result<ChildStatus>`
 fn wait_for_child_status(pid: i32, timeout_ms: u64) -> io::Result<ChildStatus> {
@@ -1216,11 +1224,11 @@ fn wait_for_child_status(pid: i32, timeout_ms: u64) -> io::Result<ChildStatus> {
 
 /// Blocks until `pid` exits and returns its process exit code.
 #[cfg(unix)]
-/// `wait_child_exit_code` - wait child exit code.
-/// `@pid`: pid
-/// `@io`: io
+/// `wait_child_exit_code` - wait for a child process exit code.
+/// @pid: pid
 ///
 /// Description:
+/// Calls waitpid blocking and decodes the exit status into an i32 exit code.
 ///
 /// Return: Result containing `io::Result<i32>`
 fn wait_child_exit_code(pid: i32) -> io::Result<i32> {
@@ -1235,10 +1243,11 @@ fn wait_child_exit_code(pid: i32) -> io::Result<i32> {
 }
 
 #[cfg(unix)]
-/// `decode_exit_status` - decode exit status.
-/// `@status`: status code
+/// `decode_exit_status` - decode a waitpid status into an exit code.
+/// @status: status code
 ///
 /// Description:
+/// Returns 128+signal for signaled, WEXITSTATUS for exited, or 1 for unknown.
 ///
 /// Return: the `i32`
 fn decode_exit_status(status: i32) -> i32 {
@@ -1279,11 +1288,11 @@ fn rollback_to_previous(bin_path: &Path, verbose: bool) -> io::Result<()> {
 
 /// Re-execs the current stub binary (a `.daedalus` file) with the original argv.
 #[cfg(unix)]
-/// `exec_again` - exec again.
-/// `@bin_path`: bin path
-/// `@io`: io
+/// `exec_again` - re-exec the current stub binary with original argv.
+/// @bin_path: bin path
 ///
 /// Description:
+/// Calls execvp with the current process's argv after replacing the binary path.
 ///
 /// Return: Result containing `io::Result<()>`
 fn exec_again(bin_path: &Path) -> io::Result<()> {
@@ -1306,11 +1315,11 @@ fn exec_again(bin_path: &Path) -> io::Result<()> {
 /// Re-runs the current stub binary as a detached child and exits (Windows has
 /// no exec: the launcher cannot replace its own process image).
 #[cfg(windows)]
-/// `exec_again` - exec again.
-/// `@bin_path`: bin path
-/// `@io`: io
+/// `exec_again` - re-run the current stub binary as a detached child on Windows.
+/// @bin_path: bin path
 ///
 /// Description:
+/// Spawns the binary with the current argv/env, then exits the launcher.
 ///
 /// Return: Result containing `io::Result<()>`
 fn exec_again(bin_path: &Path) -> io::Result<()> {
@@ -1434,11 +1443,12 @@ struct HttpChunkFetcher {
 
 #[cfg(target_os = "linux")]
 impl HttpChunkFetcher {
-    /// `new` - new.
-    /// `@base`: base
-    /// `@total`: total
+    /// `new` - create a new HTTP chunk fetcher.
+    /// @base: base
+    /// @total: total
     ///
     /// Description:
+    /// Constructs a fetcher that GETs `base/<hex-sha256>` for each chunk.
     ///
     /// Return: the `Self`
     fn new(base: &str, total: usize) -> Self {
@@ -1453,14 +1463,14 @@ impl HttpChunkFetcher {
 
 #[cfg(target_os = "linux")]
 impl daedalus_core::sisr::engine::ChunkFetcher for HttpChunkFetcher {
-    /// `fetch` - fetch.
-    /// `@hash`: hash value
-    /// `@length`: length
-    /// `@io`: io
+    /// `fetch` - fetch a chunk by SHA-256 hash over HTTP.
+    /// @hash: hash value
+    /// @length: length
     ///
     /// Description:
+    /// GETs `base/<hex-hash>` and validates the response length matches.
     ///
-    /// Return: Result containing `io::Result<Vec<u8>`>
+    /// Return: Result containing `io::Result<Vec<u8>>`
     fn fetch(&self, hash: &[u8; 32], length: usize) -> io::Result<Vec<u8>> {
         let url = format!("{}/{}", self.base, hex::encode(hash));
         let bytes = http_get_bytes(&url)?;
@@ -1507,13 +1517,13 @@ fn env_timeout_ms(name: &str, default_ms: u64) -> u64 {
 /// Only caller-verified content is consumed (signed manifest, hash-checked
 /// chunks), so the transport is a convenience — never a trust anchor.
 #[cfg(target_os = "linux")]
-/// `http_get_bytes` - http get bytes.
-/// `@url`: URL
-/// `@io`: io
+/// `http_get_bytes` - perform an HTTP GET and return the response body.
+/// @url: URL
 ///
 /// Description:
+/// GETs the URL with configurable timeouts and returns the full response body.
 ///
-/// Return: Result containing `io::Result<Vec<u8>`>
+/// Return: Result containing `io::Result<Vec<u8>>`
 fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
     const DEFAULT_MAX: u64 = 64 * 1024 * 1024; // 64 MiB
     let ms = |name, default| std::time::Duration::from_millis(env_timeout_ms(name, default));
@@ -1543,10 +1553,11 @@ fn http_get_bytes(url: &str) -> io::Result<Vec<u8>> {
 }
 
 #[allow(dead_code)]
-/// `human_bytes` - human bytes.
-/// `@bytes`: bytes
+/// `human_bytes` - format a byte count as a human-readable string.
+/// @bytes: bytes
 ///
 /// Description:
+/// Converts a raw byte count to a compact human-readable format (KiB/MiB/GiB).
 ///
 /// Return: the `resulting` string
 fn human_bytes(bytes: u64) -> String {
@@ -1606,13 +1617,14 @@ struct GcLock {
 }
 
 impl GcLock {
-    /// `acquire` - acquire.
-    /// `@base`: base
-    /// `@io`: io
+    /// `acquire` - acquire an advisory cross-process GC lock.
+    /// @base: base
     ///
     /// Description:
+    /// Creates `<base>/.gc-lock` and takes a non-blocking exclusive flock.
+    /// Returns None if another GC holds the lock.
     ///
-    /// Return: Result containing `io::Result<Option<GcLock>`>
+    /// Return: Result containing `io::Result<Option<GcLock>>`
     fn acquire(base: &Path) -> io::Result<Option<GcLock>> {
         fs::create_dir_all(base)?;
         let file = fs::File::create(base.join(".gc.lock"))?;
@@ -1662,25 +1674,24 @@ fn gc_extraction_cache(max_entries: usize) -> io::Result<()> {
     }
     Ok(())
 }
-
-/// `extract_atomic` - extract atomic.
-/// `@blobs`: blobs
-/// `@cache_root`: cache root
-/// `@io`: io
+/// `extract_atomic` - extract payloads atomically into the cache.
+/// @blobs: blobs
+/// @cache_root: cache root
 ///
 /// Description:
+/// Delegates to extraction::extract_atomic for zstd-tar payloads.
 ///
 /// Return: Result containing `io::Result<()>`
 fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
     extraction::extract_atomic(blobs, cache_root)
 }
 
-/// `extract_squashfs_atomic` - extract squashfs atomic.
-/// `@blobs`: blobs
-/// `@cache_root`: cache root
-/// `@io`: io
+/// `extract_squashfs_atomic` - extract squashfs payloads atomically.
+/// @blobs: blobs
+/// @cache_root: cache root
 ///
 /// Description:
+/// Delegates to squashfs_extract::extract_squashfs_layers inside the atomic wrapper.
 ///
 /// Return: Result containing `io::Result<()>`
 fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
@@ -1691,11 +1702,11 @@ fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()>
 // Seccomp BPF denylist
 // ---------------------------------------------------------------------------
 #[cfg(target_os = "linux")]
-/// `pivot_root_into` - pivot root into.
-/// `@rootfs`: rootfs
-/// `@io`: io
+/// `pivot_root_into` - pivot the process root filesystem to rootfs.
+/// @rootfs: rootfs
 ///
 /// Description:
+/// Calls pivot_root(2) to make rootfs the new process root.
 ///
 /// Return: Result containing `io::Result<()>`
 fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
@@ -1744,11 +1755,11 @@ fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
 }
 
 #[cfg(unix)]
-/// `cstr` - cstr.
-/// `@bytes`: bytes
-/// `@io`: io
+/// `cstr` - convert a byte slice to a null-terminated C string.
+/// @bytes: bytes
 ///
 /// Description:
+/// Creates a CString from bytes, failing if the slice contains a null byte.
 ///
 /// Return: Result containing `io::Result<CString>`
 fn cstr(bytes: &[u8]) -> io::Result<CString> {
@@ -1757,12 +1768,11 @@ fn cstr(bytes: &[u8]) -> io::Result<CString> {
 }
 
 #[cfg(unix)]
-/// `to_ptr_vec` - to ptr vec.
-/// `@v`: v
-/// `@core`: core
-/// `@ffi`: ffi
+/// `to_ptr_vec` - convert a slice of CStrings to a null-terminated pointer array.
+/// @v: v
 ///
 /// Description:
+/// Collects the raw pointers from each CString and appends a null terminator.
 ///
 /// Return: vector of `Vec<*const core::ffi::c_char>`
 fn to_ptr_vec(v: &[CString]) -> Vec<*const core::ffi::c_char> {
@@ -1785,11 +1795,11 @@ pub fn nanos() -> u128 {
 
 /// Acquire an exclusive advisory lock (flock(2)) on `f`.
 #[cfg(unix)]
-/// `flock_exclusive` - flock exclusive.
-/// `@f`: f
-/// `@io`: io
+/// `flock_exclusive` - acquire an exclusive flock(2) on a file.
+/// @f: f
 ///
 /// Description:
+/// Blocks until an exclusive lock is acquired on the file descriptor.
 ///
 /// Return: Result containing `io::Result<()>`
 fn flock_exclusive(f: &File) -> io::Result<()> {
@@ -1808,11 +1818,11 @@ fn flock_exclusive(f: &File) -> io::Result<()> {
 /// starts of the same binary; the atomic tmp→cache rename means both writers
 /// produce identical content, so a lost lock only wastes duplicate work.
 #[cfg(windows)]
-/// `flock_exclusive` - flock exclusive.
-/// `@_f`:  f
-/// `@io`: io
+/// `flock_exclusive` - no-op on Windows (no flock).
+/// @_f: f
 ///
 /// Description:
+/// No-op on Windows; concurrent extraction is safe due to atomic rename.
 ///
 /// Return: Result containing `io::Result<()>`
 fn flock_exclusive(_f: &File) -> io::Result<()> {
@@ -1822,22 +1832,20 @@ fn flock_exclusive(_f: &File) -> io::Result<()> {
 #[cfg(unix)]
 extern "C" {
     #[link_name = "execvp"]
-    /// `libc_execvp` - libc execvp.
-    /// `@path`: file or directory path
-    /// `@core`: core
-    /// `@ffi`: ffi
-    /// `@argv`: argv
-    /// `@core`: core
-    /// `@ffi`: ffi
+    /// `libc_execvp` - safe wrapper around libc execvp(3).
+    /// @path: file or directory path
+    /// @argv: argv
     ///
     /// Description:
+    /// Replaces the current process image. Never returns on success.
     ///
-    /// Return: the `i32`;
+    /// Return: the `i32`
     fn libc_execvp(path: *const core::ffi::c_char, argv: *const *const core::ffi::c_char) -> i32;
     #[link_name = "execve"]
-    /// `libc_execve` - libc execve.
+    /// `libc_execve` - safe wrapper around libc execve(3).
     ///
     /// Description:
+    /// Replaces the current process image with the given argv and envp. Never returns on success.
     ///
     /// Return: nothing
     fn libc_execve(
@@ -1846,21 +1854,22 @@ extern "C" {
         envp: *const *const core::ffi::c_char,
     ) -> i32;
     #[link_name = "flock"]
-    /// `libc_flock` - libc flock.
-    /// `@fd`: fd
-    /// `@operation`: operation
+    /// `libc_flock` - safe wrapper around libc flock(2).
+    /// @fd: fd
+    /// @operation: operation
     ///
     /// Description:
+    /// Acquires or releases an advisory file lock.
     ///
-    /// Return: the `i32`;
+    /// Return: the `i32`
     fn libc_flock(fd: i32, operation: i32) -> i32;
 }
 
-/// `err` - err.
-/// `@msg`: message
-/// `@io`: io
+/// `err` - create an io::Error with InvalidData kind from a message.
+/// @msg: message
 ///
 /// Description:
+/// Convenience constructor for launcher error reporting.
 ///
 /// Return: the `std::io::Error`
 fn err(msg: impl AsRef<str>) -> io::Error {

@@ -30,10 +30,12 @@ pub struct TrustArgs {
     pub no_input: bool,
 }
 
-/// run - run.
+/// run - trust a public key for Ed25519 signature verification.
 /// @args: command arguments
 ///
 /// Description:
+/// Reads a 32-byte Ed25519 public key, computes its SHA-256 fingerprint, and
+/// copies it to the trusted keys directory as `<fingerprint>.pub`.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: TrustArgs) -> Result<()> {
