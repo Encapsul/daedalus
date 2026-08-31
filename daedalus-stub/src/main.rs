@@ -1984,6 +1984,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     /// `env_timeout_ms_reads_int_and_falls_back` - env timeout ms reads int and falls back.
     ///
     /// Description:

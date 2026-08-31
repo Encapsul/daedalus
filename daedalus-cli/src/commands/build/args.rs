@@ -81,6 +81,57 @@ pub(crate) struct BuildPlan {
     pub(crate) env_file: Option<PathBuf>,
     pub(crate) targets: Vec<Option<String>>,
     pub(crate) outputs: Vec<PathBuf>,
+    pub(crate) services: Vec<ServiceEntry>,
+    pub(crate) entrypoint: Vec<String>,
+}
+
+/// A named service parsed from `--entrypoint name=cmd,arg1,...`.
+#[derive(Debug, Clone)]
+pub(crate) struct ServiceEntry {
+    pub name: String,
+    pub cmd: Vec<String>,
+}
+
+/// Parse raw `--entrypoint` flag values into a flat argv template and an
+/// optional services list.
+///
+/// Backward-compatible flat syntax (no `=`):
+///   `--entrypoint python3,main.py` -> `(["python3","main.py"], [])`
+///   `--entrypoint python3`          -> `(["python3"], [])`
+///
+/// Multi-service syntax (`name=cmd,arg1,...`):
+///   `--entrypoint api=python3,api.py` -> `([], [ServiceEntry{name:"api",cmd:["python3","api.py"]}])`
+///
+/// When any entrypoint uses the named syntax, the first service's `cmd` is
+/// also returned as the flat entrypoint so older stubs that ignore `services`
+/// still have something to execute.
+pub(crate) fn parse_entrypoints(raw: &[String]) -> (Vec<String>, Vec<ServiceEntry>) {
+    let mut flat = Vec::new();
+    let mut services = Vec::new();
+    for s in raw {
+        if let Some((name, cmd_str)) = s.split_once('=') {
+            let cmd: Vec<String> = cmd_str
+                .split(',')
+                .map(|part| part.trim().to_string())
+                .filter(|part| !part.is_empty())
+                .collect();
+            services.push(ServiceEntry {
+                name: name.trim().to_string(),
+                cmd,
+            });
+        } else {
+            let parts: Vec<String> = s
+                .split(',')
+                .map(|part| part.trim().to_string())
+                .filter(|part| !part.is_empty())
+                .collect();
+            flat.extend(parts);
+        }
+    }
+    if !services.is_empty() && flat.is_empty() {
+        flat.clone_from(&services[0].cmd);
+    }
+    (flat, services)
 }
 
 /// Expand `--target`/`--cross-compile` (each comma-separated) plus the config
@@ -210,6 +261,9 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
     }
     canonical.push(format!("wasi={}", args.wasi));
     canonical.push(format!("component_model={}", args.component_model));
+    if let Some(ref url) = args.electron_url {
+        canonical.push(format!("electron_url={url}"));
+    }
     if let Some(v) = &plan.version_info {
         canonical.push(format!("version={v}"));
     }
@@ -250,6 +304,11 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
     cron.sort();
     for c in cron {
         canonical.push(format!("cron={c}"));
+    }
+    let mut services: Vec<&String> = plan.services.iter().map(|s| &s.name).collect();
+    services.sort();
+    for s in services {
+        canonical.push(format!("service={s}"));
     }
     let mut include: Vec<&PathBuf> = args.include.iter().collect();
     include.sort();
@@ -451,6 +510,15 @@ pub struct BuildArgs {
     #[arg(long)]
     pub wasmtime_path: Option<PathBuf>,
 
+    /// Custom mirror or directory for Electron runtime download.
+    ///
+    /// When set, overrides the default GitHub releases download URL.
+    /// Can be a full URL prefix (e.g. `https://my-mirror.example.com/electron/`)
+    /// or a local path to a pre-extracted Electron directory containing
+    /// the `electron` binary.
+    #[arg(long, env = "ELECTRON_URL")]
+    pub electron_url: Option<String>,
+
     /// Enable WASI for WASM modules (WebAssembly System Interface)
     #[arg(long)]
     pub wasi: bool,
@@ -607,6 +675,7 @@ pub(crate) fn default_build_args() -> BuildArgs {
         wasmtime_path: None,
         wasi: false,
         component_model: false,
+        electron_url: None,
         cross_compile: None,
         use_cache: false,
         clear_cache: false,
@@ -905,6 +974,8 @@ mod tests {
             env_file: None,
             targets: vec![None],
             outputs: vec![PathBuf::from("app.daedalus")],
+            services: Vec::new(),
+            entrypoint: Vec::new(),
         };
         let base = config_fingerprint(&default_build_args(), &plan(false));
 

@@ -1220,7 +1220,7 @@ fn update_ini_value(content: &str, key: &str, value: &str) -> String {
 }
 
 /// Recursively copy a directory.
-fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
+pub fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;

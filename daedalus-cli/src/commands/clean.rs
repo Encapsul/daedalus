@@ -17,6 +17,10 @@ pub struct CleanArgs {
     #[arg(short, long)]
     pub force: bool,
 
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
+
     /// Disable all interactive prompts (for CI/scripts)
     #[arg(long, global = true)]
     pub no_input: bool,
@@ -34,14 +38,33 @@ pub fn run(args: CleanArgs) -> Result<()> {
     if args.gc {
         let cache = BuildCache::new(std::path::Path::new("."), 50);
         cache.gc();
-        eprintln!("Cache garbage-collected (expired entries removed)");
+        if args.json {
+            let info = serde_json::json!({
+                "command": "clean",
+                "action": "gc",
+                "success": true,
+            });
+            println!("{}", serde_json::to_string_pretty(&info)?);
+        } else {
+            eprintln!("Cache garbage-collected (expired entries removed)");
+        }
         return Ok(());
     }
 
     let cache_dir = cache_dir();
 
     if !cache_dir.exists() {
-        eprintln!("Nothing to clean");
+        if args.json {
+            let info = serde_json::json!({
+                "command": "clean",
+                "action": "clean",
+                "success": true,
+                "message": "nothing to clean",
+            });
+            println!("{}", serde_json::to_string_pretty(&info)?);
+        } else {
+            eprintln!("Nothing to clean");
+        }
         return Ok(());
     }
 
@@ -62,7 +85,17 @@ pub fn run(args: CleanArgs) -> Result<()> {
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         if !input.trim().eq_ignore_ascii_case("y") {
-            eprintln!("Aborted");
+            if args.json {
+                let info = serde_json::json!({
+                    "command": "clean",
+                    "action": "clean",
+                    "success": false,
+                    "message": "aborted",
+                });
+                println!("{}", serde_json::to_string_pretty(&info)?);
+            } else {
+                eprintln!("Aborted");
+            }
             return Ok(());
         }
     } else if args.no_input && !args.force {
@@ -73,7 +106,18 @@ pub fn run(args: CleanArgs) -> Result<()> {
 
     std::fs::remove_dir_all(&cache_dir)
         .with_context(|| format!("failed to remove cache directory {}", cache_dir.display()))?;
-    eprintln!("Cleaned {} ({})", cache_dir.display(), format_size(size));
+    if args.json {
+        let info = serde_json::json!({
+            "command": "clean",
+            "action": "clean",
+            "success": true,
+            "cleaned_path": cache_dir.display().to_string(),
+            "cleaned_bytes": size,
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    } else {
+        eprintln!("Cleaned {} ({})", cache_dir.display(), format_size(size));
+    }
 
     Ok(())
 }

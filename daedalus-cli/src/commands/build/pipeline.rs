@@ -12,8 +12,9 @@ use std::path::{Path, PathBuf};
 
 use super::args::{config_fingerprint, parse_target, BuildArgs, BuildPlan};
 use super::deps::{
-    check_php_platform_reqs, ensure_composer, ensure_deno, ensure_go, ensure_hugo, ensure_node,
-    ensure_python, ensure_wasmtime, has_workspace_protocol, is_command_available, resolve_command,
+    check_php_platform_reqs, ensure_composer, ensure_deno, ensure_electron, ensure_go, ensure_hugo,
+    ensure_node, ensure_python, ensure_rust, ensure_wasmtime, has_workspace_protocol,
+    is_command_available, resolve_command,
 };
 use super::payload::{copy_dir_recursive_with, create_squashfs_payload, include_points_to_env};
 use super::sign::sign_macos_binary;
@@ -199,7 +200,7 @@ pub(crate) fn build_single_target(
     let env_pairs = build_env_map(args, plan, &app_name)?;
 
     let entrypoint = resolve_entrypoint_argv(
-        args,
+        &plan.entrypoint,
         app_dir,
         runtime,
         go_binary_name
@@ -208,6 +209,8 @@ pub(crate) fn build_single_target(
             .or(java_jar_name.as_deref())
             .or(dotnet_binary_name.as_deref())
             .or(hugo_binary_name.as_deref()),
+        args.wasi,
+        args.component_model,
     );
 
     let bun_features = build_bun_features(args, plan)?;
@@ -724,9 +727,8 @@ fn build_go_binary(
 /// the binary name, or `None` when the app is not Rust or `--no-install` is
 /// set (Phase 8 Step 2).
 ///
-/// Unlike Go, no toolchain is auto-downloaded: the canonical Rust installer
-/// is rustup and a toolchain weighs hundreds of MB — we require `cargo` on
-/// PATH and fail with guidance instead.
+/// If `cargo` is not on PATH, falls back to rustup to install the stable
+/// toolchain into `~/.cargo/`.
 fn build_rust_binary(
     plan: &BuildPlan,
     target: Option<&str>,
@@ -738,7 +740,7 @@ fn build_rust_binary(
     let app_dir = &plan.app_dir;
     let verbose = plan.verbose;
 
-    ensure_cargo()?;
+    let cargo_bin_dir = ensure_rust(verbose)?;
     let bin_name = match cargo_bin_name(app_dir) {
         Some(name) => name,
         None => {
@@ -774,6 +776,12 @@ fn build_rust_binary(
     }
     cmd.current_dir(app_dir);
     cmd.env_remove("CARGO_TARGET_DIR");
+    let path_sep = std::path::MAIN_SEPARATOR_STR;
+    let current = std::env::var("PATH").unwrap_or_default();
+    cmd.env(
+        "PATH",
+        format!("{}{}{}", cargo_bin_dir.display(), path_sep, current),
+    );
     if verbose {
         eprintln!("  cargo build --release...");
     }
@@ -1179,22 +1187,6 @@ fn ensure_java() -> Result<()> {
     Ok(())
 }
 
-/// Fails with actionable guidance when `cargo` is not on PATH.
-fn ensure_cargo() -> Result<()> {
-    let ok = std::process::Command::new("cargo")
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
-    if !ok {
-        anyhow::bail!(
-            "cargo not found on PATH — install Rust via https://rustup.rs to build Rust apps"
-        );
-    }
-    Ok(())
-}
-
 /// The output binary name: first `[[bin]] name` wins, else `[package] name`
 /// (Cargo keeps hyphens for the default binary). Returns `None` when the
 /// project is a library or workspace virtual manifest with no `[[bin]]`.
@@ -1415,8 +1407,13 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
                     }
                 },
                 "electron" => {
-                    eprintln!("[daedalus] warning: no cross-compiled electron available, falling back to host");
-                    None
+                    match ensure_electron(target, verbose, args.electron_url.as_deref()) {
+                        Ok(p) => Some(p.join("electron")),
+                        Err(e) => {
+                            eprintln!("[daedalus] warning: failed to download cross-compiled electron: {e}");
+                            None
+                        }
+                    }
                 }
                 "wasmtime" => match ensure_wasmtime(target, verbose) {
                     Ok(p) => Some(p.join("wasmtime")),
@@ -1434,14 +1431,20 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
             None
         };
 
-        if let Some(path) = interp_path {
-            interpreter_embedded = embed_primary_interpreter(&path, rootfs, app_dir, verbose);
+        if let Some(ref path) = interp_path {
+            interpreter_embedded = embed_primary_interpreter(path, rootfs, app_dir, verbose);
+            if plan.runtime_name == "electron" && interpreter_embedded {
+                embed_electron_resources(path, rootfs, verbose);
+            }
         } else {
             let host_path = which::which(interpreter_name)
                 .ok()
                 .or_else(|| embed::find_interpreter_host(interpreter_name));
             if let Some(path) = host_path {
                 interpreter_embedded = embed_primary_interpreter(&path, rootfs, app_dir, verbose);
+                if plan.runtime_name == "electron" && interpreter_embedded {
+                    embed_electron_resources(&path, rootfs, verbose);
+                }
             }
         }
     }
@@ -1499,6 +1502,41 @@ fn embed_primary_interpreter(
             eprintln!("[daedalus] warning: failed to embed interpreter: {}", e);
             false
         }
+    }
+}
+
+/// Embed Electron's `resources/` directory alongside the binary so the
+/// runtime can find its Chromium/V8 snapshot and default app at exec time.
+fn embed_electron_resources(interpreter_path: &Path, rootfs: &Path, verbose: bool) {
+    let resources_src = interpreter_path
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("resources"))
+        .unwrap_or_else(|| interpreter_path.with_extension("resources"));
+    if !resources_src.is_dir() {
+        if verbose {
+            eprintln!(
+                "  embed: no electron resources dir at {}",
+                resources_src.display()
+            );
+        }
+        return;
+    }
+
+    let bin_dir = rootfs.join("usr/bin");
+    let dest_resources = bin_dir.join("resources");
+    let _ = std::fs::remove_dir_all(&dest_resources);
+    if let Err(e) = embed::copy_dir_recursive(&resources_src, &dest_resources) {
+        if verbose {
+            eprintln!("  embed: failed to copy electron resources: {e}");
+        }
+        return;
+    }
+    if verbose {
+        eprintln!(
+            "  embed: copied electron resources to {}",
+            dest_resources.display()
+        );
     }
 }
 
@@ -1847,13 +1885,15 @@ fn inject_cron_tasks(
 /// Final entrypoint argv: explicit flag > Go binary > runtime detection;
 /// WASI/component-model flags are inserted after the interpreter for wasm runs.
 fn resolve_entrypoint_argv(
-    args: &BuildArgs,
+    entrypoint: &[String],
     app_dir: &Path,
     runtime: detect::Runtime,
     built_binary_name: Option<&str>,
+    wasi: bool,
+    component_model: bool,
 ) -> Vec<String> {
-    let entrypoint = if !args.entrypoint.is_empty() {
-        args.entrypoint.clone()
+    let entrypoint = if !entrypoint.is_empty() {
+        entrypoint.to_vec()
     } else if let Some(bin_name) = built_binary_name {
         // Compiled runtimes exec the binary directly; Java wraps the built
         // JAR — the stub drops argv[0] and prepends its interpreter.
@@ -1866,12 +1906,12 @@ fn resolve_entrypoint_argv(
         detect::resolve_entrypoint(app_dir, runtime).unwrap_or_else(|| vec!["run".to_string()])
     };
 
-    if runtime == detect::Runtime::Wasm && (args.wasi || args.component_model) {
+    if runtime == detect::Runtime::Wasm && (wasi || component_model) {
         let mut ep = entrypoint.clone();
-        if args.component_model {
+        if component_model {
             ep.insert(1, "--component-model".into());
         }
-        if args.wasi {
+        if wasi {
             ep.insert(1, "--wasi".into());
         }
         ep
@@ -2360,10 +2400,12 @@ mod tests {
     fn java_entrypoint_wraps_built_jar() {
         let args = default_build_args();
         let ep = resolve_entrypoint_argv(
-            &args,
+            &args.entrypoint,
             Path::new("/tmp/fake-app"),
             detect::Runtime::Java,
             Some("app-1.0.jar"),
+            args.wasi,
+            args.component_model,
         );
         assert_eq!(
             ep,
