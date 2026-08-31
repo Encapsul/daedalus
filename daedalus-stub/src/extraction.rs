@@ -31,9 +31,11 @@ struct ExtractLimits {
 }
 
 impl ExtractLimits {
-    /// `from_env` - from env.
+    /// `from_env` - read decompression limits from environment variables.
     ///
     /// Description:
+    /// Reads DAEDALUS_MAX_EXTRACT_SIZE (bytes, default 1 GiB) and
+    /// DAEDALUS_MAX_EXTRACT_FILES (default 50000) from the process environment.
     ///
     /// Return: the `Self`
     fn from_env() -> Self {
@@ -60,10 +62,12 @@ impl ExtractLimits {
 /// 0o777 dir means someone else could have planted the rootfs). On non-Unix
 /// platforms there is no permission model to inspect, so we trust the cache.
 #[cfg(unix)]
-/// `cache_root_trustworthy` - cache root trustworthy.
-/// `@cache_root`: cache root
+/// `cache_root_trustworthy` - check whether the cache root is owned and private.
+/// @cache_root: cache root
 ///
 /// Description:
+/// Returns true when the directory is owned by the current user and has no
+/// group/other write bits.
 ///
 /// Return: true or false
 pub fn cache_root_trustworthy(cache_root: &Path) -> bool {
@@ -85,10 +89,11 @@ pub fn cache_root_trustworthy(cache_root: &Path) -> bool {
 
 /// Non-Unix platforms have no permission model to inspect — trust the cache.
 #[cfg(not(unix))]
-/// `cache_root_trustworthy` - cache root trustworthy.
-/// `@_cache_root`:  cache root
+/// `cache_root_trustworthy` - trust the cache on non-Unix platforms.
+/// @_cache_root: cache root
 ///
 /// Description:
+/// Always returns true on non-Unix platforms.
 ///
 /// Return: true or false
 pub fn cache_root_trustworthy(_cache_root: &Path) -> bool {
@@ -148,6 +153,13 @@ pub fn write_source_manifest(
 }
 
 /// Extract zstd-compressed tar blobs atomically into `cache_root/rootfs`.
+///
+/// Description:
+/// Decompresses each blob with zstd, unpacks the tar archive, enforces
+/// decompression-bomb limits, and rejects symlinks with absolute targets
+/// or `..` traversal. Extraction is atomic via tmp+rename.
+///
+/// Return: nothing
 pub fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
     atomic_extract(cache_root, |tmp_rootfs| {
         let limits = ExtractLimits::from_env();
@@ -212,6 +224,12 @@ pub fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
 }
 
 /// Extract squashfs blobs atomically into `cache_root/rootfs`.
+///
+/// Description:
+/// Delegates to squashfs_extract::extract_squashfs_layers inside the atomic
+/// tmp+rename wrapper.
+///
+/// Return: nothing
 pub fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
     atomic_extract(cache_root, |tmp_rootfs| {
         crate::squashfs_extract::extract_squashfs_layers(blobs, tmp_rootfs)
@@ -223,6 +241,12 @@ pub fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result
 /// On rename failure, a stale `cache_root` (no `.ready`) is wiped and the
 /// rename is retried once; a `cache_root` that carries a valid `.ready` is a
 /// previous successful extraction and is used as-is.
+///
+/// Description:
+/// Runs the extraction closure in a tmp directory, sets 0o700 permissions,
+/// writes the .ready marker, and atomically renames into cache_root.
+///
+/// Return: nothing
 pub fn atomic_extract(
     cache_root: &Path,
     extract_fn: impl FnOnce(&Path) -> io::Result<()>,

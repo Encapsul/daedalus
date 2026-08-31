@@ -31,10 +31,13 @@ pub struct SelftestArgs {
     pub no_input: bool,
 }
 
-/// run - run.
+/// run - launch a .daedalus binary in an ephemeral sandbox and monitor it.
 /// @args: command arguments
 ///
 /// Description:
+/// Runs the binary with a temporary cache directory, monitors for crashes in
+/// the first 2 seconds, then probes liveness up to the timeout. Exits with
+/// 0 (pass), 1 (fail), or 2 (degraded).
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: SelftestArgs) -> Result<()> {
@@ -129,11 +132,12 @@ pub fn run(args: SelftestArgs) -> Result<()> {
     std::process::exit(rc);
 }
 
-/// detect_mode - detect mode.
+/// detect_mode - determine the test mode from metadata.
 /// @meta: metadata
-/// @serde_json: serde json
 ///
 /// Description:
+/// Returns "server" if the metadata has services or a python/node runtime,
+/// otherwise "cli".
 ///
 /// Return: the resulting string
 fn detect_mode(meta: &serde_json::Value) -> String {
@@ -149,9 +153,12 @@ fn detect_mode(meta: &serde_json::Value) -> String {
     "cli".into()
 }
 
-/// wait_and_observe - wait and observe.
+/// wait_and_observe - monitor a child process through crash and liveness windows.
 ///
 /// Description:
+/// Phase 1 (0-2s): crash detection — exits early with code 1 if the child
+/// exits non-zero. Phase 2 (2s–timeout): liveness window — returns 0 if the
+/// child survives, or probes the HTTP endpoint if provided.
 ///
 /// Return: nothing
 fn wait_and_observe(
@@ -199,14 +206,13 @@ fn wait_and_observe(
     Ok(0)
 }
 
-/// report_exit - report exit.
+/// report_exit - log the child process exit status and tail stderr for CLI mode.
 /// @child: child
-/// @std: std
-/// @process: process
 /// @rc: rc
 /// @mode: mode
 ///
 /// Description:
+/// Prints the exit code and, for CLI mode, the last 20 lines of stderr.
 ///
 /// Return: nothing
 fn report_exit(child: &mut std::process::Child, rc: i32, mode: &str) {
@@ -230,14 +236,13 @@ fn report_exit(child: &mut std::process::Child, rc: i32, mode: &str) {
     }
 }
 
-/// do_probe - do probe.
-/// @child: child
-/// @std: std
-/// @process: process
+/// do_probe - poll an HTTP liveness probe URL until success or deadline.
 /// @probe_url: probe url
 /// @verbose: verbose
 ///
 /// Description:
+/// Retries GET requests to the probe URL for up to 3 seconds. Returns 0 on
+/// first 2xx response, 1 if the child dies, 2 if the deadline expires.
 ///
 /// Return: Result containing Result<i32>
 fn do_probe(child: &mut std::process::Child, probe_url: &str, verbose: bool) -> Result<i32> {

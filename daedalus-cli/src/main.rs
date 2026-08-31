@@ -138,9 +138,11 @@ enum Shell {
     PowerShell,
 }
 
-/// main - main.
+/// main - CLI entry point for daedalus.
 ///
 /// Description:
+/// Parses CLI arguments with clap, dispatches to the appropriate subcommand,
+/// and returns an ExitCode. Panics are caught by human_panic for security.
 ///
 /// Return: the ExitCode
 fn main() -> ExitCode {
@@ -310,13 +312,13 @@ fn main() -> ExitCode {
     }
 }
 
-/// generate_man_pages - generate man pages.
+/// generate_man_pages - generate man pages for daedalus and all subcommands.
 /// @dir: directory path
-/// @std: std
-/// @path: file or directory path
-/// @anyhow: anyhow
 ///
 /// Description:
+/// Uses clap_mangen to render man pages for the main command and each subcommand,
+/// appending custom EXIT STATUS, ENVIRONMENT, FILES, SEE ALSO, AUTHORS, HISTORY,
+/// and BUGS sections.
 ///
 /// Return: Result containing anyhow::Result<()>
 fn generate_man_pages(dir: &std::path::Path) -> anyhow::Result<()> {

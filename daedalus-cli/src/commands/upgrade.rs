@@ -28,10 +28,12 @@ pub struct UpgradeArgs {
     pub dry_run: bool,
 }
 
-/// run - run.
+/// run - upgrade daedalus to the latest GitHub release.
 /// @args: command arguments
 ///
 /// Description:
+/// Fetches the latest release from GitHub, downloads the platform tarball,
+/// verifies the SHA-256 checksum, and installs binaries to the current PATH.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: UpgradeArgs) -> Result<()> {
@@ -185,9 +187,10 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     Ok(())
 }
 
-/// detect_platform - detect platform.
+/// detect_platform - detect the current OS and architecture as a platform tag.
 ///
 /// Description:
+/// Maps (OS, ARCH) to the release asset suffix, e.g. linux-x64, linux-arm64.
 ///
 /// Return: Result containing Result<String>
 fn detect_platform() -> Result<String> {
@@ -210,9 +213,10 @@ fn detect_platform() -> Result<String> {
     Ok(format!("{os_str}-{arch_str}"))
 }
 
-/// fetch_latest_version - fetch latest version.
+/// fetch_latest_version - query the GitHub releases API for the latest tag.
 ///
 /// Description:
+/// GETs the latest release endpoint and extracts the semver tag without the 'v' prefix.
 ///
 /// Return: Result containing Result<String>
 fn fetch_latest_version() -> Result<String> {
@@ -238,11 +242,12 @@ fn fetch_latest_version() -> Result<String> {
 
 const MAX_DOWNLOAD_BYTES: u64 = 500 * 1024 * 1024;
 
-/// download_file - download file.
+/// download_file - download a file from a URL to a local path with size limits.
 /// @url: URL
 /// @dest: dest
 ///
 /// Description:
+/// Streams the response body to dest, rejecting downloads over 500 MiB.
 ///
 /// Return: Result containing Result<()>
 fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
@@ -270,10 +275,11 @@ fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-/// fetch_checksum - fetch checksum.
+/// fetch_checksum - fetch a SHA-256 checksum string from a URL.
 /// @url: URL
 ///
 /// Description:
+/// GETs the URL and returns the first whitespace-delimited token (the hash).
 ///
 /// Return: Result containing Result<String>
 fn fetch_checksum(url: &str) -> Result<String> {
@@ -292,10 +298,11 @@ fn fetch_checksum(url: &str) -> Result<String> {
     Ok(hash)
 }
 
-/// sha256_file - sha256 file.
+/// sha256_file - compute the SHA-256 hex digest of a file.
 /// @path: file or directory path
 ///
 /// Description:
+/// Reads the entire file into memory and hashes it with SHA-256.
 ///
 /// Return: Result containing Result<String>
 fn sha256_file(path: &PathBuf) -> Result<String> {
@@ -306,9 +313,10 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
     Ok(hex::encode(result))
 }
 
-/// find_daedalus_binary - find daedalus binary.
+/// find_daedalus_binary - locate the currently-running daedalus binary.
 ///
 /// Description:
+/// Tries /proc/self/exe first (Linux), then falls back to `which daedalus`.
 ///
 /// Return: Result containing Result<PathBuf>
 fn find_daedalus_binary() -> Result<PathBuf> {

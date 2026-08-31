@@ -9,10 +9,12 @@ pub struct EnvArgs {
     pub json: bool,
 }
 
-/// run - run.
+/// run - print daedalus environment information.
 /// @args: command arguments
 ///
 /// Description:
+/// Displays daedalus version, architecture, OS, rustc version, and paths to
+/// daedalus-stub and daedalus-crypto binaries.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: EnvArgs) -> Result<()> {
@@ -50,11 +52,12 @@ pub fn run(args: EnvArgs) -> Result<()> {
     Ok(())
 }
 
-/// find_binary - find binary.
+/// find_binary - locate a binary by name or environment variable.
 /// @name: name
 /// @env_var: env var
 ///
 /// Description:
+/// Checks the given environment variable first, then falls back to `which`.
 ///
 /// Return: Some(...) if present, None otherwise
 fn find_binary(name: &str, env_var: &str) -> Option<PathBuf> {
@@ -67,9 +70,10 @@ fn find_binary(name: &str, env_var: &str) -> Option<PathBuf> {
     which::which(name).ok()
 }
 
-/// rustc_version - rustc version.
+/// rustc_version - get the installed rustc version string.
 ///
 /// Description:
+/// Runs `rustc --version` and returns the output string.
 ///
 /// Return: Some(...) if present, None otherwise
 fn rustc_version() -> Option<String> {

@@ -40,9 +40,10 @@ struct Check {
     optional: bool,
 }
 
-/// use_color - use color.
+/// use_color - check whether colored output should be used.
 ///
 /// Description:
+/// Respects NO_COLOR and TERM=dumb; falls back to stdout is_terminal().
 ///
 /// Return: true or false
 fn use_color() -> bool {
@@ -56,9 +57,10 @@ fn use_color() -> bool {
     std::io::stdout().is_terminal()
 }
 
-/// color_green - color green.
+/// color_green - ANSI green escape sequence when color is enabled.
 ///
 /// Description:
+/// Returns the ANSI green escape code or empty string if color is disabled.
 ///
 /// Return: the &'static str
 fn color_green() -> &'static str {
@@ -69,9 +71,10 @@ fn color_green() -> &'static str {
     }
 }
 
-/// color_red - color red.
+/// color_red - ANSI red escape sequence when color is enabled.
 ///
 /// Description:
+/// Returns the ANSI red escape code or empty string if color is disabled.
 ///
 /// Return: the &'static str
 fn color_red() -> &'static str {
@@ -82,9 +85,10 @@ fn color_red() -> &'static str {
     }
 }
 
-/// color_reset - color reset.
+/// color_reset - ANSI reset escape sequence when color is enabled.
 ///
 /// Description:
+/// Returns the ANSI reset escape code or empty string if color is disabled.
 ///
 /// Return: the &'static str
 fn color_reset() -> &'static str {
@@ -95,10 +99,13 @@ fn color_reset() -> &'static str {
     }
 }
 
-/// run - run.
+/// run - check system prerequisites for daedalus.
 /// @args: command arguments
 ///
 /// Description:
+/// Runs a series of checks for required tools (python3, cargo, rustc, musl
+/// target, etc.) and optional tools (node, deno, mksquashfs). With --fix,
+/// attempts to auto-install missing prerequisites.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: DoctorArgs) -> Result<()> {
@@ -201,12 +208,14 @@ pub fn run(args: DoctorArgs) -> Result<()> {
     Ok(())
 }
 
-/// check_command - check command.
+/// check_command - check whether a command is available and get its version.
 /// @name: name
 /// @args: command arguments
 /// @optional: optional
 ///
 /// Description:
+/// Runs `name args` and captures the first line of stdout or stderr as the
+/// version string.
 ///
 /// Return: the Check
 fn check_command(name: &str, args: &[&str], optional: bool) -> Check {
@@ -235,10 +244,11 @@ fn check_command(name: &str, args: &[&str], optional: bool) -> Check {
     }
 }
 
-/// check_musl_target - check musl target.
+/// check_musl_target - check whether the x86_64-unknown-linux-musl target is installed.
 /// @optional: optional
 ///
 /// Description:
+/// Queries rustup for installed targets and checks for the musl target.
 ///
 /// Return: the Check
 fn check_musl_target(optional: bool) -> Check {
@@ -271,10 +281,11 @@ fn check_musl_target(optional: bool) -> Check {
     }
 }
 
-/// check_daedalus_stub - check daedalus stub.
+/// check_daedalus_stub - check whether daedalus-stub is on PATH.
 /// @optional: optional
 ///
 /// Description:
+/// Uses `which` to locate the daedalus-stub binary. Always optional.
 ///
 /// Return: the Check
 fn check_daedalus_stub(optional: bool) -> Check {
@@ -294,9 +305,11 @@ fn check_daedalus_stub(optional: bool) -> Check {
     }
 }
 
-/// check_python_cryptography - check python cryptography.
+/// check_python_cryptography - check whether the python cryptography package is installed.
 ///
 /// Description:
+/// Runs `python3 -c "import cryptography; print(cryptography.__version__)"` to
+/// detect the cryptography package. Optional dependency.
 ///
 /// Return: the Check
 fn check_python_cryptography() -> Check {
@@ -322,10 +335,11 @@ fn check_python_cryptography() -> Check {
     }
 }
 
-/// attempt_fix - attempt fix.
+/// attempt_fix - attempt to auto-install a missing prerequisite.
 /// @name: name
 ///
 /// Description:
+/// Handles "musl target" (rustup target add) and "cryptography" (pip install).
 ///
 /// Return: Result containing Result<String>
 fn attempt_fix(name: &str) -> Result<String> {

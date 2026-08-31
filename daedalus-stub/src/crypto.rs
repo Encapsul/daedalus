@@ -101,12 +101,12 @@ pub fn trusted_keys_dir() -> PathBuf {
 /// Uses an XOR-fold accumulation instead of early-exit comparison to prevent
 /// timing side-channels on the integrity digest.
 #[allow(dead_code)]
-/// `verify_sha256` - verify sha256.
-/// `@data`: data
-/// `@expected`: expected
-/// `@io`: io
+/// `verify_sha256` - verify a SHA-256 digest in constant time.
+/// @data: data
+/// @expected: expected
 ///
 /// Description:
+/// Hashes data with SHA-256 and compares against expected using constant-time XOR fold.
 ///
 /// Return: Result containing `io::Result<()>`
 pub fn verify_sha256(data: &[u8], expected: &[u8; 32]) -> io::Result<()> {

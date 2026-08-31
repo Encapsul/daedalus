@@ -31,10 +31,12 @@ pub struct PublishArgs {
 
 const DEFAULT_REGISTRY_PLACEHOLDER: &str = "https://daedalus.example.com";
 
-/// run - run.
+/// run - publish a .daedalus file to a remote registry.
 /// @args: command arguments
 ///
 /// Description:
+/// Uploads a .daedalus binary to a registry endpoint via multipart POST.
+/// Requires --registry or DAEDALUS_REGISTRY env var.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: PublishArgs) -> Result<()> {

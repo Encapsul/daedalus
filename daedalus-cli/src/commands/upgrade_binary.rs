@@ -39,10 +39,12 @@ pub struct UpgradeBinaryArgs {
     pub no_input: bool,
 }
 
-/// run - run.
+/// run - upgrade a legacy .daedalus binary to SISR-enabled format.
 /// @args: command arguments
 ///
 /// Description:
+/// Repackages a v1 .daedalus binary with SISR chunking and optionally signs
+/// the manifest with an Ed25519 key.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: UpgradeBinaryArgs) -> Result<()> {

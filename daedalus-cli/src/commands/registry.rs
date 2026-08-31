@@ -131,10 +131,11 @@ pub struct RegistryListArgs {
     pub no_input: bool,
 }
 
-/// run - run.
+/// run - dispatch a registry subcommand (push, pull, or list).
 /// @args: command arguments
 ///
 /// Description:
+/// Routes to the appropriate subcommand handler based on the RegistryCommand enum.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: RegistryArgs) -> Result<()> {
@@ -157,10 +158,12 @@ pub fn run(args: RegistryArgs) -> Result<()> {
     }
 }
 
-/// run_push - run push.
+/// run_push - push layers from a .daedalus file to a registry.
 /// @args: command arguments
 ///
 /// Description:
+/// Extracts layers from the artifact and pushes them to a local directory or
+/// remote HTTP registry.
 ///
 /// Return: Result containing Result<()>
 fn run_push(mut args: RegistryPushArgs) -> Result<()> {
@@ -208,10 +211,12 @@ fn run_push(mut args: RegistryPushArgs) -> Result<()> {
     Ok(())
 }
 
-/// run_pull - run pull.
+/// run_pull - pull a layer or artifact from a registry by hash.
 /// @args: command arguments
 ///
 /// Description:
+/// Retrieves a layer by hash from a local directory or remote HTTP registry
+/// and writes it to the output directory.
 ///
 /// Return: Result containing Result<()>
 fn run_pull(mut args: RegistryPullArgs) -> Result<()> {
@@ -246,10 +251,11 @@ fn run_pull(mut args: RegistryPullArgs) -> Result<()> {
     Ok(())
 }
 
-/// run_list - run list.
+/// run_list - list all layers in the local registry cache.
 /// @args: command arguments
 ///
 /// Description:
+/// Reads the local registry directory and prints all stored layer hashes.
 ///
 /// Return: Result containing Result<()>
 fn run_list(args: RegistryListArgs) -> Result<()> {
@@ -295,10 +301,11 @@ fn run_list(args: RegistryListArgs) -> Result<()> {
     Ok(())
 }
 
-/// local_registry - local registry.
+/// local_registry - open or create a local directory-backed registry.
 /// @dir: directory path
 ///
 /// Description:
+/// Creates the directory if needed and opens a LayerRegistry on disk.
 ///
 /// Return: Result containing Result<LayerRegistry>
 fn local_registry(dir: &Path) -> Result<LayerRegistry> {
@@ -307,13 +314,15 @@ fn local_registry(dir: &Path) -> Result<LayerRegistry> {
     LayerRegistry::disk(&path).context("failed to open local registry")
 }
 
-/// push_local - push local.
+/// push_local - push layers to a local directory registry.
 /// @dir: directory path
 /// @layers: layers
 /// @bin: bin
 /// @json: json output
 ///
 /// Description:
+/// Stores each layer in the local registry directory and publishes an artifact
+/// manifest referencing them.
 ///
 /// Return: Result containing Result<()>
 fn push_local(dir: &Path, layers: &[SerializableLayer], bin: &Path, json: bool) -> Result<()> {
@@ -348,9 +357,16 @@ fn push_local(dir: &Path, layers: &[SerializableLayer], bin: &Path, json: bool) 
     Ok(())
 }
 
-/// push_remote - push remote.
+/// push_remote - push a .daedalus binary to a remote HTTP registry.
+/// @url: registry URL
+/// @layers: layers extracted from the artifact
+/// @bin: path to the .daedalus file
+/// @token: optional bearer token
+/// @verbose: verbose output
+/// @json: json output
 ///
 /// Description:
+/// POSTs the raw binary to the registry endpoint with optional bearer auth.
 ///
 /// Return: nothing
 fn push_remote(
@@ -437,9 +453,16 @@ pub fn push_remote_artifact(
     Ok(())
 }
 
-/// pull_from_store - pull from store.
+/// pull_from_store - pull a layer from a local registry by hash.
+/// @reg: layer registry
+/// @hash: layer hash
+/// @output: output directory
+/// @verbose: verbose output
+/// @json: json output
 ///
 /// Description:
+/// Reads the layer JSON from the local store and writes it to the output dir.
+/// Also retrieves the artifact manifest if the hash matches one.
 ///
 /// Return: nothing
 fn pull_from_store(
@@ -479,9 +502,16 @@ fn pull_from_store(
     Ok(())
 }
 
-/// pull_from_remote - pull from remote.
+/// pull_from_remote - pull a layer from a remote HTTP registry by hash.
+/// @url: registry base URL
+/// @hash: layer hash
+/// @output: output directory
+/// @token: optional bearer token
+/// @verbose: verbose output
+/// @json: json output
 ///
 /// Description:
+/// GETs `url/hash` and writes the response bytes to `output/hash`.
 ///
 /// Return: nothing
 fn pull_from_remote(
@@ -535,9 +565,12 @@ fn pull_from_remote(
     Ok(())
 }
 
-/// build_layer_refs - build layer refs.
+/// build_layer_refs - push each layer and collect LayerRef entries.
+/// @reg: layer registry
+/// @layers: layers to register
 ///
 /// Description:
+/// Serializes each layer to JSON and records its hash in the registry.
 ///
 /// Return: nothing
 fn build_layer_refs(
@@ -559,9 +592,11 @@ fn build_layer_refs(
     Ok(refs)
 }
 
-/// extract_layers_from_artifact - extract layers from artifact.
+/// extract_layers_from_artifact - read footer and metadata from a .daedalus file.
+/// @bin: path to the .daedalus binary
 ///
 /// Description:
+/// Parses the footer and metadata JSON to extract the layers array.
 ///
 /// Return: nothing
 pub fn extract_layers_from_artifact(
@@ -588,10 +623,11 @@ pub fn extract_layers_from_artifact(
     Ok((footer, layers))
 }
 
-/// format_layer_kind - format layer kind.
+/// format_layer_kind - convert a LayerKind to its string representation.
 /// @layer: layer
 ///
 /// Description:
+/// Maps Runtime→"runtime", Config→"config", Custom→"custom".
 ///
 /// Return: the &'static str
 fn format_layer_kind(layer: &SerializableLayer) -> &'static str {
@@ -602,10 +638,11 @@ fn format_layer_kind(layer: &SerializableLayer) -> &'static str {
     }
 }
 
-/// expand_tilde - expand tilde.
+/// expand_tilde - expand a leading ~ to the user's home directory.
 /// @path: file or directory path
 ///
 /// Description:
+/// Replaces a leading "~/" with $HOME if set; otherwise returns the path unchanged.
 ///
 /// Return: the PathBuf
 fn expand_tilde(path: &Path) -> PathBuf {

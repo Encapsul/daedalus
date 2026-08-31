@@ -6,14 +6,12 @@ use ed25519_dalek::{Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
-/// write_json_output - write json output.
+/// write_json_output - serialize a serde_json Value to a file or stdout.
 /// @value: value
-/// @serde_json: serde json
 /// @output: output destination
-/// @std: std
-/// @path: file or directory path
 ///
 /// Description:
+/// Pretty-prints the JSON value to the given file path or to stdout.
 ///
 /// Return: Result containing Result<()>
 fn write_json_output(value: &serde_json::Value, output: Option<&std::path::Path>) -> Result<()> {
@@ -54,10 +52,12 @@ pub struct VerifyArgs {
     pub no_input: bool,
 }
 
-/// run - run.
+/// run - verify the Ed25519 signature and SHA-256 integrity of a .daedalus file.
 /// @args: command arguments
 ///
 /// Description:
+/// Reads the signature block, hashes payload || meta || footer, and checks
+/// against all trusted public keys. Reports the verifying key path on success.
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: VerifyArgs) -> Result<()> {
@@ -154,10 +154,12 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     Ok(())
 }
 
-/// load_trusted_keys - load trusted keys.
+/// load_trusted_keys - load all trusted Ed25519 public keys from a directory.
 /// @dir: directory path
 ///
 /// Description:
+/// Reads every .pub file in dir, filters to exactly 32-byte entries, and
+/// attempts to parse each as an Ed25519 VerifyingKey.
 ///
 /// Return: Result containing Result<Vec<(PathBuf, VerifyingKey)>>
 fn load_trusted_keys(dir: &PathBuf) -> Result<Vec<(PathBuf, VerifyingKey)>> {

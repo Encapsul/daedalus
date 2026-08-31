@@ -44,11 +44,13 @@ pub struct SwapArgs {
     pub no_input: bool,
 }
 
-/// run - run.
+/// run - hot-swap a file inside a .daedalus binary's tar payload.
 /// @args: command arguments
-/// @anyhow: anyhow
 ///
 /// Description:
+/// Replaces a named file inside the zstd-tar payload of a .daedalus binary,
+/// recomputes the integrity hash, and writes the updated binary. SISR and
+/// squashfs payloads are not supported.
 ///
 /// Return: Result containing anyhow::Result<()>
 pub fn run(args: SwapArgs) -> anyhow::Result<()> {
@@ -88,10 +90,11 @@ pub fn run(args: SwapArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// has_executable_extension - check whether executable extension.
+/// has_executable_extension - check whether a filename has an executable extension.
 /// @path: file or directory path
 ///
 /// Description:
+/// True for .py, .sh, .rb, .pl, .php, .js, and .exe extensions (case-insensitive).
 ///
 /// Return: true or false
 fn has_executable_extension(path: &str) -> bool {
@@ -104,9 +107,12 @@ fn has_executable_extension(path: &str) -> bool {
         || path.eq_ignore_ascii_case(".exe")
 }
 
-/// swap_layer - swap layer.
+/// swap_layer - replace a file in a .daedalus tar payload and reassemble.
 ///
 /// Description:
+/// Decompresses the zstd-tar payload, replaces the target file, re-serializes
+/// with deterministic ordering and fixed mtime/uid/gid, recompresses, and
+/// writes the new binary with an updated footer hash.
 ///
 /// Return: nothing
 fn swap_layer(
