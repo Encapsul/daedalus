@@ -42,16 +42,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   - Hugo: include version from GitHub API in asset name
 - **Symlink handling**: preserve symlinks during directory copy to avoid infinite loops
 
-## [Unreleased]
-
-### Added
-- New features planned for next release
+## [0.6.2] - 2026-08-31
 
 ### Changed
-- Ongoing improvements
+- **Release pipeline**: glow-style GitHub releases with per-platform archives and checksums
+- **Dependency updates**: upgrade lru to 0.16.4, ratatui to 0.30, and other security fixes
 
 ### Fixed
-- Bug fixes in progress
+- **CI failures**: resolve clippy `must_use_candidate` warnings and stub `missing_docs` warnings
+- **Release workflow**: ensure GitHub releases are created with changelog notes and all artifacts
+- **Documentation**: audit and fix Unix man-page doc comments across daedalus-cli and daedalus-stub
 
 ## [0.6.1] - 2026-08-31
 
