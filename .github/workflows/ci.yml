@@ -49,6 +49,9 @@ jobs:
       - name: Run tests
         run: cargo test --workspace
 
+      - name: Run chaos monkey tests (single-threaded)
+        run: cargo test --release -p daedalus-stub --test chaos_monkey -- --test-threads=1
+
       - name: Test CLI build (smoke test)
         timeout-minutes: 10
         run: |

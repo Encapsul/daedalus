@@ -73,10 +73,11 @@ fn build_fixture(dir: &Path, _payload_bytes: &[u8]) -> std::path::PathBuf {
 }
 
 fn run_stub(bin: &Path, arg: &str) -> std::process::Output {
+    let bin = copy_to_temp_exec(bin);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Err(e) = std::fs::set_permissions(bin, std::fs::Permissions::from_mode(0o755)) {
+        if let Err(e) = std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)) {
             eprintln!(
                 "Warning: could not set permissions on {}: {}",
                 bin.display(),
@@ -84,21 +85,22 @@ fn run_stub(bin: &Path, arg: &str) -> std::process::Output {
             );
         }
     }
-    Command::new(bin)
+    Command::new(&bin)
         .arg(arg)
         .output()
         .expect("failed to run stub")
 }
 
 fn run_stub_result(bin: &Path, arg: &str) -> Result<std::process::Output, std::io::Error> {
+    let bin = copy_to_temp_exec(bin);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(bin, std::fs::Permissions::from_mode(0o755));
+        let _ = std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755));
     }
     let mut last_err = None;
     for attempt in 0..3 {
-        match Command::new(bin).arg(arg).output() {
+        match Command::new(&bin).arg(arg).output() {
             Ok(output) => return Ok(output),
             Err(e) if attempt < 2 => {
                 last_err = Some(e);
@@ -108,6 +110,26 @@ fn run_stub_result(bin: &Path, arg: &str) -> Result<std::process::Output, std::i
         }
     }
     Err(last_err.unwrap())
+}
+
+fn copy_to_temp_exec(bin: &Path) -> std::path::PathBuf {
+    let tmp_dir = std::env::temp_dir().join(format!("daedalus-chaos-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&tmp_dir);
+    let dst = tmp_dir.join(format!(
+        "{}-{}.de",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::copy(bin, &dst).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755));
+    }
+    dst
 }
 
 // ── Hostile input ───────────────────────────────────────────────────────
