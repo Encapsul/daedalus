@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use super::args::{config_fingerprint, parse_target, BuildArgs, BuildPlan};
 use super::deps::{
     check_php_platform_reqs, ensure_composer, ensure_deno, ensure_go, ensure_hugo, ensure_node,
-    ensure_python, ensure_wasmtime, has_workspace_protocol, is_command_available,
+    ensure_python, ensure_wasmtime, has_workspace_protocol, is_command_available, resolve_command,
 };
 use super::payload::{copy_dir_recursive_with, create_squashfs_payload, include_points_to_env};
 use super::sign::sign_macos_binary;
@@ -454,14 +454,20 @@ fn install_pkgmgr_deps(
         return Ok(());
     };
 
-    let mut command = std::process::Command::new(&prog);
-    command.args(&full_args).current_dir(app_dir);
+    let (resolved_prog, extra_args) = resolve_command(&prog);
+    let mut command = std::process::Command::new(&resolved_prog);
+    command
+        .args(extra_args)
+        .args(&full_args)
+        .current_dir(app_dir);
 
-    // If we downloaded node for npm/yarn/bun, prepend its bin dir to PATH
-    // using Command::env() instead of mutating global std::env::PATH
+    let path_sep = std::path::MAIN_SEPARATOR_STR;
     if let Some(ref bin_dir) = node_bin_dir {
         let current = std::env::var("PATH").unwrap_or_default();
-        command.env("PATH", format!("{}:{}", bin_dir.display(), current));
+        command.env(
+            "PATH",
+            format!("{}{}{}", bin_dir.display(), path_sep, current),
+        );
     }
 
     if *mgr == pkgmgr::PkgMgr::Bundler {
@@ -673,7 +679,15 @@ fn build_go_binary(
 
     let go_bin_dir = ensure_go(target, verbose)?;
     let prev_path = std::env::var("PATH").unwrap_or_default();
-    std::env::set_var("PATH", format!("{}:{}", go_bin_dir.display(), prev_path));
+    std::env::set_var(
+        "PATH",
+        format!(
+            "{}{}{}",
+            go_bin_dir.display(),
+            std::path::MAIN_SEPARATOR,
+            prev_path
+        ),
+    );
 
     // Cross-compilation: set GOOS/GOARCH from --target
     if let Some(target_str) = target {

@@ -5,15 +5,37 @@ use std::path::{Path, PathBuf};
 
 use super::args::parse_target;
 
+/// Resolve `name` to an executable invocation that works on all platforms.
+///
+/// On Windows, if the resolved path ends with `.cmd` or `.bat`, returns
+/// `("cmd", ["/C", <resolved_path>])` because `CreateProcessW` cannot
+/// execute batch files directly. On Unix/macOS, or for native `.exe`
+/// binaries, returns the resolved path as the program with no extra args.
+///
+/// Falls back to the bare `name` when `which` cannot locate it so that
+/// shell aliases/functions still work on Unix.
+pub(crate) fn resolve_command(name: &str) -> (String, Vec<String>) {
+    let resolved = match which::which(name) {
+        Ok(p) => p,
+        Err(_) => return (name.to_string(), Vec::new()),
+    };
+    if cfg!(windows) {
+        if let Some(ext) = resolved.extension() {
+            let ext = ext.to_string_lossy().to_lowercase();
+            if ext == "cmd" || ext == "bat" {
+                return (
+                    "cmd".to_string(),
+                    vec!["/C".to_string(), resolved.to_string_lossy().into_owned()],
+                );
+            }
+        }
+    }
+    (resolved.to_string_lossy().into_owned(), Vec::new())
+}
+
 /// Check if a command is available on PATH.
 pub(crate) fn is_command_available(name: &str) -> bool {
-    std::process::Command::new("sh")
-        .args(["-c", &format!("command -v {name}")])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    which::which(name).is_ok()
 }
 
 /// Ensure node + npm are available for the build.
@@ -207,12 +229,9 @@ fn ensure_node_download(
 /// from the host, or uses the host `python3` when `target` is `None`.
 pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
     if target.is_none() {
-        if let Ok(p) = std::process::Command::new("which").arg("python3").output() {
-            if p.status.success() {
-                let path = String::from_utf8_lossy(&p.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Ok(PathBuf::from(path));
-                }
+        if let Ok(p) = which::which("python3") {
+            if p.is_file() {
+                return Ok(p);
             }
         }
     }
