@@ -11,17 +11,17 @@
 - Go (static binary, cross-compile)
 - .NET/C# (self-contained, cross-RID)
 - Binary (ELF/PE staging)
+- Deno (toolchain download + deno cache)
+- Hugo (binary embed + hugo build step)
+- Wasm (wasmtime embed)
 
 ### Partial — needs work
 
 | Runtime | Gap | Priority |
 |---------|-----|----------|
-| Deno | No toolchain download, no `deno cache`, no cross-compile | P1 |
-| Hugo | No binary embed, no `hugo` build step, no theme install | P1 |
-| Rust | No cargo auto-download, workspace virtual manifests | P1 |
-| Electron | No electron binary embed, undocumented | P2 |
-| Wasm | No wasmtime embed, experimental flag | P2 |
-| Perl | No Mojolicious detection | P3 |
+| Rust | No cargo auto-download, requires cargo on PATH | P1 |
+| Electron | Detection done, no cross-compiled binary embed (falls back to host) | P2 |
+| Perl | Detection done, no Mojolicious-specific detection | P3 |
 
 ### Missing — planned
 
@@ -63,7 +63,7 @@
 
 | Feature | Status |
 |---------|--------|
-| Cross-compile stubs | Partial (Linux ELF done, macOS/Windows TODO) |
+| Cross-compile stubs | Done (`daedalus build --universal`, polyglot shell launcher) |
 | SISR delta updates | Done |
 | Encryption (AES-256-GCM) | Done |
 | Ed25519 signing | Done |
@@ -71,6 +71,9 @@
 | jlink minimal JRE | Not started |
 | Build cache | Done |
 | Parallel multi-target | Done |
+| Universal binary (`--universal`) | Done (polyglot shell launcher, multi-arch slices) |
+| Hot-swap layers (`daedalus swap`) | Done |
+| Registry CAS (`daedalus registry push/pull/list`) | Done |
 
 ## Security
 
@@ -82,4 +85,5 @@
 | Windows process isolation | Done |
 | Ed25519 bit validation (CVE-2023-48022) | Done |
 | SISR publisher signature | Done |
+| Capability-based sandboxing (seccomp + Landlock) | Done |
 | At-rest authenticity | Roadmap #45 |

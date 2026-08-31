@@ -13,7 +13,7 @@ macOS ARM64, Windows x64 — sans installer quoi que ce soit sur la cible.
 
 > "Daedalus packages any application — Python, Node, Go, PHP, Ruby, .NET, Java, Deno, Perl,
 > Hugo — into a single self-extracting binary that runs anywhere without Docker or a runtime
-> install. While PyInstaller only does Python and Bun only does JS/TS, Daedalus supports 11
+> install. While PyInstaller only does Python and Bun only does JS/TS, Daedalus supports 14
 > runtimes in one tool, with 95% smaller updates via SISR."
 
 ### Qui a ce problème?
@@ -53,7 +53,7 @@ ni Node, ni quoi que ce soit.
 - [x] Minimal seccomp filter (18 syscalls bloqués, arch-aware x86_64/aarch64)
 - [x] Payload encryption AES-256-GCM (v4)
 - [x] SquashFS extraction (v5 format, `--squashfs`)
-- [x] 11 runtimes supportés : Python, Node.js, Deno, Java, Ruby, .NET, Go, PHP, Perl, Binary, Hugo
+- [x] 14 runtimes supportés : Python, Node.js, Deno, Java, Ruby, .NET, Go, PHP, Perl, Hugo, Wasm, Electron, Rust, Binary
 - [x] Framework auto-detection (FastAPI, Flask, Django, Next.js, Express, etc.)
 
 ## Phase 2 — Delta updates ✅
@@ -64,37 +64,35 @@ ni Node, ni quoi que ce soit.
 - [x] Bandwidth reporting : `"12 MB delta vs 328 MB full — 96.4%"`
 - [x] `--enable-sisr` flag + incremental rebuild via `daedalus build --update`
 
-## Phase 3 — Universal Binary (PRIORITY #1 — 3-4 days)
+## Phase 3 — Universal Binary ✅
 
-**Problème :** Aujourd'hui `daedalus build` produit un binaire **architecture-specific**.
-Le stub ELF x86_64 ne marche pas sur ARM64.
+- [x] `daedalus build --universal` : build matrix multi-arch via `cargo zigbuild`
+- [x] Polyglot launcher shell-script avec offsets hardcoded
+- [x] `UniversalFooter` + manifest JSON par slice
+- [x] Détection runtime `uname -m`/`uname -s` → extraction de la bonne slice
+- [x] Slices Linux x86_64 + aarch64, macOS ARM64, Windows x64
 
-**Solution :** Polyglot launcher multi-format.
+## Phase 4 — Hot-swap ✅
 
-```
-foo.daedalus (universal file)
-├─ [polyglot-stub]        ← valide ELF+PE+Mach-O (header overlap)
-├─ [linux-x64-payload]    ← stub x64 + runtime x64 + app x64
-├─ [linux-arm64-payload]  ← stub arm64 + runtime arm64 + app arm64
-├─ [macos-arm64-payload]  ← Mach-O stub + runtime arm64
-├─ [windows-x64-payload]  ← PE stub + runtime x64
-├─ metadata (per-arch)
-└─ footer + signatures
-```
+- [x] `daedalus swap <binary> <layer-name> <new-file>` : remplacer une couche sans rebuild
+- [x] Limitation documentée : zstd-tar v2 seulement, invalide la signature Ed25519
+- [x] Tests : remplacement de fichier, rejet de SISR binaire
 
-**Status :** Cross-compilation validée (zigbuild + fix seccomp.rs pour aarch64).
-L'implémentation du wrapper polyglot est la priorité absolue.
+## Phase 5 — Lazy loading (NOT STARTED)
 
-## Phase 4 — Hot-swap (2-3 days)
+mmap/FUSE pour ne pas charger les gros assets au démarrage. Chargé à la demande via SISR chunks.
 
-`daedalus swap <binary> <layer> <new-file>` — remplacer une couche sans rebuild.
+## Phase 6 — Templates + multi-service (PARTIAL)
 
-Exemple : `daedalus swap myapp.daedalus runtime ./new-runtime` — change le runtime, garde le code.
+- [x] Champ `services` dans metadata, détection mode serveur dans `daedalus selftest`
+- [ ] Build multi-service : `daedalus build ./services --entrypoint api=api.py --entrypoint worker=worker.py`
+- [ ] Templates de metadata : `application`, `service`, `plugin`
 
-## Phase 5 — Lazy loading (4-5 days)
+## Priorité
 
-mmap/FUSE pour ne pas charger les gros assets au démarrage.
-Chargé à la demande via SISR chunks.
+1. **Phase 5** (lazy loading) — **performance**, ne pas charger gros assets au démarrage
+2. **Phase 6** (templates + multi-service) — **storytelling**, prouve que le format est universel
+3. **Registry CAS** — **adoption**, partager des couches entre artefacts (`daedalus registry push/pull/list` déjà implémenté)
 
 ## Ce qui n'est PAS prioritaire
 
