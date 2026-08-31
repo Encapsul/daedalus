@@ -1,10 +1,5 @@
 # Roadmap
 
-> **Product evolution ideas**: See [ROADMAP_IDEAS.md](ROADMAP_IDEAS.md) for
-> detailed tiered proposals (Tier 1 CI/CD + Registry + Plugins, Tier 2
-> multi-sidecar + DAG + OCI bridge, Tier 3 enterprise, Tier 4 breakthrough).
-> This file tracks runtime/CLi/build/security implementation status.
-
 ## Runtimes
 
 ### Complete / production-ready
