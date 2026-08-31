@@ -83,11 +83,14 @@ pub(crate) fn copy_dir_recursive_with(
         }
 
         let metadata = entry.metadata()?;
+        #[cfg(unix)]
         if metadata.file_type().is_symlink() {
             if let Ok(target) = std::fs::read_link(&src_path) {
                 let _ = std::os::unix::fs::symlink(&target, &dst_path);
             }
-        } else if metadata.is_dir() {
+            continue;
+        }
+        if metadata.is_dir() {
             copy_dir_recursive_with(&src_path, &dst_path, include_node_modules)?;
         } else {
             std::fs::copy(&src_path, &dst_path)?;
