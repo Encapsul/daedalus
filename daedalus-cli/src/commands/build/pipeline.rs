@@ -719,7 +719,15 @@ fn build_rust_binary(
     let verbose = plan.verbose;
 
     ensure_cargo()?;
-    let bin_name = cargo_bin_name(app_dir);
+    let bin_name = match cargo_bin_name(app_dir) {
+        Some(name) => name,
+        None => {
+            if verbose {
+                eprintln!("  skipping Rust build: no [[bin]] in Cargo.toml (library or workspace)");
+            }
+            return Ok(None);
+        }
+    };
 
     // Cross-compilation: synthesize a full Rust triple from --target.
     let triple = target.map(rust_target_triple);
@@ -767,10 +775,13 @@ fn build_rust_binary(
     }
     .join(format!("{bin_name}{exe_suffix}"));
     if !built.is_file() {
-        anyhow::bail!(
-            "cargo build succeeded but {} is missing — explicit [[bin]] names or workspace layouts may need --entrypoint",
-            built.display()
-        );
+        if verbose {
+            eprintln!(
+                "  skipping Rust build: cargo build succeeded but {} is missing (library or workspace without [[bin]])",
+                built.display()
+            );
+        }
+        return Ok(None);
     }
 
     let staged = rootfs.join("app").join(format!("{bin_name}{exe_suffix}"));
@@ -1165,10 +1176,9 @@ fn ensure_cargo() -> Result<()> {
 }
 
 /// The output binary name: first `[[bin]] name` wins, else `[package] name`
-/// (Cargo keeps hyphens for the default binary). Workspace virtual manifests
-/// have no `[package]` — fall back to "app" (workspace support is Phase 8
-/// Step 5).
-fn cargo_bin_name(app_dir: &Path) -> String {
+/// (Cargo keeps hyphens for the default binary). Returns `None` when the
+/// project is a library or workspace virtual manifest with no `[[bin]]`.
+fn cargo_bin_name(app_dir: &Path) -> Option<String> {
     let parsed = std::fs::read_to_string(app_dir.join("Cargo.toml"))
         .ok()
         .and_then(|content| content.parse::<toml::Table>().ok());
@@ -1185,7 +1195,7 @@ fn cargo_bin_name(app_dir: &Path) -> String {
                 .and_then(|pkg| pkg.get("name"))
                 .and_then(|name| name.as_str())
         })
-        .map_or_else(|| "app".to_string(), str::to_string)
+        .map(|s| s.to_string())
 }
 
 /// Maps a `--target` value to a full Rust target triple. Full triples pass

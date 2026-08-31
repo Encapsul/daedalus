@@ -71,7 +71,7 @@ impl PkgMgr {
             Self::Pnpm => vec!["pnpm", "install", "--ignore-scripts"],
             Self::Yarn => vec!["yarn", "install", "--frozen-lockfile", "--ignore-scripts"],
             Self::Bun => vec!["bun", "install", "--frozen-lockfile"],
-            Self::Npm => vec!["npm", "ci", "--ignore-scripts"],
+            Self::Npm => vec!["npm", "install", "--ignore-scripts"],
             Self::Composer => vec![
                 "composer",
                 "install",
