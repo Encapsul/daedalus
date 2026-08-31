@@ -93,6 +93,7 @@ impl Drop for ShutdownGuard {
 /// are silently skipped.
 ///
 /// Return: Result containing Result<Vec<BenchmarkRow>>
+#[allow(clippy::ref_option)]
 fn load_benchmarks(csv_path: &Option<PathBuf>) -> Result<Vec<BenchmarkRow>> {
     let path = csv_path
         .clone()
@@ -135,6 +136,7 @@ struct CacheInfo {
 /// Returns None if the directory cannot be read.
 ///
 /// Return: Some(...) if present, None otherwise
+#[allow(clippy::ref_option)]
 fn load_cache_info(cache_path: &Option<PathBuf>) -> Option<CacheInfo> {
     let path = cache_path.clone().unwrap_or_else(|| {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/ubuntu".into());
@@ -205,6 +207,7 @@ fn dir_size(path: &PathBuf) -> std::io::Result<u64> {
 /// Description:
 ///
 /// Return: nothing
+#[allow(clippy::ref_option)]
 fn ui(frame: &mut Frame, rows: &[BenchmarkRow], cache_info: &Option<CacheInfo>) {
     let area = frame.area();
     let chunks = Layout::default()

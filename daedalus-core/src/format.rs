@@ -28,6 +28,10 @@ pub const ARCH_X86_64: u8 = 0x01;
 pub const ARCH_AARCH64: u8 = 0x02;
 
 pub const SIG_BLOCK_SIZE: usize = 68;
+
+/// Maximum allowed metadata size (4 MiB). The metadata JSON is typically a few
+/// hundred bytes; this guard prevents DoS via crafted `meta_size` in the footer.
+pub const MAX_META_SIZE: usize = 4 * 1024 * 1024;
 pub const SIG_BLOCK_SIZE_FIELD: usize = 4;
 /// Ed25519 signature length, derived from the fixed block layout.
 pub const SIG_LEN: usize = SIG_BLOCK_SIZE - SIG_BLOCK_SIZE_FIELD;

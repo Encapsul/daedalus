@@ -29,6 +29,8 @@
 - [The Builder](./reference/builder.md)
 - [Cache](./reference/cache.md)
 - [Isolation](./reference/isolation.md)
+- [Layer model](./reference/layer-model.md)
+- [Registry HTTP API](./reference/registry-api.md)
 
 # Guides
 
@@ -42,10 +44,23 @@
 - [Go](./guides/go.md)
 - [PHP](./guides/php.md)
 - [Perl](./guides/perl.md)
+- [Hugo](./guides/hugo.md)
+- [Electron](./guides/electron.md)
 - [Native Binary](./guides/binary.md)
+- [AI & Edge](./guides/ai-edge.md)
 - [Dependency Detection](./guides/dependencies.md)
 - [Incremental Updates (SISR)](./guides/incremental-updates.md)
 - [Updating a deployed `.daedalus` (SISR)](./guides/user-updates.md)
+- [Payload encryption](./guides/encryption.md)
+- [WASM / WASI runtime](./guides/wasm.md)
+- [Hooks](./guides/hooks.md)
+- [Cron and health checks](./guides/cron-and-health.md)
+- [Persistent storage](./guides/persist.md)
+- [Tree-shaking and minification](./guides/tree-shake-and-minify.md)
+- [Remote cache](./guides/remote-cache.md)
+- [SBOM generation](./guides/sbom.md)
+- [Fleet deployment](./guides/fleet-deployment.md)
+- [Air-gapped deployment](./guides/airgapped.md)
 
 # Migration
 
@@ -54,6 +69,26 @@
 # CLI Reference
 
 - [`daedalus build`](./cli/daedalus-build.md)
+- [`daedalus run`](./cli/daedalus-run.md)
+- [`daedalus inspect`](./cli/daedalus-inspect.md)
+- [`daedalus scan`](./cli/daedalus-scan.md)
+- [`daedalus keygen`](./cli/daedalus-keygen.md)
+- [`daedalus sign`](./cli/daedalus-sign.md)
+- [`daedalus verify`](./cli/daedalus-verify.md)
+- [`daedalus trust`](./cli/daedalus-trust.md)
+- [`daedalus doctor`](./cli/daedalus-doctor.md)
+- [`daedalus clean`](./cli/daedalus-clean.md)
+- [`daedalus selftest`](./cli/daedalus-selftest.md)
+- [`daedalus upgrade`](./cli/daedalus-upgrade.md)
+- [`daedalus migrate`](./cli/daedalus-migrate.md)
+- [`daedalus swap`](./cli/daedalus-swap.md)
+- [`daedalus publish`](./cli/daedalus-publish.md)
+- [`daedalus registry`](./cli/daedalus-registry.md)
+- [`daedalus serve`](./cli/daedalus-serve.md)
+- [`daedalus env`](./cli/daedalus-env.md)
+- [`daedalus feedback`](./cli/daedalus-feedback.md)
+- [`daedalus completion`](./cli/daedalus-completion.md)
+- [`daedalus man`](./cli/daedalus-man.md)
 
 # Project
 

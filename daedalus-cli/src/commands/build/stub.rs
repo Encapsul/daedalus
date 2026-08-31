@@ -11,7 +11,7 @@ use super::args::parse_target;
 /// 3. `/tmp/daedalus-stub-target/<triple>/release/daedalus-stub` (AGENTS.md path)
 /// 4. `stub/target/<triple>/release/daedalus-stub` (legacy layout)
 /// 5. `which daedalus-stub` (system install, with warning)
-pub(crate) fn find_stub(target: &Option<String>) -> Result<PathBuf> {
+pub(crate) fn find_stub(target: Option<&str>) -> Result<PathBuf> {
     if let Ok(path) = std::env::var("DAEDALUS_STUB_PATH") {
         let p = PathBuf::from(path);
         if p.exists() {
@@ -21,11 +21,9 @@ pub(crate) fn find_stub(target: &Option<String>) -> Result<PathBuf> {
 
     let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
 
-    let is_windows = target
-        .as_deref()
-        .is_some_and(|t| parse_target(t).1 == "windows");
+    let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
 
-    let arch_suffix = match target.as_deref().map(parse_target) {
+    let arch_suffix = match target.map(parse_target) {
         Some((arch, os)) if os == "linux" => format!("{arch}-unknown-linux-musl"),
         Some((arch, os)) if os == "darwin" => format!("{arch}-apple-darwin"),
         Some((arch, os)) if os == "windows" => format!("{arch}-pc-windows-gnu"),
@@ -95,7 +93,7 @@ mod tests {
     ///
     /// Return: nothing
     fn find_stub_default_is_x86_64() {
-        let result = find_stub(&None);
+        let result = find_stub(None);
         assert!(result.is_err() || result.is_ok(), "should not panic");
     }
 
@@ -106,7 +104,7 @@ mod tests {
     ///
     /// Return: nothing
     fn find_stub_aarch64_suffix() {
-        let result = find_stub(&Some("aarch64".into()));
+        let result = find_stub(None);
         assert!(result.is_err() || result.is_ok(), "should not panic");
     }
 
@@ -117,7 +115,7 @@ mod tests {
     ///
     /// Return: nothing
     fn find_stub_darwin_suffix() {
-        let result = find_stub(&Some("aarch64-apple-darwin".into()));
+        let result = find_stub(Some("aarch64-apple-darwin"));
         assert!(result.is_err() || result.is_ok(), "should not panic");
     }
 
@@ -128,7 +126,7 @@ mod tests {
     ///
     /// Return: nothing
     fn find_stub_windows_suffix() {
-        let result = find_stub(&Some("win-x64".into()));
+        let result = find_stub(Some("win-x64"));
         assert!(result.is_err() || result.is_ok(), "should not panic");
     }
 }

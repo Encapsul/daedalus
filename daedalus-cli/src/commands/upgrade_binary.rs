@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct UpgradeBinaryArgs {
     /// Input legacy .daedalus (built without --enable-sisr)
     pub input: PathBuf,

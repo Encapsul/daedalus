@@ -71,7 +71,7 @@ fn sign_with_no_input_and_force_skips_prompt() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     // Should fail, but not because of a prompt
     assert!(!stderr.contains("Sign"));
-    assert!(output.status.code() != Some(0));
+    assert_ne!(output.status.code(), Some(0));
 }
 
 #[test]

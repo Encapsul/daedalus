@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use crate::pager;
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ScanArgs {
     /// Directories to scan
     #[arg(default_value = ".")]
@@ -45,6 +46,7 @@ pub struct ScanArgs {
 /// current directory) and displays their metadata in plain, JSON, or paged format.
 ///
 /// Return: Result containing Result<()>
+#[allow(clippy::too_many_lines)]
 pub fn run(args: ScanArgs) -> Result<()> {
     // Show cache stats if requested
     if args.cache {
@@ -107,7 +109,7 @@ pub fn run(args: ScanArgs) -> Result<()> {
         println!("file\tname\truntime\tarch\tcreated\tsize\tsigned");
         for file in &files {
             if let Some(info) = inspect_file(file) {
-                let name: String = file
+                let _name: String = file
                     .file_name()
                     .map_or_else(|| "?".into(), |n| n.to_string_lossy().into());
                 let app_name = info.get("name").and_then(|v| v.as_str()).unwrap_or("?");

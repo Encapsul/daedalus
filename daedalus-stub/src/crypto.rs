@@ -41,7 +41,7 @@ pub fn verify_ed25519<R: std::io::Read + std::io::Seek>(
     let mut hasher = Sha256::new();
     hasher.update(payload);
     hasher.update(meta_bytes);
-    hasher.update(&footer.pack_full());
+    hasher.update(footer.pack_full());
     let hash = hasher.finalize();
 
     // Parse signature once.

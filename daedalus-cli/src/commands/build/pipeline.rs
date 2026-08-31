@@ -46,6 +46,7 @@ struct AssembleInputs<'a> {
     sisr_artifacts: Option<daedalus_core::sisr_stage::SisrArtifacts>,
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn build_single_target(
     args: &BuildArgs,
     plan: &BuildPlan,
@@ -102,7 +103,7 @@ pub(crate) fn build_single_target(
             if verbose {
                 eprintln!("[daedalus] cache hit — reusing cached build");
             }
-            std::fs::copy(&cached, &output).context("failed to copy cached .daedalus to output")?;
+            std::fs::copy(cached, output).context("failed to copy cached .daedalus to output")?;
             if args.json {
                 return Ok(Some(serde_json::json!({
                     "output": output.to_string_lossy(),
@@ -163,7 +164,7 @@ pub(crate) fn build_single_target(
     }
 
     // Find stub binary
-    let stub = find_stub(&target)?;
+    let stub = find_stub(target.as_deref())?;
     let stub_bytes = std::fs::read(&stub)
         .with_context(|| format!("failed to read stub binary at {}", stub.display()))?;
 
@@ -440,6 +441,7 @@ fn install_package_managers(
 
 /// Run the install command for one package manager, downloading the target
 /// toolchain first when needed.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn install_pkgmgr_deps(
     args: &BuildArgs,
     mgr: &pkgmgr::PkgMgr,
@@ -495,6 +497,7 @@ fn install_pkgmgr_deps(
 /// Description:
 ///
 /// Return: nothing
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn pkgmgr_install_command(
     mgr: &pkgmgr::PkgMgr,
     app_dir: &Path,
@@ -543,6 +546,7 @@ fn pkgmgr_install_command(
 
 /// Target-platform install flags: force source builds for pip and select the
 /// target platform/arch for node package managers when cross-compiling.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn push_install_flags(
     full_args: &mut Vec<String>,
     mgr: &pkgmgr::PkgMgr,
@@ -582,6 +586,7 @@ fn push_install_flags(
 
 /// Append `--platform/--arch/--ignore-scripts` so native deps resolve for
 /// the target platform instead of the build host.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn push_cross_node_flags(full_args: &mut Vec<String>, mgr: &pkgmgr::PkgMgr, target: &str) {
     let (t_arch, t_os) = parse_target(target);
     let npm_arch = match t_arch.as_str() {
@@ -1068,7 +1073,7 @@ fn build_hugo_binary(
 fn build_deno_binary(
     plan: &BuildPlan,
     target: Option<&str>,
-    rootfs: &Path,
+    _rootfs: &Path,
 ) -> Result<Option<String>> {
     if plan.runtime != detect::Runtime::Deno || plan.no_install {
         return Ok(None);
@@ -2193,7 +2198,7 @@ pub(crate) fn build_universal(args: &BuildArgs, plan: &BuildPlan, output: &Path)
         // Skip architectures whose pre-built stub binary is missing. This
         // allows partial universal builds when stubs are unavailable (e.g.
         // macOS stubs in a Linux-only CI environment).
-        match find_stub(&target_opt) {
+        match find_stub(target_opt.as_deref()) {
             Ok(_) => {}
             Err(e) => {
                 eprintln!(

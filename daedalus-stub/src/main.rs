@@ -602,6 +602,7 @@ fn main() {
 /// SISR updates).
 ///
 /// Return: Result containing `io::Result<()>`
+#[allow(clippy::too_many_lines)]
 fn run() -> io::Result<()> {
     let verbose = std::env::var_os("DAEDALUS_VERBOSE").is_some();
 
@@ -846,12 +847,38 @@ fn run() -> io::Result<()> {
 }
 
 /// Opens `path` and reads the footer plus raw and parsed metadata.
+///
+/// Rejects obviously invalid metadata regions before parsing:
+/// - zero-sized metadata is treated as corrupt
+/// - metadata larger than `format::MAX_META_SIZE` is rejected to prevent DoS
 fn read_from(path: &Path) -> io::Result<(File, Footer, Vec<u8>, Metadata)> {
     let mut exe = File::open(path)?;
     let footer = Footer::read_from(&mut exe)?;
-    let meta_bytes = read_at(&mut exe, footer.meta_offset, footer.meta_size as usize)?;
-    let meta: Metadata = serde_json::from_slice(&meta_bytes)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("bad metadata: {e}")))?;
+
+    let meta_len = footer.meta_size as usize;
+    if meta_len == 0 {
+        return Err(err("metadata region is empty — not a valid .de file"));
+    }
+    if meta_len > format::MAX_META_SIZE {
+        return Err(err(format!(
+            "metadata region too large: {} bytes (max {})",
+            meta_len,
+            format::MAX_META_SIZE
+        )));
+    }
+
+    let meta_bytes = read_at(&mut exe, footer.meta_offset, meta_len)?;
+
+    if serde_json::from_slice::<serde_json::Value>(&meta_bytes).is_err() {
+        return Err(err("metadata is not valid JSON"));
+    }
+
+    let meta: Metadata = serde_json::from_slice(&meta_bytes).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid metadata JSON: {e}"),
+        )
+    })?;
     Ok((exe, footer, meta_bytes, meta))
 }
 
@@ -1045,7 +1072,7 @@ enum ChildStatus {
 ///   after `max_attempts`), restore the pre-update binary from the snapshot,
 ///   and re-exec it so the user is running a known-good version.
 #[cfg(unix)]
-/// `supervised_launch` - run a newly-updated version under health-gate supervision.
+///   `supervised_launch` - run a newly-updated version under health-gate supervision.
 ///
 /// Description:
 /// Forks the app and monitors the crash window. Confirms the version on
@@ -1200,7 +1227,7 @@ fn wait_for_child_status(pid: i32, timeout_ms: u64) -> io::Result<ChildStatus> {
         let mut status: i32 = 0;
         // SAFETY: waitpid(2) with WNOHANG polls without blocking; status is
         // written only when the return value equals pid. EINTR is retried.
-        let rc = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
+        let rc = unsafe { libc::waitpid(pid, &raw mut status, libc::WNOHANG) };
         if rc == pid {
             return Ok(if libc::WIFSIGNALED(status) {
                 ChildStatus::Signaled(128 + libc::WTERMSIG(status))
@@ -1235,7 +1262,7 @@ fn wait_child_exit_code(pid: i32) -> io::Result<i32> {
     let mut status: i32 = 0;
     // SAFETY: waitpid(2) blocks until `pid` exits; status is filled by the
     // kernel before the call returns.
-    let rc = unsafe { libc::waitpid(pid, &mut status, 0) };
+    let rc = unsafe { libc::waitpid(pid, &raw mut status, 0) };
     if rc < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -1268,7 +1295,7 @@ fn decode_exit_status(status: i32) -> i32 {
 fn rollback_to_previous(bin_path: &Path, verbose: bool) -> io::Result<()> {
     let bak = backup_path_for(bin_path);
     if !bak.is_file() {
-        return Err(err(&format!(
+        return Err(err(format!(
             "cannot roll back: no snapshot at {}",
             bak.display()
         )));
@@ -1977,6 +2004,12 @@ mod tests {
         data
     }
 
+    /// Writes a v2 layout to `dir/name` and returns the full path.
+    fn write_v2_bytes(dir: &Path, name: &str, payload: &[u8], meta: &[u8], tail: &[u8]) {
+        let data = build_v2_bytes(payload, meta, tail);
+        std::fs::write(dir.join(name), &data).unwrap();
+    }
+
     #[test]
     /// `downgrade_reject_detects_leftover_sig_block` - downgrade reject detects leftover sig block.
     ///
@@ -2137,9 +2170,86 @@ mod tests {
         };
         write_layer_manifest(tmp.path(), &meta).unwrap();
         assert!(tmp.path().join(".daedalus-layers.json").is_file());
-        // Should be loadable back
         let loaded = load_layer_manifest(tmp.path()).unwrap();
         assert_eq!(loaded.version, 1);
         assert!(loaded.layers.is_empty());
+    }
+
+    #[test]
+    /// `read_from_rejects_empty_metadata` - read_from rejects empty metadata.
+    ///
+    /// Description: Regression test for fuzz crash #3 (empty metadata buffer).
+    ///
+    /// Return: nothing
+    fn read_from_rejects_empty_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        write_v2_bytes(dir.path(), "empty.de", b"payload", b"", &[]);
+        let result = read_from(&dir.path().join("empty.de"));
+        assert!(result.is_err(), "expected error for empty metadata");
+        let err_msg = result.err().unwrap().to_string();
+        assert!(
+            err_msg.contains("empty"),
+            "expected 'empty' in error, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    /// `read_from_rejects_truncated_json_metadata` - read_from rejects truncated JSON metadata.
+    ///
+    /// Description: Regression test for fuzz crash #1 (malformed JSON at column 59).
+    ///
+    /// Return: nothing
+    fn read_from_rejects_truncated_json_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad_json = b"{\"name\": \"test\", \"runtime\": \"python3\", \"entrypoint\": [";
+        write_v2_bytes(dir.path(), "truncated.de", b"payload", bad_json, &[]);
+        let result = read_from(&dir.path().join("truncated.de"));
+        assert!(result.is_err(), "expected error for truncated JSON");
+        let err_msg = result.err().unwrap().to_string();
+        assert!(
+            err_msg.contains("not valid JSON"),
+            "expected 'not valid JSON' in error, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    /// `read_from_rejects_oversized_metadata` - read_from rejects oversized metadata.
+    ///
+    /// Description: DoS guard — fuzzer could craft a huge `meta_size` to force
+    /// a large allocation. The stub must reject before reading.
+    ///
+    /// Return: nothing
+    fn read_from_rejects_oversized_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let huge = vec![b'x'; format::MAX_META_SIZE + 1];
+        write_v2_bytes(dir.path(), "huge.de", b"payload", &huge, &[]);
+        let result = read_from(&dir.path().join("huge.de"));
+        assert!(result.is_err(), "expected error for oversized metadata");
+        let err_msg = result.err().unwrap().to_string();
+        assert!(
+            err_msg.contains("too large"),
+            "expected 'too large' in error, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    /// `read_from_accepts_valid_metadata` - read_from accepts valid metadata.
+    ///
+    /// Description: Sanity check — a well-formed .de file must still load.
+    ///
+    /// Return: nothing
+    fn read_from_accepts_valid_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let good_json = br#"{"name":"test","runtime":"python3","entrypoint":["python3 /app/app.py"],"payload_format":"zstd+tar"}"#;
+        write_v2_bytes(dir.path(), "valid.de", b"payload", good_json, &[]);
+        let result = read_from(&dir.path().join("valid.de"));
+        assert!(
+            result.is_ok(),
+            "valid metadata must parse: {:?}",
+            result.err()
+        );
+        let (_, _, _, meta) = result.unwrap();
+        assert_eq!(meta.name, "test");
+        assert_eq!(meta.runtime, "python3");
     }
 }

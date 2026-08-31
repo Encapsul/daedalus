@@ -88,6 +88,7 @@ pub(crate) fn ensure_node(target: Option<&str>, verbose: bool) -> Result<PathBuf
 /// Download a specific Node.js version for a target architecture.
 ///
 /// When `target_arch` is `None`, downloads for the host architecture.
+#[allow(clippy::too_many_lines)]
 fn ensure_node_download(
     tools_dir: PathBuf,
     target_arch: Option<&str>,
@@ -315,6 +316,7 @@ pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathB
 ///
 /// Fetches the latest release metadata from GitHub to discover the actual
 /// version/date rather than hardcoding a specific release that may not exist.
+#[allow(clippy::too_many_lines)]
 fn ensure_python_download(
     tools_dir: &Path,
     py_arch: &str,
@@ -847,6 +849,7 @@ pub(crate) fn ensure_go(target: Option<&str>, verbose: bool) -> Result<PathBuf> 
 }
 
 /// Download a specific Go version for a target architecture.
+#[allow(clippy::too_many_lines)]
 fn ensure_go_download(
     tools_dir: PathBuf,
     target_arch: Option<&str>,
@@ -1083,18 +1086,13 @@ fn ensure_deno_download(tools_dir: &Path, target_arch: Option<&str>, verbose: bo
         };
         (da.to_string(), dt.to_string())
     } else {
-        let da = match std::env::consts::ARCH {
-            "x86_64" => "x86_64",
-            "aarch64" => "aarch64",
-            arch => arch,
-        };
         let dt = match std::env::consts::OS {
             "linux" => "unknown-linux-gnu",
             "macos" => "apple-darwin",
             "windows" => "pc-windows-msvc",
             os => os,
         };
-        (da.to_string(), dt.to_string())
+        (std::env::consts::ARCH.to_string(), dt.to_string())
     };
 
     let ext = "zip";
@@ -1121,7 +1119,7 @@ fn ensure_deno_download(tools_dir: &Path, target_arch: Option<&str>, verbose: bo
         let mut bytes = Vec::new();
         std::io::Read::read_to_end(&mut std::io::BufReader::new(response), &mut bytes)
             .context("failed to read deno zip")?;
-        extract_deno_zip(std::io::Cursor::new(bytes), &tools_dir)?;
+        extract_deno_zip(std::io::Cursor::new(bytes), tools_dir)?;
     } else {
         let reader = std::io::BufReader::new(response);
         let decoder = flate2::read::GzDecoder::new(reader);
@@ -1409,18 +1407,13 @@ fn ensure_wasmtime_download(
         };
         (wa.to_string(), wo.to_string())
     } else {
-        let wa = match std::env::consts::ARCH {
-            "x86_64" => "x86_64",
-            "aarch64" => "aarch64",
-            arch => arch,
-        };
         let wo = match std::env::consts::OS {
             "linux" => "linux",
             "macos" => "apple-darwin",
             "windows" => "windows",
             os => os,
         };
-        (wa.to_string(), wo.to_string())
+        (std::env::consts::ARCH.to_string(), wo.to_string())
     };
 
     let ext = "tar.gz";
