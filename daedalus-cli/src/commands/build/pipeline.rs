@@ -1076,7 +1076,7 @@ fn build_deno_binary(
         eprintln!("  caching Deno dependencies for {entry}...");
     }
     let status = std::process::Command::new(&deno_bin)
-        .args(["cache", &format!("/app/{}", entry)])
+        .args(["cache", &entry])
         .current_dir(app_dir)
         .status()
         .context("failed to run `deno cache`")?;

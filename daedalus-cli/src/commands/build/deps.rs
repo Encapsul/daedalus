@@ -1049,41 +1049,41 @@ pub(crate) fn ensure_deno(target: Option<&str>, verbose: bool) -> Result<PathBuf
 
 /// Download a Deno binary for the target architecture from GitHub releases.
 fn ensure_deno_download(tools_dir: &Path, target_arch: Option<&str>, verbose: bool) -> Result<()> {
-    let (deno_arch, deno_os) = if let Some(target) = target_arch {
+    let (deno_arch, deno_triple) = if let Some(target) = target_arch {
         let (arch, os) = parse_target(target);
         let da = match arch.as_str() {
             "x86_64" | "amd64" => "x86_64",
             "aarch64" | "arm64" => "aarch64",
             _ => anyhow::bail!("unsupported cross-compile architecture for Deno: {arch}"),
         };
-        let dos = match os.as_str() {
-            "linux" => "linux",
-            "darwin" => "apple-darwin",
-            "windows" => "windows",
+        let dt = match os.as_str() {
+            "linux" => "unknown-linux-gnu",
+            "darwin" | "macos" => "apple-darwin",
+            "windows" => "pc-windows-msvc",
             _ => anyhow::bail!("unsupported cross-compile OS for Deno: {os}"),
         };
-        (da.to_string(), dos.to_string())
+        (da.to_string(), dt.to_string())
     } else {
         let da = match std::env::consts::ARCH {
             "x86_64" => "x86_64",
             "aarch64" => "aarch64",
             arch => arch,
         };
-        let dos = match std::env::consts::OS {
-            "linux" => "linux",
+        let dt = match std::env::consts::OS {
+            "linux" => "unknown-linux-gnu",
             "macos" => "apple-darwin",
-            "windows" => "windows",
+            "windows" => "pc-windows-msvc",
             os => os,
         };
-        (da.to_string(), dos.to_string())
+        (da.to_string(), dt.to_string())
     };
 
-    let ext = if deno_os == "windows" { "zip" } else { "zip" };
-    let asset_name = format!("deno-{deno_os}-{deno_arch}.{ext}");
+    let ext = "zip";
+    let asset_name = format!("deno-{deno_arch}-{deno_triple}.{ext}");
     let url = format!("https://github.com/denoland/deno/releases/latest/download/{asset_name}");
 
     if verbose {
-        eprintln!("  downloading deno ({deno_os}-{deno_arch})...");
+        eprintln!("  downloading deno ({deno_arch}-{deno_triple})...");
     }
 
     let response = reqwest::blocking::get(&url)
@@ -1231,9 +1231,9 @@ fn ensure_hugo_download(tools_dir: &Path, target_arch: Option<&str>, verbose: bo
             _ => anyhow::bail!("unsupported cross-compile architecture for Hugo: {arch}"),
         };
         let hos = match os.as_str() {
-            "linux" => "Linux",
-            "darwin" => "macOS",
-            "windows" => "Windows",
+            "linux" => "linux",
+            "darwin" => "darwin",
+            "windows" => "windows",
             _ => anyhow::bail!("unsupported cross-compile OS for Hugo: {os}"),
         };
         (ha.to_string(), hos.to_string())
@@ -1244,16 +1244,30 @@ fn ensure_hugo_download(tools_dir: &Path, target_arch: Option<&str>, verbose: bo
             arch => arch,
         };
         let hos = match std::env::consts::OS {
-            "linux" => "Linux",
-            "macos" => "macOS",
-            "windows" => "Windows",
+            "linux" => "linux",
+            "macos" => "darwin",
+            "windows" => "windows",
             os => os,
         };
         (ha.to_string(), hos.to_string())
     };
 
     let ext = "tar.gz";
-    let asset_name = format!("hugo_extended_{hugo_os}-{hugo_arch}.{ext}");
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("daedalus/0.5")
+        .build()
+        .context("failed to build HTTP client for Hugo version lookup")?;
+    let version = client
+        .get("https://api.github.com/repos/gohugoio/hugo/releases/latest")
+        .send()
+        .with_context(|| "failed to query Hugo latest release")?
+        .json::<serde_json::Value>()
+        .with_context(|| "failed to parse Hugo release JSON")?
+        .get("tag_name")
+        .and_then(|t| t.as_str())
+        .map(|s| s.trim_start_matches('v').to_string())
+        .context("Hugo release missing tag_name")?;
+    let asset_name = format!("hugo_extended_{version}_{hugo_os}-{hugo_arch}.{ext}");
     let url = format!("https://github.com/gohugoio/hugo/releases/latest/download/{asset_name}");
 
     if verbose {
