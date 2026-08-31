@@ -4,6 +4,14 @@ All notable changes to daedalus will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed
+- Ongoing improvements
+
+### Fixed
+- Bug fixes in progress
+
 ## [0.6.0] - 2026-08-31
 
 ### Changed
@@ -45,7 +53,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 - Bug fixes in progress
 
-## [0.5.0] - 2026-08-07
+## [0.6.1] - 2026-08-31
+
+### Changed
+- **Release pipeline**: glow-style GitHub releases with per-platform archives and checksums
+- **Dependency updates**: upgrade lru to 0.16.4, ratatui to 0.30, and other security fixes
+
+### Fixed
+- **CI failures**: resolve clippy `must_use_candidate` warnings and stub `missing_docs` warnings
+- **Release workflow**: ensure GitHub releases are created with changelog notes and all artifacts
+- **Documentation**: audit and fix Unix man-page doc comments across daedalus-cli and daedalus-stub
+
+## [0.6.0] - 2026-08-31
 
 ### Added
 - **SISR self-update engine**: a `.daedalus` can update itself from signed deltas
