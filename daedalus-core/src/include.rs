@@ -100,11 +100,14 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         let src_path = entry.path();
         let dst_path = dst.join(&name);
         let metadata = entry.metadata()?;
+        #[cfg(unix)]
         if metadata.file_type().is_symlink() {
             if let Ok(target) = fs::read_link(&src_path) {
                 let _ = std::os::unix::fs::symlink(&target, &dst_path);
             }
-        } else if metadata.is_dir() {
+            continue;
+        }
+        if metadata.is_dir() {
             copy_dir_recursive(&src_path, &dst_path)?;
         } else {
             fs::copy(&src_path, &dst_path)?;
