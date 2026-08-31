@@ -34,8 +34,9 @@ zip = "2"
 flate2 = "1"
 libc = "0.2"
 crossterm = "0.28"
-ratatui = "0.29"
+ratatui = "0.30"
 urlencoding = "2"
+lru = "0.16.4"
 
 [dev-dependencies]
 assert_cmd = "2"

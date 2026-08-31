@@ -63,7 +63,7 @@ We enable a pedantic subset, not the full `clippy::pedantic` (too many false
 positives on a small codebase). Run via `cargo clippy -p daedalus-core --all-targets -- -D warnings`.
 
 ```toml
-# In stub/Cargo.toml, add:
+# In daedalus-core/Cargo.toml, add:
 [lints]
 clippy::pedantic = { level = "warn", priority = -1 }
 # Then override specific noisy lints:
@@ -194,6 +194,9 @@ for the crate. For now, this is a manual convention; the goal is to enable
 ---
 
 ## Python (cli/)
+
+**Note:** The Python CLI was removed in v0.4.0. The project is now 100% Rust.
+This section is kept for reference only.
 
 ### Formatting
 
@@ -490,15 +493,15 @@ Defined in `daedalus-cli/src/error.rs`:
 | `--force` for dangerous ops | ✅ |
 | `--quiet` / `-q` | ✅ |
 | `--no-color` + `NO_COLOR` | ✅ |
-| `--json` on structured commands | ⚠️ partial (sign, verify, doctor only) |
+| `--json` on structured commands | ✅ inspect, doctor, scan |
 | Man pages | ✅ |
 | TTY detection before prompt | ✅ |
 | No secrets in flags | ✅ |
-| `--no-input` | ❌ missing |
-| `--plain` for tabular output | ❌ missing |
+| `--no-input` | ✅ |
+| `--plain` for tabular output | ✅ |
 | Pager for long output | ❌ missing |
 | `-` for stdin/stdout in file ops | ❌ missing |
-| `--dry-run` / `-n` | ❌ missing |
+| `--dry-run` / `-n` | ✅ build, clean |
 | Web docs link in help | ❌ missing |
 
 ---
