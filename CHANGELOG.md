@@ -4,7 +4,7 @@ All notable changes to daedalus will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.6.0] - 2026-08-31
 
 ### Changed
 - **File extension**: renamed from `.daedalus` to `.de` across CLI, docs, and examples
@@ -20,6 +20,30 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 - Extension consistency between HN pitch (`.de`) and CLI output (`.de`)
+- **Multi-arch release pipeline**: glow-style GitHub releases with per-platform archives
+  - Linux amd64/arm64/386/arm/riscv64/ppc64le (musl + gnu)
+  - Darwin amd64/arm64
+  - Windows amd64
+  - Automated checksums.txt generation
+- **Runtime detection & build robustness**
+  - Python: detect projects with `.py` files at root (sqlmap case)
+  - Node: fallback to `npm install` when no lockfile is present
+  - Rust: gracefully skip library/workspace crates without `[[bin]]`
+- **External tool download URLs**
+  - Deno: correct asset naming (`<arch>-<triple>`)
+  - Hugo: include version from GitHub API in asset name
+- **Symlink handling**: preserve symlinks during directory copy to avoid infinite loops
+
+## [Unreleased]
+
+### Added
+- New features planned for next release
+
+### Changed
+- Ongoing improvements
+
+### Fixed
+- Bug fixes in progress
 
 ## [0.5.0] - 2026-08-07
 

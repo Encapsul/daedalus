@@ -1,6 +1,6 @@
 [package]
 name = "daedalus-cli"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "daedalus CLI — package any app into a single self-extracting binary"
 
