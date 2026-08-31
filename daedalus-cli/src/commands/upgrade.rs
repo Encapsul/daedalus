@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 const GITHUB_API: &str = "https://api.github.com/repos/Encapsul/daedalus/releases/latest";
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct UpgradeArgs {
     /// Verbose output
     #[arg(short, long)]
@@ -36,6 +37,7 @@ pub struct UpgradeArgs {
 /// verifies the SHA-256 checksum, and installs binaries to the current PATH.
 ///
 /// Return: Result containing Result<()>
+#[allow(clippy::too_many_lines)]
 pub fn run(args: UpgradeArgs) -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     if args.verbose {

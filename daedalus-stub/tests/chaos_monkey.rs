@@ -439,15 +439,12 @@ fn chaos_hugo_garbage_refused_cleanly() {
     let junk = dir.path().join("junk.de");
     std::fs::write(&junk, vec![0xDEu8; 512]).unwrap();
     let result = run_stub_result(&junk, "--daedalus-version");
-    match result {
-        Ok(output) => {
-            assert!(
-                !output.status.success()
-                    || String::from_utf8_lossy(&output.stderr).contains("not a .de"),
-                "garbage file should be refused cleanly"
-            );
-        }
-        Err(_) => {}
+    if let Ok(output) = result {
+        assert!(
+            !output.status.success()
+                || String::from_utf8_lossy(&output.stderr).contains("not a .de"),
+            "garbage file should be refused cleanly"
+        );
     }
 }
 

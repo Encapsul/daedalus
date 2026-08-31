@@ -1,3 +1,4 @@
+//! Package any app into a single self-extracting binary.
 #![warn(missing_docs)]
 
 mod commands;
@@ -20,6 +21,7 @@ use std::process::ExitCode;
     about = "Package any app into a single self-extracting binary",
     long_about = "daedalus compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  daedalus build ./myapp -o myapp.de\n  daedalus run myapp.de\n  daedalus inspect myapp.de\n  daedalus keygen\n  daedalus sign myapp.de --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.de\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish\n\nDocumentation: https://github.com/Encapsul/daedalus/blob/main/README.md"
 )]
+#[allow(clippy::struct_excessive_bools)]
 struct Cli {
     /// Enable verbose output
     #[arg(short, long, global = true)]
@@ -145,6 +147,7 @@ enum Shell {
 /// and returns an ExitCode. Panics are caught by human_panic for security.
 ///
 /// Return: the ExitCode
+#[allow(clippy::too_many_lines)]
 fn main() -> ExitCode {
     // Hide source locations in panic messages for security (no file/line info leakage)
     human_panic::setup_panic!();
@@ -321,6 +324,7 @@ fn main() -> ExitCode {
 /// and BUGS sections.
 ///
 /// Return: Result containing anyhow::Result<()>
+#[allow(clippy::too_many_lines)]
 fn generate_man_pages(dir: &std::path::Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
 

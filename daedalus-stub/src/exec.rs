@@ -40,6 +40,7 @@ pub fn enter_namespace_if_needed(isolation: u8) -> io::Result<()> {
 
 /// Build the process environment: host env + `LD_LIBRARY_PATH` + meta.env + `ROOTFS` substitution.
 /// When `orig_cwd` is Some, inserts `DAEDALUS_ORIG_CWD` (used by single-service exec).
+#[allow(clippy::too_many_lines)]
 pub fn setup_env(
     meta: &Metadata,
     rootfs: &Path,
@@ -341,7 +342,7 @@ pub fn detect_web_port(app_dir: &Path, runtime: &str) -> Option<u16> {
 }
 
 /// Resolve a rootfs path: absolute if using `pivot_root`, relative to rootfs otherwise.
-pub fn make_resolve<'a>(rootfs: &'a Path, use_pivot: bool) -> impl Fn(&str) -> PathBuf + 'a {
+pub fn make_resolve(rootfs: &Path, use_pivot: bool) -> impl Fn(&str) -> PathBuf + '_ {
     move |p: &str| -> PathBuf {
         if use_pivot {
             PathBuf::from(p)
@@ -829,6 +830,7 @@ fn run_hooks(meta: &Metadata, rootfs: &Path, use_pivot: bool, phase: &str) -> io
 
 /// Launch the app entrypoint. Blocks until the app exits (or never returns on
 /// successful execvp).
+#[allow(clippy::too_many_lines)]
 pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::Result<()> {
     // Single source of truth for the argv template: the layer system when
     // `entrypoint_layer` is set, the flat field for legacy binaries.
@@ -1012,7 +1014,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             // Parent: wait for child and inspect exit status.
             let mut status: libc::c_int = 0;
             unsafe {
-                libc::waitpid(pid, &mut status, 0);
+                libc::waitpid(pid, &raw mut status, 0);
             }
             if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 126 {
                 return Err(io::Error::new(
@@ -1473,7 +1475,7 @@ pub fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Resul
         let mut status: i32 = 0;
         // SAFETY: waitpid(2) with pid=-1 waits for any child. status is
         // filled by the kernel. We only read it after a successful return.
-        let pid = unsafe { libc::waitpid(-1, &mut status, 0) };
+        let pid = unsafe { libc::waitpid(-1, &raw mut status, 0) };
         if pid < 0 {
             // ECHILD with services still tracked means the children were
             // reaped elsewhere (or never spawned) — report it instead of

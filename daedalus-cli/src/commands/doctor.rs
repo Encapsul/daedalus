@@ -3,6 +3,7 @@ use clap::Args;
 use std::process::Command;
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct DoctorArgs {
     /// Output as JSON
     #[arg(long)]

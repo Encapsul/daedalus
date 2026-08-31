@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use zeroize::Zeroizing;
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct KeygenArgs {
     /// Directory to write keys to
     #[arg(long, default_value = ".")]
@@ -36,7 +37,7 @@ pub struct KeygenArgs {
 ///
 /// Return: Result containing Result<()>
 pub fn run(args: KeygenArgs) -> Result<()> {
-    let key_dir = if args.key_dir == PathBuf::from(".") {
+    let key_dir = if args.key_dir == std::path::Path::new(".") {
         default_key_dir()
     } else {
         args.key_dir.clone()
@@ -66,7 +67,7 @@ pub fn run(args: KeygenArgs) -> Result<()> {
     }
 
     let key_bytes = Zeroizing::new(signing_key.to_bytes());
-    std::fs::write(&key_path, &*key_bytes)
+    std::fs::write(&key_path, *key_bytes)
         .with_context(|| format!("failed to write private key to {}", key_path.display()))?;
     std::fs::write(&pub_path, verifying_key.as_bytes())
         .with_context(|| format!("failed to write public key to {}", pub_path.display()))?;

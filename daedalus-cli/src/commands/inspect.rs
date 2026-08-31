@@ -5,6 +5,7 @@ use daedalus_core::paths::format_size;
 use std::path::PathBuf;
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct InspectArgs {
     /// Path to the .daedalus file
     pub file: PathBuf,
@@ -36,6 +37,7 @@ pub struct InspectArgs {
 /// Description:
 ///
 /// Return: Result containing Result<()>
+#[allow(clippy::too_many_lines)]
 pub fn run(args: InspectArgs) -> Result<()> {
     if args.dry_run {
         eprintln!("Would inspect: {}", args.file.display());

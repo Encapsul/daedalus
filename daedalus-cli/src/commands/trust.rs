@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TrustArgs {
     /// Path to the public key file to trust
     pub pubkey: PathBuf,

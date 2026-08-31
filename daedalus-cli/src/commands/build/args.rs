@@ -56,6 +56,7 @@ pub(crate) fn parse_target(target: &str) -> (String, String) {
 /// Resolved, target-independent build settings shared by every target in a
 /// multi-arch build. Kept separate from `BuildArgs` so the per-target build
 /// loop takes a single struct instead of a parameter list.
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct BuildPlan {
     pub(crate) verbose: bool,
     pub(crate) app_dir: PathBuf,
@@ -280,6 +281,7 @@ Examples:
   daedalus build ./myapp --target linux-x64,linux-arm64 -o out/app.de  Multi-arch: emits app-linux-x64.de + app-linux-arm64.de
   daedalus build ./myapp --target win-x64 -o out/app.de       Cross-OS: Windows PE stub (.exe)
   daedalus build ./myapp --dry-run                              Preview the multi-target plan without building")]
+#[allow(clippy::struct_excessive_bools)]
 pub struct BuildArgs {
     /// Path to the app directory
     #[arg(default_value = ".")]

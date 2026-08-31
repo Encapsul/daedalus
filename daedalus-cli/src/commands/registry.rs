@@ -31,6 +31,7 @@ pub enum RegistryCommand {
 }
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct RegistryPushArgs {
     /// Path to the .daedalus file to push
     #[arg(value_name = "FILE")]
@@ -70,6 +71,7 @@ pub struct RegistryPushArgs {
 }
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct RegistryPullArgs {
     /// Layer hash (or artifact manifest hash) to pull
     #[arg(value_name = "HASH")]
@@ -109,6 +111,7 @@ pub struct RegistryPullArgs {
 }
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct RegistryListArgs {
     /// Local registry cache directory to list
     #[arg(long, default_value = "~/.daedalus/registry")]
@@ -166,7 +169,7 @@ pub fn run(args: RegistryArgs) -> Result<()> {
 /// remote HTTP registry.
 ///
 /// Return: Result containing Result<()>
-fn run_push(mut args: RegistryPushArgs) -> Result<()> {
+fn run_push(args: RegistryPushArgs) -> Result<()> {
     let file = args.file.canonicalize().context("failed to find file")?;
 
     if file.extension().is_none_or(|e| e != "daedalus") {
@@ -219,7 +222,7 @@ fn run_push(mut args: RegistryPushArgs) -> Result<()> {
 /// and writes it to the output directory.
 ///
 /// Return: Result containing Result<()>
-fn run_pull(mut args: RegistryPullArgs) -> Result<()> {
+fn run_pull(args: RegistryPullArgs) -> Result<()> {
     std::fs::create_dir_all(&args.output).context("failed to create output directory")?;
 
     match (&args.local, &args.registry) {
@@ -267,11 +270,7 @@ fn run_list(args: RegistryListArgs) -> Result<()> {
 
     if args.json {
         let json_str = serde_json::to_string_pretty(&layers)?;
-        if args.plain {
-            println!("{json_str}");
-        } else {
-            println!("{json_str}");
-        }
+        println!("{json_str}");
         return Ok(());
     }
 

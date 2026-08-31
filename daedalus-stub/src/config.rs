@@ -316,16 +316,15 @@ fn read_line_masked() -> io::Result<String> {
         // - The termios struct is properly initialized with zeroed memory
         unsafe {
             let mut termios: libc::termios = std::mem::zeroed();
-            if libc::tcgetattr(0, &mut termios) == 0 {
+            if libc::tcgetattr(0, &raw mut termios) == 0 {
                 let saved = termios;
                 termios.c_lflag &= !libc::ECHO;
-                libc::tcsetattr(0, libc::TCSAFLUSH, &termios);
+                libc::tcsetattr(0, libc::TCSAFLUSH, &raw const termios);
 
                 let mut input = String::new();
                 handle.read_line(&mut input)?;
 
-                // Restore terminal settings
-                libc::tcsetattr(0, libc::TCSAFLUSH, &saved);
+                libc::tcsetattr(0, libc::TCSAFLUSH, &raw const saved);
 
                 // Print newline after masked input
                 println!();

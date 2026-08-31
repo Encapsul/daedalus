@@ -9,6 +9,7 @@ use super::sign::warn_if_insecure_key_permissions;
 /// Builds the SISR stage config from the CLI args. When `--key` is given the
 /// same 32-byte Ed25519 key that would sign the binary instead signs the SISR
 /// manifest; its bytes are never printed (only the path appears in warnings).
+#[allow(clippy::ref_option)]
 pub(crate) fn build_sisr_config(key_path: &Option<PathBuf>) -> Result<SisrBuildConfig> {
     let signing_key = match key_path {
         Some(path) => {

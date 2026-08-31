@@ -110,7 +110,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     let mut hasher = Sha256::new();
     hasher.update(&payload);
     hasher.update(&meta);
-    hasher.update(&footer.pack_full());
+    hasher.update(footer.pack_full());
     let hash = hasher.finalize();
 
     // Try each trusted key

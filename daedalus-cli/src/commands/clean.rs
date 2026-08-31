@@ -3,6 +3,7 @@ use clap::Args;
 use daedalus_core::paths::{cache_dir, format_size, BuildCache};
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct CleanArgs {
     /// Remove all cached data
     #[arg(long)]

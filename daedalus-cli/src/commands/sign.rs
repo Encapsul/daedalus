@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use zeroize::Zeroizing;
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct SignArgs {
     /// Path to the .daedalus file
     pub file: PathBuf,
@@ -161,7 +162,7 @@ pub fn sign_file(file: &PathBuf, key_path: &PathBuf, quiet: bool) -> Result<()> 
     let mut hasher = Sha256::new();
     hasher.update(&payload);
     hasher.update(&meta);
-    hasher.update(&footer.pack_full());
+    hasher.update(footer.pack_full());
     let hash = hasher.finalize();
 
     let signature = signing_key.sign(&hash);
