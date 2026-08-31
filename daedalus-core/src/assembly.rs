@@ -203,10 +203,15 @@ pub fn build_meta_json(
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     meta["entrypoint_layer"] = serde_json::Value::String(entrypoint_layer_name);
 
+    if options.lazy_load {
+        meta["lazy_load"] = serde_json::Value::Bool(true);
+    }
+
     serde_json::to_vec(&meta).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 /// Options for metadata construction.
+#[allow(clippy::struct_excessive_bools)]
 pub struct MetaOptions {
     pub version: Option<String>,
     pub author: Option<String>,
@@ -231,6 +236,9 @@ pub struct MetaOptions {
     /// Name of the entrypoint layer. Defaults to the runtime name when `layers`
     /// is `None`.
     pub entrypoint_layer: Option<String>,
+    /// Enable lazy loading: extract priority files first, background-extract
+    /// the rest after the app starts.
+    pub lazy_load: bool,
 }
 
 /// Input to [`assemble_daedalus`]: bundles every byte-slice and build flag that
@@ -630,6 +638,7 @@ mod tests {
             update_url: None,
             layers: None,
             entrypoint_layer: None,
+            lazy_load: false,
         };
         let bun_features = BunFeatures::default();
         let json = build_meta_json(

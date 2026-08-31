@@ -7,9 +7,12 @@
 
 use std::fs::{self, File};
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::thread;
 
 use crate::nanos;
+use tar::Archive;
+use zstd::Decoder;
 
 /// Default maximum total decompressed bytes across all tar entries (1 GB).
 const DEFAULT_MAX_DECOMPRESSED_BYTES: u64 = 1024 * 1024 * 1024;
@@ -234,6 +237,184 @@ pub fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result
     atomic_extract(cache_root, |tmp_rootfs| {
         crate::squashfs_extract::extract_squashfs_layers(blobs, tmp_rootfs)
     })
+}
+
+/// Extract zstd-compressed tar blobs lazily: priority files first, then
+/// background-extract the rest.
+///
+/// Description:
+/// 1. Create a tmp dir and extract only priority files into it.
+/// 2. Write `.ready` and atomically rename tmp -> cache_root.
+/// 3. Spawn a background thread to extract remaining files into the now-live
+///    cache_root. The background thread writes `.lazy_done` when complete.
+///
+/// Return: nothing
+pub fn extract_atomic_lazy(
+    blobs: &[&[u8]],
+    cache_root: &Path,
+    priority_files: &[PathBuf],
+) -> io::Result<()> {
+    let parent = cache_root.parent().unwrap_or(Path::new("/tmp"));
+    fs::create_dir_all(parent)?;
+
+    let tmp = parent.join(format!(".tmp-{}-{}", std::process::id(), nanos()));
+    let tmp_rootfs = tmp.join("rootfs");
+    fs::create_dir_all(&tmp_rootfs)?;
+
+    let mut decoder = Decoder::new(io::Cursor::new(blobs[0]))
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("zstd: {e}")))?;
+    let mut archive = Archive::new(&mut decoder);
+    archive.set_preserve_permissions(true);
+    archive.set_overwrite(true);
+
+    let limits = ExtractLimits::from_env();
+    let mut total_bytes: u64 = 0;
+    let mut file_count: usize = 0;
+    let mut priority_set: std::collections::HashSet<PathBuf> =
+        priority_files.iter().cloned().collect();
+
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let size = entry.size();
+        if size > limits.max_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("tar entry exceeds max size: {size} > {}", limits.max_bytes),
+            ));
+        }
+        total_bytes = total_bytes.saturating_add(size);
+        if total_bytes > limits.max_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("total decompressed size {total_bytes} exceeds {}", limits.max_bytes),
+            ));
+        }
+        file_count = file_count.saturating_add(1);
+        if file_count > limits.max_files {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("file count exceeds max: {file_count} > {}", limits.max_files),
+            ));
+        }
+
+        let path = entry.path()?;
+        let path_buf = path.to_path_buf();
+
+        let is_priority = priority_set.contains(&path_buf);
+        if !is_priority {
+            continue;
+        }
+
+        if let Some(link_name) = entry.link_name()? {
+            let link_str = link_name.to_string_lossy();
+            if link_str.starts_with('/') || link_str.contains("..") {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("symlink/hardlink target escapes rootfs: {link_str}"),
+                ));
+            }
+        }
+
+        entry.unpack_in(&tmp_rootfs)?;
+        priority_set.remove(&path_buf);
+    }
+
+    if !priority_set.is_empty() {
+        let missing: Vec<_> = priority_set.iter().map(|p| p.to_string_lossy()).collect();
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("priority files not found in payload: {}", missing.join(", ")),
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o700))?;
+    }
+
+    File::create(tmp.join(".ready"))?.write_all(b"1")?;
+
+    let marker = cache_root.join(".ready");
+    match fs::rename(&tmp, cache_root) {
+        Ok(()) => {}
+        Err(e) => {
+            if marker.exists() && cache_root_trustworthy(cache_root) {
+                let _ = fs::remove_dir_all(&tmp);
+                eprintln!(
+                    "[daedalus] warning: cache rename failed but existing cache is valid: {e}"
+                );
+                return Ok(());
+            }
+            let _ = fs::remove_dir_all(cache_root);
+            fs::rename(&tmp, cache_root)?;
+        }
+    }
+
+    let cache_root_bg = cache_root.to_path_buf();
+    let blobs_bg: Vec<Vec<u8>> = blobs.iter().map(|b| b.to_vec()).collect();
+    let _ = thread::spawn(move || {
+        let _ = extract_remaining(&blobs_bg, &cache_root_bg);
+    });
+
+    Ok(())
+}
+
+/// Extract remaining (non-priority) files from the payload into an already
+/// live cache_root.
+fn extract_remaining(blobs: &[Vec<u8>], cache_root: &Path) -> io::Result<()> {
+    let rootfs = cache_root.join("rootfs");
+    let mut decoder = Decoder::new(io::Cursor::new(&blobs[0]))
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("zstd: {e}")))?;
+    let mut archive = Archive::new(&mut decoder);
+    archive.set_preserve_permissions(true);
+    archive.set_overwrite(true);
+
+    let limits = ExtractLimits::from_env();
+    let mut total_bytes: u64 = 0;
+    let mut file_count: usize = 0;
+
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let size = entry.size();
+        if size > limits.max_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("tar entry exceeds max size: {size} > {}", limits.max_bytes),
+            ));
+        }
+        total_bytes = total_bytes.saturating_add(size);
+        if total_bytes > limits.max_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("total decompressed size {total_bytes} exceeds {}", limits.max_bytes),
+            ));
+        }
+        file_count = file_count.saturating_add(1);
+        if file_count > limits.max_files {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("file count exceeds max: {file_count} > {}", limits.max_files),
+            ));
+        }
+
+        if let Some(link_name) = entry.link_name()? {
+            let link_str = link_name.to_string_lossy();
+            if link_str.starts_with('/') || link_str.contains("..") {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("symlink/hardlink target escapes rootfs: {link_str}"),
+                ));
+            }
+        }
+
+        if let Err(e) = entry.unpack_in(&rootfs) {
+            eprintln!("[daedalus] lazy extract warning: {e}");
+        }
+    }
+
+    let _ = File::create(cache_root.join(".lazy_done"));
+    Ok(())
 }
 
 /// Shared atomic extraction: create tmp dir, run extraction closure, write .ready, rename.

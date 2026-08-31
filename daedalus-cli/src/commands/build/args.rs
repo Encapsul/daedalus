@@ -509,6 +509,11 @@ pub struct BuildArgs {
     /// launcher that detects `uname -m` and extracts the correct slice at runtime.
     #[arg(long)]
     pub universal: bool,
+
+    /// Lazy-load the payload: extract priority files first, then continue
+    /// extracting the rest in the background after the app starts.
+    #[arg(long)]
+    pub lazy_load: bool,
 }
 
 #[derive(Default, Deserialize)]
@@ -611,6 +616,7 @@ pub(crate) fn default_build_args() -> BuildArgs {
         health_endpoint: None,
         token: None,
         universal: false,
+        lazy_load: false,
         encrypt: None,
     }
 }
