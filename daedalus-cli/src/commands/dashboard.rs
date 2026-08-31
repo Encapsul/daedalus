@@ -6,7 +6,7 @@ use ratatui::{
     style::{Color, Modifier, Style, Stylize},
     symbols::bar as bar_sym,
     text::{Line, Text},
-    widgets::{block::Title, Block, BorderType, Cell, Paragraph, Row, Table},
+    widgets::{Block, BorderType, Cell, Paragraph, Row, Table},
     Frame,
 };
 use std::path::PathBuf;
@@ -265,7 +265,7 @@ fn ui(frame: &mut Frame, rows: &[BenchmarkRow], cache_info: &Option<CacheInfo>) 
     .header(header)
     .block(
         Block::bordered()
-            .title(Title::from(Line::raw("SISR Benchmark Results").bold()))
+            .title(Line::raw("SISR Benchmark Results").bold())
             .border_type(BorderType::Rounded),
     );
 
@@ -286,7 +286,7 @@ fn ui(frame: &mut Frame, rows: &[BenchmarkRow], cache_info: &Option<CacheInfo>) 
         .alignment(Alignment::Left)
         .block(
             Block::bordered()
-                .title(Title::from(Line::raw("daedalus cache").bold()))
+                .title(Line::raw("daedalus cache").bold())
                 .border_type(BorderType::Rounded),
         );
 
@@ -344,7 +344,7 @@ where
 
     Paragraph::new(Text::from(lines)).block(
         Block::bordered()
-            .title(Title::from(Line::raw(title).bold()))
+            .title(Line::raw(title).bold())
             .border_type(BorderType::Rounded),
     )
 }
