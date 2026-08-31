@@ -99,7 +99,12 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         }
         let src_path = entry.path();
         let dst_path = dst.join(&name);
-        if src_path.is_dir() {
+        let metadata = entry.metadata()?;
+        if metadata.file_type().is_symlink() {
+            if let Ok(target) = fs::read_link(&src_path) {
+                let _ = std::os::unix::fs::symlink(&target, &dst_path);
+            }
+        } else if metadata.is_dir() {
             copy_dir_recursive(&src_path, &dst_path)?;
         } else {
             fs::copy(&src_path, &dst_path)?;
@@ -176,6 +181,13 @@ fn walk_dir_sorted(dir: &Path) -> Vec<PathBuf> {
             entries.sort_by_key(|e| e.file_name());
             for entry in entries {
                 let path = entry.path();
+                let metadata = match entry.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if metadata.file_type().is_symlink() {
+                    continue;
+                }
                 if path.is_dir() {
                     let name = path.file_name().unwrap_or_default().to_string_lossy();
                     if SKIP_DIRS.contains(&name.as_ref()) {
