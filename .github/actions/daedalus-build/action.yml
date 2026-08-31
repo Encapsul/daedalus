@@ -38,7 +38,7 @@ inputs:
   daedalus-repo:
     description: 'GitHub repo to download daedalus from'
     required: false
-    default: 'Tednoob17/daedalus'
+    default: 'Encapsul/daedalus'
   build-args:
     description: 'Extra arguments to pass to daedalus build'
     required: false

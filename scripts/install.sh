@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # install.sh — install or upgrade daedalus
-# Usage: curl -fsSL https://raw.githubusercontent.com/Tednoob17/daedalus/main/scripts/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash
 set -euo pipefail
 
-REPO="Tednoob17/daedalus"
+REPO="Encapsul/daedalus"
 INSTALL_DIR="${DAEDALUS_INSTALL_DIR:-/usr/local/bin}"
 GITHUB="https://github.com/${REPO}"
 

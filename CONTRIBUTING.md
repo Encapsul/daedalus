@@ -144,5 +144,5 @@ Each archive contains `bin/daedalus-stub` (statically linked, no dependencies). 
 
 ## Questions?
 
-Open a [Discussion](https://github.com/Tednoob17/daedalus/discussions) or tag
+Open a [Discussion](https://github.com/Encapsul/daedalus/discussions) or tag
 `@Tednoob17` in your issue.
