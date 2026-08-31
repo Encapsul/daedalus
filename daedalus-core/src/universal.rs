@@ -40,6 +40,7 @@ impl UniversalFooter {
     /// Description:
     ///
     /// Return: the `[u8; Self::SIZE]`
+    #[must_use]
     pub fn pack(&self) -> [u8; Self::SIZE] {
         let mut out = [0u8; Self::SIZE];
         out[0..4].copy_from_slice(&self.magic.to_le_bytes());
@@ -261,6 +262,7 @@ pub fn assemble_universal_slices(
 }
 
 /// Compute SHA-256 of `data` and return lowercase hex.
+#[must_use]
 pub fn hex_sha256(data: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     use std::fmt::Write;
