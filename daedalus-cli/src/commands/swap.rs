@@ -39,6 +39,10 @@ pub struct SwapArgs {
     #[arg(short, long, default_value = "false", hide = true)]
     pub quiet: bool,
 
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
+
     /// Disable all interactive prompts (for CI/scripts)
     #[arg(long, global = true)]
     pub no_input: bool,
@@ -86,7 +90,19 @@ pub fn run(args: SwapArgs) -> anyhow::Result<()> {
         &output,
     )?;
 
-    eprintln!("[daedalus] swap complete: {}", output.display());
+    if args.json {
+        let info = serde_json::json!({
+            "command": "swap",
+            "binary": args.binary.display().to_string(),
+            "layer_name": args.layer_name,
+            "new_file": args.new_file.display().to_string(),
+            "output": output.display().to_string(),
+            "success": true,
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    } else {
+        eprintln!("[daedalus] swap complete: {}", output.display());
+    }
     Ok(())
 }
 
@@ -289,6 +305,7 @@ mod tests {
             new_file: PathBuf::from("/tmp/new-runtime"),
             output: None,
             quiet: false,
+            json: false,
             no_input: false,
         };
         assert_eq!(args.binary, PathBuf::from("/tmp/app.daedalus"));
@@ -333,6 +350,7 @@ mod tests {
             new_file: new_file.clone(),
             output: Some(output.clone()),
             quiet: true,
+            json: false,
             no_input: false,
         };
         run(args).expect("swap should succeed");
@@ -369,6 +387,7 @@ mod tests {
             new_file: tmp.path().join("new.txt"),
             output: Some(tmp.path().join("out.daedalus")),
             quiet: true,
+            json: false,
             no_input: false,
         };
         let result = run(args);

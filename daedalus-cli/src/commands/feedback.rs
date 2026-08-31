@@ -10,6 +10,10 @@ pub struct FeedbackArgs {
     /// GitHub issue title (auto-filled)
     #[arg(long)]
     pub title: Option<String>,
+
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 /// run - open the daedalus GitHub issues page for feedback.
@@ -27,13 +31,23 @@ pub fn run(args: FeedbackArgs) -> Result<()> {
         url.push_str(&format!("?title={}", urlencoding::encode(title)));
     }
 
+    let mut opened = false;
     if args.browser {
         if let Some(opener) = open_browser() {
             opener.open(&url)?;
-            eprintln!("Opened feedback page in browser: {url}");
-        } else {
-            eprintln!("Could not detect a browser. Visit: {url}");
+            opened = true;
         }
+    }
+
+    if args.json {
+        let info = serde_json::json!({
+            "command": "feedback",
+            "url": url,
+            "browser_opened": opened,
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    } else if opened {
+        eprintln!("Opened feedback page in browser: {url}");
     } else {
         eprintln!("Report issues at: {url}");
         eprintln!("\nOr run with --browser to open in your default browser.");

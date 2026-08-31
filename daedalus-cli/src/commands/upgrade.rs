@@ -27,6 +27,10 @@ pub struct UpgradeArgs {
     /// Show what would be done without doing it
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 /// run - upgrade daedalus to the latest GitHub release.
@@ -51,7 +55,18 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     }
 
     if current == latest {
-        eprintln!("[daedalus] already up to date");
+        if args.json {
+            let info = serde_json::json!({
+                "command": "upgrade",
+                "current": current,
+                "latest": latest,
+                "success": true,
+                "message": "already up to date",
+            });
+            println!("{}", serde_json::to_string_pretty(&info)?);
+        } else {
+            eprintln!("[daedalus] already up to date");
+        }
         return Ok(());
     }
 
@@ -65,9 +80,22 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     let url = format!("https://github.com/Encapsul/daedalus/releases/download/{tag}/{asset}");
 
     if args.dry_run {
-        eprintln!("Would upgrade from {current} to {latest}");
-        eprintln!("  platform: {platform}");
-        eprintln!("  url:      {url}");
+        if args.json {
+            let info = serde_json::json!({
+                "command": "upgrade",
+                "current": current,
+                "latest": latest,
+                "platform": platform,
+                "url": url,
+                "success": true,
+                "message": "dry run",
+            });
+            println!("{}", serde_json::to_string_pretty(&info)?);
+        } else {
+            eprintln!("Would upgrade from {current} to {latest}");
+            eprintln!("  platform: {platform}");
+            eprintln!("  url:      {url}");
+        }
         return Ok(());
     }
 
@@ -186,6 +214,16 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     }
 
     eprintln!("[daedalus] upgraded to {latest}");
+    if args.json {
+        let info = serde_json::json!({
+            "command": "upgrade",
+            "current": current,
+            "latest": latest,
+            "platform": platform,
+            "success": true,
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    }
     Ok(())
 }
 

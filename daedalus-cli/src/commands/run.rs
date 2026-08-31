@@ -15,6 +15,10 @@ pub struct RunArgs {
     /// Verbose output
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 /// run - run.
@@ -45,7 +49,14 @@ pub fn run(args: RunArgs) -> Result<()> {
         eprintln!("Executing {}...", file.display());
     }
 
-    // Execute the binary directly — the stub handles extraction at runtime
+    if args.json {
+        let info = serde_json::json!({
+            "command": "run",
+            "file": file.display().to_string(),
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    }
+
     let err = Command::new(&file)
         .args(&args.app_args)
         .status()

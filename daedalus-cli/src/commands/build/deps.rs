@@ -1461,6 +1461,330 @@ fn ensure_wasmtime_download(
     Ok(())
 }
 
+/// Ensure a Rust toolchain is available for the build.
+///
+/// Checks for `cargo` on PATH first. If missing, falls back to a cached
+/// `~/.cargo/bin/cargo` or uses `rustup` to install the stable toolchain.
+/// Returns the directory containing the `cargo` binary so the caller can
+/// prepend it to PATH.
+pub(crate) fn ensure_rust(verbose: bool) -> Result<PathBuf> {
+    if let Ok(cargo_path) = which::which("cargo") {
+        if verbose {
+            eprintln!("  using system cargo from {}", cargo_path.display());
+        }
+        return Ok(cargo_path.parent().unwrap().to_path_buf());
+    }
+
+    let cargo_home = match std::env::var_os("CARGO_HOME") {
+        Some(ch) => PathBuf::from(ch),
+        None => {
+            let home = std::env::var_os("HOME").unwrap_or_default();
+            PathBuf::from(home).join(".cargo")
+        }
+    };
+    let rust_bin = cargo_home.join("bin");
+    let cached_cargo = rust_bin.join("cargo");
+    if cached_cargo.exists() {
+        if verbose {
+            eprintln!("  using cached Rust toolchain from {}", rust_bin.display());
+        }
+        return Ok(rust_bin);
+    }
+
+    let rustup = which::which("rustup").ok().or_else(|| {
+        let local = rust_bin.join("rustup");
+        local.exists().then_some(local)
+    });
+
+    if let Some(rustup) = rustup {
+        if verbose {
+            eprintln!("  installing Rust stable toolchain via rustup...");
+        }
+        let status = std::process::Command::new(&rustup)
+            .args(["install", "stable"])
+            .status()
+            .with_context(|| format!("failed to run `{} install stable`", rustup.display()))?;
+        if !status.success() {
+            anyhow::bail!(
+                "`{} install stable` failed with exit code {}",
+                rustup.display(),
+                status.code().unwrap_or(-1)
+            );
+        }
+        let status = std::process::Command::new(&rustup)
+            .args(["default", "stable"])
+            .status()
+            .with_context(|| format!("failed to run `{} default stable`", rustup.display()))?;
+        if !status.success() {
+            anyhow::bail!(
+                "`{} default stable` failed with exit code {}",
+                rustup.display(),
+                status.code().unwrap_or(-1)
+            );
+        }
+        if verbose {
+            eprintln!(
+                "  Rust stable toolchain installed at {}",
+                rust_bin.display()
+            );
+        }
+        return Ok(rust_bin);
+    }
+
+    anyhow::bail!(
+        "cargo not found on PATH — install Rust via rustup: https://rustup.rs\n         \n\
+         After installing rustup, run:\n\
+         \n\
+         rustup install stable\n\
+         rustup default stable\n\
+         \n\
+         Then re-run daedalus."
+    );
+}
+
+/// Ensure an Electron runtime is available for the requested target.
+///
+/// Downloads Electron from GitHub releases to
+/// `~/.cache/daedalus/build-tools/electron-{target}/` when not available locally.
+/// The download URL can be overridden with `electron_url` or the
+/// `ELECTRON_URL` environment variable. When `electron_url` points to an
+/// existing directory containing an `electron` binary, that directory is used
+/// directly (no download).
+pub(crate) fn ensure_electron(
+    target: Option<&str>,
+    verbose: bool,
+    electron_url: Option<&str>,
+) -> Result<PathBuf> {
+    let suffix = target
+        .map(|t| {
+            let (arch, os) = parse_target(t);
+            format!("{os}-{arch}")
+        })
+        .unwrap_or_else(|| "host".to_string());
+    let tools_dir = cache_dir()
+        .join("build-tools")
+        .join(format!("electron-{suffix}"));
+    let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
+    let electron_name = if is_windows {
+        "electron.exe"
+    } else {
+        "electron"
+    };
+    let electron_bin = tools_dir.join("bin").join(electron_name);
+
+    if electron_bin.exists() {
+        if verbose {
+            eprintln!("  using cached electron from {}", tools_dir.display());
+        }
+        return Ok(tools_dir.join("bin"));
+    }
+
+    if let Some(url) = electron_url {
+        let candidate = PathBuf::from(url);
+        let bin_in_candidate = if is_windows {
+            candidate.join("electron.exe")
+        } else {
+            candidate.join("electron")
+        };
+        if bin_in_candidate.is_file() {
+            if verbose {
+                eprintln!("  using local electron from {}", candidate.display());
+            }
+            return Ok(candidate);
+        }
+    }
+
+    if verbose {
+        eprintln!("  downloading electron to {}...", tools_dir.display());
+    }
+
+    std::fs::create_dir_all(&tools_dir).context("failed to create build tools directory")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            tools_dir.parent().unwrap_or(tools_dir.as_path()),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .ok();
+    }
+
+    ensure_electron_download(&tools_dir, target, electron_url, verbose)?;
+
+    if !electron_bin.exists() {
+        anyhow::bail!(
+            "downloaded electron archive missing electron binary — install manually: https://www.electronjs.org/docs/latest/tutorial/installation"
+        );
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&electron_bin, std::fs::Permissions::from_mode(0o755)).ok();
+    }
+
+    Ok(tools_dir.join("bin"))
+}
+
+/// Download an Electron binary for the target architecture from GitHub releases.
+fn ensure_electron_download(
+    tools_dir: &Path,
+    target_arch: Option<&str>,
+    electron_url: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    let (electron_arch, electron_os, ext) = if let Some(target) = target_arch {
+        let (arch, os) = parse_target(target);
+        let ea = match arch.as_str() {
+            "x86_64" | "amd64" => "x64",
+            "aarch64" | "arm64" => "arm64",
+            _ => anyhow::bail!("unsupported cross-compile architecture for Electron: {arch}"),
+        };
+        let (eo, eext) = match os.as_str() {
+            "linux" => ("linux", "tar.xz"),
+            "darwin" => ("darwin", "tar.gz"),
+            "windows" => ("win32", "zip"),
+            _ => anyhow::bail!("unsupported cross-compile OS for Electron: {os}"),
+        };
+        (ea.to_string(), eo.to_string(), eext.to_string())
+    } else {
+        let eo = match std::env::consts::OS {
+            "linux" => "linux",
+            "macos" => "darwin",
+            "windows" => "win32",
+            os => os,
+        };
+        let ea = match std::env::consts::ARCH {
+            "x86_64" | "amd64" => "x64",
+            "aarch64" | "arm64" => "arm64",
+            arch => arch,
+        };
+        let eext = if eo == "win32" { "zip" } else { "tar.xz" };
+        (ea.to_string(), eo.to_string(), eext.to_string())
+    };
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("daedalus/0.5")
+        .build()
+        .context("failed to build HTTP client for Electron version lookup")?;
+    let version = client
+        .get("https://api.github.com/repos/electron/electron/releases/latest")
+        .send()
+        .with_context(|| "failed to query Electron latest release")?
+        .json::<serde_json::Value>()
+        .with_context(|| "failed to parse Electron release JSON")?
+        .get("tag_name")
+        .and_then(|t| t.as_str())
+        .map(|s| s.trim_start_matches('v').to_string())
+        .context("Electron release missing tag_name")?;
+
+    let asset_name = format!("electron-v{version}-{electron_os}-{electron_arch}.{ext}");
+    let env_url = std::env::var("ELECTRON_URL").ok();
+    let custom_url = electron_url.or(env_url.as_deref());
+    let url = if let Some(custom) = custom_url {
+        if custom.ends_with('/') {
+            format!("{}{asset_name}", custom)
+        } else {
+            format!("{}/{}", custom, asset_name)
+        }
+    } else {
+        format!("https://github.com/electron/electron/releases/latest/download/{asset_name}")
+    };
+
+    if verbose {
+        eprintln!(
+            "  downloading electron v{version} ({electron_os}-{electron_arch}) from {url}..."
+        );
+    }
+
+    let response = reqwest::blocking::get(&url)
+        .with_context(|| format!("failed to download Electron from {url}"))?;
+    if !response.status().is_success() {
+        anyhow::bail!(
+            "failed to download Electron binary (HTTP {}) — set ELECTRON_URL to a custom mirror",
+            response.status()
+        );
+    }
+
+    let reader = std::io::BufReader::new(response);
+    let bin_dir = tools_dir.join("bin");
+    std::fs::create_dir_all(&bin_dir).context("failed to create bin directory")?;
+
+    if ext == "zip" {
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut std::io::BufReader::new(reader), &mut bytes)
+            .context("failed to read electron zip")?;
+        extract_electron_zip(std::io::Cursor::new(bytes), tools_dir)?;
+    } else {
+        let decoder = flate2::read::GzDecoder::new(reader);
+        let mut archive = tar::Archive::new(decoder);
+        for entry in archive
+            .entries()
+            .context("failed to read electron tarball entries")?
+        {
+            let mut entry = entry.context("failed to read tarball entry")?;
+            let path = entry.path()?.into_owned();
+            let file_name = path.file_name().unwrap_or_default();
+            let target = bin_dir.join(file_name);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create directory {}", target.display()))?;
+            }
+            entry
+                .unpack(&target)
+                .with_context(|| format!("failed to unpack {}", target.display()))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Extract a Windows Electron zip into `tools_dir/bin/`, stripping the
+/// top-level version directory so the layout matches the tarball extraction.
+fn extract_electron_zip<R: std::io::Read + std::io::Seek>(
+    reader: R,
+    tools_dir: &Path,
+) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(reader).context("failed to read electron zip")?;
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .with_context(|| format!("failed to read zip entry {i}"))?;
+        let name = std::path::Path::new(entry.name());
+        if name.is_absolute()
+            || name.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            })
+        {
+            continue;
+        }
+        let stripped: PathBuf = name.components().skip(1).collect();
+        if stripped.components().count() == 0 {
+            continue;
+        }
+        let target = tools_dir.join("bin").join(&stripped);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&target)
+                .with_context(|| format!("failed to create directory {}", target.display()))?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", target.display()))?;
+        }
+        let mut file = std::fs::File::create(&target)
+            .with_context(|| format!("failed to create {}", target.display()))?;
+        std::io::copy(&mut entry, &mut file)
+            .with_context(|| format!("failed to unpack {}", stripped.display()))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -20,6 +20,10 @@ pub struct DashboardArgs {
     /// daedalus cache directory (default: ~/.cache/daedalus)
     #[arg(short = 'C', long)]
     pub cache: Option<PathBuf>,
+
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +55,44 @@ pub fn run(args: &DashboardArgs) -> Result<()> {
     }
 
     let cache_info = load_cache_info(&args.cache);
+
+    if args.json {
+        let cache_json = match &cache_info {
+            Some(info) => serde_json::json!({
+                "path": info.path.display().to_string(),
+                "entries": info.entries,
+                "total_size_mb": info.total_size_mb,
+            }),
+            None => serde_json::Value::Null,
+        };
+        let benchmarks: Vec<_> = rows
+            .iter()
+            .map(|r| {
+                let total_chunks = r.reused_chunks + r.fetched_chunks;
+                let reuse_pct = if total_chunks > 0 {
+                    (r.reused_chunks as f64 / total_chunks as f64) * 100.0
+                } else {
+                    0.0
+                };
+                serde_json::json!({
+                    "model": r.model,
+                    "full_mb": r.full_mb,
+                    "delta_mb": r.delta_mb,
+                    "saved_pct": r.saved_pct,
+                    "total_chunks": total_chunks,
+                    "reused_chunks": r.reused_chunks,
+                    "reuse_pct": reuse_pct,
+                })
+            })
+            .collect();
+        let info = serde_json::json!({
+            "command": "dashboard",
+            "benchmarks": benchmarks,
+            "cache": cache_json,
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+        return Ok(());
+    }
 
     let mut terminal = ratatui::init();
     let _guard = ShutdownGuard;

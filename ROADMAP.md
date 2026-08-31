@@ -75,6 +75,7 @@
 | Hot-swap layers (`daedalus swap`) | Done |
 | Registry CAS (`daedalus registry push/pull/list`) | Done |
 | Lazy loading (`--lazy-load`) | Done (priority extraction + background thread) |
+| Multi-service build (`--entrypoint service=cmd`) | Done |
 
 ## Security
 

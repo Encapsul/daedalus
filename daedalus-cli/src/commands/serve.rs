@@ -37,6 +37,10 @@ pub struct ServeStartArgs {
     /// Verbose output
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 /// run - dispatch a serve subcommand.
@@ -67,8 +71,19 @@ fn run_start(args: ServeStartArgs) -> Result<()> {
     let reg = Arc::new(Mutex::new(reg));
 
     let listener = TcpListener::bind(&args.bind).context("failed to bind address")?;
-    eprintln!("[daedalus] registry server listening on {}", args.bind);
-    eprintln!("[daedalus] storage: {}", dir.display());
+    if args.json {
+        let info = serde_json::json!({
+            "command": "serve",
+            "subcommand": "start",
+            "bind": args.bind,
+            "dir": dir.display().to_string(),
+            "success": true,
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    } else {
+        eprintln!("[daedalus] registry server listening on {}", args.bind);
+        eprintln!("[daedalus] storage: {}", dir.display());
+    }
 
     for stream in listener.incoming() {
         match stream {

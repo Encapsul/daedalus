@@ -3,6 +3,7 @@ use clap::Args;
 use std::path::PathBuf;
 
 #[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct PublishArgs {
     /// Path to the .daedalus file to publish
     #[arg(value_name = "FILE")]
@@ -23,6 +24,10 @@ pub struct PublishArgs {
     /// Verbose output
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
 
     /// Disable all interactive prompts (for CI/scripts)
     #[arg(long, global = true)]
@@ -113,6 +118,17 @@ pub fn run(args: PublishArgs) -> Result<()> {
         anyhow::bail!("upload failed (HTTP {status}): {body}");
     }
 
-    eprintln!("  Upload complete (HTTP {})", response.status());
+    if args.json {
+        let info = serde_json::json!({
+            "command": "publish",
+            "file": file.display().to_string(),
+            "registry": registry,
+            "status": response.status().as_u16(),
+            "success": true,
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    } else {
+        eprintln!("  Upload complete (HTTP {})", response.status());
+    }
     Ok(())
 }

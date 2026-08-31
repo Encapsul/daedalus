@@ -121,6 +121,10 @@ enum Commands {
         /// Shell to generate completions for
         #[arg(value_enum)]
         shell: Shell,
+
+        /// Output result as JSON
+        #[arg(long)]
+        json: bool,
     },
 
     /// Generate man pages (to a directory)
@@ -128,10 +132,14 @@ enum Commands {
         /// Output directory for man pages
         #[arg(default_value = ".")]
         dir: std::path::PathBuf,
+
+        /// Output result as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
-#[derive(Clone, Copy, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
 enum Shell {
     Bash,
     Zsh,
@@ -282,19 +290,48 @@ fn main() -> ExitCode {
         Commands::Serve(args) => commands::serve::run(args),
         Commands::Env(args) => commands::env::run(args),
         Commands::Feedback(args) => commands::feedback::run(args),
-        Commands::Completion { shell } => {
-            let mut cmd = Cli::command();
-            let bin_name = "daedalus";
-            match shell {
-                Shell::Bash => generate(Bash, &mut cmd, bin_name, &mut io::stdout()),
-                Shell::Zsh => generate(Zsh, &mut cmd, bin_name, &mut io::stdout()),
-                Shell::Fish => generate(Fish, &mut cmd, bin_name, &mut io::stdout()),
-                Shell::Elvish => generate(Elvish, &mut cmd, bin_name, &mut io::stdout()),
-                Shell::PowerShell => generate(PowerShell, &mut cmd, bin_name, &mut io::stdout()),
+        Commands::Completion { shell, json } => {
+            if json {
+                let info = serde_json::json!({
+                    "command": "completion",
+                    "shell": format!("{shell:?}"),
+                    "success": true,
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&info).expect("serialize JSON")
+                );
+            } else {
+                let mut cmd = Cli::command();
+                let bin_name = "daedalus";
+                match shell {
+                    Shell::Bash => generate(Bash, &mut cmd, bin_name, &mut io::stdout()),
+                    Shell::Zsh => generate(Zsh, &mut cmd, bin_name, &mut io::stdout()),
+                    Shell::Fish => generate(Fish, &mut cmd, bin_name, &mut io::stdout()),
+                    Shell::Elvish => generate(Elvish, &mut cmd, bin_name, &mut io::stdout()),
+                    Shell::PowerShell => {
+                        generate(PowerShell, &mut cmd, bin_name, &mut io::stdout());
+                    }
+                }
             }
             Ok(())
         }
-        Commands::Man { dir } => generate_man_pages(&dir),
+        Commands::Man { dir, json } => {
+            if json {
+                let info = serde_json::json!({
+                    "command": "man",
+                    "dir": dir.display().to_string(),
+                    "success": true,
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&info).expect("serialize JSON")
+                );
+                Ok(())
+            } else {
+                generate_man_pages(&dir)
+            }
+        }
         Commands::Swap(mut args) => {
             if cli.quiet {
                 args.quiet = true;

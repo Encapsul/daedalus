@@ -65,6 +65,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
     let targets = args::resolve_targets(&args, config.build.target.as_deref());
     let outputs = args::output_paths(&args, &targets);
+    let (entrypoint_args, services) = args::parse_entrypoints(&args.entrypoint);
     let plan = BuildPlan {
         verbose,
         app_dir,
@@ -92,6 +93,8 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
             .or(config.build.env_file.map(std::path::PathBuf::from)),
         targets,
         outputs,
+        services,
+        entrypoint: entrypoint_args,
     };
 
     if args.dry_run {

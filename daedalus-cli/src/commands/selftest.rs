@@ -26,6 +26,10 @@ pub struct SelftestArgs {
     #[arg(short, long)]
     pub verbose: bool,
 
+    /// Output result as JSON
+    #[arg(long)]
+    pub json: bool,
+
     /// Disable all interactive prompts (for CI/scripts)
     #[arg(long, global = true)]
     pub no_input: bool,
@@ -118,6 +122,25 @@ pub fn run(args: SelftestArgs) -> Result<()> {
         args.probe.as_deref(),
         args.verbose,
     )?;
+
+    if args.json {
+        let label = match rc {
+            0 => "pass",
+            1 => "fail",
+            2 => "degraded",
+            _ => "unknown",
+        };
+        let info = serde_json::json!({
+            "command": "selftest",
+            "file": path.display().to_string(),
+            "runtime": meta.get("runtime").and_then(|v| v.as_str()).unwrap_or("?"),
+            "mode": mode,
+            "result": label,
+            "exit_code": rc,
+            "success": rc == 0,
+        });
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    }
 
     if args.verbose {
         let label = match rc {
