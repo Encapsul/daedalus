@@ -286,14 +286,20 @@ pub fn extract_atomic_lazy(
         if total_bytes > limits.max_bytes {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("total decompressed size {total_bytes} exceeds {}", limits.max_bytes),
+                format!(
+                    "total decompressed size {total_bytes} exceeds {}",
+                    limits.max_bytes
+                ),
             ));
         }
         file_count = file_count.saturating_add(1);
         if file_count > limits.max_files {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("file count exceeds max: {file_count} > {}", limits.max_files),
+                format!(
+                    "file count exceeds max: {file_count} > {}",
+                    limits.max_files
+                ),
             ));
         }
 
@@ -323,7 +329,10 @@ pub fn extract_atomic_lazy(
         let missing: Vec<_> = priority_set.iter().map(|p| p.to_string_lossy()).collect();
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("priority files not found in payload: {}", missing.join(", ")),
+            format!(
+                "priority files not found in payload: {}",
+                missing.join(", ")
+            ),
         ));
     }
 
@@ -387,14 +396,20 @@ fn extract_remaining(blobs: &[Vec<u8>], cache_root: &Path) -> io::Result<()> {
         if total_bytes > limits.max_bytes {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("total decompressed size {total_bytes} exceeds {}", limits.max_bytes),
+                format!(
+                    "total decompressed size {total_bytes} exceeds {}",
+                    limits.max_bytes
+                ),
             ));
         }
         file_count = file_count.saturating_add(1);
         if file_count > limits.max_files {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("file count exceeds max: {file_count} > {}", limits.max_files),
+                format!(
+                    "file count exceeds max: {file_count} > {}",
+                    limits.max_files
+                ),
             ));
         }
 
