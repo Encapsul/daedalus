@@ -2263,7 +2263,7 @@ mod tests {
         let (_d, path) = dir_with_cargo_toml(
             "[package]\nname = \"hello-daedalus\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
         );
-        assert_eq!(cargo_bin_name(&path), "hello-daedalus");
+        assert_eq!(cargo_bin_name(&path), Some("hello-daedalus".to_string()));
     }
 
     /// An explicit `[[bin]]` target overrides the package name.
@@ -2277,7 +2277,7 @@ mod tests {
         let (_d, path) = dir_with_cargo_toml(
             "[package]\nname = \"my-tool\"\n\n[[bin]]\nname = \"tool-bin\"\npath = \"src/main.rs\"\n",
         );
-        assert_eq!(cargo_bin_name(&path), "tool-bin");
+        assert_eq!(cargo_bin_name(&path), Some("tool-bin".to_string()));
     }
 
     /// Workspace virtual manifests have no `[package]` — fall back to "app"
@@ -2291,7 +2291,7 @@ mod tests {
     fn cargo_bin_name_defaults_for_virtual_manifest() {
         let (_d, path) =
             dir_with_cargo_toml("[workspace]\nmembers = [\"crates/a\", \"crates/b\"]\n");
-        assert_eq!(cargo_bin_name(&path), "app");
+        assert_eq!(cargo_bin_name(&path), None);
     }
 
     #[test]

@@ -175,12 +175,12 @@ fn detect_python(dir: &Path) -> bool {
         || dir.join("pyproject.toml").is_file()
         || dir.join("setup.py").is_file()
         || dir.join("requirements.txt").is_file()
-        || dir
-            .read_dir()
-            .ok()
-            .into_iter()
-            .flatten()
-            .any(|entry| entry.ok().map(|e| e.path().extension() == Some("py".as_ref())).unwrap_or(false))
+        || dir.read_dir().ok().into_iter().flatten().any(|entry| {
+            entry
+                .ok()
+                .map(|e| e.path().extension() == Some("py".as_ref()))
+                .unwrap_or(false)
+        })
 }
 
 /// `has_python_dep` - check whether python dep.
