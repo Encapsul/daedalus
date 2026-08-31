@@ -114,50 +114,169 @@ const BIN_PATHS: &[&str] = &["usr/bin", "bin", "usr/local/bin"];
 const BIN_PATHS_ABS: &[&str] = &["/usr/bin", "/bin", "/usr/local/bin"];
 
 #[derive(Deserialize)]
+/// `Metadata` - metadata block embedded in a `.de` binary.
+///
+/// Description:
+/// Contains app metadata extracted from the footer at runtime.
+/// Used by the launcher to configure execution environment.
+///
+/// Return: nothing
 pub struct Metadata {
+    /// `name` - application name.
+    ///
+    /// Description:
+    /// Human-readable name of the packaged application.
+    ///
+    /// Return: nothing
     name: String,
     #[serde(default)]
+    /// `version` - application version.
+    ///
+    /// Description:
+    /// Optional semantic version from the app manifest.
+    ///
+    /// Return: nothing
     version: Option<String>,
     #[serde(default)]
+    /// `runtime` - runtime identifier.
+    ///
+    /// Description:
+    /// Runtime name, e.g. `python`, `node`, `go`.
+    ///
+    /// Return: nothing
     runtime: String,
     #[serde(default)]
+    /// `entrypoint` - executable and arguments.
+    ///
+    /// Description:
+    /// argv for the target process, relative to rootfs or absolute.
+    ///
+    /// Return: nothing
     entrypoint: Vec<String>,
     #[serde(default)]
+    /// `env` - environment variables.
+    ///
+    /// Description:
+    /// Key-value pairs injected into the target process environment.
+    ///
+    /// Return: nothing
     env: std::collections::BTreeMap<String, String>,
     #[serde(default)]
+    /// `cwd` - working directory.
+    ///
+    /// Description:
+    /// Optional working directory for the target process.
+    /// Defaults to `/app` if unset.
+    ///
+    /// Return: nothing
     cwd: Option<String>,
     #[serde(default)]
+    /// `isolation` - isolation level.
+    ///
+    /// Description:
+    /// 0 = none, 1 = namespace, 2 = full sandbox.
+    ///
+    /// Return: nothing
     pub isolation: u8,
     #[serde(default)]
+    // Read only in the Linux landlock setup path; unused elsewhere.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// `cpu_limit` - CPU quota in millicores.
+    ///
+    /// Description:
+    /// Optional CPU limit applied via cgroups on Linux.
+    ///
+    /// Return: nothing
     pub cpu_limit: Option<u32>,
     #[serde(default)]
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// `memory_limit_mb` - memory limit in megabytes.
+    ///
+    /// Description:
+    /// Optional memory limit applied via cgroups on Linux.
+    ///
+    /// Return: nothing
     pub memory_limit_mb: Option<u32>,
     #[serde(default)]
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// `pid_limit` - maximum number of child processes.
+    ///
+    /// Description:
+    /// Optional PID limit applied via cgroups on Linux.
+    ///
+    /// Return: nothing
     pub pid_limit: Option<u32>,
     #[serde(default)]
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// `seccomp` - enable seccomp filter.
+    ///
+    /// Description:
+    /// When true, install a seccomp-BPF denylist before exec.
+    ///
+    /// Return: nothing
     pub seccomp: bool,
     #[serde(default)]
     // Read only in the Linux landlock setup path; unused elsewhere.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// `landlock` - enable Landlock filesystem sandbox.
+    ///
+    /// Description:
+    /// When true, restrict file system access to the rootfs only.
+    /// Linux-only, kernel >= 5.13.
+    ///
+    /// Return: nothing
     landlock: bool,
     #[serde(default)]
     // Read only in the Linux GUI bind-mount path (pivot_root isolation).
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// `gui` - enable GUI support.
+    ///
+    /// Description:
+    /// When true, bind-mount /dev, /tmp, and other GUI paths.
+    ///
+    /// Return: nothing
     gui: bool,
     #[serde(default)]
+    /// `services` - multi-service definitions.
+    ///
+    /// Description:
+    /// Additional services to supervise alongside the main entrypoint.
+    ///
+    /// Return: nothing
     services: Vec<Service>,
     #[serde(default)]
+    /// `payload_format` - payload compression format.
+    ///
+    /// Description:
+    /// `zstd` for tar+zstd, `squashfs` for SquashFS image.
+    ///
+    /// Return: nothing
     payload_format: String,
     #[serde(default)]
+    /// `health_check` - health check configuration.
+    ///
+    /// Description:
+    /// Optional built-in health check server settings.
+    ///
+    /// Return: nothing
     health_check: Option<HealthCheckMeta>,
     #[serde(default)]
     #[allow(dead_code)]
+    /// `update_url` - self-update check URL.
+    ///
+    /// Description:
+    /// URL to query for newer versions. When set, the launcher
+    /// checks for updates on startup.
+    ///
+    /// Return: nothing
     update_url: Option<String>,
     #[serde(default)]
+    /// `hooks` - lifecycle hooks.
+    ///
+    /// Description:
+    /// Optional pre/post hooks for the main service.
+    ///
+    /// Return: nothing
     hooks: Option<Hooks>,
     /// Layers composing this artifact. Empty for legacy binaries.
     #[serde(default)]
@@ -220,7 +339,19 @@ impl Metadata {
 /// Stored as `cache_root/.daedalus-layers.json`.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LayerManifest {
+    /// `version` - manifest format version.
+    ///
+    /// Description:
+    /// Current manifest version is 1.
+    ///
+    /// Return: nothing
     pub version: u8,
+    /// `layers` - ordered layer entries.
+    ///
+    /// Description:
+    /// Layers are applied in order during extraction.
+    ///
+    /// Return: nothing
     pub layers: Vec<LayerManifestEntry>,
 }
 
@@ -231,8 +362,27 @@ pub struct LayerManifest {
 /// rootfs (e.g. `/app` for a `RuntimeLayer`, custom path for a `Custom` layer).
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LayerManifestEntry {
+    /// `name` - layer name.
+    ///
+    /// Description:
+    /// Human-readable name for the layer.
+    ///
+    /// Return: nothing
     pub name: String,
+    /// `kind` - layer kind.
+    ///
+    /// Description:
+    /// Layer type identifier, e.g. `Runtime`, `App`, `Custom`.
+    ///
+    /// Return: nothing
     pub kind: String,
+    /// `rootfs_path` - mount point inside rootfs.
+    ///
+    /// Description:
+    /// Absolute path where this layer's content is mounted.
+    /// None means the layer is merged at the root.
+    ///
+    /// Return: nothing
     pub rootfs_path: Option<String>,
 }
 
@@ -310,10 +460,34 @@ pub fn load_layer_manifest(cache_root: &Path) -> Option<LayerManifest> {
 }
 
 #[derive(Deserialize)]
+/// `HealthCheckMeta` - health check metadata.
+///
+/// Description:
+/// Configuration for the built-in health check HTTP server.
+///
+/// Return: nothing
 pub struct HealthCheckMeta {
+    /// `port` - TCP port for the health server.
+    ///
+    /// Description:
+    /// Port on which the health check HTTP server listens.
+    ///
+    /// Return: nothing
     port: u16,
     #[serde(default = "default_health_endpoint")]
+    /// `endpoint` - health check endpoint path.
+    ///
+    /// Description:
+    /// HTTP path for the liveness/readiness probe.
+    ///
+    /// Return: nothing
     endpoint: String,
+    /// `enabled` - whether health checks are enabled.
+    ///
+    /// Description:
+    /// When false, the health server is not started.
+    ///
+    /// Return: nothing
     enabled: bool,
 }
 
@@ -327,21 +501,80 @@ fn default_health_endpoint() -> String {
 }
 
 #[derive(Deserialize)]
+/// `Service` - a service definition for multi-service mode.
+///
+/// Description:
+/// Represents a service to be supervised. Each service has a name,
+/// command, optional environment variables, and optional readiness probe.
+///
+/// Return: nothing
 pub struct Service {
+    /// `name` - service name.
+    ///
+    /// Description:
+    /// Human-readable name used in logs and process titles.
+    ///
+    /// Return: nothing
     name: String,
+    /// `cmd` - command and arguments.
+    ///
+    /// Description:
+    /// Executable and its arguments, relative to the rootfs.
+    ///
+    /// Return: nothing
     cmd: Vec<String>,
     #[serde(default)]
+    /// `env` - environment variables.
+    ///
+    /// Description:
+    /// Additional environment variables for this service.
+    ///
+    /// Return: nothing
     env: std::collections::BTreeMap<String, String>,
     #[serde(default)]
+    /// `ready_port` - TCP port for readiness probe.
+    ///
+    /// Description:
+    /// If nonzero, daedalus waits for TCP connectivity on this port
+    /// before marking the service ready.
+    ///
+    /// Return: nothing
     ready_port: u16,
     #[serde(default)]
+    /// `ready_timeout` - readiness timeout in seconds.
+    ///
+    /// Description:
+    /// Maximum time to wait for the readiness probe before failing.
+    ///
+    /// Return: nothing
     ready_timeout: u64,
 }
 
 #[derive(serde::Deserialize, Default)]
+/// `Hooks` - lifecycle hooks for sidecars.
+///
+/// Description:
+/// Optional commands to run before (`pre`) or after (`post`) a sidecar
+/// starts. Used for migrations, health checks, or cleanup.
+///
+/// Return: nothing
 pub struct Hooks {
+    /// `pre` - commands to run before the sidecar starts.
+    ///
+    /// Description:
+    /// Executed in order before the sidecar process is spawned.
+    /// Failure aborts the sidecar startup.
+    ///
+    /// Return: nothing
     #[serde(default)]
     pub pre: Vec<String>,
+    /// `post` - commands to run after the sidecar stops.
+    ///
+    /// Description:
+    /// Executed in order after the sidecar process exits.
+    /// Failures are logged but do not affect the exit code.
+    ///
+    /// Return: nothing
     #[serde(default)]
     pub post: Vec<String>,
 }

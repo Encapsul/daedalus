@@ -92,6 +92,7 @@ pub fn is_package_spec(spec: &str) -> bool {
 /// Description:
 ///
 /// Return: the `resulting` string
+#[must_use]
 pub fn extract_package_name(spec: &str) -> String {
     if spec.starts_with('@') {
         let parts: Vec<&str> = spec.split('/').collect();
