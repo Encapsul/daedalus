@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   CARGO_TARGET_DIR: /tmp/daedalus-stub-target
@@ -105,6 +106,7 @@ jobs:
           - x86_64-pc-windows-gnu
           - x86_64-apple-darwin
           - aarch64-apple-darwin
+          - aarch64-unknown-linux-musl
     env:
       CARGO_TARGET_DIR: /tmp/daedalus-stub-target
     steps:
@@ -128,6 +130,9 @@ jobs:
             https://github.com/roblabla/MacOSX-SDKs/releases/download/13.1/MacOSX13.1.sdk.tar.xz
           tar xf /tmp/macos-sdk/sdk.tar.xz -C /tmp/macos-sdk
           echo "SDKROOT=/tmp/macos-sdk/MacOSX13.1.sdk" >> "$GITHUB_ENV"
+      - name: Install musl target (for aarch64-unknown-linux-musl)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: rustup target add aarch64-unknown-linux-musl
 
       - name: Build stub (cross)
         run: cargo zigbuild --release -p daedalus-stub --target ${{ matrix.target }}
@@ -143,8 +148,155 @@ jobs:
           if [[ "$T" == *pc-windows-gnu ]]; then
             file "$CARGO_TARGET_DIR/$T/release/daedalus.exe" | grep -q "PE32+"
             file "$CARGO_TARGET_DIR/$T/release/daedalus-stub.exe" | grep -q "PE32+"
-          else
+          elif [[ "$T" == *apple-darwin ]]; then
             file "$CARGO_TARGET_DIR/$T/release/daedalus" | grep -q "Mach-O"
             file "$CARGO_TARGET_DIR/$T/release/daedalus-stub" | grep -q "Mach-O"
+          else
+            file "$CARGO_TARGET_DIR/$T/release/daedalus" | grep -q "ELF"
+            file "$CARGO_TARGET_DIR/$T/release/daedalus-stub" | grep -q "ELF"
           fi
           echo "artifact OK: $T"
+
+      - name: Upload cross-compiled artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: daedalus-${{ matrix.target }}
+          path: |
+            /tmp/daedalus-stub-target/${{ matrix.target }}/release/daedalus*
+            /tmp/daedalus-stub-target/${{ matrix.target }}/release/daedalus-stub*
+          retention-days: 1
+
+  smoke-test-macos:
+    needs: cross-platform
+    runs-on: macos-latest
+    steps:
+      - name: Download macOS x86_64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: daedalus-x86_64-apple-darwin
+          path: artifacts/x86_64
+
+      - name: Download macOS arm64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: daedalus-aarch64-apple-darwin
+          path: artifacts/arm64
+
+      - name: Smoke test x86_64
+        run: |
+          chmod +x artifacts/x86_64/daedalus artifacts/x86_64/daedalus-stub
+          ./artifacts/x86_64/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.daedalus
+          /tmp/hello-web.daedalus &
+          PID=$!
+          sleep 5
+          curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "macOS x86_64 smoke test passed" || { echo "macOS x86_64 smoke test failed"; kill $PID; exit 1; }
+          kill $PID || true
+
+      - name: Smoke test arm64
+        run: |
+          chmod +x artifacts/arm64/daedalus artifacts/arm64/daedalus-stub
+          ./artifacts/arm64/daedalus build examples/hello-web --isolation none -o /tmp/hello-web-arm64.daedalus
+          /tmp/hello-web-arm64.daedalus &
+          PID=$!
+          sleep 5
+          curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "macOS arm64 smoke test passed" || { echo "macOS arm64 smoke test failed"; kill $PID; exit 1; }
+          kill $PID || true
+
+  smoke-test-windows:
+    needs: cross-platform
+    runs-on: windows-latest
+    steps:
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: daedalus-x86_64-pc-windows-gnu
+          path: artifacts
+
+      - name: Smoke test Windows x86_64
+        shell: pwsh
+        run: |
+          .\artifacts\daedalus.exe build examples\hello-web --isolation none -o C:\tmp\hello-web.daedalus
+          Start-Process -FilePath "C:\tmp\hello-web.daedalus" -ArgumentList "" -WindowStyle Hidden
+          $proc = Get-Process -Name "hello-web" -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+          try {
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8080" -UseBasicParsing -ErrorAction Stop
+            if ($resp.Content -match "Hello") {
+              Write-Host "Windows x86_64 smoke test passed"
+            } else {
+              throw "Unexpected response"
+            }
+          } catch {
+            Write-Host "Windows x86_64 smoke test failed"
+            Stop-Process -Name "hello-web" -Force -ErrorAction SilentlyContinue
+            exit 1
+          }
+          Stop-Process -Name "hello-web" -Force -ErrorAction SilentlyContinue
+
+  # ARM64 validation on Azure (manual trigger to conserve credits)
+  # Requires: Azure subscription with ARM64 VM (Standard_D2ps_v5 / Ampere Altra)
+  # Configure via: Settings > Secrets > Actions > AZURE_CREDENTIALS (json from `az ad sp create-for-rbac`)
+  arm64-azure-validation:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create ARM64 VM
+        id: vm
+        uses: azure/CLI@v1
+        with:
+          azcliversion: 2.53.0
+          inlineScript: |
+            RG=daedalus-ci-rg
+            VM=daedalus-arm64-${{ github.run_id }}
+            LOCATION=eastus
+            az group create -n $RG -l $LOCATION
+            az vm create \
+              -g $RG -n $VM \
+              --image Ubuntu2204 \
+              --size Standard_D2ps_v5 \
+              --admin-username ubuntu \
+              --generate-ssh-keys \
+              --custom-data cloud-init.yaml
+            IP=$(az vm show -d -g $RG -n $VM --query publicIps -o tsv)
+            echo "vm_ip=$IP" >> $GITHUB_OUTPUT
+            echo "vm_name=$VM" >> $GITHUB_OUTPUT
+            echo "rg=$RG" >> $GITHUB_OUTPUT
+
+      - name: Wait for SSH
+        run: |
+          for i in {1..30}; do
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@${{ steps.vm.outputs.vm_ip }} "echo ready" && break
+            sleep 10
+          done
+
+      - name: Download ARM64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: daedalus-aarch64-unknown-linux-musl
+          path: artifacts
+
+      - name: Copy artifacts to VM
+        run: |
+          scp -o StrictHostKeyChecking=no artifacts/daedalus* ubuntu@${{ steps.vm.outputs.vm_ip }}:~/
+
+      - name: Run ARM64 smoke test on Azure VM
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.vm.outputs.vm_ip }} << 'EOF'
+            chmod +x ~/daedalus ~/daedalus-stub
+            ~/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.daedalus
+            /tmp/hello-web.daedalus &
+            PID=$!
+            sleep 5
+            curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "Linux ARM64 smoke test passed" || { echo "Linux ARM64 smoke test failed"; kill $PID; exit 1; }
+            kill $PID || true
+          EOF
+
+      - name: Cleanup Azure VM
+        if: always()
+        run: |
+          az group delete -n ${{ steps.vm.outputs.rg }} --yes --no-wait
