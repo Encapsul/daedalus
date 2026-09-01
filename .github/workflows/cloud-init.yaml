@@ -1,0 +1,11 @@
+#cloud-config
+package_update: true
+packages:
+  - musl-tools
+  - zstd
+  - pkg-config
+  - libssl-dev
+  - python3
+  - curl
+runcmd:
+  - echo "ARM64 VM ready for daedalus smoke test"
