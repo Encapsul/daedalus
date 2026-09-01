@@ -7,11 +7,39 @@
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)]()
 [![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)
 
-**Package any app into a single self-extracting binary.**
+# AI model packaging (Gemma via Ollama, on-device)
+
+daedalus compiles any web, server, or CLI application into a single self-contained executable **and** can package local AI models (Gemma via Ollama, Llama.cpp, etc.) embedded in the binary, running entirely offline — no cloud, no GPU, zero runtime cost. Supported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Hugo, Binary.
 
 `daedalus` compiles any web, server, or CLI application into a single self-contained executable. Supported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Hugo, Binary.
 
+**AI model packaging**: daedalus can package applications using local AI models (Gemma via Ollama, Llama.cpp, etc.) and MCP tools for agent workflows. Models are embedded in the `.de` binary and start on first run — no GPU or cloud dependency required. See [AI and edge runtimes](docs/src/guides/ai-edge.md).
+
 The binary format (`[stub][payload][metadata][footer]`) is a universal executable artifact — capable of transporting any application, microservice, or plugin as a single portable unit.
+
+---
+
+## Two distinct segments
+
+daedalus serves two distinct segments, presented separately in this dossier:
+
+### 1. Enterprise segment — revenue
+
+- **Clients** : enterprises, defense, fintech, industrial IoT, software publishers
+- **Need** : air-gap for regulatory compliance, data sovereignty, SISR delta updates
+- **Payment** : $499+/mo, enterprise pricing, custom contracts
+- **Examples** : bank fleet management, internet-connected factories, defense applications
+
+### 2. Impact segment — NGOs / grants
+
+- **Clients** : rural clinics, agricultural cooperatives, isolated sites, health ministries
+- **Need** : offline-first deployment, zero connectivity required, local Gemma via Ollama model
+- **Payment** : grants, NGOs, ministries, free pilots funded by third parties
+- **Examples** : medical diagnosis on Raspberry Pi without cloud, crop tracking in white zones, connectivity-free education
+
+**Important note** : These two segments do not have the same purchasing power. Segment 2 is structurally unable to pay via the standard SaaS model — which is why it requires external funding (grants, ministries). Segment 1 represents the product's business revenue.
+
+Both are supported by the same daedalus technology, but make distinct messaging depending on the target audience.
 
 **Note**: the produced `.de` file is a Linux ELF binary. It runs natively on Linux, and can be run on macOS/Windows via WSL or a Linux VM. Building on Windows/macOS works (the CLI is cross-platform), but the output requires a Linux runtime to execute.
 
@@ -21,11 +49,11 @@ The binary format (`[stub][payload][metadata][footer]`) is a universal executabl
 # Install
 curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash
 
-# Build
-cd your-app && daedalus build . -o myapp.de
+# Build a Python app with Gemma embedded
+cd your-app && daedalus build . -o myapp.daedalus
 
-# Run
-./myapp.de
+# Run — Ollama auto-starts, Gemma model loads locally
+./myapp.daedalus
 ```
 
 ## Supported runtimes
@@ -53,9 +81,7 @@ cd your-app && daedalus build . -o myapp.de
 [stub][payload][metadata][footer]
 ```
 
-- **Stub**: statically-linked launcher (currently Linux ELF only; macOS/Windows PE
-  support is planned) that reads its own binary, verifies integrity, extracts the
-  payload, and `execvp`s the entrypoint
+- **Stub**: statically-linked launcher (currently Linux ELF only; macOS/Windows PE support is planned) that reads its own binary, verifies integrity, extracts the payload, and `execvp`s the entrypoint
 - **Payload**: zstd-compressed tar archive (or squashfs) of the application + runtime
 - **Metadata**: JSON with runtime info, entrypoint, layers, capabilities
 - **Footer**: magic `0xBEEF_CAFE`, format version, integrity SHA-256 hash
