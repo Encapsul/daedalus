@@ -89,6 +89,17 @@ pub(crate) fn build_single_target(
         );
     }
 
+    // ── AI analyzer: surface hidden runtime deps (reporting only) ──────
+    // Detects subprocess/exec/dlopen calls invisible to static analysis so
+    // the user knows which external binaries a deploy needs in the rootfs.
+    // Purely additive today; bundling those binaries is a later step.
+    if verbose {
+        let hidden = daedalus_core::deps::scan_hidden_deps(app_dir, runtime);
+        if !hidden.executables.is_empty() {
+            eprintln!("  hidden deps: {}", hidden.executables.join(", "));
+        }
+    }
+
     // ── Compute hashes for incremental update ──────────────────────────
     // Hashed BEFORE tree-shake/minify run: those mutate a staging copy
     // below, and the cache/`--update` keys must reflect the pristine
@@ -242,6 +253,17 @@ pub(crate) fn build_single_target(
         None
     };
 
+    // ── MCP tools: embed the tools directory and record tool metadata ──
+    // Tools become `/tools/<name>` inside the rootfs so the stub's MCP server
+    // can resolve and run them. `collect_tools` reads the source directory and
+    // produces rootfs-relative commands for the metadata.
+    let mcp_tools = if let Some(tools_dir) = &args.mcp_tools {
+        embed_mcp_tools(tools_dir, &rootfs)?;
+        Some(daedalus_core::mcp::collect_tools(tools_dir)?)
+    } else {
+        None
+    };
+
     let meta = daedalus_core::assembly::build_meta_json(
         &app_name,
         runtime_name,
@@ -268,6 +290,7 @@ pub(crate) fn build_single_target(
             layers: Some(layers),
             entrypoint_layer: Some(runtime_name.clone()),
             lazy_load: args.lazy_load,
+            mcp_tools,
         },
         &bun_features,
     )?;
@@ -338,6 +361,47 @@ pub(crate) fn build_single_target(
         })));
     }
     Ok(None)
+}
+
+/// Embed the MCP tools directory into the staged rootfs at `/tools`, copying
+/// each standalone script/binary so the stub can resolve and run them.
+///
+/// Tool files are copied verbatim and made executable so shebang scripts
+/// (`python3`, `node`, ...) execute without an explicit interpreter.
+fn embed_mcp_tools(tools_dir: &Path, rootfs: &Path) -> Result<()> {
+    let dest = rootfs.join("tools");
+    std::fs::create_dir_all(&dest)
+        .with_context(|| format!("failed to create tools dir {}", dest.display()))?;
+    for entry in std::fs::read_dir(tools_dir)
+        .with_context(|| format!("failed to read MCP tools dir {}", tools_dir.display()))?
+    {
+        let entry = entry?;
+        let src = entry.path();
+        let file_type = entry.file_type()?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') || name == "Cargo.toml" || name == "Cargo.lock" {
+            continue;
+        }
+        let target = dest.join(&name);
+        std::fs::copy(&src, &target).with_context(|| {
+            format!(
+                "failed to copy MCP tool {} to {}",
+                src.display(),
+                target.display()
+            )
+        })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&target)?.permissions();
+            perms.set_mode(perms.mode() | 0o111);
+            std::fs::set_permissions(&target, perms)?;
+        }
+    }
+    Ok(())
 }
 
 /// Build the layer list for the artifact metadata.

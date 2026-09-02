@@ -121,6 +121,7 @@ mod tests {
                 hooks: None,
                 lazy_load: false,
                 encryption: None,
+                mcp_tools: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -162,6 +163,7 @@ mod tests {
                 hooks: None,
                 lazy_load: false,
                 encryption: None,
+                mcp_tools: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -201,6 +203,7 @@ mod tests {
                 hooks: None,
                 lazy_load: false,
                 encryption: None,
+                mcp_tools: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();
@@ -240,6 +243,7 @@ mod tests {
                 hooks: None,
                 lazy_load: false,
                 encryption: None,
+                mcp_tools: None,
             }
         };
         let err = resolve_update_url(&args, 0, &meta).unwrap_err();
@@ -279,6 +283,7 @@ mod tests {
                 layers: Vec::new(),
                 lazy_load: false,
                 encryption: None,
+                mcp_tools: None,
             }
         };
         let base = resolve_update_url(&args, 0, &meta).unwrap();

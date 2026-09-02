@@ -228,6 +228,12 @@ pub(crate) fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<
 /// so two builds of the same app with different flags never share a cache
 /// entry — previously a `--squashfs` build could be served from a zstd
 /// entry, or a signed build from an unsigned one.
+//
+// Intentionally long: it serializes every cache-relevant flag — including the
+// recently added MCP tool hash — into one canonical string. Splitting it would
+// invite a flag being accidentally omitted from the key, silently corrupting
+// the cache. The threshold is far below the actual feature count.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
     let mut canonical: Vec<String> = Vec::new();
     canonical.push(format!("isolation={}", plan.isolation));
@@ -251,6 +257,12 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
         canonical.push(format!("update_url={url}"));
     }
     canonical.push(format!("persist={}", args.persist));
+    if let Some(tools) = &args.mcp_tools {
+        let content = std::fs::read(tools)
+            .map(|b| hex::encode(sha2::Sha256::digest(&b)))
+            .unwrap_or_else(|_| "unreadable".to_string());
+        canonical.push(format!("mcp_tools={}:{content}", tools.display()));
+    }
     canonical.push(format!("health_port={:?}", args.health_port));
     if let Some(ep) = &args.health_endpoint {
         canonical.push(format!("health_endpoint={ep}"));
@@ -462,6 +474,10 @@ pub struct BuildArgs {
     #[arg(long)]
     pub persist: bool,
 
+    /// Directory of MCP tools to embed and expose over stdin/stdout JSON-RPC
+    #[arg(long)]
+    pub mcp_tools: Option<PathBuf>,
+
     /// Remove unused `node_modules` packages (tree-shaking)
     #[arg(long)]
     pub tree_shake: bool,
@@ -660,6 +676,7 @@ pub(crate) fn default_build_args() -> BuildArgs {
         update: false,
         include: Vec::new(),
         persist: false,
+        mcp_tools: None,
         tree_shake: false,
         minify: false,
         health_port: None,

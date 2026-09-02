@@ -3,6 +3,33 @@
 daedalus can package AI and edge workloads, including Ollama models and MCP
 tools for agents.
 
+## Gemma via Ollama (on-device AI)
+
+daedalus can package applications that use [Gemma](https://github.com/google/gemma),
+Google's open-weights model, running locally via [Ollama](https://ollama.ai) or
+[llama.cpp](https://github.com/ggerganov/llama.cpp).
+
+**Use case: Offline code analysis assistant**
+
+1. Write a Python/Node app that uses the `daedalus-core` hidden-dependencies
+   analyzer to scan source code for subprocess/dlopen calls
+2. The analyzer runs Gemma (via Ollama) locally for LLM-powered classification
+3. Package the app with `daedalus build . -o app.daedalus`
+4. The `.daedalus` binary embeds Ollama + the Gemma model
+5. On first run, Ollama starts and serves the analyzer on `http://127.0.0.1:PORT`
+6. The app performs offline code analysis — no internet, no cloud, no cost
+
+```bash
+# Build the app with Ollama embedded
+daedalus build ./my-code-assistant -o code-assistant.daedalus
+
+# First run: Ollama auto-starts, Gemma model loads
+./code-assistant.daedalus
+
+# Then analyze any codebase offline
+code-assistant.daedalus scan /path/to/codebase
+```
+
 ## Ollama
 
 Package an Ollama-based AI app:
@@ -30,31 +57,3 @@ daedalus build ./my-agent -o my-agent.daedalus \
 
 MCP tools are embedded as standalone binaries or scripts and exposed over
 stdin/stdout JSON-RPC.
-
-## Edge LLM deployment
-
-For air-gapped or edge environments:
-
-```bash
-daedalus build ./my-llm -o my-llm.daedalus \
-  --encrypt \
-  --persist ./models
-```
-
-The `--persist` flag ensures large model files are stored outside the binary
-and survive updates.
-
-## Options
-
-| Flag | Description |
-|---|---|
-| `--embed-interpreter <PATH>` | Embed a custom runtime binary |
-| `--persist <PATH>` | Preserve a data directory across runs |
-| `--encrypt` | Encrypt the payload (for sensitive model weights) |
-
-## Exit codes
-
-| Code | Meaning |
-|---|---|
-| `0` | App exited successfully |
-| `1` | Extraction, model load, or runtime failure |

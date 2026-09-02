@@ -21,6 +21,7 @@ mod health_gate;
 mod landlock;
 #[cfg(target_os = "macos")]
 mod macos_sandbox;
+mod mcp;
 #[cfg(target_os = "linux")]
 mod namespace;
 mod seccomp;
@@ -296,6 +297,15 @@ pub struct Metadata {
     lazy_load: bool,
     #[serde(default)]
     encryption: Option<daedalus_core::metadata::EncryptionMeta>,
+    #[serde(default)]
+    /// `mcp_tools` - embedded MCP tool definitions.
+    ///
+    /// Description:
+    /// When present and the app is launched in MCP mode (`DAEDALUS_MCP=1`),
+    /// the stub runs an MCP server over stdio instead of exec'ing the app.
+    ///
+    /// Return: nothing
+    pub mcp_tools: Option<daedalus_core::mcp::McpToolsMeta>,
 }
 
 impl Metadata {
@@ -637,7 +647,7 @@ fn run() -> io::Result<()> {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "unsupported runtime '{runtime}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, rust, go, php, perl, hugo, wasm, binary",
+                "unsupported runtime '{runtime}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, rust, go, php, perl, hugo, ollama, wasm, binary",
             ),
         ));
     }
@@ -694,6 +704,9 @@ fn run() -> io::Result<()> {
         if src_valid {
             if verbose {
                 eprintln!("[daedalus] warm start: cache hit {}", hash);
+            }
+            if maybe_run_mcp(&meta, &rootfs)? {
+                return Ok(());
             }
             return exec::exec_app(&meta, &rootfs, &app_config);
         }
@@ -854,9 +867,27 @@ fn run() -> io::Result<()> {
 
     if !meta.services.is_empty() {
         exec::supervise_services(&meta, &rootfs, &app_config)
+    } else if maybe_run_mcp(&meta, &rootfs)? {
+        Ok(())
     } else {
         exec::exec_app(&meta, &rootfs, &app_config)
     }
+}
+
+/// If the app carries MCP tools and runs in MCP mode (`DAEDALUS_MCP=1`),
+/// resolve the tool commands against `rootfs`, run the MCP server over stdio,
+/// and return `Ok(true)` (the caller returns without exec'ing the app).
+fn maybe_run_mcp(meta: &Metadata, rootfs: &Path) -> io::Result<bool> {
+    let Some(tools_meta) = &meta.mcp_tools else {
+        return Ok(false);
+    };
+    if !mcp::mcp_mode(meta) {
+        return Ok(false);
+    }
+    let tools = mcp::resolve_tool_commands(&tools_meta.tools, rootfs);
+    let mut stdout = io::stdout();
+    mcp::run_mcp_server(&tools, &mut stdout)?;
+    Ok(true)
 }
 
 /// Opens `path` and reads the footer plus raw and parsed metadata.
@@ -964,6 +995,7 @@ fn priority_files(meta: &Metadata) -> Vec<PathBuf> {
         "perl" => Some("perl"),
         "go" => Some("go"),
         "hugo" => Some("hugo"),
+        "ollama" => Some("ollama"),
         "wasm" => Some("wasmtime"),
         "electron" => Some("electron"),
         _ => None,
@@ -2180,6 +2212,7 @@ mod tests {
             hooks: None,
             lazy_load: false,
             encryption: None,
+            mcp_tools: None,
         };
         let manifest = LayerManifest::from_metadata(&meta);
         assert_eq!(manifest.version, 1);
@@ -2227,6 +2260,7 @@ mod tests {
             hooks: None,
             lazy_load: false,
             encryption: None,
+            mcp_tools: None,
         };
         write_layer_manifest(tmp.path(), &meta).unwrap();
         assert!(tmp.path().join(".daedalus-layers.json").is_file());

@@ -1073,6 +1073,7 @@ fn runtime_interpreter(runtime: &str) -> Option<&'static str> {
         "php" => Some("php"),
         "perl" => Some("perl"),
         "hugo" => Some("hugo"),
+        "ollama" => Some("ollama"),
         "wasm" => Some("wasmtime"),
         _ => None,
     }
@@ -1105,7 +1106,7 @@ pub fn resolve_entrypoint(
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "unsupported runtime '{}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, rust, go, php, perl, hugo, wasm, binary",
+                "unsupported runtime '{}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, rust, go, php, perl, hugo, ollama, wasm, binary",
                 runtime_str
             ),
         ));
@@ -1797,6 +1798,7 @@ mod tests {
             layers: Vec::new(),
             lazy_load: false,
             encryption: None,
+            mcp_tools: None,
         };
 
         let app_config = AppConfig {
@@ -2002,6 +2004,7 @@ mod tests {
             layers: Vec::new(),
             lazy_load: false,
             encryption: None,
+            mcp_tools: None,
         };
         let err = resolve_entrypoint(&meta, tmp.path(), false).unwrap_err();
         assert!(err.to_string().contains("unsupported runtime 'cobol'"));
@@ -2016,7 +2019,7 @@ mod tests {
     fn runtime_interpreter_covers_all_interpreted_runtimes() {
         for name in [
             "python", "node", "electron", "deno", "java", "ruby", "dotnet", "php", "perl", "hugo",
-            "wasm",
+            "ollama", "wasm",
         ] {
             assert!(runtime_interpreter(name).is_some(), "runtime: {name}");
         }

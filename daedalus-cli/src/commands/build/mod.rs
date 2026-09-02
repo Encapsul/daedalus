@@ -55,7 +55,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
     // Detect runtime
     let runtime = detect::detect_runtime(&app_dir).context(
-        "could not detect runtime — supported: python, node, deno, java, ruby, dotnet, go, php, perl, binary",
+        "could not detect runtime — supported: python, node, deno, java, ruby, dotnet, go, php, perl, hugo, ollama, wasm, binary",
     )?;
     let runtime_name = runtime.name().to_string();
 
