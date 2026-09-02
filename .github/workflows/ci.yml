@@ -124,6 +124,8 @@ jobs:
 
       - name: Install zig + cargo-zigbuild
         uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
 

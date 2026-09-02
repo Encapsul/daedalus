@@ -259,6 +259,7 @@ pub(crate) fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
 /// Extract the ELF interpreter (dynamic loader) path from a single `ldd`
 /// output line. The loader line has no `=>`, e.g.
 /// `/lib64/ld-linux-x86-64.so.2 (0x00007f...)`.
+#[cfg(unix)]
 fn parse_loader_line(line: &str) -> Option<PathBuf> {
     let line = line.trim();
     if !line.starts_with('/') || line.contains("=>") {
@@ -1351,6 +1352,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     /// `parse_loader_line_glibc` - parse loader line glibc.
     ///
     /// Description:
@@ -1365,6 +1367,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     /// `parse_loader_line_musl` - parse loader line musl.
     ///
     /// Description:
@@ -1379,6 +1382,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     /// `parse_loader_line_rejects_regular_deps` - parse loader line rejects regular deps.
     ///
     /// Description:
