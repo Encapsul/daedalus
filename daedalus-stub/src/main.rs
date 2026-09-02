@@ -632,6 +632,20 @@ fn run() -> io::Result<()> {
         .find(|w| w[0] == "--decrypt-key")
         .map(|w| w[1].clone());
 
+    // Validate --decrypt-key hex format early: must be valid hex producing exactly 32 bytes.
+    if let Some(ref key) = decrypt_key {
+        let key_bytes = match hex::decode(key) {
+            Ok(b) => b,
+            Err(e) => return Err(err(format!("invalid decrypt key hex: {e}"))),
+        };
+        if key_bytes.len() != 32 {
+            return Err(err(format!(
+                "decrypt key must be 32 bytes, got {}",
+                key_bytes.len()
+            )));
+        }
+    }
+
     // Load configuration (multi-layered: CLI args → local config → env vars → global config)
     let app_config = config::AppConfig::load();
 
