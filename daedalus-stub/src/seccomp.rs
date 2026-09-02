@@ -145,24 +145,35 @@ fn always_deny_syscalls() -> Vec<u32> {
 ///
 /// Return: the &'static [u32]
 fn network_syscalls() -> &'static [u32] {
-    &[
-        libc::SYS_socket as u32,
-        libc::SYS_socketpair as u32,
-        libc::SYS_connect as u32,
-        libc::SYS_bind as u32,
-        libc::SYS_listen as u32,
-        libc::SYS_accept as u32,
-        libc::SYS_accept4 as u32,
-        libc::SYS_sendto as u32,
-        libc::SYS_recvfrom as u32,
-        libc::SYS_sendmsg as u32,
-        libc::SYS_recvmsg as u32,
-        libc::SYS_getsockname as u32,
-        libc::SYS_getpeername as u32,
-        libc::SYS_setsockopt as u32,
-        libc::SYS_getsockopt as u32,
-        libc::SYS_shutdown as u32,
-    ]
+    // On 32-bit x86 the whole socket API is multiplexed through the single
+    // `SYS_socketcall` syscall; libc exposes no individual `SYS_socket` /
+    // `SYS_accept` / ... numbers for this target, so deny `socketcall` to
+    // cover the entire network family.
+    #[cfg(target_arch = "x86")]
+    {
+        &[libc::SYS_socketcall as u32]
+    }
+    #[cfg(not(target_arch = "x86"))]
+    {
+        &[
+            libc::SYS_socket as u32,
+            libc::SYS_socketpair as u32,
+            libc::SYS_connect as u32,
+            libc::SYS_bind as u32,
+            libc::SYS_listen as u32,
+            libc::SYS_accept as u32,
+            libc::SYS_accept4 as u32,
+            libc::SYS_sendto as u32,
+            libc::SYS_recvfrom as u32,
+            libc::SYS_sendmsg as u32,
+            libc::SYS_recvmsg as u32,
+            libc::SYS_getsockname as u32,
+            libc::SYS_getpeername as u32,
+            libc::SYS_setsockopt as u32,
+            libc::SYS_getsockopt as u32,
+            libc::SYS_shutdown as u32,
+        ]
+    }
 }
 
 /// Exec-family syscalls blocked when `Capability::Exec` is absent.
