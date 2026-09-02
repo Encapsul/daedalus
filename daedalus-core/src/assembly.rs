@@ -207,6 +207,11 @@ pub fn build_meta_json(
         meta["lazy_load"] = serde_json::Value::Bool(true);
     }
 
+    if let Some(mcp) = &options.mcp_tools {
+        meta["mcp_tools"] = serde_json::to_value(mcp)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    }
+
     serde_json::to_vec(&meta).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
@@ -239,6 +244,9 @@ pub struct MetaOptions {
     /// Enable lazy loading: extract priority files first, background-extract
     /// the rest after the app starts.
     pub lazy_load: bool,
+    /// MCP tool definitions to embed in the metadata, or `None` when the
+    /// binary does not expose MCP tools.
+    pub mcp_tools: Option<crate::mcp::McpToolsMeta>,
 }
 
 /// Input to [`assemble_daedalus`]: bundles every byte-slice and build flag that
@@ -639,6 +647,7 @@ mod tests {
             layers: None,
             entrypoint_layer: None,
             lazy_load: false,
+            mcp_tools: None,
         };
         let bun_features = BunFeatures::default();
         let json = build_meta_json(

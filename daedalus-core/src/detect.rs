@@ -21,6 +21,7 @@ pub enum Runtime {
     Php,
     Perl,
     Hugo,
+    Ollama,
     Wasm,
     Binary,
 }
@@ -45,6 +46,7 @@ impl Runtime {
             Self::Php => "php",
             Self::Perl => "perl",
             Self::Hugo => "hugo",
+            Self::Ollama => "ollama",
             Self::Wasm => "wasm",
             Self::Binary => "binary",
         }
@@ -67,6 +69,7 @@ impl Runtime {
             "php" => Some(Self::Php),
             "perl" => Some(Self::Perl),
             "hugo" => Some(Self::Hugo),
+            "ollama" => Some(Self::Ollama),
             "wasm" => Some(Self::Wasm),
             "binary" => Some(Self::Binary),
             _ => None,
@@ -124,6 +127,9 @@ fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
     }
     if detect_electron(dir) {
         candidates.push((Runtime::Electron, true));
+    }
+    if detect_ollama(dir) {
+        candidates.push((Runtime::Ollama, true));
     }
     if detect_node(dir) {
         candidates.push((Runtime::Node, true));
@@ -392,6 +398,31 @@ fn detect_hugo(dir: &Path) -> bool {
         || dir.join("config.yaml").is_file()
 }
 
+/// Detect an Ollama-based AI app: `ollama` referenced in `package.json` scripts
+/// or dependencies, or Ollama model artifacts (`Modelfile`, `models/*.gguf`).
+/// GGUF is the container format Ollama uses to bundle a model as a single file.
+fn detect_ollama(dir: &Path) -> bool {
+    // Node apps that shell out to Ollama declare it as a script/dependency.
+    let pkg = dir.join("package.json");
+    if pkg.is_file() {
+        if let Ok(content) = std::fs::read_to_string(pkg) {
+            if content.contains("ollama") {
+                return true;
+            }
+        }
+    }
+    // Ollama model definitions and model directories.
+    if dir.join("Modelfile").is_file() {
+        return true;
+    }
+    match std::fs::read_dir(dir.join("models")) {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .any(|entry| entry.path().extension().is_some_and(|ext| ext == "gguf")),
+        Err(_) => false,
+    }
+}
+
 /// `detect_wasm` - detect wasm.
 /// `@dir`: directory path
 ///
@@ -593,6 +624,11 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             ])
         }
         Runtime::Hugo => Some(vec!["hugo".into(), "server".into()]),
+        Runtime::Ollama => {
+            // Serve the Ollama model via the ollama binary so the app's HTTP
+            // API is available on its configured port at runtime.
+            Some(vec!["ollama".into(), "serve".into()])
+        }
         Runtime::Java => {
             let jar = find_first_ext(app_dir, "jar")?;
             let mut cmd = vec!["java".into(), "-jar".into(), format!("/app/{}", jar)];
@@ -1925,6 +1961,7 @@ start = "uvicorn main:app"
             Runtime::Php,
             Runtime::Perl,
             Runtime::Hugo,
+            Runtime::Ollama,
             Runtime::Wasm,
             Runtime::Binary,
         ] {
@@ -2144,5 +2181,57 @@ start = "uvicorn main:app"
 
         let ep = resolve_entrypoint(dir.path(), Runtime::Node);
         assert_eq!(ep, Some(vec!["node".into(), "/app/index.js".into()]));
+    }
+
+    #[test]
+    /// `detect_ollama_modelfile` - detect ollama by Modelfile.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn detect_ollama_modelfile() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("Modelfile"), "FROM llama3.2\n").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Ollama));
+    }
+
+    #[test]
+    /// `detect_ollama_models_dir` - detect ollama by models dir.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn detect_ollama_models_dir() {
+        let dir = TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("models")).unwrap();
+        std::fs::write(dir.path().join("models").join("model.gguf"), b"GGUF model").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Ollama));
+    }
+
+    #[test]
+    /// `detect_ollama_package_json` - detect ollama via package json.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn detect_ollama_package_json() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"scripts":{"start":"ollama serve"},"dependencies":{"ollama":"^0.1.0"}}"#,
+        )
+        .unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Ollama));
+    }
+
+    #[test]
+    /// `ollama_runtime_name_roundtrip` - ollama runtime name roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn ollama_runtime_name_roundtrip() {
+        assert_eq!(Runtime::Ollama.name(), "ollama");
+        assert_eq!(Runtime::from_name("ollama"), Some(Runtime::Ollama));
     }
 }
