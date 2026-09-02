@@ -273,7 +273,7 @@ jobs:
               --size Standard_D2ps_v5 \
               --admin-username ubuntu \
               --generate-ssh-keys \
-              --custom-data cloud-init.yaml
+              --custom-data .github/cloud-init.yaml
             IP=$(az vm show -d -g $RG -n $VM --query publicIps -o tsv)
             echo "vm_ip=$IP" >> $GITHUB_OUTPUT
             echo "vm_name=$VM" >> $GITHUB_OUTPUT
