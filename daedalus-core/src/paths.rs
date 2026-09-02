@@ -24,6 +24,12 @@ pub fn format_size(bytes: u64) -> String {
 ///
 /// Return: the `PathBuf`
 pub fn cache_dir() -> PathBuf {
+    // An explicit XDG_CACHE_HOME overrides the platform default everywhere —
+    // including Windows (for MSYS2/Git-Bash setups and test isolation) — so
+    // "clean"/"build" behave consistently across platforms when it is set.
+    if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
+        return PathBuf::from(xdg).join("daedalus");
+    }
     #[cfg(target_os = "windows")]
     {
         if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
@@ -32,9 +38,6 @@ pub fn cache_dir() -> PathBuf {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
-            return PathBuf::from(xdg).join("daedalus");
-        }
         if let Ok(home) = std::env::var("HOME") {
             return PathBuf::from(home).join(".cache").join("daedalus");
         }
