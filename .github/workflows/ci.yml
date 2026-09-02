@@ -50,6 +50,13 @@ jobs:
       - name: Run tests
         run: cargo test --workspace
 
+      # The stub is a process supervisor that reaps children via waitpid(-1, ...).
+      # Under parallel test threads one test can reap another's transient child
+      # (e.g. the MCP 'cat' tool), producing ECHILD spuriously. Run its unit
+      # tests single-threaded to keep CI deterministic.
+      - name: Run stub unit tests (single-threaded)
+        run: cargo test -p daedalus-stub --bin daedalus-stub -- --test-threads=1
+
       - name: Run chaos monkey tests (single-threaded)
         run: cargo test --release -p daedalus-stub --test chaos_monkey -- --test-threads=1
 
@@ -62,6 +69,36 @@ jobs:
           sleep 5
           curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "smoke test passed" || { echo "smoke test failed"; kill $PID; exit 1; }
           kill $PID || true
+
+  windows-check:
+    # Forward-looking guard: compiled+lint+test the embed/deps crates for the
+    # Windows target. Without this, unix-only helpers (e.g. the ELF loader
+    # parser) build fine on Linux and only break the Windows release — which is
+    # exactly how the node.exe dead-code slipped through. Running -D warnings
+    # here catches that class of bug for EVERY embedded dependency, not just node.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Clippy core+cli for Windows (-D warnings)
+        run: |
+          cargo clippy -p daedalus-core --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+          cargo clippy -p daedalus-cli --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+
+      - name: Build CLI for Windows
+        run: cargo build -p daedalus-cli --target x86_64-pc-windows-msvc
+
+      - name: Test core for Windows
+        run: cargo test -p daedalus-core --target x86_64-pc-windows-msvc
+
+      - name: Test CLI (embed + deps) for Windows
+        run: cargo test -p daedalus-cli --target x86_64-pc-windows-msvc
 
   clippy-fmt:
     runs-on: ubuntu-latest
