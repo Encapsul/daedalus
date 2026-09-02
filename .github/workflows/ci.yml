@@ -192,7 +192,7 @@ jobs:
       - name: Smoke test x86_64
         run: |
           chmod +x artifacts/x86_64/daedalus artifacts/x86_64/daedalus-stub
-          ./artifacts/x86_64/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.daedalus
+          DAEDALUS_STUB_PATH=artifacts/x86_64/daedalus-stub ./artifacts/x86_64/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.daedalus
           /tmp/hello-web.daedalus &
           PID=$!
           sleep 5
@@ -202,7 +202,7 @@ jobs:
       - name: Smoke test arm64
         run: |
           chmod +x artifacts/arm64/daedalus artifacts/arm64/daedalus-stub
-          ./artifacts/arm64/daedalus build examples/hello-web --isolation none -o /tmp/hello-web-arm64.daedalus
+          DAEDALUS_STUB_PATH=artifacts/arm64/daedalus-stub ./artifacts/arm64/daedalus build examples/hello-web --isolation none -o /tmp/hello-web-arm64.daedalus
           /tmp/hello-web-arm64.daedalus &
           PID=$!
           sleep 5
@@ -224,6 +224,7 @@ jobs:
       - name: Smoke test Windows x86_64
         shell: pwsh
         run: |
+          $env:DAEDALUS_STUB_PATH = ".\artifacts\daedalus-stub.exe"
           .\artifacts\daedalus.exe build examples\hello-web --isolation none -o C:\tmp\hello-web.daedalus
           Start-Process -FilePath "C:\tmp\hello-web.daedalus" -ArgumentList "" -WindowStyle Hidden
           $proc = Get-Process -Name "hello-web" -ErrorAction SilentlyContinue
@@ -300,7 +301,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.vm.outputs.vm_ip }} << 'EOF'
             chmod +x ~/daedalus ~/daedalus-stub
-            ~/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.daedalus
+            DAEDALUS_STUB_PATH=~/daedalus-stub ~/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.daedalus
             /tmp/hello-web.daedalus &
             PID=$!
             sleep 5
