@@ -39,16 +39,21 @@ impl ExtractLimits {
     /// Description:
     /// Reads DAEDALUS_MAX_EXTRACT_SIZE (bytes, default 1 GiB) and
     /// DAEDALUS_MAX_EXTRACT_FILES (default 50000) from the process environment.
+    /// Values are capped at safe ceilings to prevent runaway configuration:
+    /// - `DAEDALUS_MAX_EXTRACT_SIZE` is capped at 10 GiB.
+    /// - `DAEDALUS_MAX_EXTRACT_FILES` is capped at 500 thousand.
     ///
     /// Return: the `Self`
     fn from_env() -> Self {
         let max_bytes = std::env::var("DAEDALUS_MAX_EXTRACT_SIZE")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
+            .map(|v| v.min(10 * 1024 * 1024 * 1024))
             .unwrap_or(DEFAULT_MAX_DECOMPRESSED_BYTES);
         let max_files = std::env::var("DAEDALUS_MAX_EXTRACT_FILES")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
+            .map(|v| v.min(500_000))
             .unwrap_or(DEFAULT_MAX_FILES);
         Self {
             max_bytes,

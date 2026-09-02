@@ -415,12 +415,18 @@ fn detect_ollama(dir: &Path) -> bool {
     if dir.join("Modelfile").is_file() {
         return true;
     }
-    match std::fs::read_dir(dir.join("models")) {
+    let models_have_gguf = match std::fs::read_dir(dir.join("models")) {
         Ok(entries) => entries
             .filter_map(Result::ok)
             .any(|entry| entry.path().extension().is_some_and(|ext| ext == "gguf")),
         Err(_) => false,
-    }
+    };
+    // Environment variable overrides.
+    let env_ollama = std::env::var("DAEDALUS_OLLAMA").ok()
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    let ollama_host = std::env::var("OLLAMA_HOST").is_ok();
+    models_have_gguf || env_ollama || ollama_host
 }
 
 /// `detect_wasm` - detect wasm.

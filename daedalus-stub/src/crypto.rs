@@ -56,12 +56,12 @@ pub fn verify_ed25519<R: std::io::Read + std::io::Seek>(
 
 /// Loads every 32-byte Ed25519 public key from the trusted keys directory.
 /// Malformed entries are skipped so a stray file can never disable verification.
+/// Returns an empty vector when the directory does not exist, rather than erroring,
+/// so that signed files gracefully fail verification instead of refusing to launch.
 pub fn load_trusted_keys() -> io::Result<Vec<ed25519_dalek::VerifyingKey>> {
     let trusted_dir = trusted_keys_dir();
     if !trusted_dir.exists() {
-        return Err(crate::err(
-            "trusted keys directory not found; cannot verify signature",
-        ));
+        return Ok(Vec::new());
     }
     let rd = std::fs::read_dir(&trusted_dir)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("reading trusted keys: {e}")))?;
