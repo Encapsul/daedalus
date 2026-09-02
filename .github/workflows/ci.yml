@@ -175,6 +175,8 @@ jobs:
     needs: cross-platform
     runs-on: macos-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download macOS x86_64 artifacts
         uses: actions/download-artifact@v4
         with:
@@ -211,6 +213,8 @@ jobs:
     needs: cross-platform
     runs-on: windows-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
@@ -245,6 +249,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Azure login
         uses: azure/login@v2
         with:
@@ -288,6 +294,7 @@ jobs:
       - name: Copy artifacts to VM
         run: |
           scp -o StrictHostKeyChecking=no artifacts/daedalus* ubuntu@${{ steps.vm.outputs.vm_ip }}:~/
+          scp -r -o StrictHostKeyChecking=no examples ubuntu@${{ steps.vm.outputs.vm_ip }}:~/examples
 
       - name: Run ARM64 smoke test on Azure VM
         run: |
