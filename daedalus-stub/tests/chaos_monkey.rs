@@ -73,6 +73,16 @@ fn build_fixture(dir: &Path, _payload_bytes: &[u8]) -> std::path::PathBuf {
 }
 
 fn run_stub(bin: &Path, arg: &str) -> std::process::Output {
+    run_stub_retry(bin, arg).expect("failed to run stub")
+}
+
+fn run_stub_result(bin: &Path, arg: &str) -> Result<std::process::Output, std::io::Error> {
+    run_stub_retry(bin, arg)
+}
+
+// Retry transient `exec` failures (e.g. ETXTBSY on a freshly written temp
+// copy) so chaos tests never trip on a one-off "Text file busy" race.
+fn run_stub_retry(bin: &Path, arg: &str) -> Result<std::process::Output, std::io::Error> {
     let bin = copy_to_temp_exec(bin);
     #[cfg(unix)]
     {
@@ -84,19 +94,6 @@ fn run_stub(bin: &Path, arg: &str) -> std::process::Output {
                 e
             );
         }
-    }
-    Command::new(&bin)
-        .arg(arg)
-        .output()
-        .expect("failed to run stub")
-}
-
-fn run_stub_result(bin: &Path, arg: &str) -> Result<std::process::Output, std::io::Error> {
-    let bin = copy_to_temp_exec(bin);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755));
     }
     let mut last_err = None;
     for attempt in 0..3 {
