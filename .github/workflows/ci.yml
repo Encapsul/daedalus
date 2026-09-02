@@ -71,7 +71,12 @@ jobs:
         with:
           targets: x86_64-unknown-linux-musl
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
+      - name: Lint per-crate (core)
+        run: cargo clippy -p daedalus-core --all-targets -- -D warnings
+      - name: Lint per-crate (stub)
+        run: cargo clippy -p daedalus-stub --all-targets -- -D warnings
+      - name: Lint per-crate (cli)
+        run: cargo clippy -p daedalus-cli --all-targets -- -D warnings
 
   cargo-audit:
     runs-on: ubuntu-latest

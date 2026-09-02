@@ -1,0 +1,75 @@
+name: Fuzz smoke (cross-OS)
+
+# Runs a short smoke fuzz of the daedalus-harness on native Linux, macOS, and
+# Windows runners so a fixed seed + duration gives comparable baseline results
+# across platforms. Driven manually (workflow_dispatch) with an optional
+# custom duration/seed; the 2-minute default mirrors the baseline seed used
+# for the initial Windows run so the other OSes can be diffed against it.
+#
+# The harness is a standalone crate (not a workspace member) that exercises
+# only portable, in-memory daedalus-core parsers, so no musl/zig/C toolchain
+# is required to build or run it on any runner.
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Fuzz duration per run (e.g. 2m, 30m, 1h)"
+        default: "2m"
+        required: false
+      seed:
+        description: "Fixed seed for reproducible input generation"
+        default: "2413712331968747354"
+        required: false
+  schedule:
+    - cron: "0 2 * * 6" # weekly overnight Saturday, keeps regressions visible
+
+env:
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  fuzz-smoke:
+    name: fuzz ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            daedalus-fuzz/target/
+          key: ${{ runner.os }}-fuzz-cargo-${{ hashFiles('daedalus-fuzz/Cargo.lock') }}
+
+      # The harness is a standalone crate with its own workspace; --manifest-path
+      # avoids touching the root vfat-located workspace and stays independent of
+      # CARGO_TARGET_DIR, which must NOT be a Unix absolute path on Windows.
+      - name: Build harness
+        shell: bash
+        run: cargo build --release --manifest-path daedalus-fuzz/Cargo.toml --bin daedalus-harness
+
+      - name: List targets
+        shell: bash
+        run: cargo run --release --manifest-path daedalus-fuzz/Cargo.toml --bin daedalus-harness -- --list-targets
+
+      - name: Smoke fuzz (fixed seed, comparable across OSes)
+        shell: bash
+        timeout-minutes: 45
+        run: |
+          cargo run --release --manifest-path daedalus-fuzz/Cargo.toml --bin daedalus-harness -- \
+            --targets format,stub,cli,crypto,sisr \
+            --duration "${{ github.event.inputs.duration || '2m' }}" \
+            --seed "${{ github.event.inputs.seed || '2413712331968747354' }}"

@@ -43,6 +43,8 @@ jobs:
     name: linux ${{ matrix.arch }}
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.experimental || false }}
+    env:
+      CARGO_TARGET_DIR: /tmp/daedalus-stub-target
     strategy:
       fail-fast: false
       matrix:
@@ -86,12 +88,12 @@ jobs:
           T="${{ matrix.target }}"
           D="daedalus_${V}_linux_${{ matrix.arch }}"
           mkdir -p "${D}"
-          cp "target/${T}/release/daedalus" "${D}/daedalus"
-          if [ -f "target/${T}/release/daedalus-stub" ]; then
-            cp "target/${T}/release/daedalus-stub" "${D}/daedalus-stub"
+          cp "$CARGO_TARGET_DIR/${T}/release/daedalus" "${D}/daedalus"
+          if [ -f "$CARGO_TARGET_DIR/${T}/release/daedalus-stub" ]; then
+            cp "$CARGO_TARGET_DIR/${T}/release/daedalus-stub" "${D}/daedalus-stub"
           fi
-          if [ -f "target/${T}/release/daedalus-crypto" ]; then
-            cp "target/${T}/release/daedalus-crypto" "${D}/daedalus-crypto"
+          if [ -f "$CARGO_TARGET_DIR/${T}/release/daedalus-crypto" ]; then
+            cp "$CARGO_TARGET_DIR/${T}/release/daedalus-crypto" "${D}/daedalus-crypto"
           fi
           find "${D}" -type f -exec chmod +x {} +
           tar -czf "${D}.tar.gz" "${D}"
