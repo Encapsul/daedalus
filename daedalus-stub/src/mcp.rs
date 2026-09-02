@@ -92,7 +92,7 @@ fn handle_line(line: &str, tools: &[McpTool]) -> Option<String> {
                 .collect();
             Some(response(id, serde_json::json!({ "tools": listed })))
         }
-        "tools/call" => call_tool(&value, id, tools),
+        "tools/call" => Some(call_tool(&value, id, tools)),
         _ => Some(response_error(
             id,
             -32601,
@@ -103,24 +103,41 @@ fn handle_line(line: &str, tools: &[McpTool]) -> Option<String> {
 
 /// Run one `tools/call`: look up the tool, spawn its command, pass the params
 /// on stdin, and return the captured stdout, or a JSON-RPC error on failure.
+///
+/// Never returns "no response": a malformed or unspawnable `tools/call` is
+/// answered with a JSON-RPC error rather than silence, so a caller never hangs.
 fn call_tool(
     value: &serde_json::Value,
     id: Option<&serde_json::Value>,
     tools: &[McpTool],
-) -> Option<String> {
-    let name = value.get("params")?.get("name")?.as_str()?;
+) -> String {
+    let Some(name) = value
+        .get("params")
+        .and_then(|p| p.get("name"))
+        .and_then(|n| n.as_str())
+    else {
+        return response_error(id, -32602, "missing tool name".into());
+    };
     let params = value.get("params").and_then(|p| p.get("arguments"));
-    let tool = tools.iter().find(|t| t.name == name)?;
+    let Some(tool) = tools.iter().find(|t| t.name == name) else {
+        return response_error(id, -32602, format!("unknown tool: {name}"));
+    };
+
     let mut cmd = tool.command.clone();
     let prog = cmd.remove(0);
 
-    let mut child = std::process::Command::new(&prog)
+    let mut child = match std::process::Command::new(&prog)
         .args(cmd)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .ok()?;
+    {
+        Ok(child) => child,
+        Err(err) => {
+            return response_error(id, -32000, format!("failed to spawn '{prog}': {err}"));
+        }
+    };
 
     if let Some(ps) = &params {
         if let Ok(input) = serde_json::to_string(ps) {
@@ -131,22 +148,27 @@ fn call_tool(
         }
     }
 
-    let output = child.wait_with_output().ok()?;
+    let output = match child.wait_with_output() {
+        Ok(output) => output,
+        Err(err) => {
+            return response_error(id, -32000, format!("failed to wait for '{name}': {err}"));
+        }
+    };
     if !output.status.success() {
-        return Some(response_error(
+        return response_error(
             id,
             -32000,
             format!(
                 "tool '{name}' exited with status {:?}",
                 output.status.code()
             ),
-        ));
+        );
     }
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
-    Some(response(
+    response(
         id,
         serde_json::json!({ "content": [{ "type": "text", "text": text }], "isError": false }),
-    ))
+    )
 }
 
 /// Build a successful JSON-RPC response object line.
@@ -196,7 +218,13 @@ mod tests {
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&line).unwrap();
-        assert_eq!(v["result"]["content"][0]["text"], "{\"x\":1}");
-        assert_eq!(v["result"]["isError"], false);
+        assert_eq!(
+            v["result"]["content"][0]["text"], "{\"x\":1}",
+            "unexpected tools/call response: {line}"
+        );
+        assert_eq!(
+            v["result"]["isError"], false,
+            "unexpected tools/call response: {line}"
+        );
     }
 }
