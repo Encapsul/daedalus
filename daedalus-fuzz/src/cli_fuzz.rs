@@ -76,7 +76,8 @@ impl FuzzTarget for CliFuzzTarget {
         if argv.is_empty() || argv[0] != "daedalus" {
             return Ok(());
         }
-        let daedalus_bin = std::env::var("DAEDALUS_BIN").unwrap_or_else(|_| "daedalus".to_string());
+        let daedalus_bin = std::env::var("DAEDALUS_BIN")
+            .unwrap_or_else(|_| format!("daedalus{}", std::env::consts::EXE_SUFFIX));
         let _output = Command::new(&daedalus_bin)
             .args(&argv)
             .output()

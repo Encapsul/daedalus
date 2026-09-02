@@ -94,18 +94,35 @@ cargo test -p daedalus-stub --test health_rollback
 - Run the full suite with `cargo test --workspace`; it must finish in well
   under 30 seconds.
 - No test requires root, network access, or a running daemon.
-- `fuzz/` is intentionally not a workspace member: libFuzzer needs nightly,
-  and the stable-only policy forbids nightly in CI.
+- The fuzz harness (`daedalus-fuzz/`) is not a workspace member and is excluded
+  from the stable CI lint/test loop: it needs extra dependencies (tokio, clap,
+  reqwest) and its inputs are already covered by the proptest layer on stable.
 
-## libFuzzer (nightly only)
+## Fuzzing
 
-`fuzz/` contains a `cargo-fuzz` target covering every parser at once:
+`daedalus-fuzz/` is a standalone crate (its own workspace) with a deterministic
+harness (`daedalus-harness`) that exercises the in-memory parsers of
+`daedalus-core` (format footer, stub metadata, crypto, SISR). It never panics:
+all invalid inputs are rejected cleanly. It is fully portable and runs on
+Linux, macOS, and Windows.
+
+Build and run a short smoke fuzz with a fixed seed and duration so results are
+comparable across machines:
 
 ```bash
-rustup toolchain install nightly
-cargo +nightly install cargo-fuzz
-cargo +nightly fuzz run sisr_manifest
+cargo run --release --manifest-path daedalus-fuzz/Cargo.toml --bin daedalus-harness -- \
+  --targets format,stub,cli,crypto,sisr \
+  --duration 2m \
+  --seed 2413712331968747354
 ```
 
-The same inputs are exercised by the proptest layer on stable, so CI coverage
-does not regress on machines without a nightly toolchain.
+List available options (targets, workers, corpus dir, minimization):
+
+```bash
+cargo run --manifest-path daedalus-fuzz/Cargo.toml --bin daedalus-harness -- --help
+```
+
+A `fuzz-smoke` GitHub Actions workflow runs the same command on native
+Linux, macOS, and Windows runners (weekly schedule + manual dispatch) so the OSes
+can be diffed against the same seed. `cargo-fuzz` (nightly-only, see below) is
+an alternative that the stable-only policy keeps out of CI.
