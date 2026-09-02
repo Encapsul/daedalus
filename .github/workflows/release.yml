@@ -35,7 +35,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  DAEDALUS_NODE_VERSION: "20.18.0"
 
 jobs:
   # ── Linux (all targets, cross-compiled with zigbuild) ───────────────
@@ -71,6 +70,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install zig (musl cross C compiler)
         uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
 
@@ -118,6 +119,8 @@ jobs:
         with:
           targets: x86_64-apple-darwin
       - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
       - name: Download macOS SDK
@@ -167,6 +170,8 @@ jobs:
         with:
           targets: aarch64-apple-darwin
       - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
       - name: Download macOS SDK
@@ -221,6 +226,8 @@ jobs:
         with:
           targets: x86_64-pc-windows-gnu
       - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
 
