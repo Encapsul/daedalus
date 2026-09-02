@@ -58,10 +58,10 @@ jobs:
           - { target: arm-unknown-linux-musleabihf, arch: arm, stub: true, experimental: true }
           - { target: riscv64gc-unknown-linux-musl, arch: riscv64, stub: false, experimental: true }
           - { target: powerpc64le-unknown-linux-musl, arch: ppc64le, stub: false, experimental: true }
-          - { target: x86_64-unknown-linux-gnu, arch: amd64-gnu, stub: false, experimental: false }
-          - { target: aarch64-unknown-linux-gnu, arch: arm64-gnu, stub: false, experimental: false }
-          - { target: i686-unknown-linux-gnu, arch: i386-gnu, stub: false, experimental: false }
-          - { target: armv7-unknown-linux-gnueabihf, arch: armv7-gnu, stub: false, experimental: false }
+          - { target: x86_64-unknown-linux-gnu, arch: amd64-gnu, stub: false, experimental: true }
+          - { target: aarch64-unknown-linux-gnu, arch: arm64-gnu, stub: false, experimental: true }
+          - { target: i686-unknown-linux-gnu, arch: i386-gnu, stub: false, experimental: true }
+          - { target: armv7-unknown-linux-gnueabihf, arch: armv7-gnu, stub: false, experimental: true }
           - { target: riscv64gc-unknown-linux-gnu, arch: riscv64-gnu, stub: false, experimental: true }
     steps:
       - uses: actions/checkout@v6
