@@ -107,6 +107,9 @@ pub fn install_seccomp_with_capabilities(capabilities: &[Capability]) -> io::Res
 ///
 /// Return: vector of Vec<u32>
 fn always_deny_syscalls() -> Vec<u32> {
+    // x86_64-only extensions push to `v` below (cfg'd out on other arches,
+    // which otherwise makes the `mut` spuriously unused).
+    #[allow(unused_mut)]
     let mut v = vec![
         libc::SYS_ptrace as u32,
         libc::SYS_bpf as u32,
