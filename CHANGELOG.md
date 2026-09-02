@@ -52,6 +52,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - **CI failures**: resolve clippy `must_use_candidate` warnings and stub `missing_docs` warnings
 - **Release workflow**: ensure GitHub releases are created with changelog notes and all artifacts
 - **Documentation**: audit and fix Unix man-page doc comments across daedalus-cli and daedalus-stub
+- **Windows embedding**: skip `ldd` dependency resolution on non-Unix so the interpreter (e.g. official `node.exe`) is embedded self-contained instead of aborting the build
+- **i386 stub build**: gate socket syscalls behind `SYS_socketcall` on 32-bit x86 so every architecture in the release matrix builds
 
 ## [0.6.1] - 2026-08-31
 
