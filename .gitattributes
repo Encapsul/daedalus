@@ -1,0 +1,12 @@
+# Normalize all text files to LF on commit; checkout adapts per-platform.
+* text=auto eol=lf
+
+# Binary/asset files: never run line-ending normalization or text filters.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
