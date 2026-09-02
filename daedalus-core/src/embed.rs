@@ -193,55 +193,67 @@ pub fn find_interpreter_host(name: &str) -> Option<PathBuf> {
 
 /// Parse `ldd` output to find shared library paths for a binary or .node file.
 pub(crate) fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
-    let output = Command::new("ldd")
-        .arg(interp_path)
-        .output()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ldd failed: {e}")))?;
-
-    if !output.status.success() {
+    // `ldd` is a Linux ELF tool. On Windows the interpreter (e.g. the official
+    // node.exe) is a self-contained PE that resolves its DLLs via PATH and the
+    // system dirs, so there is nothing to embed here. Return empty instead of
+    // aborting the whole embed.
+    #[cfg(not(unix))]
+    {
+        let _ = interp_path;
         return Ok(Vec::new());
     }
+    #[cfg(unix)]
+    {
+        let output = Command::new("ldd")
+            .arg(interp_path)
+            .output()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ldd failed: {e}")))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut deps = Vec::new();
-
-    for line in stdout.lines() {
-        let line = line.trim();
-        // Skip empty lines, vdso, and ld-linux dynamic linker (handled separately)
-        if line.is_empty() || line.starts_with("linux-vdso") {
-            continue;
+        if !output.status.success() {
+            return Ok(Vec::new());
         }
 
-        let path_str = if let Some(after) = line.split("=>").nth(1) {
-            // glibc format: "libfoo.so.1 => /path/libfoo.so.1 (0x...)"
-            after.trim()
-        } else if line.starts_with('/') {
-            // musl format: "/path/libfoo.so.1" (no => prefix)
-            line
-        } else {
-            continue;
-        };
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut deps = Vec::new();
 
-        // Skip the dynamic linker (ld-linux, ld-musl) — it's not a library dep
-        let fname = path_str.rsplit('/').next().unwrap_or(path_str);
-        if fname.starts_with("ld-linux") || fname.starts_with("ld-musl") {
-            continue;
+        for line in stdout.lines() {
+            let line = line.trim();
+            // Skip empty lines, vdso, and ld-linux dynamic linker (handled separately)
+            if line.is_empty() || line.starts_with("linux-vdso") {
+                continue;
+            }
+
+            let path_str = if let Some(after) = line.split("=>").nth(1) {
+                // glibc format: "libfoo.so.1 => /path/libfoo.so.1 (0x...)"
+                after.trim()
+            } else if line.starts_with('/') {
+                // musl format: "/path/libfoo.so.1" (no => prefix)
+                line
+            } else {
+                continue;
+            };
+
+            // Skip the dynamic linker (ld-linux, ld-musl) — it's not a library dep
+            let fname = path_str.rsplit('/').next().unwrap_or(path_str);
+            if fname.starts_with("ld-linux") || fname.starts_with("ld-musl") {
+                continue;
+            }
+
+            // Remove the address part: "(0x...)"
+            let path_str = if let Some(idx) = path_str.find(" (") {
+                &path_str[..idx]
+            } else {
+                path_str
+            };
+            let path_str = path_str.trim();
+            if !path_str.starts_with('/') || path_str == "not found" {
+                continue;
+            }
+            deps.push(PathBuf::from(path_str));
         }
 
-        // Remove the address part: "(0x...)"
-        let path_str = if let Some(idx) = path_str.find(" (") {
-            &path_str[..idx]
-        } else {
-            path_str
-        };
-        let path_str = path_str.trim();
-        if !path_str.starts_with('/') || path_str == "not found" {
-            continue;
-        }
-        deps.push(PathBuf::from(path_str));
+        Ok(deps)
     }
-
-    Ok(deps)
 }
 
 /// Extract the ELF interpreter (dynamic loader) path from a single `ldd`
