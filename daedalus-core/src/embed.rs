@@ -175,13 +175,16 @@ pub fn find_interpreter_host(name: &str) -> Option<PathBuf> {
     // tools dir prepended to PATH (e.g. `node.exe` for a win-x64 build), so
     // try the suffixed form first — it wins over any host interpreter and is
     // a no-op miss on POSIX hosts that have no `.exe` binaries on PATH.
+    //
+    // Iterate `PATH` directly instead of shelling out to `which`, which does
+    // not resolve on Windows runners that expose only `python.exe`/`node.exe`.
+    let path = std::env::var_os("PATH")?;
     let candidates = [format!("{name}.exe"), name.to_string()];
-    for candidate in candidates {
-        let output = Command::new("which").arg(&candidate).output().ok()?;
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Some(PathBuf::from(path));
+    for candidate in &candidates {
+        for dir in std::env::split_paths(&path) {
+            let full = dir.join(candidate);
+            if full.is_file() {
+                return Some(full);
             }
         }
     }
@@ -261,16 +264,28 @@ fn parse_loader_line(line: &str) -> Option<PathBuf> {
 /// `/lib64/ld-linux-x86-64.so.2`). Without it in the rootfs, the kernel
 /// cannot exec the embedded binary under `pivot_root` isolation.
 fn elf_interpreter_path(interp_path: &Path) -> io::Result<Option<PathBuf>> {
-    let output = Command::new("ldd")
-        .arg(interp_path)
-        .output()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ldd failed: {e}")))?;
-    if !output.status.success() {
+    #[cfg(not(unix))]
+    {
+        let _ = interp_path;
+        // No ELF dynamic loader on Windows; the interpreter is a self-contained
+        // PE that resolves its DLLs via PATH/system dirs.
         return Ok(None);
     }
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .find_map(parse_loader_line))
+    #[cfg(unix)]
+    {
+        let output = match Command::new("ldd").arg(interp_path).output() {
+            Ok(o) => o,
+            // ldd unavailable (or spawn failed); leave the loader un-embedded
+            // rather than aborting the whole embed.
+            Err(_) => return Ok(None),
+        };
+        if !output.status.success() {
+            return Ok(None);
+        }
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .find_map(parse_loader_line))
+    }
 }
 /// `resolve_lib_dirs` - resolve lib dirs.
 /// `@rootfs`: rootfs
