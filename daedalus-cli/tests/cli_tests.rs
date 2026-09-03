@@ -145,6 +145,28 @@ fn test_build_dry_run_does_not_enable_sisr_by_default() {
         .stderr(predicate::str::contains("SISR:      enabled").not());
 }
 
+#[test]
+fn test_build_dry_run_shows_ai_model_flag() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app")).unwrap();
+    std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    let model = dir.path().join("gemma-2b-it-q4.gguf");
+    std::fs::write(&model, b"GGUF").unwrap();
+    daedalus()
+        .args([
+            "build",
+            dir.path().join("app").to_str().unwrap(),
+            "--model",
+            model.to_str().unwrap(),
+            "--dry-run",
+            "--no-install",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("AI model:  "))
+        .stderr(predicate::str::contains("(mode: offline, embedded)"));
+}
+
 /// `migrate` turns a legacy (SISR-less) file into a valid v2 file and
 /// preserves the original payload bytes.
 #[test]
@@ -377,7 +399,7 @@ fn test_registry_push_local_extracts_layers() {
     };
 
     // Minimal stub (just enough to make a valid .daedalus)
-    let stub_bytes = b"EREBUS-STUB-DUMMY";
+    let stub_bytes = b"DAEDALUS-STUB-DUMMY";
     let out = work.join("app.daedalus");
     assemble_daedalus(
         &out,

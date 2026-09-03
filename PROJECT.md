@@ -34,7 +34,7 @@ cargo test --workspace
 ### Binary format (`daedalus-core/src/format.rs`)
 
 Layout: `[stub][payload][metadata][footer]`
-- Footer magic: `0xBEEF_CAFE`, format magic: `ERE\x01`
+- Footer magic: `0xBEEF_CAFE`, format magic: `DAE\x01`
 - Integrity hash: `SHA-256(payload || meta_bytes)` — computed at build, verified at runtime
 - Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs)
 

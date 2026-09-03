@@ -1,7 +1,7 @@
 [book]
 title = "daedalus"
 description = "Ship your web app like a binary. Run anywhere."
-authors = ["Tednoob17"]
+authors = ["The daedalus project"]
 language = "en"
 src = "src"
 

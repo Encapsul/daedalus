@@ -83,6 +83,9 @@ pub(crate) struct BuildPlan {
     pub(crate) outputs: Vec<PathBuf>,
     pub(crate) services: Vec<ServiceEntry>,
     pub(crate) entrypoint: Vec<String>,
+    /// Identifier of the AI model bundled for offline inference (derived from
+    /// `--model` filename). Exposed in the build metadata as `model_id`.
+    pub(crate) model_id: Option<String>,
 }
 
 /// A named service parsed from `--entrypoint name=cmd,arg1,...`.
@@ -262,6 +265,12 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
             .map(|b| hex::encode(sha2::Sha256::digest(&b)))
             .unwrap_or_else(|_| "unreadable".to_string());
         canonical.push(format!("mcp_tools={}:{content}", tools.display()));
+    }
+    if let Some(model) = &args.model {
+        let content = std::fs::read(model)
+            .map(|b| hex::encode(sha2::Sha256::digest(&b)))
+            .unwrap_or_else(|_| "unreadable".to_string());
+        canonical.push(format!("model={}:{content}", model.display()));
     }
     canonical.push(format!("health_port={:?}", args.health_port));
     if let Some(ep) = &args.health_endpoint {
@@ -598,6 +607,15 @@ pub struct BuildArgs {
     /// extracting the rest in the background after the app starts.
     #[arg(long)]
     pub lazy_load: bool,
+
+    /// Bundle an AI model (`.gguf`) into the binary for offline inference.
+    ///
+    /// Copies the file into the rootfs at `app/models/<name>` and forces the
+    /// `gemma` runtime so the stub serves it locally (no network needed).
+    /// The model id (derived from the filename) is recorded in the build
+    /// metadata as `model_id`.
+    #[arg(long)]
+    pub model: Option<PathBuf>,
 }
 
 #[derive(Default, Deserialize)]
@@ -618,6 +636,9 @@ pub(crate) struct BuildConfig {
     pub target: Option<String>,
     pub no_install: Option<bool>,
     pub env_file: Option<String>,
+    /// Identifier of the AI model to bundle for offline inference, set in
+    /// `.daedalus.toml` as `[build] model_id = "gemma-2b-it-q4"`.
+    pub model_id: Option<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -704,6 +725,7 @@ pub(crate) fn default_build_args() -> BuildArgs {
         universal: false,
         lazy_load: false,
         encrypt: None,
+        model: None,
     }
 }
 
@@ -993,6 +1015,7 @@ mod tests {
             outputs: vec![PathBuf::from("app.daedalus")],
             services: Vec::new(),
             entrypoint: Vec::new(),
+            model_id: None,
         };
         let base = config_fingerprint(&default_build_args(), &plan(false));
 

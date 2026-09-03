@@ -181,11 +181,21 @@ pub(crate) fn build_single_target(
         .with_context(|| format!("failed to read stub binary at {}", stub.display()))?;
 
     // Stage the rootfs: temp dir, app copy, tree-shake/minify, includes.
+    let reusing_rootfs = reuse_rootfs.is_some();
     let (_tmp, rootfs) = if let Some((tmp, rootfs)) = reuse_rootfs {
         (tmp, rootfs)
     } else {
         stage_rootfs(args, app_dir, verbose)?
     };
+
+    // ── Bundle an offline AI model (--model) into the rootfs ───────────
+    // Copies the .gguf to `app/models/` and writes a `Modelfile` so the stub
+    // detects the Gemma runtime and serves the weights locally (no cloud, no
+    // GPU, no network). Deliberately skipped when reusing a cached rootfs —
+    // the weights are already embedded and would otherwise be duplicated.
+    if let (Some(model_path), false) = (&args.model, reusing_rootfs) {
+        stage_offline_model(model_path, plan.model_id.as_deref(), &rootfs)?;
+    }
 
     // ── Build Go / Rust binaries, Maven/Gradle JARs, .NET binaries ────────
     let go_binary_name = build_go_binary(plan, target.as_deref(), &rootfs)?;
@@ -223,6 +233,17 @@ pub(crate) fn build_single_target(
         args.wasi,
         args.component_model,
     );
+
+    // With `--model` the Gemma entrypoint must reference the exact bundled
+    // weights instead of the build-time default (`gemma-2b-it`). The source
+    // app_dir has no Modelfile (it lives in the staged rootfs), so override
+    // the resolved command to `ollama run <model_id>`.
+    let entrypoint =
+        if let (Some(model_id), true) = (plan.model_id.as_deref(), args.model.is_some()) {
+            vec!["ollama".into(), "run".into(), model_id.to_string()]
+        } else {
+            entrypoint
+        };
 
     let bun_features = build_bun_features(args, plan)?;
 
@@ -291,6 +312,7 @@ pub(crate) fn build_single_target(
             entrypoint_layer: Some(runtime_name.clone()),
             lazy_load: args.lazy_load,
             mcp_tools,
+            model_id: plan.model_id.clone(),
         },
         &bun_features,
     )?;
@@ -735,6 +757,33 @@ fn stage_rootfs(
     }
 
     Ok((tmp, rootfs))
+}
+
+/// Bundle an offline AI model into the staged rootfs so the stub can serve it
+/// locally via Ollama (the `gemma` runtime) with no cloud, GPU or network.
+///
+/// Copies the `.gguf` from the host to `app/models/<model_id>.gguf` and writes
+/// a `Modelfile` (`FROM <model_id>`) that drives runtime auto-detection and
+/// tells Ollama which weights to load.
+fn stage_offline_model(model_path: &Path, model_id: Option<&str>, rootfs: &Path) -> Result<()> {
+    let model_id = model_id.unwrap_or("gemma-2b-it");
+    if !model_path.is_file() {
+        anyhow::bail!("--model file not found: {}", model_path.display());
+    }
+
+    let models_dir = rootfs.join("app").join("models");
+    std::fs::create_dir_all(&models_dir).context("failed to create rootfs models dir")?;
+    let gguf_dest = models_dir.join(format!("{model_id}.gguf"));
+    std::fs::copy(model_path, &gguf_dest)
+        .with_context(|| format!("failed to copy model {} into rootfs", model_path.display()))?;
+
+    let modelfile = rootfs.join("app").join("Modelfile");
+    if !modelfile.exists() {
+        std::fs::write(&modelfile, format!("FROM {model_id}\n"))
+            .context("failed to write Modelfile into rootfs")?;
+    }
+
+    Ok(())
 }
 
 /// Build the Go binary into `rootfs/app` and strip source files. Returns the
