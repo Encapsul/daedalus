@@ -14,7 +14,7 @@ use super::args::{config_fingerprint, parse_target, BuildArgs, BuildPlan};
 use super::deps::{
     check_php_platform_reqs, ensure_composer, ensure_deno, ensure_electron, ensure_go, ensure_hugo,
     ensure_node, ensure_python, ensure_rust, ensure_wasmtime, has_workspace_protocol,
-    is_command_available, resolve_command,
+    interpreter_bin, is_command_available, resolve_command,
 };
 use super::payload::{copy_dir_recursive_with, create_squashfs_payload, include_points_to_env};
 use super::sign::sign_macos_binary;
@@ -1157,11 +1157,7 @@ fn build_hugo_binary(
     let verbose = plan.verbose;
 
     let hugo_bin_dir = ensure_hugo(target, verbose)?;
-    let hugo_bin = if cfg!(windows) {
-        hugo_bin_dir.join("hugo.exe")
-    } else {
-        hugo_bin_dir.join("hugo")
-    };
+    let hugo_bin = interpreter_bin(&hugo_bin_dir, "hugo", target);
 
     if verbose {
         eprintln!("  building Hugo site...");
@@ -1204,11 +1200,7 @@ fn build_deno_binary(
     let verbose = plan.verbose;
 
     let deno_bin_dir = ensure_deno(target, verbose)?;
-    let deno_bin = if cfg!(windows) {
-        deno_bin_dir.join("deno.exe")
-    } else {
-        deno_bin_dir.join("deno")
-    };
+    let deno_bin = interpreter_bin(&deno_bin_dir, "deno", target);
 
     let entry = detect::find_first_file(app_dir, &["main.ts", "main.js", "index.ts", "index.js"])
         .context("no Deno entrypoint found (main.ts, main.js, index.ts, index.js)")?;
@@ -1476,8 +1468,7 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
     let verbose = plan.verbose;
 
     let host_arch = std::env::consts::ARCH;
-    let target_arch = target.map(|t| parse_target(t).0);
-    let is_cross = target_arch.as_deref() != Some(host_arch);
+    let is_cross = target.is_some_and(|t| parse_target(t).0 != host_arch);
 
     let embedded_interpreter_str = resolve_embed_interpreter(args, &plan.runtime_name);
 
@@ -1495,7 +1486,7 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
                     }
                 },
                 "node" => match ensure_node(target, verbose) {
-                    Ok(p) => Some(p.join("node")),
+                    Ok(p) => Some(interpreter_bin(&p, "node", target)),
                     Err(e) => {
                         eprintln!(
                             "[daedalus] warning: failed to download cross-compiled node: {e}"
@@ -1504,7 +1495,7 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
                     }
                 },
                 "deno" => match ensure_deno(target, verbose) {
-                    Ok(p) => Some(p.join("deno")),
+                    Ok(p) => Some(interpreter_bin(&p, "deno", target)),
                     Err(e) => {
                         eprintln!(
                             "[daedalus] warning: failed to download cross-compiled deno: {e}"
@@ -1513,7 +1504,7 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
                     }
                 },
                 "hugo" => match ensure_hugo(target, verbose) {
-                    Ok(p) => Some(p.join("hugo")),
+                    Ok(p) => Some(interpreter_bin(&p, "hugo", target)),
                     Err(e) => {
                         eprintln!("[daedalus] warning: failed to download hugo binary: {e}");
                         None
@@ -1521,7 +1512,7 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
                 },
                 "electron" => {
                     match ensure_electron(target, verbose, args.electron_url.as_deref()) {
-                        Ok(p) => Some(p.join("electron")),
+                        Ok(p) => Some(interpreter_bin(&p, "electron", target)),
                         Err(e) => {
                             eprintln!("[daedalus] warning: failed to download cross-compiled electron: {e}");
                             None
@@ -1529,7 +1520,7 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
                     }
                 }
                 "wasmtime" => match ensure_wasmtime(target, verbose) {
-                    Ok(p) => Some(p.join("wasmtime")),
+                    Ok(p) => Some(interpreter_bin(&p, "wasmtime", target)),
                     Err(e) => {
                         eprintln!("[daedalus] warning: failed to download wasmtime binary: {e}");
                         None
