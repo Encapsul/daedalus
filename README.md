@@ -84,7 +84,7 @@ cd your-app && daedalus build . -o myapp.daedalus
 - **Stub**: statically-linked launcher (currently Linux ELF only; macOS/Windows PE support is planned) that reads its own binary, verifies integrity, extracts the payload, and `execvp`s the entrypoint
 - **Payload**: zstd-compressed tar archive (or squashfs) of the application + runtime
 - **Metadata**: JSON with runtime info, entrypoint, layers, capabilities
-- **Footer**: magic `0xBEEF_CAFE`, format version, integrity SHA-256 hash
+- **Footer**: magic `0xBEEF_CAFE`, format magic `DAE\x01`, format version, integrity SHA-256 hash
 
 Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs).
 

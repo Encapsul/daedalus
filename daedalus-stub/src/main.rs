@@ -661,7 +661,7 @@ fn run() -> io::Result<()> {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "unsupported runtime '{runtime}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, rust, go, php, perl, hugo, ollama, wasm, binary",
+                "unsupported runtime '{runtime}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, rust, go, php, perl, hugo, ollama, gemma, wasm, binary",
             ),
         ));
     }
@@ -1009,7 +1009,7 @@ fn priority_files(meta: &Metadata) -> Vec<PathBuf> {
         "perl" => Some("perl"),
         "go" => Some("go"),
         "hugo" => Some("hugo"),
-        "ollama" => Some("ollama"),
+        "ollama" | "gemma" => Some("ollama"),
         "wasm" => Some("wasmtime"),
         "electron" => Some("electron"),
         _ => None,

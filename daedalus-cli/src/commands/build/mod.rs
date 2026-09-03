@@ -43,6 +43,14 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // Load .daedalus.toml config if present
     let config = load_config(&app_dir);
 
+    // Resolve runtime + model id before any partial field moves of `config`
+    // below, so the helper can borrow-build the id without tripping the
+    // borrow checker on the whole-struct reference.
+    let model_id_from_config = config.build.model_id.clone();
+    let (runtime, model_id) =
+        resolve_build_runtime(&app_dir, &args, model_id_from_config, verbose)?;
+    let runtime_name = runtime.name().to_string();
+
     // Apply config defaults (CLI flags override). Clone the args fields so
     // `&args` stays borrowable for the per-target loop below.
     let isolation = if args.isolation != "sandbox" {
@@ -53,19 +61,10 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let isolation_num = args::parse_isolation(&isolation)
         .with_context(|| format!("invalid --isolation value: '{isolation}'"))?;
 
-    // Detect runtime
-    let runtime = detect::detect_runtime(&app_dir).context(
-        "could not detect runtime — supported: python, node, deno, java, ruby, dotnet, go, php, perl, hugo, ollama, wasm, binary",
-    )?;
-    let runtime_name = runtime.name().to_string();
-
-    if verbose {
-        eprintln!("Detected runtime: {runtime_name}");
-    }
-
     let targets = args::resolve_targets(&args, config.build.target.as_deref());
     let outputs = args::output_paths(&args, &targets);
     let (entrypoint_args, services) = args::parse_entrypoints(&args.entrypoint);
+
     let plan = BuildPlan {
         verbose,
         app_dir,
@@ -95,6 +94,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         outputs,
         services,
         entrypoint: entrypoint_args,
+        model_id,
     };
 
     if args.dry_run {
@@ -138,6 +138,37 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&doc)?);
     }
     Ok(())
+}
+
+/// Resolve the build runtime and model id.
+///
+/// `--model` implies an offline Gemma bundle: embedding weights for local
+/// inference pins the runtime to Gemma regardless of the source layout, so the
+/// stub serves the model from the bundled `.gguf`. The model id is derived from
+/// the `--model` filename (stable across rebuilds of the same weights) and falls
+/// back to `[build] model_id` from `.daedalus.toml`.
+fn resolve_build_runtime(
+    app_dir: &Path,
+    args: &BuildArgs,
+    model_id_from_config: Option<String>,
+    verbose: bool,
+) -> Result<(detect::Runtime, Option<String>)> {
+    let runtime = if args.model.is_some() {
+        detect::Runtime::Gemma
+    } else {
+        detect::detect_runtime(app_dir).context(
+            "could not detect runtime — supported: python, node, deno, java, ruby, dotnet, go, php, perl, hugo, ollama, gemma, wasm, binary",
+        )?
+    };
+    if verbose {
+        eprintln!("Detected runtime: {}", runtime.name());
+    }
+    let model_id = args
+        .model
+        .as_ref()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .or(model_id_from_config);
+    Ok((runtime, model_id))
 }
 
 /// publish_artifact_to_registry - publish artifact to registry.
@@ -317,6 +348,9 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
     }
     if let Some(p) = &args.publish {
         eprintln!("  Publish:   {p}");
+    }
+    if let Some(model) = &args.model {
+        eprintln!("  AI model:  {} (mode: offline, embedded)", model.display());
     }
 
     // Detect package managers

@@ -30,7 +30,7 @@ prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
 | Field            | Offset | Type  | Size | Description                                  |
 |------------------|--------|-------|------|----------------------------------------------|
 | `sig_offset`     | 0      | u64   | 8    | absolute offset of signature block (0 if unsigned) |
-| `magic`          | 8      | bytes | 5    | `"ERE\x01"`                                 |
+| `magic`          | 8      | bytes | 5    | `"DAE\x01\x00"`                                 |
 | `format_version` | 13     | u8    | 1    | format version (3, 4, or 5)                  |
 | `arch`           | 14     | u8    | 1    | `0x01`=x86_64, `0x02`=aarch64                |
 | `flags`          | 15     | u8    | 1    | bit0=signed, bit1=encrypted                 |

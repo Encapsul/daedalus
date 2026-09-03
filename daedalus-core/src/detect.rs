@@ -22,6 +22,8 @@ pub enum Runtime {
     Perl,
     Hugo,
     Ollama,
+    /// A bundled Google Gemma model served through a local Ollama runtime.
+    Gemma,
     Wasm,
     Binary,
 }
@@ -47,6 +49,7 @@ impl Runtime {
             Self::Perl => "perl",
             Self::Hugo => "hugo",
             Self::Ollama => "ollama",
+            Self::Gemma => "gemma",
             Self::Wasm => "wasm",
             Self::Binary => "binary",
         }
@@ -70,6 +73,7 @@ impl Runtime {
             "perl" => Some(Self::Perl),
             "hugo" => Some(Self::Hugo),
             "ollama" => Some(Self::Ollama),
+            "gemma" => Some(Self::Gemma),
             "wasm" => Some(Self::Wasm),
             "binary" => Some(Self::Binary),
             _ => None,
@@ -105,6 +109,7 @@ pub fn detect_runtime(app_dir: &Path) -> Option<Runtime> {
                     || app_dir.join("go.mod").is_file()
                     || app_dir.join("cmd").is_dir()
             }
+            Runtime::Gemma => gemma_model_id(app_dir).is_some(),
             _ => false,
         };
         if has_entry {
@@ -128,7 +133,9 @@ fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
     if detect_electron(dir) {
         candidates.push((Runtime::Electron, true));
     }
-    if detect_ollama(dir) {
+    if detect_gemma(dir) {
+        candidates.push((Runtime::Gemma, true));
+    } else if detect_ollama(dir) {
         candidates.push((Runtime::Ollama, true));
     }
     if detect_node(dir) {
@@ -422,11 +429,90 @@ fn detect_ollama(dir: &Path) -> bool {
         Err(_) => false,
     };
     // Environment variable overrides.
-    let env_ollama = std::env::var("DAEDALUS_OLLAMA").ok()
+    let env_ollama = std::env::var("DAEDALUS_OLLAMA")
+        .ok()
         .map(|v| v == "1")
         .unwrap_or(false);
     let ollama_host = std::env::var("OLLAMA_HOST").is_ok();
     models_have_gguf || env_ollama || ollama_host
+}
+
+/// Resolve the Gemma model name an Ollama runtime should serve for this app.
+///
+/// Precedence: an explicit `Modelfile` `FROM <model>` line, then `package.json`
+/// declaring a `gemma` model, then the `DAEDALUS_GEMMA_MODEL` env var, then the
+/// well-known default. Keeps a single `.gguf` (or no weights at all) runnable
+/// with a predictable model id so the stub can exec `ollama run <model>`.
+fn gemma_model_id(dir: &Path) -> Option<String> {
+    if let Ok(content) = std::fs::read_to_string(dir.join("Modelfile")) {
+        // A Modelfile usually starts with `FROM <base>`; a Gemma bundle points
+        // it at Google's model (e.g. `FROM gemma:2b` or `gemma-2b-it-q4`).
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("FROM ") {
+                let id = rest.trim().trim_matches('"').to_string();
+                if id.contains("gemma") || dir.join(format!("models/{id}.gguf")).is_file() {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    if let Ok(content) = std::fs::read_to_string(dir.join("package.json")) {
+        if let Some(idx) = content.find("gemma") {
+            if let Some(rest) = content[idx..]
+                .lines()
+                .next()
+                .and_then(|line| line.split('"').nth(1))
+            {
+                let id = rest.trim().to_string();
+                if !id.is_empty() {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    std::env::var("DAEDALUS_GEMMA_MODEL").ok()
+}
+
+/// Detect an app that embeds a Google Gemma model for offline inference.
+///
+/// Mirrors [`detect_ollama`] but narrows to Gemma so the bundle is built with
+/// the `gemma` runtime and the stub can launch the exact model id offline, no
+/// cloud and no GPU required — the edge use case the project targets.
+fn detect_gemma(dir: &Path) -> bool {
+    if std::env::var("DAEDALUS_GEMMA")
+        .ok()
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    // A Modelfile that pulls a Gemma base model is the strongest signal.
+    if let Ok(content) = std::fs::read_to_string(dir.join("Modelfile")) {
+        if content.to_ascii_lowercase().contains("gemma") {
+            return true;
+        }
+    }
+    // package.json may shell out to Ollama with a Gemma model.
+    if let Ok(content) = std::fs::read_to_string(dir.join("package.json")) {
+        if content.to_ascii_lowercase().contains("gemma") {
+            return true;
+        }
+    }
+    // A `.gguf` in models/ that is named after a Gemma variant.
+    if let Ok(entries) = std::fs::read_dir(dir.join("models")) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            let is_gguf = path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("gguf"));
+            if name.starts_with("gemma") && is_gguf {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// `detect_wasm` - detect wasm.
@@ -634,6 +720,13 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             // Serve the Ollama model via the ollama binary so the app's HTTP
             // API is available on its configured port at runtime.
             Some(vec!["ollama".into(), "serve".into()])
+        }
+        Runtime::Gemma => {
+            // Launch the bundled Google Gemma model offline. `ollama run <id>`
+            // resolves the model from the embedded weights in the rootfs and
+            // serves it on the default Ollama API, no cloud and no GPU needed.
+            let model = gemma_model_id(app_dir).unwrap_or_else(|| "gemma-2b-it".to_string());
+            Some(vec!["ollama".into(), "run".into(), model])
         }
         Runtime::Java => {
             let jar = find_first_ext(app_dir, "jar")?;
@@ -2239,5 +2332,41 @@ start = "uvicorn main:app"
     fn ollama_runtime_name_roundtrip() {
         assert_eq!(Runtime::Ollama.name(), "ollama");
         assert_eq!(Runtime::from_name("ollama"), Some(Runtime::Ollama));
+    }
+
+    #[test]
+    /// `detect_gemma_modelfile` - a Modelfile referencing Gemma yields the
+    /// `gemma` runtime, distinct from a generic Ollama bundle.
+    fn detect_gemma_modelfile() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("Modelfile"), "FROM gemma:2b\n").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Gemma));
+        assert_eq!(gemma_model_id(dir.path()).as_deref(), Some("gemma:2b"));
+    }
+
+    #[test]
+    /// `detect_gemma_gguf_name` - a `models/gemma-*.gguf` file is Gemma, not
+    /// the generic Ollama runtime.
+    fn detect_gemma_gguf_name() {
+        let dir = TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("models")).unwrap();
+        std::fs::write(
+            dir.path().join("models").join("gemma-2b-it-q4_K_M.gguf"),
+            b"GGUF model",
+        )
+        .unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Gemma));
+    }
+
+    #[test]
+    /// `gemma_default_model_id` - without any hint the well-known Gemma id is
+    /// the fallback, so the entrypoint is always resolvable offline.
+    fn gemma_default_model_id() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(gemma_model_id(dir.path()), None);
+        assert_eq!(
+            resolve_entrypoint(dir.path(), Runtime::Gemma),
+            Some(vec!["ollama".into(), "run".into(), "gemma-2b-it".into()])
+        );
     }
 }

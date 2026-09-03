@@ -207,6 +207,10 @@ pub fn build_meta_json(
         meta["lazy_load"] = serde_json::Value::Bool(true);
     }
 
+    if let Some(model_id) = &options.model_id {
+        meta["model_id"] = serde_json::Value::String(model_id.clone());
+    }
+
     if let Some(mcp) = &options.mcp_tools {
         meta["mcp_tools"] = serde_json::to_value(mcp)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -247,6 +251,10 @@ pub struct MetaOptions {
     /// MCP tool definitions to embed in the metadata, or `None` when the
     /// binary does not expose MCP tools.
     pub mcp_tools: Option<crate::mcp::McpToolsMeta>,
+    /// Identifier of the embedded AI model (e.g. `gemma-2b-it-q4`). Present
+    /// when the build bundles a model for offline inference. Surface in the
+    /// metadata so operators can audit which weights a `.de` ships.
+    pub model_id: Option<String>,
 }
 
 /// Input to [`assemble_daedalus`]: bundles every byte-slice and build flag that
@@ -648,6 +656,7 @@ mod tests {
             entrypoint_layer: None,
             lazy_load: false,
             mcp_tools: None,
+            model_id: None,
         };
         let bun_features = BunFeatures::default();
         let json = build_meta_json(
@@ -672,6 +681,8 @@ mod tests {
         assert_eq!(layers[0]["name"], "python");
         assert_eq!(layers[0]["interpreter"], "python");
         assert_eq!(parsed["entrypoint_layer"], "python");
+        // model_id is absent when no model is embedded
+        assert!(parsed.get("model_id").is_none());
     }
 
     #[test]
