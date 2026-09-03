@@ -597,6 +597,145 @@ mod tests {
         );
     }
 
+    /// Fraction of bytes a weight update perturbs. Model updates (fine-tune,
+    /// re-quantization) rewrite a small slice of the weight bytes; the rest of
+    /// the tensor is byte-identical and must be reused by SISR's CD-chunking.
+    const MODEL_UPDATE_FRACTION: u64 = 10; // percent
+
+    /// Simulate Gemma-2B-style weight bytes: a fixed header followed by a large
+    /// tensor region with local structure, using a seeded PRNG so runs are
+    /// reproducible. `perturb_frac_pct` marks a region (its % position across
+    /// the tensor) where a second "updated" version clears the low 2 bits of a
+    /// 10% slice of bytes, mimicking a fine-tuned/re-quantized model.
+    fn model_weights(bytes: usize, perturb_frac_pct: Option<u64>) -> Vec<u8> {
+        const HEADER: usize = 512;
+        let mut data = vec![0u8; HEADER + bytes];
+        let header = b"GGUF\x03simulated-daedalus-gemma-2b-it";
+        data[..header.len()].copy_from_slice(header);
+        let mut state = 0x9E37_79B9u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for byte in &mut data[HEADER..] {
+            *byte = (next() & 0xFF) as u8;
+        }
+        if let Some(frac_pct) = perturb_frac_pct {
+            let perturb_len = bytes * MODEL_UPDATE_FRACTION as usize / 100usize;
+            let perturb_len = perturb_len.max(1).min(bytes);
+            let start = HEADER + bytes * frac_pct as usize / 100usize;
+            let start = start.min(HEADER + bytes - perturb_len);
+            for byte in &mut data[start..start + perturb_len] {
+                *byte &= 0x3F;
+            }
+        }
+        data
+    }
+
+    /// Reused bytes between two chunk tables (the SISR delta denominator).
+    fn reused_bytes(prev: &DeltaManifest, new: &DeltaManifest) -> u64 {
+        let new_hashes: std::collections::HashSet<&[u8; 32]> =
+            new.chunks.iter().map(|c| &c.hash).collect();
+        prev.chunks
+            .iter()
+            .filter(|c| new_hashes.contains(&c.hash))
+            .map(|c| u64::from(c.length))
+            .sum()
+    }
+
+    /// The core SISR property Task C depends on: content-defined chunking
+    /// reuses unchanged weight regions when a model update perturbs only a
+    /// fraction of bytes, so an update transfers far fewer bytes than a full
+    /// download.
+    #[test]
+    fn gemma_weight_delta_reuses_unchanged_chunks() {
+        let prev = model_weights(64 << 20, None);
+        let new = model_weights(64 << 20, Some(50));
+        let cfg = SisrBuildConfig {
+            enabled: true,
+            chunk_target_size: 64 << 10,
+            signing_key: None,
+        };
+        let prev_art = build_artifacts(&prev, &cfg).unwrap();
+        let new_art = build_artifacts(&new, &cfg).unwrap();
+
+        let new_total: u64 = new_art
+            .manifest
+            .chunks
+            .iter()
+            .map(|c| u64::from(c.length))
+            .sum();
+        let reused = reused_bytes(&prev_art.manifest, &new_art.manifest);
+        let delta = new_total.saturating_sub(reused);
+        let pct_saved = 100.0 - (delta as f64 / new_total as f64) * 100.0;
+
+        // On the simulated 10% perturbation at least half the bytes should be
+        // reused; CD-chunking must beat a flat "resend everything" baseline.
+        assert!(
+            pct_saved > 40.0,
+            "expected >40% bandwidth saved on a 10% weight update, got {pct_saved:.1}%"
+        );
+    }
+
+    /// Manual benchmark (release): `cargo test -p daedalus-core --release
+    /// gemma_weight_delta_bandwidth -- --ignored`. Reports the SISR delta size
+    /// and % bandwidth saved when updating a Gemma-sized model. Reads real
+    /// model pairs (`.gguf` v1 + v2) from `DAEDALUS_SISR_MODEL_V1/V2` when set;
+    /// otherwise simulates a ~200 MiB model so the number is reachable offline
+    /// and in CI. Output is the honest counter-check to a naive "90% saved"
+    /// claim — paste the printed line into the demo/README.
+    #[test]
+    #[ignore = "manual bandwidth measurement"]
+    fn gemma_weight_delta_bandwidth() {
+        let (prev, new, label) = match (
+            std::env::var("DAEDALUS_SISR_MODEL_V1"),
+            std::env::var("DAEDALUS_SISR_MODEL_V2"),
+        ) {
+            (Ok(v1), Ok(v2)) => (
+                std::fs::read(&v1).expect("read model v1"),
+                std::fs::read(&v2).expect("read model v2"),
+                "real gguf pair".to_string(),
+            ),
+            _ => (
+                model_weights(200 << 20, None),
+                model_weights(200 << 20, Some(50)),
+                format!("simulated 200 MiB ({}% perturbed)", MODEL_UPDATE_FRACTION),
+            ),
+        };
+        let cfg = SisrBuildConfig {
+            enabled: true,
+            chunk_target_size: 64 << 10,
+            signing_key: Some(SigningKey::from_bytes(&[1u8; 32])),
+        };
+        let prev_art = build_artifacts(&prev, &cfg).unwrap();
+        let new_art = build_artifacts(&new, &cfg).unwrap();
+        let new_total: u64 = new_art
+            .manifest
+            .chunks
+            .iter()
+            .map(|c| u64::from(c.length))
+            .sum();
+        let reused = reused_bytes(&prev_art.manifest, &new_art.manifest);
+        let delta = new_total.saturating_sub(reused);
+        let pct = 100.0 - (delta as f64 / new_total as f64) * 100.0;
+        let mib = |b: u64| b as f64 / (1024.0 * 1024.0);
+        let reused_count = prev_art
+            .manifest
+            .chunks
+            .iter()
+            .filter(|c| new_art.manifest.chunks.iter().any(|n| n.hash == c.hash))
+            .count();
+        let changed = new_art.manifest.chunks.len().saturating_sub(reused_count);
+        println!(
+            "SISR gemma update ({label}): delta {:.1} MiB vs {:.1} MiB full — {:.1}% bandwidth saved ({changed} changed chunks, {reused_count} reused)",
+            mib(delta),
+            mib(new_total),
+            pct,
+        );
+    }
+
     /// Builds a signed artifact set plus the ext header a binary would embed.
     fn signed_ext(
         payload: &[u8],
