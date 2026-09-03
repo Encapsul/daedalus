@@ -38,6 +38,21 @@ pub(crate) fn is_command_available(name: &str) -> bool {
     which::which(name).is_ok()
 }
 
+/// Resolve an interpreter's binary path inside a downloaded tool `bin` dir.
+///
+/// Tool dists name their executable `<name>.exe` on Windows and `<name>`
+/// elsewhere. Which applies depends on the target OS — a cross build to a
+/// Windows target or a build running on a Windows host both want the `.exe`.
+pub(crate) fn interpreter_bin(bin_dir: &Path, name: &str, target: Option<&str>) -> PathBuf {
+    let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows")
+        || (target.is_none() && std::env::consts::OS == "windows");
+    bin_dir.join(if is_windows {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    })
+}
+
 /// Ensure node + npm are available for the build.
 /// Downloads a static node to `~/.cache/daedalus/build-tools/node/` (or a
 /// per-target subdir when `--target` requests a non-host platform) if not on
