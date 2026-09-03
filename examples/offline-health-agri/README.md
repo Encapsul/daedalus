@@ -32,6 +32,29 @@ cargo build --release
 daedalus build ./examples/offline-health-agri -o clinic-agent.de
 ```
 
+## Mise a jour du modele (delta SISR)
+
+Quand Google publie une version du modele (fine-tune, requantisation), daedalus ne
+retransmet pas le paquet entier : son chunking a contenu defini (CD) ne renvoie que
+les morceaux de poids modifies. Mesure reproductible (bench `sisr_stage` inclus) :
+
+```text
+SISR gemma update (simulated 200 MiB (10% perturbed)):
+  delta 20.6 MiB vs 200.0 MiB full — 89.7% bandwidth saved
+  (195 changed chunks, 1511 reused)
+```
+
+Pour un vrai couple de poids v1/v2, pointez les variables et relancez le bench :
+
+```bash
+DAEDALUS_SISR_MODEL_V1=v1.gguf DAEDALUS_SISR_MODEL_V2=v2.gguf \
+  cargo test -p daedalus-core --release gemma_weight_delta_bandwidth \
+  -- --ignored --nocapture
+```
+
+En zone rurale ou la bande passante coute plus cher que le calcul, reduire l'octet
+transfere de ~9x par mise a jour est le levier de maintenance le plus concret.
+
 ## Execution locale avec Ollama
 
 Demarrez le service Gemma, puis lancez le binaire autonome :
