@@ -727,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "daedalus-cli"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -764,7 +764,7 @@ dependencies = [
 
 [[package]]
 name = "daedalus-core"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -794,7 +794,7 @@ dependencies = [
 
 [[package]]
 name = "daedalus-stub"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "aes-gcm",
  "backhand",
