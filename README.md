@@ -19,28 +19,6 @@ The binary format (`[stub][payload][metadata][footer]`) is a universal executabl
 
 ---
 
-## Two distinct segments
-
-daedalus serves two distinct segments, presented separately in this dossier:
-
-### 1. Enterprise segment — revenue
-
-- **Clients** : enterprises, defense, fintech, industrial IoT, software publishers
-- **Need** : air-gap for regulatory compliance, data sovereignty, SISR delta updates
-- **Payment** : $499+/mo, enterprise pricing, custom contracts
-- **Examples** : bank fleet management, internet-connected factories, defense applications
-
-### 2. Impact segment — NGOs / grants
-
-- **Clients** : rural clinics, agricultural cooperatives, isolated sites, health ministries
-- **Need** : offline-first deployment, zero connectivity required, local Gemma via Ollama model
-- **Payment** : grants, NGOs, ministries, free pilots funded by third parties
-- **Examples** : medical diagnosis on Raspberry Pi without cloud, crop tracking in white zones, connectivity-free education
-
-**Important note** : These two segments do not have the same purchasing power. Segment 2 is structurally unable to pay via the standard SaaS model — which is why it requires external funding (grants, ministries). Segment 1 represents the product's business revenue.
-
-Both are supported by the same daedalus technology, but make distinct messaging depending on the target audience.
-
 **Note**: the produced `.de` file is a Linux ELF binary. It runs natively on Linux, and can be run on macOS/Windows via WSL or a Linux VM. Building on Windows/macOS works (the CLI is cross-platform), but the output requires a Linux runtime to execute.
 
 ## Quick start
