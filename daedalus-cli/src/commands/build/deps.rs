@@ -53,6 +53,27 @@ pub(crate) fn interpreter_bin(bin_dir: &Path, name: &str, target: Option<&str>) 
     })
 }
 
+/// The `<os>-<arch>` suffix used to namespace per-target tool installs, or
+/// `host` when building without a target. Shared by every `ensure_*` so each
+/// runtime resolves to the same install directory.
+pub(crate) fn target_suffix(target: Option<&str>) -> String {
+    target
+        .map(|t| {
+            let (arch, os) = parse_target(t);
+            format!("{os}-{arch}")
+        })
+        .unwrap_or_else(|| "host".to_string())
+}
+
+/// The isolated install directory (`~/.cache/daedalus/build-tools/<name>-<suffix>`)
+/// where `ensure_*` download and extract a runtime. An embedding step can copy
+/// the whole tree (bin + DLLs + stdlib + data) with a per-runtime filter.
+pub(crate) fn tools_dir_for(name: &str, target: Option<&str>) -> PathBuf {
+    cache_dir()
+        .join("build-tools")
+        .join(format!("{name}-{}", target_suffix(target)))
+}
+
 /// Ensure node + npm are available for the build.
 /// Downloads a static node to `~/.cache/daedalus/build-tools/node/` (or a
 /// per-target subdir when `--target` requests a non-host platform) if not on
@@ -60,15 +81,7 @@ pub(crate) fn interpreter_bin(bin_dir: &Path, name: &str, target: Option<&str>) 
 /// predictable world-writable `/tmp` path would allow. Does NOT pollute the
 /// user's system PATH.
 pub(crate) fn ensure_node(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
-    let suffix = target
-        .map(|t| {
-            let (arch, os) = parse_target(t);
-            format!("{os}-{arch}")
-        })
-        .unwrap_or_else(|| "host".to_string());
-    let tools_dir = cache_dir()
-        .join("build-tools")
-        .join(format!("node-{suffix}"));
+    let tools_dir = tools_dir_for("node", target);
     let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
     let node_name = if is_windows { "node.exe" } else { "node" };
     let npm_name = if is_windows { "npm.cmd" } else { "npm" };
@@ -239,6 +252,23 @@ fn ensure_node_download(
     Ok(tools_dir.join("bin"))
 }
 
+/// Locate the python executable inside a downloaded python-build-standalone
+/// dist. The linux/darwin layout nests it at `bin/python3` while the Windows
+/// layout keeps `python.exe`/`python3.exe` directly in the top level — search
+/// both rather than hardcoding one shape.
+fn find_python_in(tools_dir: &Path) -> Option<PathBuf> {
+    let candidates = [
+        "bin/python3",
+        "bin/python3.exe",
+        "python3.exe",
+        "python.exe",
+    ];
+    candidates
+        .iter()
+        .map(|c| tools_dir.join(c))
+        .find(|p| p.is_file())
+}
+
 /// Ensure a Python interpreter is available for the requested target.
 /// Downloads a static Python from `python-build-standalone` (astral-sh) to
 /// `~/.cache/daedalus/build-tools/python-<os>-<arch>/` when `target` differs
@@ -250,25 +280,25 @@ pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathB
                 return Ok(p);
             }
         }
+        // Windows hosts often ship `python` without a `python3` alias; try
+        // before falling back to a downloaded static build.
+        if std::env::consts::OS == "windows" {
+            if let Ok(p) = which::which("python") {
+                if p.is_file() {
+                    return Ok(p);
+                }
+            }
+        }
     }
 
-    let suffix = target
-        .map(|t| {
-            let (arch, os) = parse_target(t);
-            format!("{os}-{arch}")
-        })
-        .unwrap_or_else(|| "host".to_string());
+    let tools_dir = tools_dir_for("python", target);
 
-    let tools_dir = cache_dir()
-        .join("build-tools")
-        .join(format!("python-{suffix}"));
-
-    let python_bin = tools_dir.join("bin").join("python3");
-    if python_bin.exists() {
+    let python_bin = find_python_in(&tools_dir);
+    if let Some(ref p) = python_bin {
         if verbose {
             eprintln!("  using cached python from {}", tools_dir.display());
         }
-        return Ok(python_bin);
+        return Ok(p.clone());
     }
 
     let (py_arch, py_os) = if let Some(t) = target {
@@ -282,9 +312,10 @@ pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathB
         let po = match os.as_str() {
             "linux" => "unknown-linux",
             "darwin" => "apple-darwin",
+            "windows" => "pc-windows-msvc",
             _ => anyhow::bail!("unsupported cross-compile OS: {os}"),
         };
-        (pa, po)
+        (pa.to_string(), po.to_string())
     } else {
         (
             match std::env::consts::ARCH {
@@ -292,12 +323,15 @@ pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathB
                 "aarch64" => "aarch64",
                 "riscv64" => "riscv64",
                 a => a,
-            },
+            }
+            .to_string(),
             match std::env::consts::OS {
                 "linux" => "unknown-linux-musl",
                 "macos" => "apple-darwin",
+                "windows" => "pc-windows-msvc",
                 o => o,
-            },
+            }
+            .to_string(),
         )
     };
 
@@ -312,11 +346,10 @@ pub(crate) fn ensure_python(target: Option<&str>, verbose: bool) -> Result<PathB
         .ok();
     }
 
-    ensure_python_download(&tools_dir, py_arch, py_os, verbose)?;
+    ensure_python_download(&tools_dir, &py_arch, &py_os, verbose)?;
 
-    if !python_bin.exists() {
-        anyhow::bail!("downloaded tarball missing python binary");
-    }
+    let python_bin = find_python_in(&tools_dir)
+        .ok_or_else(|| anyhow::anyhow!("downloaded python dist missing a python executable"))?;
 
     #[cfg(unix)]
     {
@@ -827,13 +860,7 @@ pub(crate) fn ensure_composer(app_dir: &Path, verbose: bool) -> Result<(String, 
 /// Downloads a static Go binary to `~/.cache/daedalus/build-tools/go-{target}/`
 /// if not on PATH. Returns `(go_bin_dir, go_binary_path)`.
 pub(crate) fn ensure_go(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
-    let suffix = target
-        .map(|t| {
-            let (arch, os) = parse_target(t);
-            format!("{os}-{arch}")
-        })
-        .unwrap_or_else(|| "host".to_string());
-    let tools_dir = cache_dir().join("build-tools").join(format!("go-{suffix}"));
+    let tools_dir = tools_dir_for("go", target);
     let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
     let go_name = if is_windows { "go.exe" } else { "go" };
     let go_bin = tools_dir.join("bin").join(go_name);
@@ -1032,15 +1059,7 @@ fn extract_go_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Path)
 /// Downloads a static Deno binary from GitHub releases to
 /// `~/.cache/daedalus/build-tools/deno-{target}/` when not on PATH.
 pub(crate) fn ensure_deno(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
-    let suffix = target
-        .map(|t| {
-            let (arch, os) = parse_target(t);
-            format!("{os}-{arch}")
-        })
-        .unwrap_or_else(|| "host".to_string());
-    let tools_dir = cache_dir()
-        .join("build-tools")
-        .join(format!("deno-{suffix}"));
+    let tools_dir = tools_dir_for("deno", target);
     let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
     let deno_name = if is_windows { "deno.exe" } else { "deno" };
     let deno_bin = tools_dir.join("bin").join(deno_name);
@@ -1201,15 +1220,7 @@ fn extract_deno_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Pat
 /// Downloads Hugo from GitHub releases to
 /// `~/.cache/daedalus/build-tools/hugo-{target}/` when not on PATH.
 pub(crate) fn ensure_hugo(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
-    let suffix = target
-        .map(|t| {
-            let (arch, os) = parse_target(t);
-            format!("{os}-{arch}")
-        })
-        .unwrap_or_else(|| "host".to_string());
-    let tools_dir = cache_dir()
-        .join("build-tools")
-        .join(format!("hugo-{suffix}"));
+    let tools_dir = tools_dir_for("hugo", target);
     let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
     let hugo_name = if is_windows { "hugo.exe" } else { "hugo" };
     let hugo_bin = tools_dir.join("bin").join(hugo_name);
@@ -1345,15 +1356,7 @@ fn ensure_hugo_download(tools_dir: &Path, target_arch: Option<&str>, verbose: bo
 /// Downloads Wasmtime from GitHub releases to
 /// `~/.cache/daedalus/build-tools/wasmtime-{target}/` when not on PATH.
 pub(crate) fn ensure_wasmtime(target: Option<&str>, verbose: bool) -> Result<PathBuf> {
-    let suffix = target
-        .map(|t| {
-            let (arch, os) = parse_target(t);
-            format!("{os}-{arch}")
-        })
-        .unwrap_or_else(|| "host".to_string());
-    let tools_dir = cache_dir()
-        .join("build-tools")
-        .join(format!("wasmtime-{suffix}"));
+    let tools_dir = tools_dir_for("wasmtime", target);
     let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
     let wasmtime_name = if is_windows {
         "wasmtime.exe"
@@ -1570,15 +1573,7 @@ pub(crate) fn ensure_electron(
     verbose: bool,
     electron_url: Option<&str>,
 ) -> Result<PathBuf> {
-    let suffix = target
-        .map(|t| {
-            let (arch, os) = parse_target(t);
-            format!("{os}-{arch}")
-        })
-        .unwrap_or_else(|| "host".to_string());
-    let tools_dir = cache_dir()
-        .join("build-tools")
-        .join(format!("electron-{suffix}"));
+    let tools_dir = tools_dir_for("electron", target);
     let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
     let electron_name = if is_windows {
         "electron.exe"
