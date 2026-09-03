@@ -200,7 +200,7 @@ pub(crate) fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
     #[cfg(not(unix))]
     {
         let _ = interp_path;
-        return Ok(Vec::new());
+        Ok(Vec::new())
     }
     #[cfg(unix)]
     {
@@ -282,7 +282,7 @@ fn elf_interpreter_path(interp_path: &Path) -> io::Result<Option<PathBuf>> {
         let _ = interp_path;
         // No ELF dynamic loader on Windows; the interpreter is a self-contained
         // PE that resolves its DLLs via PATH/system dirs.
-        return Ok(None);
+        Ok(None)
     }
     #[cfg(unix)]
     {
