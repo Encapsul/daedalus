@@ -7,13 +7,9 @@
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)]()
 [![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)
 
-# AI model packaging (Gemma via Ollama, on-device)
+## AI model packaging (Gemma via Ollama, on-device)
 
-daedalus compiles any web, server, or CLI application into a single self-contained executable **and** can package local AI models (Gemma via Ollama, Llama.cpp, etc.) embedded in the binary, running entirely offline — no cloud, no GPU, zero runtime cost. Supported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Hugo, Binary.
-
-`daedalus` compiles any web, server, or CLI application into a single self-contained executable. Supported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Hugo, Binary.
-
-**AI model packaging**: daedalus can package applications using local AI models (Gemma via Ollama, Llama.cpp, etc.) and MCP tools for agent workflows. Models are embedded in the `.de` binary and start on first run — no GPU or cloud dependency required. See [AI and edge runtimes](docs/src/guides/ai-edge.md).
+daedalus compiles any web, server, or CLI application into a single self-contained executable **and** can package local AI models (Gemma via Ollama, Llama.cpp, etc.) embedded in the binary, running entirely offline — no cloud, no GPU, zero runtime cost. See [AI and edge runtimes](docs/src/guides/ai-edge.md).
 
 The binary format (`[stub][payload][metadata][footer]`) is a universal executable artifact — capable of transporting any application, microservice, or plugin as a single portable unit.
 
