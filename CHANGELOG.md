@@ -12,6 +12,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 - Bug fixes in progress
 
+## [0.7.0] - 2026-09-03
+
+### Changed
+- Per-runtime install-tree embedding: `embed_runtime_dir()` copies filtered runtime directories (Python DLLs/stdlib, Node modules, Electron assets) instead of single binary only, enabling fully self-contained `.de` binaries across platforms
+- `RuntimeProfile` with `only`/`exclude` filters per runtime (python, node, electron have filters; deno/hugo/wasmtime self-contained)
+- `tools_dir_for()` + `target_suffix()` + `interpreter_bin()` centralized binary resolution in `deps.rs`
+- `resolve_cross_interpreter()` extracted from `embed_interpreters` to reduce clippy `too_many_lines`
+- `python_host_install_dir()` via `sys.prefix` on Windows; `None` on Linux/macOS (deps resolved by `ldd` + `embed_python_config`)
+- `--embed-interpreter python` CLI flag + CI `smoke-test-windows` job updated
+
+### Fixed
+- `is_cross` logic in pipeline: `target.is_some_and(|t| parse_target(t).0 != host_arch)` (was comparing `target_arch` string incorrectly on host builds)
+- Clippy `needless_return` removed from `#[cfg(not(unix))]` blocks in `embed.rs`
+- README: removed "Two distinct segments" enterprise impact breakdown; de-duplicated AI model packaging section (H1→H2)
+
+### Added
+- `embed_runtime_dir()` in `daedalus-core/src/embed.rs` with `copy_runtime_filtered()` and `matches_pattern()`
+- `RuntimeProfile::self_contained()` const fn for self-contained runtimes
+- `find_python_in()` helper for Windows Python discovery
+- `which("python")` fallback in `ensure_python` for Windows hosts
+
 ## [0.6.0] - 2026-08-31
 
 ### Changed
