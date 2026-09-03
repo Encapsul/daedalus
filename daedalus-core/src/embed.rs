@@ -1263,6 +1263,149 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Describe which files to keep when copying a runtime's isolated install
+/// directory into the rootfs. Runtimes differ in what they need at runtime
+/// (DLLs, stdlib, `node_modules`) and in what they carry that is dead weight
+/// (debug symbols, sources, docs).
+#[derive(Clone, Copy)]
+pub struct RuntimeProfile {
+    /// When set, copy only entries whose relative path matches one of these
+    /// patterns. Each pattern is either a whole relative path (e.g. `Lib`,
+    /// `bin/npm.cmd`) or an extension glob (`*.dll`, `*.exe`).
+    pub only: Option<&'static [&'static str]>,
+    /// Skip any entry whose relative path or file extension matches one of
+    /// these patterns, applied after `only`.
+    pub exclude: &'static [&'static str],
+}
+
+impl RuntimeProfile {
+    /// A runtime whose single binary is fully self-contained (V8/Go/Rust-like)
+    /// and needs no additional install-tree files.
+    pub const fn self_contained() -> Self {
+        RuntimeProfile {
+            only: None,
+            exclude: &[],
+        }
+    }
+}
+
+/// Copy an isolated runtime install directory into `rootfs/usr/`, honouring a
+/// [`RuntimeProfile`]. The install tree is laid out as shipped (bin at
+/// `usr/bin`, DLLs/stdlib beside it) so the runtime finds its own files via
+/// its standard relative layout. Returns the number of files copied.
+pub fn embed_runtime_dir(
+    install_dir: &Path,
+    profile: &RuntimeProfile,
+    rootfs: &Path,
+    verbose: bool,
+) -> io::Result<usize> {
+    let dest_root = rootfs.join("usr");
+    fs::create_dir_all(&dest_root)?;
+    let mut count = 0;
+    copy_runtime_filtered(install_dir, &dest_root, profile, "", &mut count)?;
+    if verbose {
+        eprintln!("  embed: copied runtime install tree ({} files)", count);
+    }
+    Ok(count)
+}
+
+/// Profile for an isolated Python install: keep the interpreter, DLLs and the
+/// stdlib, drop debug symbols, headers and dev scaffolding.
+pub const fn python_runtime_profile() -> &'static RuntimeProfile {
+    static PROFILE: RuntimeProfile = RuntimeProfile {
+        only: None,
+        exclude: &[
+            "*.pdb",
+            "*.pyc",
+            "*.pyo",
+            "include",
+            "libs",
+            "Scripts",
+            "Tools",
+            "Doc",
+            "tcl",
+            "LICENSE.txt",
+        ],
+    };
+    &PROFILE
+}
+
+/// Profile for a Node install: the binary is self-contained, but the runtime
+/// ships npm scaffolding beside it that apps may firewall through.
+pub const fn node_runtime_profile() -> &'static RuntimeProfile {
+    static PROFILE: RuntimeProfile = RuntimeProfile {
+        only: None,
+        exclude: &["*.pdb"],
+    };
+    &PROFILE
+}
+
+/// Profile for an Electron install: the V8/Chromium runtime plus its DLLs and
+/// `resources/` payload, minus debug symbols.
+pub const fn electron_runtime_profile() -> &'static RuntimeProfile {
+    static PROFILE: RuntimeProfile = RuntimeProfile {
+        only: None,
+        exclude: &["*.pdb"],
+    };
+    &PROFILE
+}
+
+fn copy_runtime_filtered(
+    src: &Path,
+    dst: &Path,
+    profile: &RuntimeProfile,
+    rel: &str,
+    count: &mut usize,
+) -> io::Result<()> {
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        let child_rel = if rel.is_empty() {
+            name_str.to_string()
+        } else {
+            format!("{rel}/{name_str}")
+        };
+
+        if let Some(only) = profile.only {
+            if !matches_pattern(&child_rel, only) {
+                continue;
+            }
+        }
+        if matches_pattern(&child_rel, profile.exclude) {
+            continue;
+        }
+
+        let src_path = entry.path();
+        let dst_path = dst.join(&name);
+        if src_path.is_dir() {
+            fs::create_dir_all(&dst_path)?;
+            copy_runtime_filtered(&src_path, &dst_path, profile, &child_rel, count)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+            *count += 1;
+        }
+    }
+    Ok(())
+}
+
+/// Match a relative path against a list of patterns. A pattern either equals
+/// the whole path, equals a leading path segment (so `Lib` covers `Lib/sub`),
+/// or is an extension glob `*.ext` matching the file's extension.
+fn matches_pattern(rel: &str, patterns: &[&str]) -> bool {
+    let matches_ext = rel
+        .rsplit('.')
+        .next()
+        .map(|ext| patterns.iter().any(|p| p == &format!("*.{ext}")))
+        .unwrap_or(false);
+    if matches_ext {
+        return true;
+    }
+    patterns
+        .iter()
+        .any(|p| rel == *p || rel.starts_with(&format!("{p}/")))
+}
+
 /// Scan `rootfs/app/node_modules/` for `.node` files (N-API native addons),
 /// run `ldd` on each, and embed their shared library dependencies into the rootfs.
 pub fn embed_napi_addons(rootfs: &Path, verbose: bool) -> io::Result<usize> {

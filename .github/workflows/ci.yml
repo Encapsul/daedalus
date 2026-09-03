@@ -264,7 +264,7 @@ jobs:
         shell: pwsh
         run: |
           $env:DAEDALUS_STUB_PATH = ".\artifacts\daedalus-stub.exe"
-          .\artifacts\daedalus.exe build examples\hello-web --isolation none -o C:\tmp\hello-web.daedalus
+          .\artifacts\daedalus.exe build examples\hello-web --isolation none -o C:\tmp\hello-web.daedalus --embed-interpreter python
           Start-Process -FilePath "C:\tmp\hello-web.daedalus" -ArgumentList "" -WindowStyle Hidden
           $proc = Get-Process -Name "hello-web" -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 5

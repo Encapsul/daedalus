@@ -1,7 +1,7 @@
 use crate::remote_cache::remote_cache_from_args;
 use anyhow::{Context, Result};
 use daedalus_core::detect;
-use daedalus_core::embed;
+use daedalus_core::embed::{self, RuntimeProfile};
 use daedalus_core::encrypt;
 use daedalus_core::layer::{Capability, RuntimeLayer, SerializableLayer};
 use daedalus_core::metadata::{BunFeatures, EmbeddedInterpreter};
@@ -14,7 +14,7 @@ use super::args::{config_fingerprint, parse_target, BuildArgs, BuildPlan};
 use super::deps::{
     check_php_platform_reqs, ensure_composer, ensure_deno, ensure_electron, ensure_go, ensure_hugo,
     ensure_node, ensure_python, ensure_rust, ensure_wasmtime, has_workspace_protocol,
-    interpreter_bin, is_command_available, resolve_command,
+    interpreter_bin, is_command_available, resolve_command, tools_dir_for,
 };
 use super::payload::{copy_dir_recursive_with, create_squashfs_payload, include_points_to_env};
 use super::sign::sign_macos_binary;
@@ -1457,6 +1457,43 @@ fn strip_compiled_sources(rootfs: &Path, bin_name: &str) {
     }
 }
 
+/// When cross-compiling, download the target-specific interpreter binary
+/// and return its path. Returns `None` on host builds or when the download
+/// fails.
+fn resolve_cross_interpreter(
+    interpreter_name: &str,
+    target: Option<&str>,
+    verbose: bool,
+    electron_url: Option<&str>,
+) -> Option<PathBuf> {
+    let download = match interpreter_name {
+        "python3" => ensure_python(target, verbose).ok(),
+        "node" => ensure_node(target, verbose)
+            .ok()
+            .map(|p| interpreter_bin(&p, "node", target)),
+        "deno" => ensure_deno(target, verbose)
+            .ok()
+            .map(|p| interpreter_bin(&p, "deno", target)),
+        "hugo" => ensure_hugo(target, verbose)
+            .ok()
+            .map(|p| interpreter_bin(&p, "hugo", target)),
+        "electron" => ensure_electron(target, verbose, electron_url)
+            .ok()
+            .map(|p| interpreter_bin(&p, "electron", target)),
+        "wasmtime" => ensure_wasmtime(target, verbose)
+            .ok()
+            .map(|p| interpreter_bin(&p, "wasmtime", target)),
+        other => {
+            eprintln!(
+                "[daedalus] warning: no cross-compiled {other} available, \
+                 falling back to host"
+            );
+            None
+        }
+    };
+    download
+}
+
 /// Embed the interpreter, `N-API` addons and `RoadRunner` into the staged rootfs.
 ///
 /// When `target` is set and differs from the host architecture, downloads a
@@ -1475,62 +1512,12 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
     let mut interpreter_embedded = false;
     if let Some(ref interpreter_name) = embedded_interpreter_str {
         let interp_path = if is_cross {
-            match interpreter_name.as_str() {
-                "python3" => match ensure_python(target, verbose) {
-                    Ok(p) => Some(p),
-                    Err(e) => {
-                        eprintln!(
-                            "[daedalus] warning: failed to download cross-compiled python: {e}"
-                        );
-                        None
-                    }
-                },
-                "node" => match ensure_node(target, verbose) {
-                    Ok(p) => Some(interpreter_bin(&p, "node", target)),
-                    Err(e) => {
-                        eprintln!(
-                            "[daedalus] warning: failed to download cross-compiled node: {e}"
-                        );
-                        None
-                    }
-                },
-                "deno" => match ensure_deno(target, verbose) {
-                    Ok(p) => Some(interpreter_bin(&p, "deno", target)),
-                    Err(e) => {
-                        eprintln!(
-                            "[daedalus] warning: failed to download cross-compiled deno: {e}"
-                        );
-                        None
-                    }
-                },
-                "hugo" => match ensure_hugo(target, verbose) {
-                    Ok(p) => Some(interpreter_bin(&p, "hugo", target)),
-                    Err(e) => {
-                        eprintln!("[daedalus] warning: failed to download hugo binary: {e}");
-                        None
-                    }
-                },
-                "electron" => {
-                    match ensure_electron(target, verbose, args.electron_url.as_deref()) {
-                        Ok(p) => Some(interpreter_bin(&p, "electron", target)),
-                        Err(e) => {
-                            eprintln!("[daedalus] warning: failed to download cross-compiled electron: {e}");
-                            None
-                        }
-                    }
-                }
-                "wasmtime" => match ensure_wasmtime(target, verbose) {
-                    Ok(p) => Some(interpreter_bin(&p, "wasmtime", target)),
-                    Err(e) => {
-                        eprintln!("[daedalus] warning: failed to download wasmtime binary: {e}");
-                        None
-                    }
-                },
-                other => {
-                    eprintln!("[daedalus] warning: no cross-compiled {other} available, falling back to host");
-                    None
-                }
-            }
+            resolve_cross_interpreter(
+                interpreter_name,
+                target,
+                verbose,
+                args.electron_url.as_deref(),
+            )
         } else {
             None
         };
@@ -1539,6 +1526,20 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
             interpreter_embedded = embed_primary_interpreter(path, rootfs, app_dir, verbose);
             if plan.runtime_name == "electron" && interpreter_embedded {
                 embed_electron_resources(path, rootfs, verbose);
+            }
+
+            // For a downloaded, isolated runtime the single binary is not
+            // enough: the install tree holds DLLs/stdlib/data the runtime
+            // needs. Copy it with a per-runtime profile.
+            if interpreter_embedded {
+                if let Some(install_dir) = runtime_install_dir(interpreter_name, target) {
+                    let _ = embed::embed_runtime_dir(
+                        &install_dir,
+                        &runtime_profile(interpreter_name),
+                        rootfs,
+                        verbose,
+                    );
+                }
             }
         } else {
             let host_path = which::which(interpreter_name)
@@ -1582,6 +1583,67 @@ fn resolve_embed_interpreter(args: &BuildArgs, runtime_name: &str) -> Option<Str
         "electron" => Some("electron".to_string()),
         "wasm" => Some("wasmtime".to_string()),
         _ => None,
+    }
+}
+
+/// Map an interpreter name to its install directory, either the isolated
+/// download tree (`tools_dir`) or, for runtimes whose host install is
+/// non-self-contained (Python), the parent of the host binary. Returns
+/// `None` when no extra tree exists (self-contained runtimes).
+fn runtime_install_dir(interpreter_name: &str, target: Option<&str>) -> Option<PathBuf> {
+    let install_dir_name = match interpreter_name {
+        "python3" | "python" => "python",
+        "node" => "node",
+        "deno" => "deno",
+        "hugo" => "hugo",
+        "electron" => "electron",
+        "wasmtime" => "wasmtime",
+        _ => return None,
+    };
+    let dir = tools_dir_for(install_dir_name, target);
+    if dir.is_dir() {
+        return Some(dir);
+    }
+    python_host_install_dir(target)
+}
+
+/// Locate the install prefix of the host Python via `sys.prefix`. On Windows
+/// the Python binary ships DLLs and `Lib/` beside its prefix — they must be
+/// shipped alongside the interpreter. On Linux/macOS the host python's
+/// dependencies are resolved by `ldd` and `embed_python_config`, so no
+/// install-tree copy is needed (this returns `None`).
+fn python_host_install_dir(target: Option<&str>) -> Option<PathBuf> {
+    let needs_tree = cfg!(windows) || target.is_some_and(|t| parse_target(t).1 == "windows");
+    if !needs_tree {
+        return None;
+    }
+    let bin_name = if target.is_some_and(|t| parse_target(t).1 == "windows") {
+        "python.exe"
+    } else {
+        "python3"
+    };
+    let python = which::which(bin_name).ok()?;
+    let out = std::process::Command::new(&python)
+        .args(["-c", "import sys; print(sys.prefix)"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let prefix = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let path = PathBuf::from(prefix);
+    path.is_dir().then_some(path)
+}
+
+/// The embedding profile for a runtime's install-tree copy. Self-contained
+/// runtimes copy nothing and resolve to a no-op profile.
+fn runtime_profile(interpreter_name: &str) -> RuntimeProfile {
+    match interpreter_name {
+        "python3" | "python" => *embed::python_runtime_profile(),
+        "node" => *embed::node_runtime_profile(),
+        "electron" => *embed::electron_runtime_profile(),
+        // deno, hugo, wasmtime ship self-contained single binaries.
+        _ => RuntimeProfile::self_contained(),
     }
 }
 
