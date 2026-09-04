@@ -1,50 +1,40 @@
-# Agent medical / agricole hors-ligne (Gemma)
+# Offline Medical/Agricultural Demo with Google Gemma
 
-Demo d'une IA vraiment hors-ligne pour l'Afrique : un agent de clinique rurale et
-de cooperative agricole pilote par un modele Google Gemma local, servi par Ollama.
-Aucun cloud, aucun GPU, aucune connexion Internet requise a l'execution.
+This demo showcases a truly offline AI assistant for rural clinics and agricultural cooperatives in Africa. No Internet connection, GPU, or cloud services are required at runtime.
 
-## Le probleme reel
+## The Real Problem
 
-Dans une clinique rurale ou une cooperative agricole, l'Internet est rare, lent
-ou coupe et les donnees doivent rester sur place (confidentialite, souverainete).
-Un assistant qui depend d'un cloud ne sert a rien la ou il faut de l'aide : c'est
-la zone d'impact de ce demo -- du conseil fiable sur un appareil modeste, hors ligne.
+In rural clinics and agricultural cooperatives, Internet is rare, slow, or unavailable. Data must remain on-site (privacy, sovereignty). An AI assistant that depends on the cloud is useless where help is needed: this is the impact zone of this demo -- reliable advice on a modest offline device.
 
-## Ce que le paquet contient
+## What's Included
 
-- `Modelfile` : base `FROM gemma:2b`, le signal qui declenche l'auto-detection du
-  runtime `gemma` par daedalus.
-- `models/gemma-2b-it-q4.gguf` : emplacement des poids du modele (placeholder).
-- `app.py` : deux modes, stdlib Python uniquement (build realise sans reseau).
-  - `python3 app.py diagnose` -- check de symptomes de clinique rurale.
-  - `python3 app.py crop` -- conseil pour une culture + une condition.
-  Chaque mode affiche une prise en charge en dur puis montre comment il sollicite
-  Gemma via l'API Ollama locale ; si Ollama est injoignable il bascule en "mode
-  demo hors-ligne" et reste utile.
+- **Modelfile**: `FROM gemma:2b` -- the signal that triggers daedalus' automatic `gemma` runtime detection.
+- **models/gemma-2b-it-q4.gguf**: Model weights location (placeholder -- 4-byte dummy file).
+- **app.py**: Two modes, Python stdlib only (build works without network).
+  - `python3 app.py diagnose` -- rural clinic symptom check.
+  - `python3 app.py crop` -- agricultural advice + a condition.
+  Each mode displays hardcoded support then shows how it would query Gemma via the local Ollama API. If Ollama is unreachable, it gracefully falls back to "offline demo mode" and remains useful.
 
-## Construction
+## Building
 
-Dans la racine du workspace, reconstruisez le CLI puis packagez le demo :
+From the workspace root, build the CLI then package the demo:
 
 ```bash
 cargo build --release
 daedalus build ./examples/offline-health-agri -o clinic-agent.de
 ```
 
-## Mise a jour du modele (delta SISR)
+## Model Update (SISR Delta)
 
-Quand Google publie une version du modele (fine-tune, requantisation), daedalus ne
-retransmet pas le paquet entier : son chunking a contenu defini (CD) ne renvoie que
-les morceaux de poids modifies. Mesure reproductible (bench `sisr_stage` inclus) :
+When Google publishes a new model version (fine-tune, re-quantization), daedalus does not retransmit the entire package: its content-defined chunking (CD) only returns the modified weight chunks. Reproducible benchmark (included `sisr_stage` test):
 
-```text
-SISR gemma update (simulated 200 MiB (10% perturbed)):
-  delta 20.6 MiB vs 200.0 MiB full — 89.7% bandwidth saved
+```
+Gemma update (simulated 200 MiB (10% perturbed)):
+  20.6 MiB delta vs 200.0 MiB full -- 89.7% bandwidth saved
   (195 changed chunks, 1511 reused)
 ```
 
-Pour un vrai couple de poids v1/v2, pointez les variables et relancez le bench :
+For an actual v1/v2 weight pair, point to the variables and re-run the bench:
 
 ```bash
 DAEDALUS_SISR_MODEL_V1=v1.gguf DAEDALUS_SISR_MODEL_V2=v2.gguf \
@@ -52,12 +42,11 @@ DAEDALUS_SISR_MODEL_V1=v1.gguf DAEDALUS_SISR_MODEL_V2=v2.gguf \
   -- --ignored --nocapture
 ```
 
-En zone rurale ou la bande passante coute plus cher que le calcul, reduire l'octet
-transfere de ~9x par mise a jour est le levier de maintenance le plus concret.
+In rural areas where bandwidth costs more than computation, reducing transferred bytes by ~9x per update is the most concrete maintenance lever.
 
-## Execution locale avec Ollama
+## Local Execution with Ollama
 
-Demarrez le service Gemma, puis lancez le binaire autonome :
+Start the Gemma service, then launch the standalone binary:
 
 ```bash
 ollama serve
@@ -67,17 +56,14 @@ ollama run gemma:2b
 ./clinic-agent.de crop
 ```
 
-Avec un modele charge, l'agent repond via l'API locale (`POST /api/generate`,
-hote surchargeable par `OLLAMA_HOST`).
+With a loaded model, the agent responds via the local API (`POST /api/generate`, host overloadable via `OLLAMA_HOST`).
 
-## Degradation hors-ligne
+## Offline Degradation
 
-Sans Ollama lance, le binaire produit une sortie utile : il affiche les checks et
-la question exacte qu'aurait recue le modele, en mode demo hors-ligne. Ne plante jamais.
+Without Ollama running, the binary produces useful output: it displays the checks and the exact question the model would have received, in offline demo mode. It never crashes.
 
-## Pourquoi Google devrait s'y interesser
+## Why Google Should Care
 
-- **Offline first** : de l'IA utile la ou la couverture fait defaut, pas l'inverse.
-- **Souverainete des donnees** : rien ne quitte l'appareil.
-- **Gemma la ou le cloud n'arrive pas** : un petit modele efficace sur hardware
-  modeste change la donne pour les cliniques et cooperatives africaines.
+- **Offline first**: useful AI where coverage is lacking, not the reverse.
+- **Data sovereignty**: nothing leaves the device.
+- **Gemma where the cloud can't reach**: an efficient small model on modest hardware changes the game for African clinics and cooperatives.
