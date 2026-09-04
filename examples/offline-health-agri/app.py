@@ -1,14 +1,14 @@
-"""Demande-medicale/agricole hors-ligne, pilotee par un modele Gemma local Ollama.
+"""
+Offline Medical/Agricultural Demo with Google Gemma
 
-Deux modes de demonstration (>= Python 3 stdlib seulement, aucune dependance) :
-    python3 app.py diagnose   -> aide medicale de clinique rurale
-    python3 app.py crop       -> conseil agricole local
+Two demonstration modes (Python stdlib only, no dependencies):
+    python3 app.py diagnose   -> rural clinic symptom check
+    python3 app.py crop       -> agricultural advice + a condition
 
-Chaque mode affiche une prise en charge structuree (reponses en dur) puis montre
-comment elle SOLLICITERAIT le modele Gemma embarque via l'API Ollama locale. Si
-Ollama n'est pas joignable (machine sans modele charge), le programme bascule
-graceusement en "mode demo hors-ligne" et reste utile. Ceci n'est PAS un avis
-medical : c'est un scaffold de demonstration.
+Each mode displays hardcoded support then shows how it would query Gemma
+via the local Ollama API. If Ollama is unreachable, it gracefully falls
+back to "offline demo mode" and remains useful. This is NOT medical advice:
+it is a demonstration scaffold.
 """
 
 import json
@@ -16,13 +16,13 @@ import sys
 import urllib.error
 import urllib.request
 
-# L'hote Ollama peut etre surcharge par OLLAMA_HOST ; defaut = instance locale.
+# Ollama host can be overloaded by OLLAMA_HOST; default = local instance.
 OLLAMA_HOST = "http://localhost:11434"
 MODEL = "gemma:2b"
 
 
 def ollama_generate(prompt):
-    """Envoie `prompt` au modele local ; retourne la reponse ou None si offline."""
+    """Send `prompt` to the local model; return the response or None if offline."""
     body = json.dumps({"model": MODEL, "prompt": prompt, "stream": False}).encode("utf-8")
     req = urllib.request.Request(OLLAMA_HOST + "/api/generate", data=body,
                                  headers={"Content-Type": "application/json"})
@@ -30,57 +30,57 @@ def ollama_generate(prompt):
         with urllib.request.urlopen(req, timeout=8) as resp:
             return json.loads(resp.read().decode("utf-8")).get("response")
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
-        # Ollama injoignable ou reponse invalide : l'app doit rester utilisable.
+        # Ollama unreachable or invalid response: the app must remain usable.
         return None
 
 
 def ai_frame(title, prompt):
-    """Imprime la sollicitation du modele + bascule gracieuse si hors-ligne."""
-    print(f"\n-- {title} (modele local {MODEL}) --")
+    """Print the model query + graceful offline fallback."""
+    print(f"\n-- {title} (local model {MODEL}) --")
     answer = ollama_generate(prompt)
     if answer is None:
-        print("  [mode demo hors-ligne] Ollama indisponible. Voici la question "
-              "qu'aurait recue le modele Gemma local :")
+        print("  [offline demo mode] Ollama unavailable. The question the "
+                "local Gemma model would have been asked is:")
         print(f"  > {prompt}")
     else:
         print(f"  > {answer}")
 
 
 def diagnose():
-    """Scenario clinique rurale : tableau de symptomes, puis draft du modele."""
-    print("=== CHECK DE SYMPTOMES - CLINIQUE RURALE ===")
-    print("Patient : enfant de 5 ans, fievre depuis 3 jours, toux seche.")
+    """Rural clinic scenario: symptom table, then draft model output."""
+    print("=== RURAL CLINIC SYMPTOM CHECK ===")
+    print("Patient: 5-year-old child, fever for 3 days, dry cough.")
     checks = [
-        ("Fievre elevee", ">38.5C : se referer au protocole paludisme local"),
-        ("Deshydratation", "Verifier la turgescence cutanee et les muqueuses"),
-        ("Signes de danger", "Difficulte a respirer / somnolence -> reference urgente"),
+        ("High fever", ">38.5C: refer to local malaria protocol"),
+        ("Dehydration", "Check skin turgor and mucous membranes"),
+        ("Danger signs", "Difficulty breathing / drowsiness -> urgent referral"),
     ]
     for label, guidance in checks:
-        print(f"  - {label} : {guidance}")
-    print("  (reponses en dur pour la demo - PAS un avis medical)")
-    prompt = ("Clinique rurale sans internet. Enfant 5 ans fievre 3 jours, toux "
-              "seche. Donne en langage simple une conduite a tenir et les signes "
-              "de danger justifiant une reference urgente. Pas de diagnostic.")
-    ai_frame("Draft conseille par Gemma local", prompt)
+        print(f"  - {label}: {guidance}")
+    print("  (hardcoded responses for demo -- NOT medical advice)")
+    prompt = ("Rural clinic without internet. 5-year-old child, fever 3 days, "
+              "dry cough. Give simple language guidance on what to do and "
+              "which danger signs justify urgent referral. No diagnosis.")
+    ai_frame("Draft advice from local Gemma", prompt)
 
 
 def crop():
-    """Scenario cooperative agricole : culture + probleme, puis draft du modele."""
-    print("=== CONSEIL AGRICOLE - COOPERATIVE LOCALE ===")
-    crop_name, condition = "mais", "taches brunes sur les feuilles"
-    print(f"Culture : {crop_name} | Condition : {condition}")
+    """Agricultural cooperative scenario: crop + problem, then draft model output."""
+    print("=== AGRICULTURAL COOPERATIVE ADVICE ===")
+    crop_name, condition = "maize", "brown leaves on leaves"
+    print(f"Crop: {crop_name} | Condition: {condition}")
     checks = [
-        ("Observation", "Verifier l'humidite et la rotation des cultures"),
-        ("Action immediate", "Retirer les feuilles atteintes pour limiter la propagation"),
-        ("Prevention", "Espacer les semis et favoriser la ventilation"),
+        ("Observation", "Check soil humidity and crop rotation"),
+        ("Immediate action", "Remove affected leaves to limit spread"),
+        ("Prevention", "Space plantings and favor ventilation"),
     ]
     for label, guidance in checks:
-        print(f"  - {label} : {guidance}")
-    print("  (reponses en dur pour la demo - guidance generique)")
-    prompt = (f"Agent agricole local, internet indisponible. Pour du {crop_name} "
-              f"presentant {condition}, donne des recommandations simples en "
-              "langage clair, sans referer a des sources en ligne.")
-    ai_frame("Draft conseille par Gemma local", prompt)
+        print(f"  - {label}: {guidance}")
+    print("  (hardcoded responses for demo -- generic guidance)")
+    prompt = (f"Local agricultural agent, no internet available. For {crop_name} "
+              f"presenting {condition}, give simple-language recommendations "
+              "without referring to online sources.")
+    ai_frame("Draft advice from local Gemma", prompt)
 
 
 def main():
@@ -92,7 +92,7 @@ def main():
     elif sys.argv[1] == "crop":
         crop()
     else:
-        print(f"Mode inconnu: {sys.argv[1]}. Choisir 'diagnose' ou 'crop'.")
+        print(f"Unknown mode: {sys.argv[1]}. Choose 'diagnose' or 'crop'.")
         return 1
     return 0
 
