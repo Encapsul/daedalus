@@ -300,6 +300,7 @@ pub(crate) fn build_single_target(
             seccomp,
             landlock,
             gui,
+            gpu: plan.gpu_backend.clone(),
             cpu_limit: plan.cpu_limit,
             memory_limit_mb: plan.memory_limit_mb,
             pid_limit: plan.pid_limit,

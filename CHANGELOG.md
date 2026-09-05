@@ -7,6 +7,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **GPU passthrough for accelerated inference**: `daedalus build --gpu auto|nvidia|rocm|none` (or `[build] gpu` in `.daedalus.toml`) records the compute backend in the binary metadata. When `nvidia` or `rocm` is set, the launcher bind-mounts the GPU device nodes (NVIDIA `/dev/nvidia*` + caps, ROCm `/dev/kfd` + `/dev/dri` render nodes) into the sandbox via a regular-file overlay and pins the matching visibility vars (`CUDA_VISIBLE_DEVICES`, `NVIDIA_VISIBLE_DEVICES`, `HIP_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`) — Ollama/llama.cpp offload works headless, inside the sandbox.
+- `daedalus-core::gpu` detection probe (`--gpu auto`): `/dev/kfd` → ROCm, `/proc/driver/nvidia/gpus` → NVIDIA; CPU fallback is safe (missing nodes are skipped)
+- `daedalus inspect` shows the embedded `GPU:` backend; dry-run reports the resolved backend
 - **Multi-service builds**: `--entrypoint name=cmd,arg,...` now serializes named services into the binary metadata and the stub supervisor runs them. `--service-port NAME=PORT` and `--service-timeout NAME=SECONDS` configure the readiness probe (`ready_port`/`ready_timeout`) each service is gated on before the app is considered up.
 - `daedalus inspect` now lists multi-service definitions (`Services:` section, `service.<name>` lines in `--plain` mode)
 - `ServiceSpec` in `daedalus-core::assembly` serializing `{name, cmd, env, ready_port, ready_timeout}` — the schema the stub supervisor deserializes

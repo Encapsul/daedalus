@@ -135,6 +135,9 @@ pub fn run(args: InspectArgs) -> Result<()> {
             if let Some(iso) = meta.get("isolation").and_then(|v| v.as_u64()) {
                 println!("isolation\t{iso}");
             }
+            if let Some(gpu) = meta.get("gpu").and_then(|v| v.as_str()) {
+                println!("gpu\t{gpu}");
+            }
             if let Some(ep) = meta.get("entrypoint").and_then(|v| v.as_array()) {
                 let parts: Vec<&str> = ep.iter().filter_map(|v| v.as_str()).collect();
                 println!("entrypoint\t{}", parts.join(" "));
@@ -220,6 +223,11 @@ pub fn run(args: InspectArgs) -> Result<()> {
         // Isolation level
         if let Some(iso) = meta.get("isolation").and_then(|v| v.as_u64()) {
             println!("Isolation:   level {iso}");
+        }
+
+        // GPU backend
+        if let Some(gpu) = meta.get("gpu").and_then(|v| v.as_str()) {
+            println!("GPU:         {gpu}");
         }
 
         // Entrypoint

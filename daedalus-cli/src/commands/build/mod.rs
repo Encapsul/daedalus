@@ -6,7 +6,7 @@ mod sign;
 mod sisr;
 mod stub;
 
-pub(crate) use args::{load_config, BuildArgs, BuildPlan};
+pub(crate) use args::{load_config, BuildArgs, BuildPlan, GpuArg};
 use payload::{count_files, print_tree};
 use pipeline::{build_single_target, build_universal, warn_sandbox_noops};
 
@@ -65,6 +65,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     let outputs = args::output_paths(&args, &targets);
     let (entrypoint_args, mut services) = args::parse_entrypoints(&args.entrypoint);
     args::apply_service_overrides(&mut services, &args.service_port, &args.service_timeout)?;
+    let gpu_backend = resolve_gpu_backend(args.gpu, config.build.gpu.as_deref())?;
 
     let plan = BuildPlan {
         verbose,
@@ -77,6 +78,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         seccomp: args.seccomp || config.build.seccomp.unwrap_or(false),
         landlock: args.landlock || config.build.landlock.unwrap_or(false),
         gui: args.gui || config.build.gui.unwrap_or(false),
+        gpu_backend,
         cpu_limit: args.cpu_limit,
         memory_limit_mb: args.memory_limit_mb,
         pid_limit: args.pid_limit,
@@ -290,6 +292,14 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
     eprintln!("  Seccomp:   {}", plan.seccomp);
     eprintln!("  Landlock:  {}", plan.landlock);
     eprintln!("  GUI:       {}", plan.gui);
+    eprintln!(
+        "  GPU:       {}",
+        if plan.gpu_backend.is_empty() {
+            "none (CPU)"
+        } else {
+            &plan.gpu_backend
+        }
+    );
     warn_sandbox_noops(plan.isolation_num, plan.seccomp, plan.landlock);
     eprintln!("  SquashFS:  {}", plan.squashfs);
     if args.enable_sisr {
@@ -381,6 +391,46 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
     }
 }
 
+/// Resolve the requested GPU backend to a metadata value: `""` (CPU),
+/// `"nvidia"`, or `"rocm"`. `--gpu auto` probes the build host; explicit
+/// values pass through. A missing `.daedalus.toml` value means CPU.
+fn resolve_gpu_backend(flag: Option<GpuArg>, config: Option<&str>) -> Result<String> {
+    let requested = match flag {
+        Some(g) => g,
+        None => match config {
+            Some(raw) => parse_gpu_arg(raw)?,
+            None => return Ok(String::new()),
+        },
+    };
+    match requested {
+        GpuArg::None => Ok(String::new()),
+        GpuArg::Nvidia => Ok("nvidia".into()),
+        GpuArg::Rocm => Ok("rocm".into()),
+        GpuArg::Auto => match daedalus_core::gpu::detect_gpu().backend {
+            Some(b) => Ok(b.as_str().into()),
+            None => {
+                eprintln!(
+                    "[daedalus] warning: --gpu auto found no accelerator — building CPU-only"
+                );
+                Ok(String::new())
+            }
+        },
+    }
+}
+
+/// Parse a backend name from `.daedalus.toml` `[build] gpu = "..."`.
+fn parse_gpu_arg(raw: &str) -> Result<GpuArg> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "auto" => Ok(GpuArg::Auto),
+        "nvidia" => Ok(GpuArg::Nvidia),
+        "rocm" => Ok(GpuArg::Rocm),
+        "none" => Ok(GpuArg::None),
+        other => {
+            anyhow::bail!("invalid [build] gpu value '{other}' (expected auto|nvidia|rocm|none)")
+        }
+    }
+}
+
 /// Render the multi-service list as a single human-readable summary line.
 fn describe_services(plan: &BuildPlan) -> String {
     plan.services
@@ -394,4 +444,54 @@ fn describe_services(plan: &BuildPlan) -> String {
         })
         .collect::<Vec<_>>()
         .join(" | ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    /// gpu_backend_explicit_values_pass_through - explicit backends.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn gpu_backend_explicit_values_pass_through() {
+        assert_eq!(
+            resolve_gpu_backend(Some(GpuArg::Nvidia), None).unwrap(),
+            "nvidia"
+        );
+        assert_eq!(
+            resolve_gpu_backend(Some(GpuArg::Rocm), None).unwrap(),
+            "rocm"
+        );
+        assert!(resolve_gpu_backend(Some(GpuArg::None), None)
+            .unwrap()
+            .is_empty());
+        assert!(resolve_gpu_backend(None, None).unwrap().is_empty());
+    }
+
+    #[test]
+    /// gpu_backend_config_parses_known_values - config file parsing.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn gpu_backend_config_parses_known_values() {
+        assert_eq!(resolve_gpu_backend(None, Some("rocm")).unwrap(), "rocm");
+        assert!(resolve_gpu_backend(None, Some("none")).unwrap().is_empty());
+        assert_eq!(parse_gpu_arg("ROCm").unwrap(), GpuArg::Rocm);
+        assert_eq!(parse_gpu_arg("Auto").unwrap(), GpuArg::Auto);
+    }
+
+    #[test]
+    /// gpu_backend_config_rejects_unknown_value - config file validation.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn gpu_backend_config_rejects_unknown_value() {
+        assert!(parse_gpu_arg("intel").is_err());
+        assert!(parse_gpu_arg("").is_err());
+    }
 }

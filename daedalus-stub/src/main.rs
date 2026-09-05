@@ -239,6 +239,18 @@ pub struct Metadata {
     /// Return: nothing
     gui: bool,
     #[serde(default)]
+    // Read only in the Linux GPU bind-mount path (pivot_root isolation).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    /// `gpu` - compute backend for accelerated inference.
+    ///
+    /// Description:
+    /// Empty (`""`), `"nvidia"`, or `"rocm"`. When set, the launcher
+    /// bind-mounts the corresponding GPU device nodes into the sandbox
+    /// and pins the matching visibility env vars for the child.
+    ///
+    /// Return: nothing
+    gpu: String,
+    #[serde(default)]
     /// `services` - multi-service definitions.
     ///
     /// Description:
@@ -2199,6 +2211,7 @@ mod tests {
             seccomp: false,
             landlock: false,
             gui: false,
+            gpu: String::new(),
             cpu_limit: None,
             memory_limit_mb: None,
             pid_limit: None,
@@ -2250,6 +2263,7 @@ mod tests {
             seccomp: false,
             landlock: false,
             gui: false,
+            gpu: String::new(),
             cpu_limit: None,
             memory_limit_mb: None,
             pid_limit: None,
