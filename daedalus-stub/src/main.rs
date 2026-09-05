@@ -1971,18 +1971,6 @@ extern "C" {
     ///
     /// Return: the `i32`
     fn libc_execvp(path: *const core::ffi::c_char, argv: *const *const core::ffi::c_char) -> i32;
-    #[link_name = "execve"]
-    /// `libc_execve` - safe wrapper around libc execve(3).
-    ///
-    /// Description:
-    /// Replaces the current process image with the given argv and envp. Never returns on success.
-    ///
-    /// Return: nothing
-    fn libc_execve(
-        path: *const core::ffi::c_char,
-        argv: *const *const core::ffi::c_char,
-        envp: *const *const core::ffi::c_char,
-    ) -> i32;
     #[link_name = "flock"]
     /// `libc_flock` - safe wrapper around libc flock(2).
     /// @fd: fd

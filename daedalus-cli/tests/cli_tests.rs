@@ -167,6 +167,62 @@ fn test_build_dry_run_shows_ai_model_flag() {
         .stderr(predicate::str::contains("(mode: offline, embedded)"));
 }
 
+#[test]
+fn test_build_help_lists_service_flags() {
+    daedalus()
+        .args(["build", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--service-port"))
+        .stdout(predicate::str::contains("--service-timeout"));
+}
+
+#[test]
+fn test_build_dry_run_shows_named_services() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app")).unwrap();
+    std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    daedalus()
+        .args([
+            "build",
+            dir.path().join("app").to_str().unwrap(),
+            "--entrypoint",
+            "api=python3,api.py",
+            "--entrypoint",
+            "worker=python3,worker.py",
+            "--service-port",
+            "api=8080",
+            "--dry-run",
+            "--no-install",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Services:  "))
+        .stderr(predicate::str::contains("api=python3,api.py (ready :8080)"))
+        .stderr(predicate::str::contains("worker=python3,worker.py"));
+}
+
+#[test]
+fn test_build_dry_run_rejects_unknown_service_port() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app")).unwrap();
+    std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    daedalus()
+        .args([
+            "build",
+            dir.path().join("app").to_str().unwrap(),
+            "--entrypoint",
+            "api=python3,api.py",
+            "--service-port",
+            "ghost=8080",
+            "--dry-run",
+            "--no-install",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no service named 'ghost'"));
+}
+
 /// `migrate` turns a legacy (SISR-less) file into a valid v2 file and
 /// preserves the original payload bytes.
 #[test]

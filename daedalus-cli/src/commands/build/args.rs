@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::Args;
 use daedalus_core::detect;
 use serde::Deserialize;
@@ -89,10 +89,17 @@ pub(crate) struct BuildPlan {
 }
 
 /// A named service parsed from `--entrypoint name=cmd,arg1,...`.
+///
+/// Merged with `--service-port`/`--service-timeout` overrides so the
+/// metadata carries a readiness probe (`ready_port`/`ready_timeout`) the
+/// stub supervisor can gate on.
 #[derive(Debug, Clone)]
 pub(crate) struct ServiceEntry {
     pub name: String,
     pub cmd: Vec<String>,
+    pub ready_port: u16,
+    pub ready_timeout: u64,
+    pub env: std::collections::BTreeMap<String, String>,
 }
 
 /// Parse raw `--entrypoint` flag values into a flat argv template and an
@@ -121,6 +128,9 @@ pub(crate) fn parse_entrypoints(raw: &[String]) -> (Vec<String>, Vec<ServiceEntr
             services.push(ServiceEntry {
                 name: name.trim().to_string(),
                 cmd,
+                ready_port: 0,
+                ready_timeout: 0,
+                env: std::collections::BTreeMap::new(),
             });
         } else {
             let parts: Vec<String> = s
@@ -135,6 +145,65 @@ pub(crate) fn parse_entrypoints(raw: &[String]) -> (Vec<String>, Vec<ServiceEntr
         flat.clone_from(&services[0].cmd);
     }
     (flat, services)
+}
+
+/// Apply `--service-port NAME=PORT` and `--service-timeout NAME=SECONDS`
+/// overrides to the parsed service list. Unknown names are an error so typos
+/// don't silently disable a readiness probe.
+pub(crate) fn apply_service_overrides(
+    services: &mut [ServiceEntry],
+    ports: &[String],
+    timeouts: &[String],
+) -> Result<()> {
+    for spec in ports {
+        let (name, value) = parse_name_value(spec, "--service-port")?;
+        let port = value
+            .parse::<u16>()
+            .with_context(|| format!("invalid port for service '{name}': '{value}'"))?;
+        apply_service_field(services, &name, |s| s.ready_port = port, "--service-port")?;
+    }
+    for spec in timeouts {
+        let (name, value) = parse_name_value(spec, "--service-timeout")?;
+        let timeout = value
+            .parse::<u64>()
+            .with_context(|| format!("invalid timeout for service '{name}': '{value}'"))?;
+        apply_service_field(
+            services,
+            &name,
+            |s| s.ready_timeout = timeout,
+            "--service-timeout",
+        )?;
+    }
+    Ok(())
+}
+
+/// Split a `NAME=VALUE` override spec, rejecting malformed input.
+fn parse_name_value(spec: &str, flag: &str) -> Result<(String, String)> {
+    let (name, value) = spec
+        .split_once('=')
+        .ok_or_else(|| anyhow::anyhow!("expected NAME=VALUE for {flag}, got '{spec}'"))?;
+    Ok((name.trim().to_string(), value.trim().to_string()))
+}
+
+/// Find the named service and call `apply` on it, erroring on unknown names.
+fn apply_service_field(
+    services: &mut [ServiceEntry],
+    name: &str,
+    apply: impl FnOnce(&mut ServiceEntry),
+    flag: &str,
+) -> Result<()> {
+    let known: Vec<String> = services.iter().map(|s| s.name.clone()).collect();
+    let svc = services
+        .iter_mut()
+        .find(|s| s.name == name)
+        .ok_or_else(|| {
+            anyhow!(
+                "{flag}: no service named '{name}' (services: {})",
+                known.join(", ")
+            )
+        })?;
+    apply(svc);
+    Ok(())
 }
 
 /// Expand `--target`/`--cross-compile` (each comma-separated) plus the config
@@ -527,6 +596,14 @@ pub struct BuildArgs {
     #[arg(long = "entrypoint", action = clap::ArgAction::Append)]
     pub entrypoint: Vec<String>,
 
+    /// Readiness probe port for a named service (repeatable): --service-port api=8080
+    #[arg(long = "service-port", action = clap::ArgAction::Append)]
+    pub service_port: Vec<String>,
+
+    /// Readiness timeout in seconds for a named service (repeatable): --service-timeout api=30
+    #[arg(long = "service-timeout", action = clap::ArgAction::Append)]
+    pub service_timeout: Vec<String>,
+
     /// Enable WASM support with wasmtime
     #[arg(long)]
     pub wasm: bool,
@@ -671,6 +748,8 @@ pub(crate) fn default_build_args() -> BuildArgs {
         app: PathBuf::from("."),
         output: PathBuf::from("app.daedalus"),
         target: None,
+        service_port: Vec::new(),
+        service_timeout: Vec::new(),
         isolation: "sandbox".into(),
         seccomp: false,
         gui: false,
@@ -1044,5 +1123,50 @@ mod tests {
             config_fingerprint(&default_build_args(), &plan(false)),
             "fingerprint must be deterministic"
         );
+    }
+
+    #[test]
+    /// flat_and_named_entrypoints_parse - flat and named entrypoints parse.
+    ///
+    /// Description:
+    /// Flat syntax yields no services; named syntax yields ServiceEntry list.
+    ///
+    /// Return: nothing
+    fn flat_and_named_entrypoints_parse() {
+        let (flat, services) = parse_entrypoints(&["python3,main.py".into()]);
+        assert_eq!(flat, vec!["python3", "main.py"]);
+        assert!(services.is_empty());
+
+        let (flat, services) = parse_entrypoints(&[
+            "api=python3,api.py".into(),
+            "worker=python3,worker.py".into(),
+        ]);
+        // First service's cmd becomes the fallback flat entrypoint.
+        assert_eq!(flat, vec!["python3", "api.py"]);
+        assert_eq!(services.len(), 2);
+        assert_eq!(services[0].name, "api");
+        assert_eq!(services[0].cmd, vec!["python3", "api.py"]);
+        assert_eq!(services[1].name, "worker");
+    }
+
+    #[test]
+    /// service_overrides_apply_and_validate - service overrides apply and validate.
+    ///
+    /// Description:
+    /// Port/timeout overrides fill in the fields; unknown names fail.
+    ///
+    /// Return: nothing
+    fn service_overrides_apply_and_validate() {
+        let (_, mut services) = parse_entrypoints(&[
+            "api=python3,api.py".into(),
+            "worker=python3,worker.py".into(),
+        ]);
+        apply_service_overrides(&mut services, &["api=8080".into()], &["worker=40".into()])
+            .unwrap();
+        assert_eq!(services[0].ready_port, 8080);
+        assert_eq!(services[1].ready_timeout, 40);
+
+        let err = apply_service_overrides(&mut services, &["ghost=8080".into()], &[] as &[String]);
+        assert!(err.is_err(), "unknown service name must fail");
     }
 }
