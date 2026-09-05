@@ -32,6 +32,7 @@ pub mod registry;
 pub mod sisr;
 pub mod sisr_header;
 pub mod sisr_stage;
+pub mod system_info;
 pub mod tar;
 pub mod treeshake;
 pub mod universal;
