@@ -68,6 +68,9 @@ pub(crate) struct BuildPlan {
     pub(crate) seccomp: bool,
     pub(crate) landlock: bool,
     pub(crate) gui: bool,
+    /// Resolved GPU backend (`""` for CPU, `"nvidia"`/`"rocm"`), from
+    /// `--gpu auto` on the build host or an explicit `--gpu`/`[build] gpu`.
+    pub(crate) gpu_backend: String,
     pub(crate) cpu_limit: Option<u32>,
     pub(crate) memory_limit_mb: Option<u32>,
     pub(crate) pid_limit: Option<u32>,
@@ -86,6 +89,19 @@ pub(crate) struct BuildPlan {
     /// Identifier of the AI model bundled for offline inference (derived from
     /// `--model` filename). Exposed in the build metadata as `model_id`.
     pub(crate) model_id: Option<String>,
+}
+
+/// Compute backend selection for `--gpu`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum GpuArg {
+    /// Probe the build host and embed whichever backend is found
+    Auto,
+    /// NVIDIA CUDA / OptiX passthrough
+    Nvidia,
+    /// AMD ROCm passthrough
+    Rocm,
+    /// Explicitly CPU-only
+    None,
 }
 
 /// A named service parsed from `--entrypoint name=cmd,arg1,...`.
@@ -313,6 +329,14 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
     canonical.push(format!("seccomp={}", plan.seccomp));
     canonical.push(format!("landlock={}", plan.landlock));
     canonical.push(format!("gui={}", plan.gui));
+    canonical.push(format!(
+        "gpu={}",
+        if plan.gpu_backend.is_empty() {
+            "none"
+        } else {
+            &plan.gpu_backend
+        }
+    ));
     canonical.push(format!("cpu_limit={:?}", plan.cpu_limit));
     canonical.push(format!("memory_limit_mb={:?}", plan.memory_limit_mb));
     canonical.push(format!("pid_limit={:?}", plan.pid_limit));
@@ -455,6 +479,10 @@ pub struct BuildArgs {
     /// GUI app — bind-mount X11/Wayland/GPU before `pivot_root`
     #[arg(long)]
     pub gui: bool,
+
+    /// GPU backend for accelerated inference: auto, nvidia, rocm, none
+    #[arg(long, value_enum)]
+    pub gpu: Option<GpuArg>,
 
     /// Enable Landlock LSM filesystem sandbox
     #[arg(long)]
@@ -709,6 +737,9 @@ pub(crate) struct BuildConfig {
     pub seccomp: Option<bool>,
     pub landlock: Option<bool>,
     pub gui: Option<bool>,
+    /// Compute backend for the packaged app, in `[build] gpu =
+    /// "nvidia" | "rocm" | "auto" | "none"` from `.daedalus.toml`.
+    pub gpu: Option<String>,
     pub squashfs: Option<bool>,
     pub target: Option<String>,
     pub no_install: Option<bool>,
@@ -753,6 +784,7 @@ pub(crate) fn default_build_args() -> BuildArgs {
         isolation: "sandbox".into(),
         seccomp: false,
         gui: false,
+        gpu: None,
         cpu_limit: None,
         memory_limit_mb: None,
         pid_limit: None,
@@ -1078,6 +1110,7 @@ mod tests {
             no_install: false,
             seccomp: false,
             gui: false,
+            gpu_backend: String::new(),
             landlock: false,
             cpu_limit: None,
             memory_limit_mb: None,

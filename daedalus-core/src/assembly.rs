@@ -78,6 +78,9 @@ fn apply_meta_options(meta: &mut serde_json::Value, options: &MetaOptions) -> st
     if options.gui {
         meta["gui"] = serde_json::Value::Bool(true);
     }
+    if !options.gpu.is_empty() {
+        meta["gpu"] = serde_json::Value::String(options.gpu.clone());
+    }
     if let Some(c) = &options.cpu_limit {
         meta["cpu_limit"] = serde_json::Value::Number((*c).into());
     }
@@ -287,6 +290,10 @@ pub struct MetaOptions {
     /// Named services for multi-service mode. Empty when the build is a
     /// single-entrypoint application.
     pub services: Vec<ServiceSpec>,
+    /// Compute backend for the packaged app: `""` (CPU), `"nvidia"`, or
+    /// `"rocm"`. When set, the launcher bind-mounts the required GPU device
+    /// nodes into the sandbox so Ollama/llama.cpp can offload inference.
+    pub gpu: String,
 }
 
 /// Input to [`assemble_daedalus`]: bundles every byte-slice and build flag that
@@ -690,6 +697,7 @@ mod tests {
             mcp_tools: None,
             model_id: None,
             services: Vec::new(),
+            gpu: String::new(),
         };
         let bun_features = BunFeatures::default();
         let json = build_meta_json(
@@ -757,6 +765,7 @@ mod tests {
                 ready_port: 8080,
                 ready_timeout: 30,
             }],
+            gpu: String::new(),
         };
         let bun_features = BunFeatures::default();
         let json = build_meta_json(
@@ -777,6 +786,70 @@ mod tests {
         assert_eq!(services[0]["env"]["PORT"], "8080");
         assert_eq!(services[0]["ready_port"], 8080);
         assert_eq!(services[0]["ready_timeout"], 30);
+    }
+
+    #[test]
+    /// `gpu_backend_serializes_into_metadata` - GPU backend lands in metadata.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn gpu_backend_serializes_into_metadata() {
+        let opts = MetaOptions {
+            version: None,
+            author: None,
+            description: None,
+            license: None,
+            payload_format: None,
+            seccomp: false,
+            landlock: false,
+            gui: false,
+            cpu_limit: None,
+            memory_limit_mb: None,
+            pid_limit: None,
+            pre_hooks: None,
+            post_hooks: None,
+            app_hash: None,
+            rt_deps_hash: None,
+            update_url: None,
+            layers: None,
+            entrypoint_layer: None,
+            lazy_load: false,
+            mcp_tools: None,
+            model_id: None,
+            services: Vec::new(),
+            gpu: "rocm".into(),
+        };
+        let bun_features = BunFeatures::default();
+        let json = build_meta_json(
+            "compute",
+            "python",
+            2,
+            &["python3".into(), "app.py".into()],
+            &[],
+            &opts,
+            &bun_features,
+        )
+        .expect("meta serialization failed");
+        let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        assert_eq!(parsed["gpu"], "rocm");
+
+        let cpu = MetaOptions {
+            gpu: String::new(),
+            ..opts
+        };
+        let json = build_meta_json(
+            "compute",
+            "python",
+            2,
+            &["python3".into(), "app.py".into()],
+            &[],
+            &cpu,
+            &bun_features,
+        )
+        .expect("meta serialization failed");
+        let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        assert!(parsed.get("gpu").is_none());
     }
 
     #[test]

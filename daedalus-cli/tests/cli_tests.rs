@@ -203,6 +203,70 @@ fn test_build_dry_run_shows_named_services() {
 }
 
 #[test]
+fn test_build_help_lists_gpu_flag() {
+    daedalus()
+        .args(["build", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--gpu"))
+        .stdout(predicate::str::contains("auto"));
+}
+
+#[test]
+fn test_build_dry_run_shows_gpu_backend() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app")).unwrap();
+    std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    daedalus()
+        .args([
+            "build",
+            dir.path().join("app").to_str().unwrap(),
+            "--gpu",
+            "nvidia",
+            "--dry-run",
+            "--no-install",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("GPU:       nvidia"));
+}
+
+#[test]
+fn test_build_dry_run_rejects_unknown_gpu() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app")).unwrap();
+    std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    daedalus()
+        .args([
+            "build",
+            dir.path().join("app").to_str().unwrap(),
+            "--gpu",
+            "intel",
+            "--dry-run",
+            "--no-install",
+        ])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn test_build_dry_run_gpu_default_is_cpu() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app")).unwrap();
+    std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    daedalus()
+        .args([
+            "build",
+            dir.path().join("app").to_str().unwrap(),
+            "--dry-run",
+            "--no-install",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("GPU:       none (CPU)"));
+}
+
+#[test]
 fn test_build_dry_run_rejects_unknown_service_port() {
     let dir = tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("app")).unwrap();

@@ -182,6 +182,30 @@ pub fn setup_env(
         _ => {}
     }
 
+    // Pin the visible device set to the requested compute backend. Fill gaps
+    // only, so explicit `.env`/metadata overrides keep priority. Device node
+    // passthrough (isolation >= 2) happens in `bind_mount_gpu_devices`;
+    // without it the vars are still applied for host-visible GPU access.
+    match meta.gpu.as_str() {
+        "nvidia" => {
+            if !env.contains_key("CUDA_VISIBLE_DEVICES") {
+                env.insert("CUDA_VISIBLE_DEVICES".into(), "0".into());
+            }
+            if !env.contains_key("NVIDIA_VISIBLE_DEVICES") {
+                env.insert("NVIDIA_VISIBLE_DEVICES".into(), "all".into());
+            }
+        }
+        "rocm" => {
+            if !env.contains_key("HIP_VISIBLE_DEVICES") {
+                env.insert("HIP_VISIBLE_DEVICES".into(), "0".into());
+            }
+            if !env.contains_key("ROCR_VISIBLE_DEVICES") {
+                env.insert("ROCR_VISIBLE_DEVICES".into(), "0".into());
+            }
+        }
+        _ => {}
+    }
+
     // Ensure PORT is set for web frameworks
     if !env.contains_key("PORT") {
         if let Some(port) = detect_web_port(rootfs, meta.effective_runtime()) {
@@ -614,6 +638,118 @@ fn bind_mount_gui_devices(rootfs: &Path) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+/// `bind_mount_gpu_devices` - bind-mount GPU device nodes into rootfs.
+/// @rootfs: rootfs
+/// @backend: backend ("nvidia" | "rocm")
+///
+/// Description:
+/// NVIDIA: every `/dev/nvidia*` entry (device nodes, ctl, modeset, uvm) plus
+/// the `/dev/nvidia-caps/` controller files. ROCm: `/dev/kfd` and the
+/// `/dev/dri` render/control nodes. Sources are best-effort — missing nodes
+/// (e.g. no NVIDIA driver this boot) are skipped so the same binary runs on
+/// GPU-less hosts. Set only when `meta.gpu` requests the backend.
+///
+/// Device bind targets are materialized as empty regular files then overlaid
+/// with `MS_BIND` (see `prepare_bind_target`): the kernel does no type check,
+/// and `mknod` is impossible from a user namespace that does not own the
+/// rootfs filesystem.
+///
+/// Return: Result containing `io::Result<()>`
+fn bind_mount_gpu_devices(rootfs: &Path, backend: &str) -> io::Result<()> {
+    let bind = |src: &Path, dest_rel: &str| -> io::Result<()> {
+        if !src.exists() {
+            return Ok(());
+        }
+        let dest = rootfs.join(dest_rel);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        prepare_bind_target(src, &dest)?;
+        let src_c = crate::cstr(src.as_os_str().as_bytes())?;
+        let dest_c = crate::cstr(dest.as_os_str().as_bytes())?;
+        // SAFETY: mount(2) with MS_BIND makes a 1:1 bind mount of the host
+        // GPU device node into the rootfs. Source and destination are valid
+        // paths; no data pointer needed for bind mounts.
+        let rc = unsafe {
+            libc::mount(
+                src_c.as_ptr(),
+                dest_c.as_ptr(),
+                std::ptr::null(),
+                libc::MS_BIND,
+                std::ptr::null(),
+            )
+        };
+        if rc != 0 {
+            eprintln!(
+                "[daedalus] warning: failed to bind-mount GPU device {} → {}: {}",
+                src.display(),
+                dest.display(),
+                io::Error::last_os_error()
+            );
+        }
+        Ok(())
+    };
+
+    match backend {
+        "nvidia" => {
+            if let Ok(entries) = std::fs::read_dir("/dev") {
+                for entry in entries.flatten() {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    if !name_str.starts_with("nvidia") || name_str == "nvidia-caps" {
+                        continue;
+                    }
+                    bind(&entry.path(), &format!("dev/{name_str}"))?;
+                }
+            }
+            bind(Path::new("/dev/nvidia-caps"), "dev/nvidia-caps")?;
+        }
+        "rocm" => {
+            bind(Path::new("/dev/kfd"), "dev/kfd")?;
+            if let Ok(entries) = std::fs::read_dir("/dev/dri") {
+                for entry in entries.flatten() {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    if name_str.starts_with("renderD") || name_str.starts_with("card") {
+                        bind(&entry.path(), &format!("dev/dri/{name_str}"))?;
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+/// `prepare_bind_target` - materialize a bind-mount target matching the source type.
+/// @src: source path
+/// @dest: destination path
+///
+/// Description:
+/// `mount(MS_BIND)` requires the target to already exist. Device nodes are
+/// overlaid onto a fresh empty regular file (the runc approach): the kernel
+/// performs no type check for bind mounts, and `mknod` is unavailable because
+/// the rootfs lives on a filesystem owned by the parent user namespace.
+/// Directories use normal directory creation to stay overlayable.
+///
+/// Return: Result containing `io::Result<()>`
+fn prepare_bind_target(src: &Path, dest: &Path) -> io::Result<()> {
+    use std::os::unix::fs::FileTypeExt;
+
+    if std::fs::metadata(src)?.file_type().is_dir() {
+        return std::fs::create_dir_all(dest);
+    }
+    // Device node or regular file: an empty inode is a valid bind overlay.
+    std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(dest)
+        .map(|_| ())
+}
+
 /// Enters the `pivot_root` isolation and installs the requested sandboxes.
 ///
 /// Landlock rules anchor to the rootfs inode, so the `O_PATH` fd is opened
@@ -646,6 +782,10 @@ fn enter_pivot_sandbox(rootfs: &Path, meta: &Metadata) -> io::Result<()> {
 
     if meta.gui {
         bind_mount_gui_devices(rootfs)?;
+    }
+
+    if !meta.gpu.is_empty() {
+        bind_mount_gpu_devices(rootfs, &meta.gpu)?;
     }
 
     crate::pivot_root_into(rootfs)?;
@@ -1793,6 +1933,7 @@ mod tests {
             isolation: 0,
             seccomp: false,
             gui: false,
+            gpu: String::new(),
             landlock: false,
             cpu_limit: None,
             memory_limit_mb: None,
@@ -1999,6 +2140,7 @@ mod tests {
             isolation: 0,
             seccomp: false,
             gui: false,
+            gpu: String::new(),
             landlock: false,
             cpu_limit: None,
             memory_limit_mb: None,

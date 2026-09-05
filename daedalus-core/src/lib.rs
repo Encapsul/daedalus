@@ -18,6 +18,7 @@ pub mod dotenv;
 pub mod embed;
 pub mod encrypt;
 pub mod format;
+pub mod gpu;
 pub mod include;
 pub mod layer;
 pub mod legacy;

@@ -57,3 +57,47 @@ daedalus build ./my-agent -o my-agent.daedalus \
 
 MCP tools are embedded as standalone binaries or scripts and exposed over
 stdin/stdout JSON-RPC.
+
+## GPU passthrough (accelerated inference)
+
+Ollama and llama.cpp offload layers to the host GPU when the right device
+nodes and `CUDA_VISIBLE_DEVICES`/`HIP_VISIBLE_DEVICES` are visible. daedalus
+records the compute backend at build time and the launcher wires it into the
+sandbox automatically:
+
+```bash
+# Auto-detect the build machine's backend (NVIDIA or ROCm)
+daedalus build ./my-ollama-app -o llm.daedalus --gpu auto
+
+# Force a specific backend
+daedalus build ./my-ollama-app -o llm.daedalus --gpu nvidia
+daedalus build ./my-ollama-app -o llm.daedalus --gpu rocm
+```
+
+- `--gpu auto` probes the host: `/dev/kfd` → ROCm, `/proc/driver/nvidia/gpus`
+  → NVIDIA. If nothing is found it warns and builds a CPU-only binary — the
+  same binary still runs on GPU-less machines.
+- `--gpu none` (the default) builds a CPU-only binary.
+- The backend is embedded in the metadata (`daedalus inspect` shows `GPU:`).
+
+At runtime the launcher:
+
+- **without sandbox** (`--isolation none`): pins the matching visibility vars
+  (`CUDA_VISIBLE_DEVICES=0`, `NVIDIA_VISIBLE_DEVICES=all`, or
+  `HIP_VISIBLE_DEVICES=0`/`ROCR_VISIBLE_DEVICES=0`), which it never
+  overwrites if you exported them yourself
+- **in the sandbox**: bind-mounts the GPU device nodes over regular-file
+  overlays into the rootfs — NVIDIA `/dev/nvidia*` + `/dev/nvidia-caps/*`,
+  ROCm `/dev/kfd` + `/dev/dri/renderD*`. Missing nodes are skipped, so the
+  binary degrades to CPU gracefully.
+
+To open a GPU device your user must be able to access it on the host. Factories
+typically ship root-only (e.g. `0660 root:render` for DRI nodes), the same
+policy Docker requires solving with `--group-add render`:
+
+```bash
+sudo usermod -aG render,video "$USER"   # then re-login
+```
+
+After that, Ollama will offload to the GPU inside the daedalus sandbox just
+like in a container, with no NVIDIA Container Toolkit required.
