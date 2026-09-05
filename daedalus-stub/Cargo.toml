@@ -28,6 +28,7 @@ toml = "0.8"            # config file parsing
 dirs = "5"              # standard directories (config, cache, home)
 ed25519-dalek = { version = "2.1", default-features = false, features = ["alloc", "zeroize"] }  # >= 2.1.0: CVE-2023-48022
 rand = "0.8"
+num_cpus = "1.13"
 libc = "0.2"
 zeroize = "1"           # secure memory zeroization for keys and secrets
 backhand = { version = "0.25", default-features = false, features = ["gzip", "lz4", "zstd"] }  # squashfs extraction

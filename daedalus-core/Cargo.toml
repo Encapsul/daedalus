@@ -37,6 +37,7 @@ zeroize = "1"
 # Path utilities
 pathdiff = "0.2"
 which = "7"
+num_cpus = "1.13"
 
 # Hex encoding
 hex = "0.4"

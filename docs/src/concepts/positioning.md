@@ -63,6 +63,49 @@ besoin de **plusieurs langages** : un backend Python/Node, un worker Go, un bina
 daedalus = multi-runtime dans un seul format. Une app peut avoir un runtime Python pour l'API,
 un binaire C++ pour un moteur, et un script Node pour un worker — le tout dans un `.daedalus`.
 
+## AI-native deployment
+
+| | Cloud API | llamafile | **daedalus** |
+|---|---|---|---|
+| Runtime | Remote API | C++ only | **Multi-runtime** |
+| Model updates | Full redownload | Full redownload | **SISR delta** |
+| Offline capable | No | Yes | **Yes + sandbox** |
+| Data sovereignty | No | Partial | **Full: key never in binary** |
+
+### The problem with cloud-first AI
+
+According to the ITU, an estimated 6 billion people — about three-quarters of the world's population — are using the Internet in 2025. However, 2.2 billion people remain offline, 96% of them in low- and middle-income countries. In low-income countries, only 14% of rural residents are online. 5G covers 55% of the global population, but only 4% in low-income countries.
+
+For AI deployment, this means:
+- **2.2 billion people** cannot access cloud-based AI services
+- **Rural/isolated sites** have no reliable path to cloud inference
+- **Regulated industries** (healthcare, finance, defense) cannot send sensitive data to external APIs
+- **Bandwidth costs** make full model downloads prohibitive on metered connections
+
+### Why local AI needs daedalus
+
+The edge AI hardware market is projected to reach $36.2 billion in 2026, with inference chips dominating at 86.5% of activity. By 2026, an estimated 80% of AI inference is expected to happen locally on devices rather than in cloud data centers.
+
+But shipping a local AI app is hard:
+- The app + runtime + model must be bundled together
+- Model updates over low-bandwidth links require delta compression
+- The binary must be signed and verified for security
+- Multiple runtimes (Python backend, Node frontend, Ollama model) must work together
+
+daedalus solves this:
+- **Multi-runtime**: Python, Node.js, Go, Rust, and more in one `.de`
+- **Ollama integration**: package Ollama + any GGUF model (Gemma, Llama, Mistral) with your app
+- **SISR delta updates**: update the model over 960kbps links, LoRa, or intermittent 4G
+- **Security**: Ed25519 signing, AES-256-GCM encryption, key never in binary
+- **Sandbox**: Landlock + seccomp + user namespaces for kernel-level isolation
+
+### Sources
+
+- ITU Facts and Figures 2025: https://www.itu.int/itu-d/reports/statistics/global-connectivity-report-2025/
+- Axis Intelligence / Grand View Research Edge AI Market 2026: https://axis-intelligence.com/edge-ai-statistics/
+- Presenc AI Ollama Ecosystem State 2026: https://presenc.ai/research/ollama-ecosystem-state-2026
+- Ertas.ai Edge AI in 2026: https://www.ertas.ai/blog/edge-ai-local-inference-2026
+
 ## Ce daedalus n'est PAS un nouveau format
 
 Nous ne créons pas un nouveau standard. Le format `.daedalus` est :

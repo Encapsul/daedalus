@@ -11,6 +11,10 @@
 
 daedalus compiles any web, server, or CLI application into a single self-contained executable **and** can package local AI models (Gemma via Ollama, Llama.cpp, etc.) embedded in the binary, running entirely offline — no cloud, no GPU, zero runtime cost. See [AI and edge runtimes](docs/src/guides/ai-edge.md).
 
+## AI anywhere
+
+daedalus is the deployment layer for local AI. Package Ollama + any local model + your app in one `.de` binary. Deploy AI in low-connectivity environments, on-premise, or air-gapped. No cloud dependency, no GPU required. Update models via SISR delta updates over 960kbps links.
+
 The binary format (`[stub][payload][metadata][footer]`) is a universal executable artifact — capable of transporting any application, microservice, or plugin as a single portable unit.
 
 ---
