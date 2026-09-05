@@ -63,7 +63,8 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
     let targets = args::resolve_targets(&args, config.build.target.as_deref());
     let outputs = args::output_paths(&args, &targets);
-    let (entrypoint_args, services) = args::parse_entrypoints(&args.entrypoint);
+    let (entrypoint_args, mut services) = args::parse_entrypoints(&args.entrypoint);
+    args::apply_service_overrides(&mut services, &args.service_port, &args.service_timeout)?;
 
     let plan = BuildPlan {
         verbose,
@@ -352,6 +353,9 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
     if let Some(model) = &args.model {
         eprintln!("  AI model:  {} (mode: offline, embedded)", model.display());
     }
+    if !plan.services.is_empty() {
+        eprintln!("  Services:  {}", describe_services(plan));
+    }
 
     // Detect package managers
     let all_mgrs = daedalus_core::pkgmgr::detect_all_pkgmgrs(&plan.app_dir, &plan.runtime_name);
@@ -375,4 +379,19 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
         eprintln!("\nFile tree:");
         print_tree(&plan.app_dir, 2);
     }
+}
+
+/// Render the multi-service list as a single human-readable summary line.
+fn describe_services(plan: &BuildPlan) -> String {
+    plan.services
+        .iter()
+        .map(|s| {
+            let mut desc = format!("{}={}", s.name, s.cmd.join(","));
+            if s.ready_port != 0 {
+                desc.push_str(&format!(" (ready :{})", s.ready_port));
+            }
+            desc
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
 }

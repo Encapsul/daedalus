@@ -398,21 +398,6 @@ pub fn expand_env_arg(arg: &str, env: &BTreeMap<String, String>) -> Option<Strin
 // Unix exec helpers
 // ---------------------------------------------------------------------------
 
-/// Convert a `BTreeMap<String,String>` to a null-terminated `Vec<CString>` for execve.
-#[cfg(unix)]
-/// `env_to_cstrings` - convert env map to null-terminated C strings for execve.
-/// @env: environment variables
-///
-/// Description:
-/// Formats each KEY=VALUE pair as a CString suitable for execve.
-///
-/// Return: Result containing `io::Result<Vec<CString>>`
-pub fn env_to_cstrings(env: &BTreeMap<String, String>) -> io::Result<Vec<CString>> {
-    env.iter()
-        .map(|(k, v)| cstr(format!("{k}={v}").as_bytes()))
-        .collect()
-}
-
 /// Check if an executable path exists and is executable.
 /// Searches PATH directories when given a bare name (no directory component).
 #[cfg(unix)]
@@ -1206,18 +1191,28 @@ pub fn spawn_app_windows(
 
 /// Resolve a bare interpreter/command name against the rootfs bin dirs,
 /// trying the `.exe` suffix on Windows.
-#[cfg(windows)]
 /// `find_in_bin_paths` - find an executable in rootfs bin directories.
 /// @rootfs: rootfs
 /// @name: name
 ///
 /// Description:
 /// Searches BIN_PATHS under rootfs for the given name (with .exe on Windows).
+/// When the name is "python3", also tries "python" and "python.exe" to account
+/// for Windows where the interpreter may be installed as `python` rather than `python3`.
 ///
 /// Return: Some(...) if present, None otherwise
 pub fn find_in_bin_paths(rootfs: &Path, name: &str) -> Option<PathBuf> {
     #[cfg(windows)]
-    let candidates = [name.to_string(), format!("{name}.exe")];
+    let candidates = if name == "python3" {
+        [
+            "python3".to_string(),
+            "python3.exe".to_string(),
+            "python".to_string(),
+            "python.exe".to_string(),
+        ]
+    } else {
+        [name.to_string(), format!("{name}.exe")]
+    };
     #[cfg(not(windows))]
     let candidates = [name.to_string()];
     crate::BIN_PATHS.iter().find_map(|dir| {
@@ -1234,7 +1229,6 @@ pub fn find_in_bin_paths(rootfs: &Path, name: &str) -> Option<PathBuf> {
 }
 
 /// `is_executable` for a `Path` (avoids unix-only `OsStr::as_bytes`).
-#[cfg(windows)]
 /// `is_executable_path` - check whether a Path points to an executable.
 /// @path: file or directory path
 ///
@@ -1388,7 +1382,18 @@ pub fn fork_services(
 ) -> io::Result<Vec<(String, i32)>> {
     let mut children = Vec::new();
     for svc in &meta.services {
-        let prog = resolve(&svc.cmd[0]);
+        let mut prog = resolve(&svc.cmd[0]);
+        if !is_executable_path(&prog) {
+            prog = find_in_bin_paths(rootfs, &svc.cmd[0]).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!(
+                        "[daedalus] error: service '{}' interpreter '{}' not found",
+                        svc.name, svc.cmd[0]
+                    ),
+                )
+            })?;
+        }
         let prog_c = cstr(prog.as_os_str().as_bytes())?;
 
         let mut argv: Vec<CString> = Vec::new();
@@ -1401,22 +1406,25 @@ pub fn fork_services(
         for (k, v) in &svc.env {
             env.insert(k.clone(), v.replace("${ROOTFS}", &rootfs.to_string_lossy()));
         }
-        let env_c = env_to_cstrings(&env)?;
 
         // SAFETY: fork(2) creates a copy of the calling process. The child
-        // calls execve (which never returns on success) or exit(127).
-        // The parent records the pid for waitpid tracking.
+        // sets its per-service environment, then calls execvp (which PATH
+        // searches bare command names and never returns on success) or
+        // exit(127). The parent records the pid for waitpid tracking.
         unsafe {
             let pid = libc::fork();
             if pid < 0 {
                 return Err(io::Error::last_os_error());
             }
             if pid == 0 {
+                for (k, v) in &env {
+                    std::env::set_var(k, v);
+                }
                 let argv_ptrs = to_ptr_vec(&argv);
-                let env_ptrs = to_ptr_vec(&env_c);
-                // SAFETY: execve(2) replaces the child process. All pointers
-                // are valid CStrings, envp is null-terminated.
-                crate::libc_execve(prog_c.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());
+                // SAFETY: execvp(3) replaces the child process. All pointers
+                // are valid CStrings; bare names are resolved against PATH as
+                // configured by setup_env (rootfs bin dirs take priority).
+                crate::libc_execvp(prog_c.as_ptr(), argv_ptrs.as_ptr());
                 eprintln!(
                     "[daedalus] failed to exec {}: {}",
                     svc.cmd[0],

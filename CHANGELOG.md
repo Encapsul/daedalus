@@ -6,11 +6,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Multi-service builds**: `--entrypoint name=cmd,arg,...` now serializes named services into the binary metadata and the stub supervisor runs them. `--service-port NAME=PORT` and `--service-timeout NAME=SECONDS` configure the readiness probe (`ready_port`/`ready_timeout`) each service is gated on before the app is considered up.
+- `daedalus inspect` now lists multi-service definitions (`Services:` section, `service.<name>` lines in `--plain` mode)
+- `ServiceSpec` in `daedalus-core::assembly` serializing `{name, cmd, env, ready_port, ready_timeout}` — the schema the stub supervisor deserializes
+
 ### Changed
-- Ongoing improvements
+- System config detection module `daedalus-core/src/system_info.rs` (`SystemConfig`, `detect()`, `compute_universal_slices()`) for resource-adaptive builds
 
 ### Fixed
-- Bug fixes in progress
+- Stub multi-service supervisor on Unix now execs via `execvp` (PATH search) instead of `execve`, so bare interpreter names like `python3` resolve at runtime — multi-service binaries can actually launch their services
+- `find_in_bin_paths`/`is_executable_path` made cross-platform (were Windows-only), so the Unix supervisor shares the same interpreter-resolution fallback as the Windows and single-service paths
+- Removed unused `libc_execve` FFI declaration and `env_to_cstrings` helper
+- `daedalus-core/src/lib.rs`: restored `pub mod paths;` (was accidentally replaced when adding `system_info`)
 
 ## [0.7.0] - 2026-09-03
 

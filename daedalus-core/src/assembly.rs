@@ -18,6 +18,7 @@ use crate::sisr_header::{SisrFooterExt, SISR_VERSION};
 use crate::sisr_stage::SisrBuildConfig;
 use crate::sisr_stage::{self, RemoteManifest};
 use hex;
+use serde::{Deserialize, Serialize};
 
 /// Determine the format version based on build options.
 pub fn fmt_version(squashfs: bool, signed: bool) -> u8 {
@@ -216,7 +217,35 @@ pub fn build_meta_json(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     }
 
+    if !options.services.is_empty() {
+        meta["services"] = serde_json::to_value(&options.services)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    }
+
     serde_json::to_vec(&meta).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+/// A named service for multi-service mode, serialized to `meta["services"]`.
+///
+/// The schema matches what the stub's `Service` struct deserializes from the
+/// metadata JSON: `name`, `cmd`, optional `env`, and optional readiness probe
+/// (`ready_port`/`ready_timeout`). `ready_port == 0` disables the probe.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceSpec {
+    /// Service name, used in logs and process titles.
+    pub name: String,
+    /// Executable and its arguments, resolved relative to the rootfs.
+    #[serde(default)]
+    pub cmd: Vec<String>,
+    /// Extra environment variables for this service.
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+    /// TCP port for the readiness probe; 0 disables it.
+    #[serde(default)]
+    pub ready_port: u16,
+    /// Readiness timeout in seconds; 0 uses the stub default (30s).
+    #[serde(default)]
+    pub ready_timeout: u64,
 }
 
 /// Options for metadata construction.
@@ -255,6 +284,9 @@ pub struct MetaOptions {
     /// when the build bundles a model for offline inference. Surface in the
     /// metadata so operators can audit which weights a `.de` ships.
     pub model_id: Option<String>,
+    /// Named services for multi-service mode. Empty when the build is a
+    /// single-entrypoint application.
+    pub services: Vec<ServiceSpec>,
 }
 
 /// Input to [`assemble_daedalus`]: bundles every byte-slice and build flag that
@@ -657,6 +689,7 @@ mod tests {
             lazy_load: false,
             mcp_tools: None,
             model_id: None,
+            services: Vec::new(),
         };
         let bun_features = BunFeatures::default();
         let json = build_meta_json(
@@ -683,6 +716,67 @@ mod tests {
         assert_eq!(parsed["entrypoint_layer"], "python");
         // model_id is absent when no model is embedded
         assert!(parsed.get("model_id").is_none());
+    }
+
+    #[test]
+    /// `services_serialize_into_metadata` - services serialize into metadata.
+    ///
+    /// Description:
+    /// Verifies named services are written to `meta["services"]` with the
+    /// schema the stub supervisor deserializes: `name`, `cmd`, `env`,
+    /// `ready_port`, `ready_timeout`.
+    ///
+    /// Return: nothing
+    fn services_serialize_into_metadata() {
+        let opts = MetaOptions {
+            version: None,
+            author: None,
+            description: None,
+            license: None,
+            payload_format: None,
+            seccomp: false,
+            landlock: false,
+            gui: false,
+            cpu_limit: None,
+            memory_limit_mb: None,
+            pid_limit: None,
+            pre_hooks: None,
+            post_hooks: None,
+            app_hash: None,
+            rt_deps_hash: None,
+            update_url: None,
+            layers: None,
+            entrypoint_layer: None,
+            lazy_load: false,
+            mcp_tools: None,
+            model_id: None,
+            services: vec![ServiceSpec {
+                name: "api".into(),
+                cmd: vec!["python3".into(), "api.py".into()],
+                env: std::collections::BTreeMap::from([("PORT".into(), "8080".into())]),
+                ready_port: 8080,
+                ready_timeout: 30,
+            }],
+        };
+        let bun_features = BunFeatures::default();
+        let json = build_meta_json(
+            "multi",
+            "python",
+            0,
+            &["python3".into(), "api.py".into()],
+            &[],
+            &opts,
+            &bun_features,
+        )
+        .expect("meta serialization failed");
+        let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        let services = parsed["services"].as_array().expect("services array");
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0]["name"], "api");
+        assert_eq!(services[0]["cmd"], serde_json::json!(["python3", "api.py"]));
+        assert_eq!(services[0]["env"]["PORT"], "8080");
+        assert_eq!(services[0]["ready_port"], 8080);
+        assert_eq!(services[0]["ready_timeout"], 30);
     }
 
     #[test]

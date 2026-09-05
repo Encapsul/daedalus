@@ -155,6 +155,21 @@ pub fn run(args: InspectArgs) -> Result<()> {
                     println!("layer.{i}\t{name}\t{}", format_size(usize));
                 }
             }
+            if let Some(services) = meta.get("services").and_then(|v| v.as_array()) {
+                for svc in services {
+                    let name = svc.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                    let cmd: Vec<&str> = svc
+                        .get("cmd")
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+                        .unwrap_or_default();
+                    let port = svc.get("ready_port").and_then(|v| v.as_u64()).unwrap_or(0);
+                    println!(
+                        "service.{name}\t{name}\t{}\tready_port={port}",
+                        cmd.join(" ")
+                    );
+                }
+            }
             if let Some(app_hash) = meta.get("app_hash").and_then(|v| v.as_str()) {
                 println!("app_hash\t{}", &app_hash[..16.min(app_hash.len())]);
             }
@@ -236,6 +251,26 @@ pub fn run(args: InspectArgs) -> Result<()> {
                 let name = layer.get("name").and_then(|v| v.as_str()).unwrap_or("?");
                 let usize = layer.get("usize").and_then(|v| v.as_u64()).unwrap_or(0);
                 println!("  [{i}] {name} ({})", format_size(usize));
+            }
+        }
+
+        // Services (multi-service mode)
+        if let Some(services) = meta.get("services").and_then(|v| v.as_array()) {
+            println!("Services:    {}", services.len());
+            for svc in services {
+                let name = svc.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                let cmd: Vec<&str> = svc
+                    .get("cmd")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+                    .unwrap_or_default();
+                let port = svc.get("ready_port").and_then(|v| v.as_u64()).unwrap_or(0);
+                let port_desc = if port != 0 {
+                    format!(" (ready :{port})")
+                } else {
+                    String::new()
+                };
+                println!("  {name} = {}{port_desc}", cmd.join(" "));
             }
         }
 

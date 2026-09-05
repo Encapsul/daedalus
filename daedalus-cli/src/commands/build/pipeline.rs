@@ -313,6 +313,17 @@ pub(crate) fn build_single_target(
             lazy_load: args.lazy_load,
             mcp_tools,
             model_id: plan.model_id.clone(),
+            services: plan
+                .services
+                .iter()
+                .map(|s| daedalus_core::assembly::ServiceSpec {
+                    name: s.name.clone(),
+                    cmd: s.cmd.clone(),
+                    env: s.env.clone(),
+                    ready_port: s.ready_port,
+                    ready_timeout: s.ready_timeout,
+                })
+                .collect(),
         },
         &bun_features,
     )?;
