@@ -47,6 +47,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // below, so the helper can borrow-build the id without tripping the
     // borrow checker on the whole-struct reference.
     let model_id_from_config = config.build.model_id.clone();
+    let lazy_priority_from_config = config.build.lazy_priority.clone();
     let (runtime, model_id) =
         resolve_build_runtime(&app_dir, &args, model_id_from_config, verbose)?;
     let runtime_name = runtime.name().to_string();
@@ -98,6 +99,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         services,
         entrypoint: entrypoint_args,
         model_id,
+        lazy_priority: resolve_lazy_priority(&args, lazy_priority_from_config),
     };
 
     if args.dry_run {
@@ -143,13 +145,22 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     Ok(())
 }
 
+/// CLI flags win over `[build] lazy_priority` from config.
+fn resolve_lazy_priority(args: &BuildArgs, from_config: Option<Vec<String>>) -> Vec<String> {
+    if args.lazy_priority.is_empty() {
+        from_config.unwrap_or_default()
+    } else {
+        args.lazy_priority.clone()
+    }
+}
+
 /// Resolve the build runtime and model id.
 ///
 /// `--model` implies an offline Gemma bundle: embedding weights for local
-/// inference pins the runtime to Gemma regardless of the source layout, so the
-/// stub serves the model from the bundled `.gguf`. The model id is derived from
-/// the `--model` filename (stable across rebuilds of the same weights) and falls
-/// back to `[build] model_id` from `.daedalus.toml`.
+/// inference pins the runtime to Gemma regardless of the source layout, so
+/// the stub serves the model from the bundled `.gguf`. The model id is derived
+/// from the `--model` filename (stable across rebuilds of the same weights)
+/// and falls back to `[build] model_id` from `.daedalus.toml`.
 fn resolve_build_runtime(
     app_dir: &Path,
     args: &BuildArgs,
@@ -283,6 +294,23 @@ fn expand_path(path: &str) -> std::path::PathBuf {
 /// Description:
 ///
 /// Return: nothing
+/// Reference detection + install lines for the dry-run summary.
+fn pkgmgr_lines(plan: &BuildPlan) -> Vec<String> {
+    let mgrs = daedalus_core::pkgmgr::detect_all_pkgmgrs(&plan.app_dir, &plan.runtime_name);
+    if mgrs.is_empty() {
+        return vec!["Pkg mgr:   (none)".into()];
+    }
+    let mut lines = Vec::new();
+    for mgr in mgrs {
+        lines.push(format!("Pkg mgr:   {}", mgr.name()));
+        if !plan.no_install {
+            lines.push(format!("Install:   {}", mgr.install_cmd().join(" ")));
+        }
+    }
+    lines
+}
+
+/// Print what a build would do without touching the app directory.
 fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, output: &Path) {
     eprintln!("Dry run — would build:");
     eprintln!("  App:       {}", plan.app_dir.display());
@@ -331,6 +359,11 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
     if let Some(ref e) = plan.env_file {
         eprintln!("  Env file:  {}", e.display());
     }
+    let lazy_on = args::lazy_enabled(args.lazy_load, &plan.lazy_priority);
+    eprintln!("  Lazy:    {}", if lazy_on { "on" } else { "off" });
+    if lazy_on {
+        eprintln!("  Lazy priority: {} files", plan.lazy_priority.len());
+    }
     if plan.no_install {
         eprintln!("  No install: yes");
     }
@@ -367,18 +400,8 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
         eprintln!("  Services:  {}", describe_services(plan));
     }
 
-    // Detect package managers
-    let all_mgrs = daedalus_core::pkgmgr::detect_all_pkgmgrs(&plan.app_dir, &plan.runtime_name);
-    if all_mgrs.is_empty() {
-        eprintln!("  Pkg mgr:   (none)");
-    } else {
-        for mgr in &all_mgrs {
-            eprintln!("  Pkg mgr:   {}", mgr.name());
-            if !plan.no_install {
-                let cmd = mgr.install_cmd();
-                eprintln!("  Install:   {}", cmd.join(" "));
-            }
-        }
+    for line in pkgmgr_lines(plan) {
+        eprintln!("  {line}");
     }
 
     // Estimate sizes

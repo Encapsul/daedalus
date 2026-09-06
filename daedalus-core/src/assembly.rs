@@ -211,6 +211,11 @@ pub fn build_meta_json(
         meta["lazy_load"] = serde_json::Value::Bool(true);
     }
 
+    if !options.lazy_priority.is_empty() {
+        meta["lazy_priority"] = serde_json::to_value(&options.lazy_priority)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    }
+
     if let Some(model_id) = &options.model_id {
         meta["model_id"] = serde_json::Value::String(model_id.clone());
     }
@@ -280,6 +285,10 @@ pub struct MetaOptions {
     /// Enable lazy loading: extract priority files first, background-extract
     /// the rest after the app starts.
     pub lazy_load: bool,
+    /// Payload-relative paths to eager-extract (in addition to the stub's
+    /// auto-detected entrypoint script) when lazy loading is enabled. Empty
+    /// when the default priority set suffices.
+    pub lazy_priority: Vec<String>,
     /// MCP tool definitions to embed in the metadata, or `None` when the
     /// binary does not expose MCP tools.
     pub mcp_tools: Option<crate::mcp::McpToolsMeta>,
@@ -694,6 +703,7 @@ mod tests {
             layers: None,
             entrypoint_layer: None,
             lazy_load: false,
+            lazy_priority: Vec::new(),
             mcp_tools: None,
             model_id: None,
             services: Vec::new(),
@@ -756,6 +766,7 @@ mod tests {
             layers: None,
             entrypoint_layer: None,
             lazy_load: false,
+            lazy_priority: Vec::new(),
             mcp_tools: None,
             model_id: None,
             services: vec![ServiceSpec {
@@ -815,6 +826,7 @@ mod tests {
             layers: None,
             entrypoint_layer: None,
             lazy_load: false,
+            lazy_priority: Vec::new(),
             mcp_tools: None,
             model_id: None,
             services: Vec::new(),
@@ -850,6 +862,76 @@ mod tests {
         .expect("meta serialization failed");
         let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
         assert!(parsed.get("gpu").is_none());
+    }
+
+    #[test]
+    /// `lazy_priority_serializes_into_metadata` - lazy priority serializes into metadata.
+    ///
+    /// Description:
+    /// The eager-extract list lands in `meta["lazy_priority"]` only when
+    /// non-empty, so legacy and CPU builds keep byte-identical metadata.
+    ///
+    /// Return: nothing
+    fn lazy_priority_serializes_into_metadata() {
+        let opts = MetaOptions {
+            version: None,
+            author: None,
+            description: None,
+            license: None,
+            payload_format: None,
+            seccomp: false,
+            landlock: false,
+            gui: false,
+            cpu_limit: None,
+            memory_limit_mb: None,
+            pid_limit: None,
+            pre_hooks: None,
+            post_hooks: None,
+            app_hash: None,
+            rt_deps_hash: None,
+            update_url: None,
+            layers: None,
+            entrypoint_layer: None,
+            lazy_load: true,
+            lazy_priority: vec!["app/main.py".into(), "app/models/config.json".into()],
+            mcp_tools: None,
+            model_id: None,
+            services: Vec::new(),
+            gpu: String::new(),
+        };
+        let bun_features = BunFeatures::default();
+        let json = build_meta_json(
+            "lazyapp",
+            "python",
+            1,
+            &["python3".into(), "app/main.py".into()],
+            &[],
+            &opts,
+            &bun_features,
+        )
+        .expect("meta serialization failed");
+        let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        assert_eq!(
+            parsed["lazy_priority"],
+            serde_json::json!(["app/main.py", "app/models/config.json"])
+        );
+
+        let empty = MetaOptions {
+            lazy_priority: Vec::new(),
+            ..opts
+        };
+        let json = build_meta_json(
+            "lazyapp",
+            "python",
+            1,
+            &["python3".into(), "app/main.py".into()],
+            &[],
+            &empty,
+            &bun_features,
+        )
+        .expect("meta serialization failed");
+        let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        assert!(parsed.get("lazy_priority").is_none());
     }
 
     #[test]

@@ -103,6 +103,22 @@ pub fn compute_universal_slices(memory_bytes: u64, cpu_cores: usize) -> usize {
     memory_tier.max(cores).min(8)
 }
 
+/// Resource thresholds below which background work is not worth the CPU it
+/// steals from the app. A host with fewer cores or less RAM than these runs
+/// lazy extraction up-front instead, where the whole decompression happens
+/// once and the app never competes with a background thread.
+pub const CONSTRAINED_CORES: usize = 4;
+pub const CONSTRAINED_MEMORY_BYTES: u64 = 3 * 1024 * 1024 * 1024;
+
+/// Whether the detected host is too small for background (lazy) extraction.
+///
+/// Background decompression on a 2-core box stalls the app it is meant to
+/// get started faster; such hosts extract the full payload up-front.
+pub fn is_constrained_host(config: &SystemConfig) -> bool {
+    config.cpu_cores < CONSTRAINED_CORES
+        || (config.total_memory > 0 && config.total_memory < CONSTRAINED_MEMORY_BYTES)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,5 +149,33 @@ mod tests {
         assert_eq!(compute_universal_slices(4 * 1024 * 1024 * 1024, 4), 5);
         // 8GB+ RAM & 8 cores → 8 slices
         assert_eq!(compute_universal_slices(16 * 1024 * 1024 * 1024, 8), 8);
+    }
+
+    #[test]
+    fn test_is_constrained_host() {
+        let cfg = SystemConfig {
+            total_memory: 3 * 1024 * 1024 * 1024,
+            cpu_cores: 4,
+            architecture: "x86_64".into(),
+        };
+        assert!(!is_constrained_host(&cfg));
+        // Few cores
+        assert!(is_constrained_host(&SystemConfig {
+            total_memory: 16 * 1024 * 1024 * 1024,
+            cpu_cores: 2,
+            architecture: "x86_64".into(),
+        }));
+        // Low RAM equals the threshold → not constrained
+        assert!(!is_constrained_host(&SystemConfig {
+            total_memory: 3 * 1024 * 1024 * 1024,
+            cpu_cores: 8,
+            architecture: "aarch64".into(),
+        }));
+        // Missing memory detection (0) never counts as constrained on its own
+        assert!(!is_constrained_host(&SystemConfig {
+            total_memory: 0,
+            cpu_cores: 8,
+            architecture: "x86_64".into(),
+        }));
     }
 }

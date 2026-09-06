@@ -89,6 +89,9 @@ pub(crate) struct BuildPlan {
     /// Identifier of the AI model bundled for offline inference (derived from
     /// `--model` filename). Exposed in the build metadata as `model_id`.
     pub(crate) model_id: Option<String>,
+    /// Payload-relative paths to eager-extract when lazy loading is enabled
+    /// (from `--lazy-priority` or `[build] lazy_priority`).
+    pub(crate) lazy_priority: Vec<String>,
 }
 
 /// Compute backend selection for `--gpu`.
@@ -396,6 +399,10 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
             .unwrap_or_else(|_| "unreadable".to_string());
         canonical.push(format!("env_file={}:{content}", v.display()));
     }
+    canonical.push(format!("lazy_load={}", args.lazy_load));
+    if !plan.lazy_priority.is_empty() {
+        canonical.push(format!("lazy_priority={:?}", plan.lazy_priority));
+    }
     let mut env: Vec<&String> = args.env.iter().collect();
     env.sort();
     for e in env {
@@ -443,6 +450,23 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
         hasher.update(b"\n");
     }
     hex::encode(hasher.finalize())[..16].to_string()
+}
+
+/// Whether lazy loading is effective for this build.
+///
+/// Background decompression steals CPU from the app on a constrained
+/// host, so `--lazy` without an explicit priority list is auto-
+/// disabled there. An explicit `--lazy-priority` (or `[build]
+/// lazy_priority`) overrides the auto-disable because the operator
+/// asked for it deliberately.
+pub(crate) fn lazy_enabled(lazy_load: bool, lazy_priority: &[String]) -> bool {
+    if !lazy_load {
+        return false;
+    }
+    if !lazy_priority.is_empty() {
+        return true;
+    }
+    !daedalus_core::system_info::is_constrained_host(&daedalus_core::system_info::detect())
 }
 
 #[derive(Args)]
@@ -713,6 +737,12 @@ pub struct BuildArgs {
     #[arg(long)]
     pub lazy_load: bool,
 
+    /// Paths to eager-extract when lazy loading is enabled. App-relative
+    /// (`main.py`) or payload-relative (`app/main.py`); a directory expands
+    /// to every file under it. Comma-separated or repeated.
+    #[arg(long, value_delimiter = ',')]
+    pub lazy_priority: Vec<String>,
+
     /// Bundle an AI model (`.gguf`) into the binary for offline inference.
     ///
     /// Copies the file into the rootfs at `app/models/<name>` and forces the
@@ -747,6 +777,9 @@ pub(crate) struct BuildConfig {
     /// Identifier of the AI model to bundle for offline inference, set in
     /// `.daedalus.toml` as `[build] model_id = "gemma-2b-it-q4"`.
     pub model_id: Option<String>,
+    /// Paths to eager-extract when lazy loading is enabled, set in
+    /// `.daedalus.toml` as `[build] lazy_priority = ["main.py", "models/"]`.
+    pub lazy_priority: Option<Vec<String>>,
 }
 
 #[derive(Default, Deserialize)]
@@ -835,6 +868,7 @@ pub(crate) fn default_build_args() -> BuildArgs {
         token: None,
         universal: false,
         lazy_load: false,
+        lazy_priority: Vec::new(),
         encrypt: None,
         model: None,
     }
@@ -1128,6 +1162,7 @@ mod tests {
             services: Vec::new(),
             entrypoint: Vec::new(),
             model_id: None,
+            lazy_priority: Vec::new(),
         };
         let base = config_fingerprint(&default_build_args(), &plan(false));
 
@@ -1201,5 +1236,28 @@ mod tests {
 
         let err = apply_service_overrides(&mut services, &["ghost=8080".into()], &[] as &[String]);
         assert!(err.is_err(), "unknown service name must fail");
+    }
+
+    #[test]
+    /// lazy_enabled_requires_the_flag - lazy enabled requires the flag.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn lazy_enabled_requires_the_flag() {
+        assert!(!lazy_enabled(false, &[]));
+        assert!(!lazy_enabled(false, &["main.py".into()]));
+    }
+
+    #[test]
+    /// lazy_enabled_honors_explicit_priority - lazy enabled honors explicit priority.
+    ///
+    /// Description:
+    /// An operator-supplied priority list keeps lazy loading on even on a
+    /// host too small for background extraction.
+    ///
+    /// Return: nothing
+    fn lazy_enabled_honors_explicit_priority() {
+        assert!(lazy_enabled(true, &["main.py".into()]));
     }
 }
