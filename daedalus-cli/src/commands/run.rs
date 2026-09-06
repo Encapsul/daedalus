@@ -1,9 +1,17 @@
 use anyhow::{Context, Result};
 use clap::Args;
+use std::io::{Read, Write};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
+
+/// Maximum bytes accepted from a registry before an artifact is rejected.
+///
+/// Downloads stream to disk in bounded chunks instead of slurping the whole
+/// body into RAM, so an untrusted registry cannot OOM the client; this cap
+/// additionally bounds disk usage for a single fetch.
+const MAX_DOWNLOAD_BYTES: u64 = 32 << 30;
 
 #[derive(Args)]
 pub struct RunArgs {
@@ -130,16 +138,43 @@ fn fetch_from_url(raw_url: &str, verbose: bool) -> Result<PathBuf> {
         eprintln!("[daedalus] downloading {http_url}");
     }
 
-    let response = client.get(&http_url).send().context("download failed")?;
+    let mut response = client.get(&http_url).send().context("download failed")?;
     let status = response.status();
     if !status.is_success() {
         anyhow::bail!("download failed (HTTP {status})");
     }
 
-    let tmp = cache_dir.join(format!("{key}.de.part"));
+    // A process/attempt-unique temp name keeps two concurrent `daedalus run`s
+    // of the same URL from racing each other's partial file.
+    let unique = format!(
+        "{key}.{}.part",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let tmp = cache_dir.join(unique);
     let mut file = std::fs::File::create(&tmp).context("failed to create temp download")?;
-    let bytes = response.bytes().context("failed to read response body")?;
-    std::io::Write::write_all(&mut file, &bytes)?;
+
+    // Stream the body to disk in chunks, rejecting anything over the cap
+    // instead of buffering an unbounded payload.
+    let mut total: u64 = 0;
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = response
+            .read(&mut buf)
+            .context("failed to read response body")?;
+        if n == 0 {
+            break;
+        }
+        total += n as u64;
+        if total > MAX_DOWNLOAD_BYTES {
+            let _ = std::fs::remove_file(&tmp);
+            anyhow::bail!("download exceeds {MAX_DOWNLOAD_BYTES} bytes");
+        }
+        file.write_all(&buf[..n])?;
+    }
+    file.flush()?;
 
     if !verify_de(&tmp) {
         let _ = std::fs::remove_file(&tmp);

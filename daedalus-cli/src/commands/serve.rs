@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
+use daedalus_core::http_parse::{
+    content_length, head_end, parse_query_params, split_name_tag, split_path_query,
+};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -7,6 +10,13 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use daedalus_core::registry::LayerRegistry;
+
+/// Request heads (headers + first line) are capped to bound memory and the
+/// cost of re-scanning a fragmented request head that never terminates.
+const MAX_HEAD_BYTES: usize = 64 * 1024;
+/// Largest single upload a registry accepts; larger requests get 413
+/// immediately instead of tying a worker thread to a bogus Content-Length.
+const MAX_BODY_BYTES: u64 = 8 << 30;
 
 #[derive(Args)]
 pub struct ServeArgs {
@@ -60,8 +70,8 @@ pub fn run(args: ServeArgs) -> Result<()> {
 /// @args: command arguments
 ///
 /// Description:
-/// Binds a TcpListener and spawns a thread per connection handling GET /list,
-/// GET /pull/<hash>, and POST /push.
+/// Binds a TcpListener and spawns a thread per connection handling the layer
+/// and runnable-artifact endpoints.
 ///
 /// Return: Result containing Result<()>
 fn run_start(args: ServeStartArgs) -> Result<()> {
@@ -111,8 +121,9 @@ fn run_start(args: ServeStartArgs) -> Result<()> {
 /// handle_connection - parse an HTTP request and dispatch to the handler.
 ///
 /// Description:
-/// Reads the request head (up to a blank line), then any `Content-Length`
-/// body bytes that follow, and routes to the matching handler.
+/// Reads the request head (bounded), then any declared `Content-Length` body
+/// bytes, and routes to the matching handler. A request may not read more
+/// body than it declared via Content-Length.
 ///
 /// Return: nothing
 fn handle_connection(
@@ -123,8 +134,7 @@ fn handle_connection(
 ) -> Result<()> {
     stream.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
     let mut head_bytes = Vec::new();
-    let mut body = Vec::new();
-    let mut split_idx = None;
+    let mut body_prefix = Vec::new();
     loop {
         let mut buf = [0u8; 8192];
         let n = stream.read(&mut buf)?;
@@ -132,16 +142,24 @@ fn handle_connection(
             break;
         }
         head_bytes.extend_from_slice(&buf[..n]);
-        if let Some(idx) = find_head_end(&head_bytes) {
-            split_idx = Some(idx);
-            body = head_bytes.split_off(idx);
+        if let Some(idx) = head_end(&head_bytes) {
+            body_prefix = head_bytes.split_off(idx);
             break;
         }
+        if head_bytes.len() > MAX_HEAD_BYTES {
+            send_response(
+                &mut stream,
+                431,
+                "Request Header Fields Too Large",
+                "Request head too large (no blank line)",
+            )?;
+            return Ok(());
+        }
     }
-    let Some(head_end) = split_idx else {
+    if head_end(&head_bytes).is_none() {
         send_response(&mut stream, 400, "Bad Request", "Incomplete request head")?;
         return Ok(());
-    };
+    }
 
     let head_str = String::from_utf8_lossy(&head_bytes);
     let first_line = head_str.lines().next().unwrap_or("");
@@ -158,21 +176,51 @@ fn handle_connection(
         eprintln!("[daedalus] {} {}", method, path);
     }
 
-    // Read the declared body even when it spans multiple TCP reads.
-    let content_length = content_length(&head_str);
-    let mut buffer = std::io::Cursor::new(body);
-    let remaining = content_length.saturating_sub(buffer.get_ref().len());
-    if remaining > 0 {
-        let mut rest = vec![0u8; remaining];
-        stream.read_exact(&mut rest)?;
-        buffer.get_mut().extend_from_slice(&rest);
-    }
-    let body = buffer.into_inner();
-
-    let (path, query) = match path.split_once('?') {
-        Some((p, q)) => (p, q),
-        None => (path, ""),
+    // Body uploads require an unambiguous Content-Length; anything else
+    // (duplicate with differing values, non-numeric, absurdly large) gets a
+    // reject rather than an over-read or a worker thread parked on a liar.
+    let declared = content_length(&head_str);
+    let is_write =
+        (method == "POST" || method == "PUT") && (path == "/push" || path.starts_with("/artifact"));
+    let body = if is_write {
+        // Authenticate before trusting any body bytes: an anonymous client
+        // must not park a worker thread on a huge declared body, force us to
+        // read data that will be discarded, or probe storage with forged
+        // writes. Unauthenticated mutations get a 401 without a byte read.
+        if !require_write_auth(&mut stream, &head_str, token.as_deref())? {
+            return Ok(());
+        }
+        let Some(len) = declared else {
+            send_response(
+                &mut stream,
+                400,
+                "Bad Request",
+                "Content-Length missing or ambiguous",
+            )?;
+            return Ok(());
+        };
+        if len as u64 > MAX_BODY_BYTES {
+            send_response(
+                &mut stream,
+                413,
+                "Payload Too Large",
+                "Request body too large",
+            )?;
+            return Ok(());
+        }
+        let mut body = body_prefix;
+        let remaining = len.saturating_sub(body.len());
+        if remaining > 0 {
+            let mut rest = vec![0u8; remaining];
+            stream.read_exact(&mut rest)?;
+            body.extend_from_slice(&rest);
+        }
+        body
+    } else {
+        body_prefix
     };
+
+    let (path, query) = split_path_query(path);
 
     match (method, path) {
         ("GET", "/list") => handle_list(&mut stream, reg)?,
@@ -185,41 +233,41 @@ fn handle_connection(
             let spec = &path["/artifact/".len()..];
             handle_artifact_get(&mut stream, reg, spec, verbose)?;
         }
-        ("POST", "/push") => handle_push(&mut stream, reg, token, verbose, &body)?,
-        ("POST", "/artifact") => {
-            handle_artifact_push(&mut stream, reg, token, verbose, &body, query)?;
-        }
+        ("POST", "/push") => handle_push(&mut stream, reg, verbose, &body)?,
+        ("POST", "/artifact") => handle_artifact_push(&mut stream, reg, verbose, &body, query)?,
         _ => send_response(&mut stream, 404, "Not Found", "Endpoint not found")?,
     }
 
     Ok(())
 }
 
-/// find_head_end - locate the end of the HTTP head (`\r\n\r\n` or `\n\n`).
+/// require_write_auth - reject mutating requests unless a server token is
+/// either unset or matched by an `Authorization: Bearer <token>` header.
 ///
-/// Return: byte index just past the head, or None if the head is incomplete.
-fn find_head_end(bytes: &[u8]) -> Option<usize> {
-    bytes
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .map(|i| i + 4)
-        .or_else(|| bytes.windows(2).position(|w| w == b"\n\n").map(|i| i + 2))
-}
-
-/// content_length - parse the `Content-Length` header value from a request head.
-///
-/// Return: the declared length, 0 if absent or unparseable.
-fn content_length(head: &str) -> usize {
-    for line in head.lines() {
+/// Return: whether to continue handling the request
+fn require_write_auth(stream: &mut TcpStream, head: &str, token: Option<&str>) -> Result<bool> {
+    let Some(expect) = token else {
+        return Ok(true);
+    };
+    let authorized = head.lines().any(|line| {
         let line = line.trim();
         let Some((name, value)) = line.split_once(':') else {
-            continue;
+            return false;
         };
-        if name.eq_ignore_ascii_case("content-length") {
-            return value.trim().parse().unwrap_or(0);
-        }
+        let value = value.trim();
+        name.trim().eq_ignore_ascii_case("authorization")
+            && value.eq_ignore_ascii_case(&format!("Bearer {expect}"))
+    });
+    if authorized {
+        return Ok(true);
     }
-    0
+    send_response(
+        stream,
+        401,
+        "Unauthorized",
+        "Missing or invalid bearer token",
+    )?;
+    Ok(false)
 }
 
 /// handle_list - return all layer hashes in the registry as plain text.
@@ -274,7 +322,6 @@ fn handle_pull(
 fn handle_push(
     stream: &mut TcpStream,
     reg: &mut LayerRegistry,
-    _token: Option<String>,
     verbose: bool,
     body: &[u8],
 ) -> Result<()> {
@@ -311,8 +358,9 @@ fn handle_artifacts(stream: &mut TcpStream, reg: &LayerRegistry) -> Result<()> {
 /// handle_artifact_get - serve a stored `.de` binary by `name:tag`.
 ///
 /// Description:
-/// Spec path format: `/artifact/<name>:<tag>`. Responds with the raw binary
-/// bytes (content type application/octet-stream) or 404 if absent.
+/// Spec path format: `/artifact/<name>:<tag>`. Naming uses the same strict
+/// validator as push, so anything publishable is fetchable. Responds with the
+/// raw binary bytes (content type application/octet-stream) or 404 if absent.
 ///
 /// Return: nothing
 fn handle_artifact_get(
@@ -321,9 +369,17 @@ fn handle_artifact_get(
     spec: &str,
     verbose: bool,
 ) -> Result<()> {
-    let Some((name, tag)) = spec.split_once(':') else {
-        send_response(stream, 400, "Bad Request", "Expected name:tag")?;
-        return Ok(());
+    let (name, tag) = match split_name_tag(spec) {
+        Ok(spec) => spec,
+        Err(e) => {
+            send_response(
+                stream,
+                400,
+                "Bad Request",
+                &format!("Invalid name:tag: {e}"),
+            )?;
+            return Ok(());
+        }
     };
     match reg.artifact_binary(name, tag) {
         Ok(Some(bytes)) => {
@@ -348,29 +404,40 @@ fn handle_artifact_get(
 /// handle_artifact_push - store a `.de` binary uploaded with `name`/`tag`.
 ///
 /// Description:
-/// Query params: `?name=<name>&tag=<tag>` (tag defaults to "latest"). The
-/// request body is the full runnable binary; stores it content-addressed and
-/// returns the content hash.
+/// Query params: `?name=<name>&tag=<tag>` (tag defaults to "latest").
+/// Names are validated with the same strict alias check as the GET route so
+/// every stored alias can be fetched back. The request body is the full
+/// runnable binary; stores it content-addressed and returns the content hash.
 ///
 /// Return: nothing
 fn handle_artifact_push(
     stream: &mut TcpStream,
     reg: &mut LayerRegistry,
-    _token: Option<String>,
     verbose: bool,
     body: &[u8],
     query: &str,
 ) -> Result<()> {
-    let params: std::collections::HashMap<String, String> = query
-        .split('&')
-        .filter_map(|pair| pair.split_once('='))
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
+    let params: std::collections::HashMap<String, String> =
+        parse_query_params(query).into_iter().collect();
     let Some(name) = params.get("name").filter(|n| !n.is_empty()) else {
         send_response(stream, 400, "Bad Request", "Missing ?name= parameter")?;
         return Ok(());
     };
-    let tag = params.get("tag").map(String::as_str).unwrap_or("latest");
+    let tag = params
+        .get("tag")
+        .filter(|t| !t.is_empty())
+        .map(String::as_str)
+        .unwrap_or("latest");
+
+    if let Err(e) = split_name_tag(&format!("{name}:{tag}")) {
+        send_response(
+            stream,
+            400,
+            "Bad Request",
+            &format!("Invalid name:tag: {e}"),
+        )?;
+        return Ok(());
+    }
 
     if body.is_empty() {
         send_response(stream, 400, "Bad Request", "Empty body")?;
