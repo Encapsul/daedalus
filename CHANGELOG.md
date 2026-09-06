@@ -7,6 +7,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Run straight from the registry**: `daedalus run http://host:port/artifact/app:v2` (or `registry://host:…`) downloads a published `.de`, verifies its footer, caches it under `~/.cache/daedalus/downloads` keyed by URL hash, marks it executable, and runs it — re-runs reuse the cache. npx-style app distribution.
+- **Runnable artifact registry**: the registry now stores the full `.de` binary under a `name:tag` alias, not just layers.
+  - `registry push FILE --name name[:tag] [--local DIR | --registry URL]` publishes a runnable binary; `registry pull --name name[:tag] -o out.de` fetches it (local and remote). Untagged names default to `:latest`.
+  - `serve start` gains `GET /artifacts`, `GET /artifact/<name>:<tag>` (binary download), and `POST /artifact?name=&tag=` (binary store), plus full `Content-Length` request parsing for multi-MB bodies.
+  - `build --publish <URL>` publishes the finished binary as `<file-stem>:latest`; local `--publish <DIR>` still stores the layered manifest.
+- `LayerRegistry::{publish_artifact_binary, artifact_binary, list_artifacts}` + `StoredArtifact` in `daedalus-core::registry`, backed by an atomic `artifacts.json` index over the CAS
 - **Lazy-loading priority extraction**: `daedalus build --lazy-load` now fast-starts by extracting only the entrypoint (plus an explicit `--lazy-priority file,dir,...` list or `[build] lazy_priority`) before launching, then fills the rest of the app tree in the background. Priority specs may be app-relative (`main.py`) or payload-relative (`app/main.py`); directories expand recursively (skipping `__pycache__`/`.git`), capped at 2048 files. Dry-run reports `Lazy:` on/off and the priority count. Namespaced builds (isolation ≥ 2) extract synchronously so the user-namespace `unshare` stays single-threaded.
 - `daedalus-core::lazy::expand_priority_paths` — build-time expansion of `--lazy-priority` specs into payload-relative paths with tar-exclusion parity
 - Constrained-host auto-disable: `--lazy-load` without an explicit priority list turns itself off on small hosts (< 4 cores or < 3 GiB RAM, via `daedalus-core::system_info::is_constrained_host`)
@@ -22,6 +28,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - System config detection module `daedalus-core/src/system_info.rs` (`SystemConfig`, `detect()`, `compute_universal_slices()`) for resource-adaptive builds
 
 ### Fixed
+- **`registry push` remote was broken**: it POSTed the raw binary to the layer `/push` endpoint, which the server tried to JSON-parse as a layer (400). Remote pushes now target the correct endpoint — full binaries go to `/artifact`, layers to `/push` as JSON.
+- `registry push` rejected `.de` files (extension check still required `.daedalus` after the 0.6.0 rename); both extensions are accepted now
 - **`--lazy-load` runtime failure**: priority files used absolute `/app/...` paths that never matched the tar's payload-relative entries (and wrongly listed the host PATH interpreter as a payload file), so every lazy build errored with `priority files not found in payload: /app/python3`. Priorities are now payload-relative and the interpreter is never one.
 - Stub lazy extraction skipped non-priority tar entries without draining them, misaligning the stream and breaking extraction with `Invalid argument (os error 22)` whenever a non-priority entry was followed by more data — entries are now drained before skipping
 - Stub multi-service supervisor on Unix now execs via `execvp` (PATH search) instead of `execve`, so bare interpreter names like `python3` resolve at runtime — multi-service binaries can actually launch their services

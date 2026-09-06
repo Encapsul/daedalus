@@ -516,7 +516,7 @@ fn test_registry_push_no_registry() {
         .args(["registry", "push", fake_file.to_str().unwrap()])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("not a .daedalus file"));
+        .stderr(predicate::str::contains("not a .de/.daedalus file"));
 }
 
 #[test]
@@ -601,4 +601,145 @@ fn test_registry_push_local_extracts_layers() {
         .args(["registry", "list", "--dir", registry_dir.to_str().unwrap()])
         .assert()
         .success();
+}
+
+#[test]
+fn test_registry_push_pull_binary_by_name_local() {
+    let tmp = tempdir().unwrap();
+    let work = tmp.path();
+
+    // The --name path stores opaque bytes; a plain file exercises it.
+    let bin = work.join("ollama.de");
+    let blob: Vec<u8> = (0..=255u8).cycle().take(4096).collect();
+    std::fs::write(&bin, &blob).unwrap();
+
+    let registry_dir = work.join("registry");
+    daedalus()
+        .args([
+            "registry",
+            "push",
+            bin.to_str().unwrap(),
+            "--name",
+            "ollama:latest",
+            "--local",
+            registry_dir.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("published 'ollama:latest' -> "));
+
+    let out = work.join("fetched.de");
+    daedalus()
+        .args([
+            "registry",
+            "pull",
+            "--name",
+            "ollama:latest",
+            "--local",
+            registry_dir.to_str().unwrap(),
+            "-o",
+            out.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(std::fs::read(&out).unwrap(), blob);
+}
+
+#[test]
+fn test_registry_serve_artifact_endpoints() {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    let tmp = tempdir().unwrap();
+    let work = tmp.path();
+
+    // Pick an ephemeral port, then hand it to `daedalus serve start`.
+    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+
+    let registry_dir = work.join("registry");
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_daedalus"))
+        .args([
+            "serve",
+            "start",
+            "--bind",
+            &format!("127.0.0.1:{port}"),
+            "--dir",
+            registry_dir.to_str().unwrap(),
+        ])
+        .spawn()
+        .unwrap();
+
+    // Wait for the server to accept connections.
+    let base = format!("http://127.0.0.1:{port}");
+    let mut ready = false;
+    for _ in 0..100 {
+        if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+            ready = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(ready, "serve did not become ready");
+
+    // POST a runnable binary artifact.
+    let blob: Vec<u8> = (0..=255u8).rev().cycle().take(8192).collect();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+    let head = format!(
+        "POST /artifact?name=gemma&tag=2b HTTP/1.1\r\nHost: {base}\r\nContent-Length: {}\r\n\r\n",
+        blob.len()
+    );
+    stream.write_all(head.as_bytes()).unwrap();
+    stream.write_all(&blob).unwrap();
+    stream.flush().unwrap();
+    let mut resp = Vec::new();
+    stream.read_to_end(&mut resp).unwrap();
+    let resp = String::from_utf8_lossy(&resp);
+    assert!(resp.starts_with("HTTP/1.1 201"), "POST failed: {resp}");
+
+    // GET the artifact back and compare bytes.
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+    stream
+        .write_all(b"GET /artifact/gemma:2b HTTP/1.1\r\nHost: x\r\n\r\n")
+        .unwrap();
+    stream.flush().unwrap();
+    let mut resp = Vec::new();
+    stream.read_to_end(&mut resp).unwrap();
+    let header_end = resp.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+    let body = &resp[header_end..];
+    let header = String::from_utf8_lossy(&resp[..header_end]);
+    assert!(header.starts_with("HTTP/1.1 200"), "GET failed: {header}");
+    assert_eq!(body, blob.as_slice());
+
+    // GET the artifact list and confirm the alias is indexed.
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+    stream
+        .write_all(b"GET /artifacts HTTP/1.1\r\nHost: x\r\n\r\n")
+        .unwrap();
+    stream.flush().unwrap();
+    let mut resp = Vec::new();
+    stream.read_to_end(&mut resp).unwrap();
+    let header_end = resp.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+    let body = String::from_utf8_lossy(&resp[header_end..]);
+    assert!(
+        body.contains(r#""name":"gemma""#) && body.contains(r#""tag":"2b""#),
+        "artifacts list missing alias: {body}"
+    );
+
+    // Missing artifact returns 404.
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
+    stream
+        .write_all(b"GET /artifact/missing:latest HTTP/1.1\r\nHost: x\r\n\r\n")
+        .unwrap();
+    stream.flush().unwrap();
+    let mut resp = Vec::new();
+    stream.read_to_end(&mut resp).unwrap();
+    let header = String::from_utf8_lossy(&resp);
+    assert!(header.starts_with("HTTP/1.1 404"), "expected 404: {header}");
+
+    child.kill().unwrap();
+    child.wait().unwrap();
 }

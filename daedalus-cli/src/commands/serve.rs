@@ -111,8 +111,8 @@ fn run_start(args: ServeStartArgs) -> Result<()> {
 /// handle_connection - parse an HTTP request and dispatch to the handler.
 ///
 /// Description:
-/// Reads the first line of the request, extracts method and path, and routes
-/// to handle_list, handle_pull, or handle_push.
+/// Reads the request head (up to a blank line), then any `Content-Length`
+/// body bytes that follow, and routes to the matching handler.
 ///
 /// Return: nothing
 fn handle_connection(
@@ -121,11 +121,30 @@ fn handle_connection(
     token: Option<String>,
     verbose: bool,
 ) -> Result<()> {
-    let mut buf = [0u8; 4096];
-    let n = stream.read(&mut buf)?;
-    let request = String::from_utf8_lossy(&buf[..n]);
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
+    let mut head_bytes = Vec::new();
+    let mut body = Vec::new();
+    let mut split_idx = None;
+    loop {
+        let mut buf = [0u8; 8192];
+        let n = stream.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        head_bytes.extend_from_slice(&buf[..n]);
+        if let Some(idx) = find_head_end(&head_bytes) {
+            split_idx = Some(idx);
+            body = head_bytes.split_off(idx);
+            break;
+        }
+    }
+    let Some(head_end) = split_idx else {
+        send_response(&mut stream, 400, "Bad Request", "Incomplete request head")?;
+        return Ok(());
+    };
 
-    let first_line = request.lines().next().unwrap_or("");
+    let head_str = String::from_utf8_lossy(&head_bytes);
+    let first_line = head_str.lines().next().unwrap_or("");
     let parts: Vec<&str> = first_line.split_whitespace().collect();
     if parts.len() < 2 {
         send_response(&mut stream, 400, "Bad Request", "Invalid request")?;
@@ -139,17 +158,68 @@ fn handle_connection(
         eprintln!("[daedalus] {} {}", method, path);
     }
 
+    // Read the declared body even when it spans multiple TCP reads.
+    let content_length = content_length(&head_str);
+    let mut buffer = std::io::Cursor::new(body);
+    let remaining = content_length.saturating_sub(buffer.get_ref().len());
+    if remaining > 0 {
+        let mut rest = vec![0u8; remaining];
+        stream.read_exact(&mut rest)?;
+        buffer.get_mut().extend_from_slice(&rest);
+    }
+    let body = buffer.into_inner();
+
+    let (path, query) = match path.split_once('?') {
+        Some((p, q)) => (p, q),
+        None => (path, ""),
+    };
+
     match (method, path) {
         ("GET", "/list") => handle_list(&mut stream, reg)?,
+        ("GET", "/artifacts") => handle_artifacts(&mut stream, reg)?,
         ("GET", path) if path.starts_with("/pull/") => {
             let hash = &path[6..];
             handle_pull(&mut stream, reg, hash, verbose)?;
         }
-        ("POST", "/push") => handle_push(&mut stream, reg, token, verbose)?,
+        ("GET", path) if path.starts_with("/artifact/") => {
+            let spec = &path["/artifact/".len()..];
+            handle_artifact_get(&mut stream, reg, spec, verbose)?;
+        }
+        ("POST", "/push") => handle_push(&mut stream, reg, token, verbose, &body)?,
+        ("POST", "/artifact") => {
+            handle_artifact_push(&mut stream, reg, token, verbose, &body, query)?;
+        }
         _ => send_response(&mut stream, 404, "Not Found", "Endpoint not found")?,
     }
 
     Ok(())
+}
+
+/// find_head_end - locate the end of the HTTP head (`\r\n\r\n` or `\n\n`).
+///
+/// Return: byte index just past the head, or None if the head is incomplete.
+fn find_head_end(bytes: &[u8]) -> Option<usize> {
+    bytes
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|i| i + 4)
+        .or_else(|| bytes.windows(2).position(|w| w == b"\n\n").map(|i| i + 2))
+}
+
+/// content_length - parse the `Content-Length` header value from a request head.
+///
+/// Return: the declared length, 0 if absent or unparseable.
+fn content_length(head: &str) -> usize {
+    for line in head.lines() {
+        let line = line.trim();
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("content-length") {
+            return value.trim().parse().unwrap_or(0);
+        }
+    }
+    0
 }
 
 /// handle_list - return all layer hashes in the registry as plain text.
@@ -206,14 +276,14 @@ fn handle_push(
     reg: &mut LayerRegistry,
     _token: Option<String>,
     verbose: bool,
+    body: &[u8],
 ) -> Result<()> {
-    let body = extract_body(stream);
     if body.is_empty() {
         send_response(stream, 400, "Bad Request", "Empty body")?;
         return Ok(());
     }
 
-    let layer: daedalus_core::layer::SerializableLayer = match serde_json::from_slice(&body) {
+    let layer: daedalus_core::layer::SerializableLayer = match serde_json::from_slice(body) {
         Ok(l) => l,
         Err(e) => {
             send_response(stream, 400, "Bad Request", &format!("Invalid JSON: {e}"))?;
@@ -229,17 +299,96 @@ fn handle_push(
     send_response(stream, 201, "Created", &hash)
 }
 
-/// extract_body - read the HTTP request body from a TcpStream.
-/// @stream: stream
+/// handle_artifacts - list all stored runnable artifacts as JSON.
+///
+/// Return: nothing
+fn handle_artifacts(stream: &mut TcpStream, reg: &LayerRegistry) -> Result<()> {
+    let artifacts = reg.list_artifacts().unwrap_or_default();
+    let body = serde_json::to_vec(&artifacts)?;
+    send_response_bytes(stream, 200, "OK", &body, "application/json")
+}
+
+/// handle_artifact_get - serve a stored `.de` binary by `name:tag`.
 ///
 /// Description:
-/// Reads up to 4096 bytes from the stream and returns them as a Vec<u8>.
+/// Spec path format: `/artifact/<name>:<tag>`. Responds with the raw binary
+/// bytes (content type application/octet-stream) or 404 if absent.
 ///
-/// Return: vector of Vec<u8>
-fn extract_body(stream: &mut TcpStream) -> Vec<u8> {
-    let mut buf = [0u8; 4096];
-    let n = stream.read(&mut buf).unwrap_or(0);
-    buf[..n].to_vec()
+/// Return: nothing
+fn handle_artifact_get(
+    stream: &mut TcpStream,
+    reg: &LayerRegistry,
+    spec: &str,
+    verbose: bool,
+) -> Result<()> {
+    let Some((name, tag)) = spec.split_once(':') else {
+        send_response(stream, 400, "Bad Request", "Expected name:tag")?;
+        return Ok(());
+    };
+    match reg.artifact_binary(name, tag) {
+        Ok(Some(bytes)) => {
+            send_response_bytes(stream, 200, "OK", &bytes, "application/octet-stream")?;
+            if verbose {
+                eprintln!(
+                    "[daedalus] served artifact '{name}:{tag}' ({} bytes)",
+                    bytes.len()
+                );
+            }
+        }
+        Ok(None) => {
+            send_response(stream, 404, "Not Found", "Artifact not found")?;
+        }
+        Err(e) => {
+            send_response(stream, 500, "Internal Server Error", &e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// handle_artifact_push - store a `.de` binary uploaded with `name`/`tag`.
+///
+/// Description:
+/// Query params: `?name=<name>&tag=<tag>` (tag defaults to "latest"). The
+/// request body is the full runnable binary; stores it content-addressed and
+/// returns the content hash.
+///
+/// Return: nothing
+fn handle_artifact_push(
+    stream: &mut TcpStream,
+    reg: &mut LayerRegistry,
+    _token: Option<String>,
+    verbose: bool,
+    body: &[u8],
+    query: &str,
+) -> Result<()> {
+    let params: std::collections::HashMap<String, String> = query
+        .split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    let Some(name) = params.get("name").filter(|n| !n.is_empty()) else {
+        send_response(stream, 400, "Bad Request", "Missing ?name= parameter")?;
+        return Ok(());
+    };
+    let tag = params.get("tag").map(String::as_str).unwrap_or("latest");
+
+    if body.is_empty() {
+        send_response(stream, 400, "Bad Request", "Empty body")?;
+        return Ok(());
+    }
+
+    match reg.publish_artifact_binary(name, tag, body) {
+        Ok(hash) => {
+            if verbose {
+                eprintln!("[daedalus] stored artifact '{name}:{tag}' -> {hash}");
+            }
+            send_response(stream, 201, "Created", &hash)
+        }
+        Err(e) => {
+            send_response(stream, 500, "Internal Server Error", &e.to_string())?;
+            Ok(())
+        }
+    }
 }
 
 /// send_response - write a plain-text HTTP response to a TcpStream.

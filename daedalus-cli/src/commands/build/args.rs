@@ -716,9 +716,10 @@ pub struct BuildArgs {
     #[arg(long, default_value = "daedalus")]
     pub _package_format: String,
 
-    /// Publish layers to a content-addressable registry after successful build.
-    /// Accepts a local directory path (for a filesystem-backed CAS) or a
-    /// remote registry URL (HTTP/HTTPS with Bearer token auth).
+    /// Publish the built binary to a registry after a successful build.
+    /// Remote: pushes the runnable `.de` to `URL/artifact?name=<stem>&tag=latest`
+    /// (HTTP/HTTPS with Bearer token auth); local: stores layers + manifest in a
+    /// directory-backed CAS.
     #[arg(long, env = "DAEDALUS_REGISTRY")]
     pub publish: Option<String>,
 
