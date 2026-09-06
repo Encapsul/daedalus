@@ -194,12 +194,20 @@ impl LayerRegistry {
     ///
     /// The bytes are content-addressed in the CAS; the `name:tag` alias is
     /// recorded in the registry's `artifacts.json` index (disk-backed only).
+    ///
+    /// # Errors
+    ///
+    /// Returns `InvalidInput` when the alias contains characters that would
+    /// make a `GET /artifact/<name>:<tag>` round trip ambiguous (anything
+    /// outside the safe alias alphabet), so an aliases can always be
+    /// fetched back over HTTP.
     pub fn publish_artifact_binary(
         &mut self,
         name: &str,
         tag: &str,
         data: &[u8],
     ) -> io::Result<String> {
+        crate::http_parse::split_name_tag(&format!("{name}:{tag}"))?;
         let hash = content_hash(data);
         let hex = format_hex(&hash);
         self.store.put(&hash, data)?;
@@ -255,12 +263,24 @@ impl LayerRegistry {
             return Ok(vec![]);
         }
         let bytes = std::fs::read(&path)?;
-        serde_json::from_slice(&bytes).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("deserialize artifact index: {e}"),
-            )
-        })
+        match serde_json::from_slice(&bytes) {
+            Ok(index) => Ok(index),
+            Err(e) => {
+                // The index is derived data (the blobs themselves are
+                // content-addressed and intact), so a torn or corrupted file
+                // must not brick every subsequent read. Preserve the corrupt
+                // file for forensics and start from an empty index.
+                let backup = path.with_extension("json.corrupt");
+                let _ = std::fs::rename(&path, &backup);
+                eprintln!(
+                    "[daedalus] artifact index corrupt at {} — moved to {} ({}); rebuilding empty",
+                    path.display(),
+                    backup.display(),
+                    e
+                );
+                Ok(vec![])
+            }
+        }
     }
 
     fn write_artifact_index(&self, index: &[StoredArtifact]) -> io::Result<()> {
@@ -463,6 +483,45 @@ mod tests {
             reg.artifact_binary("ollama", "latest").unwrap(),
             Some(blob_c)
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    /// `artifact_index_self_heals_corruption` - a torn/corrupt index is
+    /// preserved aside and treated as empty so the registry keeps serving;
+    /// publishing afterwards rebuilds the index cleanly.
+    fn artifact_index_self_heals_corruption() {
+        let dir = std::env::temp_dir().join(format!(
+            "daedalus-heal-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut reg = LayerRegistry::disk(&dir).unwrap();
+        reg.publish_artifact_binary("app", "1", b"bytes-a").unwrap();
+
+        // Tear the index mid-write: garbage bytes.
+        std::fs::write(dir.join(ARTIFACT_INDEX_FILE), b"{\"name\":").unwrap();
+
+        // Reading a corrupt index recovers (empty) instead of erroring.
+        assert!(reg.list_artifacts().unwrap().is_empty());
+        // And publish still works, rebuilding from empty.
+        reg.publish_artifact_binary("app", "2", b"bytes-b").unwrap();
+        let listed = reg.list_artifacts().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].tag, "2");
+
+        // The corrupt bytes were preserved, not silently destroyed.
+        assert!(dir.join("artifacts.json.corrupt").exists());
+
+        // Names with characters that break the HTTP GET round trip are
+        // rejected at the API boundary.
+        assert!(reg.publish_artifact_binary("a:b", "1", b"x").is_err());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

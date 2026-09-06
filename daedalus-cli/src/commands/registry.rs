@@ -285,29 +285,16 @@ fn push_binary(
     }
 }
 
-/// split_name_tag - parse "name[:tag]" into ("name", "tag") with a `latest` default.
+/// split_name_tag - parse and validate "name[:tag]" with a `latest` default.
 /// @spec: name[:tag]
 ///
 /// Description:
-/// Rejects names/tags containing path or query separators so they are URL-safe
-/// without percent-encoding.
+/// Delegates to the shared core validator so push, pull, and the serve GET
+/// route all agree on exactly which aliases are fetchable.
 ///
 /// Return: Result containing a tuple of (name, tag)
 fn split_name_tag(spec: &str) -> Result<(String, String)> {
-    let (name, tag) = match spec.rsplit_once(':') {
-        Some((n, t)) => (n, t),
-        None => (spec, "latest"),
-    };
-    for part in [name, tag] {
-        if part.is_empty()
-            || part.contains('/')
-            || part.contains('?')
-            || part.contains('#')
-            || part.contains(char::is_whitespace)
-        {
-            anyhow::bail!("invalid name:tag '{spec}' — use letters, digits, '_', '-', '.' only");
-        }
-    }
+    let (name, tag) = daedalus_core::http_parse::split_name_tag(spec)?;
     Ok((name.to_string(), tag.to_string()))
 }
 
