@@ -9,7 +9,7 @@
 //! remote HTTP registry client added in `daedalus-cli/registry/`.
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
@@ -34,6 +34,21 @@ pub struct LayerRef {
     /// Approximate byte size of the serialized layer (for display / bandwidth).
     pub size: usize,
 }
+
+/// A runnable artifact: a full `.de` binary stored under a `name:tag` alias.
+///
+/// The binary itself lives in the CAS under `binary_hash` (its content hash);
+/// the index file maps `name:tag` onto it so distributed apps can be fetched
+/// by name instead of by hash.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct StoredArtifact {
+    pub name: String,
+    pub tag: String,
+    pub binary_hash: String,
+    pub size: u64,
+}
+
+const ARTIFACT_INDEX_FILE: &str = "artifacts.json";
 
 /// A content-addressable layer registry backed by any `ObjectStore`.
 ///
@@ -174,6 +189,94 @@ impl LayerRegistry {
         let manifest_hash = self.publish_artifact(&manifest)?;
         Ok((manifest_hash, refs))
     }
+
+    /// Store a full runnable binary under `name:tag` and return its content hash.
+    ///
+    /// The bytes are content-addressed in the CAS; the `name:tag` alias is
+    /// recorded in the registry's `artifacts.json` index (disk-backed only).
+    pub fn publish_artifact_binary(
+        &mut self,
+        name: &str,
+        tag: &str,
+        data: &[u8],
+    ) -> io::Result<String> {
+        let hash = content_hash(data);
+        let hex = format_hex(&hash);
+        self.store.put(&hash, data)?;
+        let mut index = self.read_artifact_index()?;
+        index.retain(|a| !(a.name == name && a.tag == tag));
+        index.push(StoredArtifact {
+            name: name.to_string(),
+            tag: tag.to_string(),
+            binary_hash: hex.clone(),
+            size: data.len() as u64,
+        });
+        self.write_artifact_index(&index)?;
+        Ok(hex)
+    }
+
+    /// Fetch a stored runnable binary by `name:tag`, or `Ok(None)` if absent.
+    pub fn artifact_binary(&self, name: &str, tag: &str) -> io::Result<Option<Vec<u8>>> {
+        let index = self.read_artifact_index()?;
+        let entry = index.iter().find(|a| a.name == name && a.tag == tag);
+        let Some(entry) = entry else {
+            return Ok(None);
+        };
+        let hash = parse_hex(&entry.binary_hash)?;
+        self.store.get(&hash)
+    }
+
+    /// List all stored runnable artifacts (name:tag aliases).
+    pub fn list_artifacts(&self) -> io::Result<Vec<StoredArtifact>> {
+        self.read_artifact_index()
+    }
+
+    /// Resolve the `artifacts.json` index path (disk-backed registries only).
+    fn artifact_index_path(&self) -> io::Result<PathBuf> {
+        let dir = match self
+            .store
+            .as_any()
+            .downcast_ref::<crate::cas::DiskObjectStore>()
+        {
+            Some(disk) => disk.root(),
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "artifact index requires a disk-backed registry",
+                ));
+            }
+        };
+        Ok(dir.join(ARTIFACT_INDEX_FILE))
+    }
+
+    fn read_artifact_index(&self) -> io::Result<Vec<StoredArtifact>> {
+        let path = self.artifact_index_path()?;
+        if !path.exists() {
+            return Ok(vec![]);
+        }
+        let bytes = std::fs::read(&path)?;
+        serde_json::from_slice(&bytes).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("deserialize artifact index: {e}"),
+            )
+        })
+    }
+
+    fn write_artifact_index(&self, index: &[StoredArtifact]) -> io::Result<()> {
+        let path = self.artifact_index_path()?;
+        let bytes = serde_json::to_vec_pretty(index).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("serialize artifact index: {e}"),
+            )
+        })?;
+        // Replace atomically so a crash mid-write can't tear the index.
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, &bytes)?;
+        std::fs::rename(&tmp, &path)?;
+        Ok(())
+    }
 }
 
 /// Compute the SHA-256 hash of `data`.
@@ -309,6 +412,59 @@ mod tests {
         let manifest = reg.get_artifact(&manifest_hash).unwrap();
         assert_eq!(manifest.artifact_name, "app");
         assert_eq!(manifest.layers.len(), 2);
+    }
+
+    #[test]
+    /// `artifact_binary_roundtrip_by_name` - publish/fetch a runnable binary by name:tag.
+    ///
+    /// Description:
+    /// Publishes an opaque byte blob (a stand-in .de binary) under two tags,
+    /// verifies fetching by name, that a later publish of the same tag
+    /// overwrites it, and that list reports exactly the aliases.
+    ///
+    /// Return: nothing
+    fn artifact_binary_roundtrip_by_name() {
+        let dir = std::env::temp_dir().join(format!("daedalus-reg-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut reg = LayerRegistry::disk(&dir).unwrap();
+
+        let blob_a = b"\x7fELF fake .de bytes a".to_vec();
+        let blob_b = b"\x7fELF fake .de bytes b".to_vec();
+        let hash_a = reg
+            .publish_artifact_binary("ollama", "latest", &blob_a)
+            .unwrap();
+        assert_eq!(hash_a.len(), 64);
+        let hash_b = reg
+            .publish_artifact_binary("gemma", "1.1", &blob_b)
+            .unwrap();
+        assert_ne!(hash_a, hash_b);
+
+        assert_eq!(
+            reg.artifact_binary("ollama", "latest").unwrap(),
+            Some(blob_a)
+        );
+        assert_eq!(reg.artifact_binary("gemma", "1.1").unwrap(), Some(blob_b));
+        assert!(reg.artifact_binary("ollama", "1.0").unwrap().is_none());
+        assert!(reg.artifact_binary("missing", "latest").unwrap().is_none());
+
+        let listed = reg.list_artifacts().unwrap();
+        assert_eq!(listed.len(), 2);
+        assert!(listed
+            .iter()
+            .any(|a| a.name == "ollama" && a.tag == "latest"));
+
+        // Publishing the same name:tag again overwrites, keeping one alias.
+        let blob_c = b"\x7fELF fake .de bytes c".to_vec();
+        reg.publish_artifact_binary("ollama", "latest", &blob_c)
+            .unwrap();
+        let listed = reg.list_artifacts().unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(
+            reg.artifact_binary("ollama", "latest").unwrap(),
+            Some(blob_c)
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -33,9 +33,13 @@ pub enum RegistryCommand {
 #[derive(Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct RegistryPushArgs {
-    /// Path to the .daedalus file to push
+    /// Path to the .de/.daedalus file to push
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
+
+    /// Publish the full runnable binary under this name[:tag] instead of layers
+    #[arg(long, value_name = "NAME[:TAG]")]
+    pub name: Option<String>,
 
     /// Layer name or hash to push from the artifact (push all layers if omitted)
     #[arg(long)]
@@ -74,10 +78,14 @@ pub struct RegistryPushArgs {
 #[allow(clippy::struct_excessive_bools)]
 pub struct RegistryPullArgs {
     /// Layer hash (or artifact manifest hash) to pull
-    #[arg(value_name = "HASH")]
-    pub hash: String,
+    #[arg(value_name = "HASH", required_unless_present = "name")]
+    pub hash: Option<String>,
 
-    /// Output directory for the pulled layer (default: current dir)
+    /// Pull the runnable binary by NAME[:TAG] instead of by hash
+    #[arg(long, value_name = "NAME[:TAG]")]
+    pub name: Option<String>,
+
+    /// Output directory (by hash) or output file path (by name)
     #[arg(short, long, default_value = ".")]
     pub output: PathBuf,
 
@@ -161,27 +169,53 @@ pub fn run(args: RegistryArgs) -> Result<()> {
     }
 }
 
-/// run_push - push layers from a .daedalus file to a registry.
+/// run_push - push a .de file to a registry, as layers or as a runnable binary.
 /// @args: command arguments
 ///
 /// Description:
-/// Extracts layers from the artifact and pushes them to a local directory or
-/// remote HTTP registry.
+/// `--name NAME[:TAG]` publishes the full runnable binary (so another machine
+/// can pull and run it); otherwise each layer is pushed content-addressed and
+/// an artifact manifest published.
 ///
 /// Return: Result containing Result<()>
 fn run_push(args: RegistryPushArgs) -> Result<()> {
     let file = args.file.canonicalize().context("failed to find file")?;
 
-    if file.extension().is_none_or(|e| e != "daedalus") {
-        anyhow::bail!("{} is not a .daedalus file", file.display());
+    let ext = file.extension().and_then(|e| e.to_str());
+    if !matches!(ext, Some("de" | "daedalus")) {
+        anyhow::bail!("{} is not a .de/.daedalus file", file.display());
+    }
+
+    if let Some(name_tag) = &args.name {
+        let (name, tag) = split_name_tag(name_tag)?;
+        return push_binary(
+            &file,
+            &name,
+            &tag,
+            args.local.as_ref(),
+            args.registry.as_deref(),
+            args.token.as_deref(),
+            args.verbose,
+        );
     }
 
     let (_footer, layers) = extract_layers_from_artifact(&file)?;
+    let chosen: Vec<&SerializableLayer> = match &args.layer {
+        Some(wanted) => {
+            let picked: Vec<&SerializableLayer> =
+                layers.iter().filter(|l| l.name() == wanted).collect();
+            if picked.is_empty() {
+                anyhow::bail!("layer '{}' not found in artifact", wanted);
+            }
+            picked
+        }
+        None => layers.iter().collect(),
+    };
 
     if args.verbose {
         eprintln!("[daedalus] registry push: {}", file.display());
-        eprintln!("  layers: {}", layers.len());
-        for layer in &layers {
+        eprintln!("  layers: {}", chosen.len());
+        for layer in &chosen {
             eprintln!("  - {} (kind: {})", layer.name(), format_layer_kind(layer));
         }
     }
@@ -194,10 +228,270 @@ fn run_push(args: RegistryPushArgs) -> Result<()> {
             if registry_url.contains("daedalus.example.com") {
                 anyhow::bail!("cannot use placeholder registry URL '{registry_url}'");
             }
-            push_remote(
+            push_layers_remote(registry_url, &layers, args.token.as_deref(), args.verbose)?;
+        }
+        (None, None) => {
+            anyhow::bail!("must specify --local <DIR> or --registry <URL>");
+        }
+        (Some(_), Some(_)) => {
+            anyhow::bail!("cannot use both --local and --registry");
+        }
+    }
+
+    Ok(())
+}
+
+/// push_binary - publish a full runnable `.de` binary under `name:tag`.
+/// @file: the .de file
+/// @name: artifact name
+/// @tag: artifact tag
+/// @local / @registry: exactly one target
+/// @token: optional bearer token
+/// @verbose: verbose output
+///
+/// Description:
+/// Local targets store the bytes content-addressed; remote targets POST them
+/// to the `/artifact` endpoint.
+///
+/// Return: Result containing Result<()>
+fn push_binary(
+    file: &Path,
+    name: &str,
+    tag: &str,
+    local: Option<&PathBuf>,
+    registry: Option<&str>,
+    token: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    match (local, registry) {
+        (Some(local_dir), None) => {
+            let mut reg = local_registry(local_dir)?;
+            let bytes = std::fs::read(file)
+                .with_context(|| format!("failed to read {}", file.display()))?;
+            let hash = reg
+                .publish_artifact_binary(name, tag, &bytes)
+                .context("failed to publish binary")?;
+            println!("published '{name}:{tag}' -> {hash} ({} bytes)", bytes.len());
+            Ok(())
+        }
+        (None, Some(registry_url)) => {
+            if registry_url.contains("daedalus.example.com") {
+                anyhow::bail!("cannot use placeholder registry URL '{registry_url}'");
+            }
+            push_binary_remote(registry_url, name, tag, file, token, verbose)
+        }
+        (None, None) => anyhow::bail!("must specify --local <DIR> or --registry <URL>"),
+        (Some(_), Some(_)) => anyhow::bail!("cannot use both --local and --registry"),
+    }
+}
+
+/// split_name_tag - parse "name[:tag]" into ("name", "tag") with a `latest` default.
+/// @spec: name[:tag]
+///
+/// Description:
+/// Rejects names/tags containing path or query separators so they are URL-safe
+/// without percent-encoding.
+///
+/// Return: Result containing a tuple of (name, tag)
+fn split_name_tag(spec: &str) -> Result<(String, String)> {
+    let (name, tag) = match spec.rsplit_once(':') {
+        Some((n, t)) => (n, t),
+        None => (spec, "latest"),
+    };
+    for part in [name, tag] {
+        if part.is_empty()
+            || part.contains('/')
+            || part.contains('?')
+            || part.contains('#')
+            || part.contains(char::is_whitespace)
+        {
+            anyhow::bail!("invalid name:tag '{spec}' — use letters, digits, '_', '-', '.' only");
+        }
+    }
+    Ok((name.to_string(), tag.to_string()))
+}
+
+/// push_binary_remote - POST a runnable binary to the remote `/artifact` endpoint.
+/// @base: registry base URL
+/// @name: name
+/// @tag: tag
+/// @bin: file to upload
+/// @token: optional bearer token
+/// @verbose: verbose output
+///
+/// Description:
+/// Appends `/artifact?name=..&tag=..` to the base URL if not already present.
+///
+/// Return: Result containing Result<()>
+fn push_binary_remote(
+    base: &str,
+    name: &str,
+    tag: &str,
+    bin: &Path,
+    token: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    let content = std::fs::read(bin).context("failed to read file")?;
+    let content_len = content.len();
+
+    let url = format!("{}?name={name}&tag={tag}", endpoint_url(base, "/artifact"));
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_mins(5))
+        .build()
+        .context("failed to create HTTP client")?;
+
+    let mut request = client.post(url).body(content);
+    if let Some(t) = token {
+        request = request.bearer_auth(t);
+    }
+
+    if verbose {
+        eprintln!("[daedalus] publishing '{name}:{tag}' ({content_len} bytes) to {base}");
+    }
+
+    let response = request.send().context("failed to publish to registry")?;
+    let status = response.status();
+    if !status.is_success() {
+        anyhow::bail!(
+            "publish failed (HTTP {status}): {}",
+            response.text().unwrap_or_default()
+        );
+    }
+    let hash = response.text().unwrap_or_default();
+    println!("published '{name}:{tag}' -> {hash} ({content_len} bytes)");
+    Ok(())
+}
+
+/// push_layers_remote - push each layer as JSON to the remote `/push` endpoint.
+/// @base: registry base URL
+/// @layers: layers to push
+/// @token: optional bearer token
+/// @verbose: verbose output
+///
+/// Description:
+/// Sends each serialized layer to `<base>/push` and prints its content hash.
+///
+/// Return: Result containing Result<()>
+fn push_layers_remote(
+    base: &str,
+    layers: &[SerializableLayer],
+    token: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    let url = endpoint_url(base, "/push");
+    for layer in layers {
+        let body = serde_json::to_vec(layer).context("serialize layer")?;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_mins(5))
+            .build()
+            .context("failed to create HTTP client")?;
+        let mut request = client.post(&url).body(body);
+        if let Some(t) = token {
+            request = request.bearer_auth(t);
+        }
+        let response = request.send().context("failed to push layer")?;
+        let status = response.status();
+        if !status.is_success() {
+            anyhow::bail!(
+                "layer push failed (HTTP {status}): {}",
+                response.text().unwrap_or_default()
+            );
+        }
+        let hash = response.text().unwrap_or_default();
+        if verbose {
+            eprintln!("[daedalus] pushed layer '{}' -> {hash}", layer.name());
+        }
+        println!("pushed layer '{}' -> {hash}", layer.name());
+    }
+    Ok(())
+}
+
+/// endpoint_url - append a default endpoint to a registry base URL, avoiding
+/// duplication when the base already ends with it.
+/// @base: registry base URL (may already end with `default_endpoint`)
+/// @default_endpoint: e.g. "/artifact"
+///
+/// Return: the joined URL with exactly one separator
+fn endpoint_url(base: &str, default_endpoint: &str) -> String {
+    let base = base.trim_end_matches('/');
+    if base.ends_with(default_endpoint) {
+        base.to_string()
+    } else {
+        format!("{base}{default_endpoint}")
+    }
+}
+
+/// run_pull - pull a layer by hash or a runnable binary by name from a registry.
+/// @args: command arguments
+///
+/// Description:
+/// `--name NAME[:TAG]` fetches the runnable binary and writes it to the output
+/// file path (default `./NAME.de`); a positional hash pulls a layer JSON into
+/// the output directory.
+///
+/// Return: Result containing Result<()>
+fn run_pull(args: RegistryPullArgs) -> Result<()> {
+    if let Some(name_tag) = &args.name {
+        let (name, tag) = split_name_tag(name_tag)?;
+        let out_file: PathBuf = if args.output.is_dir() {
+            args.output.join(format!("{name}.de"))
+        } else {
+            args.output
+        };
+        let out_ref = &out_file;
+
+        match (&args.local, &args.registry) {
+            (Some(local_dir), None) => {
+                let reg = local_registry(local_dir)?;
+                let bytes = reg
+                    .artifact_binary(&name, &tag)?
+                    .ok_or_else(|| anyhow::anyhow!("artifact '{name}:{tag}' not found"))?;
+                write_pulled_binary(&bytes, out_ref, &name, &tag, args.verbose)?;
+            }
+            (None, Some(registry_url)) => {
+                if registry_url.contains("daedalus.example.com") {
+                    anyhow::bail!("cannot use placeholder registry URL '{registry_url}'");
+                }
+                pull_binary_remote(
+                    registry_url,
+                    &name,
+                    &tag,
+                    out_ref,
+                    args.token.as_deref(),
+                    args.verbose,
+                )?;
+            }
+            (None, None) => {
+                anyhow::bail!("must specify --local <DIR> or --registry <URL>");
+            }
+            (Some(_), Some(_)) => {
+                anyhow::bail!("cannot use both --local and --registry");
+            }
+        }
+        return Ok(());
+    }
+
+    let hash = args
+        .hash
+        .as_deref()
+        .expect("registry pull requires a hash or --name");
+
+    std::fs::create_dir_all(&args.output).context("failed to create output directory")?;
+
+    match (&args.local, &args.registry) {
+        (Some(local_dir), None) => {
+            let mut reg = local_registry(local_dir)?;
+            pull_from_store(&mut reg, hash, &args.output, args.verbose, args.json)?;
+        }
+        (None, Some(registry_url)) => {
+            if registry_url.contains("daedalus.example.com") {
+                anyhow::bail!("cannot use placeholder registry URL '{registry_url}'");
+            }
+            pull_from_remote(
                 registry_url,
-                &layers,
-                &file,
+                hash,
+                &args.output,
                 args.token.as_deref(),
                 args.verbose,
                 args.json,
@@ -214,44 +508,95 @@ fn run_push(args: RegistryPushArgs) -> Result<()> {
     Ok(())
 }
 
-/// run_pull - pull a layer or artifact from a registry by hash.
-/// @args: command arguments
+/// write_pulled_binary - write fetched binary bytes to an output file.
+/// @bytes: the binary
+/// @out_file: destination path
+/// @name: artifact name (for display)
+/// @tag: artifact tag (for display)
+/// @verbose: verbose output
 ///
 /// Description:
-/// Retrieves a layer by hash from a local directory or remote HTTP registry
-/// and writes it to the output directory.
+/// Creates parent dirs and writes atomically via a temp file + rename.
 ///
 /// Return: Result containing Result<()>
-fn run_pull(args: RegistryPullArgs) -> Result<()> {
-    std::fs::create_dir_all(&args.output).context("failed to create output directory")?;
-
-    match (&args.local, &args.registry) {
-        (Some(local_dir), None) => {
-            let mut reg = local_registry(local_dir)?;
-            pull_from_store(&mut reg, &args.hash, &args.output, args.verbose, args.json)?;
-        }
-        (None, Some(registry_url)) => {
-            if registry_url.contains("daedalus.example.com") {
-                anyhow::bail!("cannot use placeholder registry URL '{registry_url}'");
-            }
-            pull_from_remote(
-                registry_url,
-                &args.hash,
-                &args.output,
-                args.token.as_deref(),
-                args.verbose,
-                args.json,
-            )?;
-        }
-        (None, None) => {
-            anyhow::bail!("must specify --local <DIR> or --registry <URL>");
-        }
-        (Some(_), Some(_)) => {
-            anyhow::bail!("cannot use both --local and --registry");
+fn write_pulled_binary(
+    bytes: &[u8],
+    out_file: &Path,
+    name: &str,
+    tag: &str,
+    verbose: bool,
+) -> Result<()> {
+    if let Some(parent) = out_file.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).context("failed to create output dir")?;
         }
     }
-
+    let tmp = out_file.with_extension("part");
+    std::fs::write(&tmp, bytes).context("failed to write pulled binary")?;
+    std::fs::rename(&tmp, out_file).context("failed to finalize pulled binary")?;
+    if verbose {
+        eprintln!(
+            "[daedalus] pulled '{name}:{tag}' -> {} ({} bytes)",
+            out_file.display(),
+            bytes.len()
+        );
+    } else {
+        println!(
+            "pulled '{name}:{tag}' -> {} ({} bytes)",
+            out_file.display(),
+            bytes.len()
+        );
+    }
     Ok(())
+}
+
+/// pull_binary_remote - GET a runnable binary by name from the remote `/artifact` endpoint.
+/// @base: registry base URL
+/// @name: name
+/// @tag: tag
+/// @out_file: destination path
+/// @token: optional bearer token
+/// @verbose: verbose output
+///
+/// Description:
+/// Downloads and writes the binary, returning its length.
+///
+/// Return: Result containing Result<()>
+fn pull_binary_remote(
+    base: &str,
+    name: &str,
+    tag: &str,
+    out_file: &Path,
+    token: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    let base = base.trim_end_matches('/');
+    let base = base.strip_suffix("/artifact").unwrap_or(base);
+    let url = format!("{base}/artifact/{name}:{tag}");
+    if verbose {
+        eprintln!("[daedalus] pulling '{name}:{tag}' from {url}");
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_mins(5))
+        .build()
+        .context("failed to create HTTP client")?;
+
+    let mut request = client.get(&url);
+    if let Some(t) = token {
+        request = request.bearer_auth(t);
+    }
+
+    let response = request.send().context("failed to pull from registry")?;
+    let status = response.status();
+    if !status.is_success() {
+        anyhow::bail!(
+            "pull failed (HTTP {status}): {}",
+            response.text().unwrap_or_default()
+        );
+    }
+    let content = response.bytes().context("failed to read response body")?;
+    write_pulled_binary(&content, out_file, name, tag, verbose)
 }
 
 /// run_list - list all layers in the local registry cache.
@@ -356,100 +701,20 @@ fn push_local(dir: &Path, layers: &[SerializableLayer], bin: &Path, json: bool) 
     Ok(())
 }
 
-/// push_remote - push a .daedalus binary to a remote HTTP registry.
-/// @url: registry URL
-/// @layers: layers extracted from the artifact
-/// @bin: path to the .daedalus file
-/// @token: optional bearer token
-/// @verbose: verbose output
-/// @json: json output
-///
-/// Description:
-/// POSTs the raw binary to the registry endpoint with optional bearer auth.
-///
-/// Return: nothing
-fn push_remote(
-    url: &str,
-    _layers: &[SerializableLayer],
-    bin: &Path,
-    token: Option<&str>,
-    verbose: bool,
-    json: bool,
-) -> Result<()> {
-    let content = std::fs::read(bin).context("failed to read .daedalus file")?;
-    let content_len = content.len();
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_mins(5))
-        .build()
-        .context("failed to create HTTP client")?;
-
-    let mut request = client.post(url).body(content);
-
-    if let Some(t) = token {
-        request = request.bearer_auth(t);
-    }
-
-    if verbose {
-        eprintln!("[daedalus] uploading {content_len} bytes to {url}");
-    }
-
-    let response = request.send().context("failed to upload to registry")?;
-    let status = response.status();
-    if !status.is_success() {
-        anyhow::bail!(
-            "upload failed (HTTP {status}): {}",
-            response.text().unwrap_or_default()
-        );
-    }
-
-    if json {
-        println!(
-            "{{\"pushed\":\"{}\",\"url\":\"{}\",\"status\":{status}}}",
-            bin.display(),
-            url
-        );
-    } else {
-        println!("pushed {} to {} (HTTP {status})", bin.display(), url);
-    }
-    Ok(())
-}
-
-/// Push a full `.daedalus` binary to a remote registry (used by `daedalus build --publish`).
+/// Push a full `.de` binary to a remote registry as `<stem>:latest`.
+/// Used by `daedalus build --publish <URL>`.
 pub fn push_remote_artifact(
     url: &str,
     bin: &Path,
     token: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
-    let content = std::fs::read(bin).context("failed to read .daedalus file")?;
-    let content_len = content.len();
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_mins(5))
-        .build()
-        .context("failed to create HTTP client")?;
-
-    let mut request = client.post(url).body(content);
-    if let Some(t) = token {
-        request = request.bearer_auth(t);
-    }
-
-    if verbose {
-        eprintln!("[daedalus] uploading {content_len} bytes to {url}");
-    }
-
-    let response = request.send().context("failed to upload to registry")?;
-    let status = response.status();
-    if !status.is_success() {
-        anyhow::bail!(
-            "upload failed (HTTP {status}): {}",
-            response.text().unwrap_or_default()
-        );
-    }
-
-    println!("pushed {} to {} (HTTP {status})", bin.display(), url);
-    Ok(())
+    let name = bin
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("artifact")
+        .to_string();
+    push_binary_remote(url, &name, "latest", bin, token, verbose)
 }
 
 /// pull_from_store - pull a layer from a local registry by hash.
