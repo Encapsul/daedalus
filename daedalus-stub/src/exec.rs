@@ -1946,6 +1946,7 @@ mod tests {
             hooks: None,
             layers: Vec::new(),
             lazy_load: false,
+            lazy_priority: Vec::new(),
             encryption: None,
             mcp_tools: None,
         };
@@ -2153,6 +2154,7 @@ mod tests {
             hooks: None,
             layers: Vec::new(),
             lazy_load: false,
+            lazy_priority: Vec::new(),
             encryption: None,
             mcp_tools: None,
         };

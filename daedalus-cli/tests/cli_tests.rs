@@ -267,6 +267,53 @@ fn test_build_dry_run_gpu_default_is_cpu() {
 }
 
 #[test]
+fn test_build_help_lists_lazy_priority_flag() {
+    daedalus()
+        .args(["build", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--lazy-priority"));
+}
+
+#[test]
+fn test_build_dry_run_shows_lazy_priority() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app")).unwrap();
+    std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    daedalus()
+        .args([
+            "build",
+            dir.path().join("app").to_str().unwrap(),
+            "--lazy-load",
+            "--lazy-priority",
+            "main.py,config.json",
+            "--dry-run",
+            "--no-install",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Lazy:    on"))
+        .stderr(predicate::str::contains("Lazy priority: 2"));
+}
+
+#[test]
+fn test_build_dry_run_lazy_off_by_default() {
+    let dir = tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app")).unwrap();
+    std::fs::write(dir.path().join("app/package.json"), "{\"name\":\"app\"}").unwrap();
+    daedalus()
+        .args([
+            "build",
+            dir.path().join("app").to_str().unwrap(),
+            "--dry-run",
+            "--no-install",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Lazy:    off"));
+}
+
+#[test]
 fn test_build_dry_run_rejects_unknown_service_port() {
     let dir = tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("app")).unwrap();

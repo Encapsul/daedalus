@@ -244,6 +244,29 @@ pub fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result
     })
 }
 
+/// Atomically move `tmp` to `cache_root` as a cache directory.
+///
+/// Loses the race to an already-valid `.ready` cache gracefully: the existing
+/// cache wins, the tmp work is discarded, and `false` is returned.
+fn commit_cache_dir(tmp: &Path, cache_root: &Path) -> io::Result<bool> {
+    let marker = cache_root.join(".ready");
+    match fs::rename(tmp, cache_root) {
+        Ok(()) => Ok(true),
+        Err(e) => {
+            if marker.exists() && cache_root_trustworthy(cache_root) {
+                let _ = fs::remove_dir_all(tmp);
+                eprintln!(
+                    "[daedalus] warning: cache rename failed but existing cache is valid: {e}"
+                );
+                return Ok(false);
+            }
+            let _ = fs::remove_dir_all(cache_root);
+            fs::rename(tmp, cache_root)?;
+            Ok(true)
+        }
+    }
+}
+
 /// Extract zstd-compressed tar blobs lazily: priority files first, then
 /// background-extract the rest.
 ///
@@ -253,12 +276,20 @@ pub fn extract_squashfs_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result
 /// 3. Spawn a background thread to extract remaining files into the now-live
 ///    cache_root. The background thread writes `.lazy_done` when complete.
 ///
-/// Return: nothing
+/// `spawn_background` must be `false` for namespaced launches (isolation >=
+/// 2): spawning any thread makes their later `unshare(CLONE_NEWUSER|CLONE_
+/// NEWNS)` fail EINVAL, and `pivot_root` strands the thread's absolute cache
+/// path. With `false` the remainder extracts synchronously and `None` is
+/// returned.
+///
+/// Return: the background extraction's `thread::JoinHandle<()>` if a
+/// background thread was spawned
 pub fn extract_atomic_lazy(
     blobs: &[&[u8]],
     cache_root: &Path,
     priority_files: &[PathBuf],
-) -> io::Result<()> {
+    spawn_background: bool,
+) -> io::Result<Option<thread::JoinHandle<()>>> {
     let parent = cache_root.parent().unwrap_or(Path::new("/tmp"));
     fs::create_dir_all(parent)?;
 
@@ -313,6 +344,8 @@ pub fn extract_atomic_lazy(
 
         let is_priority = priority_set.contains(&path_buf);
         if !is_priority {
+            // drain, else the next header read misaligns
+            io::copy(&mut entry, &mut std::io::sink())?;
             continue;
         }
 
@@ -349,29 +382,22 @@ pub fn extract_atomic_lazy(
 
     File::create(tmp.join(".ready"))?.write_all(b"1")?;
 
-    let marker = cache_root.join(".ready");
-    match fs::rename(&tmp, cache_root) {
-        Ok(()) => {}
-        Err(e) => {
-            if marker.exists() && cache_root_trustworthy(cache_root) {
-                let _ = fs::remove_dir_all(&tmp);
-                eprintln!(
-                    "[daedalus] warning: cache rename failed but existing cache is valid: {e}"
-                );
-                return Ok(());
-            }
-            let _ = fs::remove_dir_all(cache_root);
-            fs::rename(&tmp, cache_root)?;
-        }
+    let committed = commit_cache_dir(&tmp, cache_root)?;
+    if !committed {
+        // Lost the race to an existing valid cache; nothing to background.
+        return Ok(None);
     }
 
     let cache_root_bg = cache_root.to_path_buf();
     let blobs_bg: Vec<Vec<u8>> = blobs.iter().map(|b| b.to_vec()).collect();
-    let _ = thread::spawn(move || {
-        let _ = extract_remaining(&blobs_bg, &cache_root_bg);
-    });
-
-    Ok(())
+    if spawn_background {
+        Ok(Some(thread::spawn(move || {
+            let _ = extract_remaining(&blobs_bg, &cache_root_bg);
+        })))
+    } else {
+        extract_remaining(&blobs_bg, &cache_root_bg)?;
+        Ok(None)
+    }
 }
 
 /// Extract remaining (non-priority) files from the payload into an already
@@ -697,5 +723,81 @@ mod tests {
             "safe relative symlink should be allowed: {:?}",
             result.err()
         );
+    }
+
+    /// Tar with two regular files under `app/` (relative entry convention).
+    fn build_app_tar() -> Vec<u8> {
+        let mut tar = tar::Builder::new(Vec::new());
+        let mut entry = tar::Header::new_gnu();
+        entry.set_path("app/app.py").unwrap();
+        entry.set_size(2);
+        entry.set_cksum();
+        tar.append(&entry, &mut &b"hi"[..]).unwrap();
+        let mut log = tar::Header::new_gnu();
+        log.set_path("app/main.log").unwrap();
+        log.set_size(6);
+        log.set_cksum();
+        tar.append(&log, &mut &b"hello\n"[..]).unwrap();
+        // A trailing entry after a non-priority one: if the skip path leaks
+        // bytes instead of draining the entry, this header is misread (regression:
+        // real payloads EINVAL'd when data.txt followed the skipped set).
+        let mut tail = tar::Header::new_gnu();
+        tail.set_path("app/tail.txt").unwrap();
+        tail.set_size(4);
+        tail.set_cksum();
+        tar.append(&tail, &mut &b"tail"[..]).unwrap();
+        tar.into_inner().unwrap()
+    }
+
+    #[test]
+    /// `lazy_extract_matches_relative_priority` - lazy extract matches relative priority.
+    ///
+    /// Description:
+    /// Regression: `priority_files` emits payload-relative paths (`app/app.py`),
+    /// matching the tar's own entry convention. The launcher must extract the
+    /// entrypoint up-front and only fill the rest in the background.
+    ///
+    /// Return: nothing
+    fn lazy_extract_matches_relative_priority() {
+        let dir = TempDir::new().unwrap();
+        let cache_root = dir.path().join("hash");
+        let compressed = compress_zstd(&build_app_tar());
+        let priority = vec![PathBuf::from("app/app.py")];
+
+        let result = extract_atomic_lazy(&[&compressed], &cache_root, &priority, true);
+        assert!(result.is_ok(), "lazy extract failed: {:?}", result.err());
+
+        assert!(cache_root.join(".ready").is_file());
+        assert!(cache_root.join("rootfs/app/app.py").is_file());
+        assert!(
+            !cache_root.join("rootfs/app/main.log").exists(),
+            "non-priority files must not block startup"
+        );
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !cache_root.join(".lazy_done").exists() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(cache_root.join(".lazy_done").is_file());
+        assert!(cache_root.join("rootfs/app/main.log").is_file());
+        assert!(cache_root.join("rootfs/app/tail.txt").is_file());
+    }
+
+    #[test]
+    /// `lazy_extract_errors_on_missing_priority` - lazy extract errors on missing priority.
+    ///
+    /// Description:
+    /// A priority path that is not present in the payload must fail loudly,
+    /// not silently start the app half-extracted.
+    ///
+    /// Return: nothing
+    fn lazy_extract_errors_on_missing_priority() {
+        let dir = TempDir::new().unwrap();
+        let cache_root = dir.path().join("hash");
+        let compressed = compress_zstd(&build_app_tar());
+        let priority = vec![PathBuf::from("app/nope.py")];
+
+        let result = extract_atomic_lazy(&[&compressed], &cache_root, &priority, true);
+        assert!(result.is_err());
     }
 }

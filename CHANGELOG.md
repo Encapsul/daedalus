@@ -7,6 +7,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Lazy-loading priority extraction**: `daedalus build --lazy-load` now fast-starts by extracting only the entrypoint (plus an explicit `--lazy-priority file,dir,...` list or `[build] lazy_priority`) before launching, then fills the rest of the app tree in the background. Priority specs may be app-relative (`main.py`) or payload-relative (`app/main.py`); directories expand recursively (skipping `__pycache__`/`.git`), capped at 2048 files. Dry-run reports `Lazy:` on/off and the priority count. Namespaced builds (isolation ≥ 2) extract synchronously so the user-namespace `unshare` stays single-threaded.
+- `daedalus-core::lazy::expand_priority_paths` — build-time expansion of `--lazy-priority` specs into payload-relative paths with tar-exclusion parity
+- Constrained-host auto-disable: `--lazy-load` without an explicit priority list turns itself off on small hosts (< 4 cores or < 3 GiB RAM, via `daedalus-core::system_info::is_constrained_host`)
+- `daedalus inspect` reports the `lazy_priority` metadata (`Lazy priority:` line)
 - **GPU passthrough for accelerated inference**: `daedalus build --gpu auto|nvidia|rocm|none` (or `[build] gpu` in `.daedalus.toml`) records the compute backend in the binary metadata. When `nvidia` or `rocm` is set, the launcher bind-mounts the GPU device nodes (NVIDIA `/dev/nvidia*` + caps, ROCm `/dev/kfd` + `/dev/dri` render nodes) into the sandbox via a regular-file overlay and pins the matching visibility vars (`CUDA_VISIBLE_DEVICES`, `NVIDIA_VISIBLE_DEVICES`, `HIP_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`) — Ollama/llama.cpp offload works headless, inside the sandbox.
 - `daedalus-core::gpu` detection probe (`--gpu auto`): `/dev/kfd` → ROCm, `/proc/driver/nvidia/gpus` → NVIDIA; CPU fallback is safe (missing nodes are skipped)
 - `daedalus inspect` shows the embedded `GPU:` backend; dry-run reports the resolved backend
@@ -18,6 +22,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - System config detection module `daedalus-core/src/system_info.rs` (`SystemConfig`, `detect()`, `compute_universal_slices()`) for resource-adaptive builds
 
 ### Fixed
+- **`--lazy-load` runtime failure**: priority files used absolute `/app/...` paths that never matched the tar's payload-relative entries (and wrongly listed the host PATH interpreter as a payload file), so every lazy build errored with `priority files not found in payload: /app/python3`. Priorities are now payload-relative and the interpreter is never one.
+- Stub lazy extraction skipped non-priority tar entries without draining them, misaligning the stream and breaking extraction with `Invalid argument (os error 22)` whenever a non-priority entry was followed by more data — entries are now drained before skipping
 - Stub multi-service supervisor on Unix now execs via `execvp` (PATH search) instead of `execve`, so bare interpreter names like `python3` resolve at runtime — multi-service binaries can actually launch their services
 - `find_in_bin_paths`/`is_executable_path` made cross-platform (were Windows-only), so the Unix supervisor shares the same interpreter-resolution fallback as the Windows and single-service paths
 - Removed unused `libc_execve` FFI declaration and `env_to_cstrings` helper

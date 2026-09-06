@@ -308,6 +308,16 @@ pub struct Metadata {
     /// Return: nothing
     lazy_load: bool,
     #[serde(default)]
+    /// `lazy_priority` - payload-relative files to eager-extract.
+    ///
+    /// Description:
+    /// Additional tar paths (rootfs-relative, e.g. `app/main.py` or
+    /// `app/models/config.json`) extracted up-front alongside the
+    /// automatically-detected entrypoint script(s).
+    ///
+    /// Return: nothing
+    lazy_priority: Vec<String>,
+    #[serde(default)]
     encryption: Option<daedalus_core::metadata::EncryptionMeta>,
     #[serde(default)]
     /// `mcp_tools` - embedded MCP tool definitions.
@@ -837,6 +847,8 @@ fn run() -> io::Result<()> {
     let lock = File::create(base.join(format!("{hash}.lock")))?;
     flock_exclusive(&lock)?;
 
+    let mut lazy_bg: Option<std::thread::JoinHandle<()>> = None;
+
     if !ready_marker.exists() {
         let gc_limit = std::env::var("DAEDALUS_CACHE_MAX_ENTRIES")
             .ok()
@@ -844,14 +856,24 @@ fn run() -> io::Result<()> {
             .unwrap_or(16);
         let _ = gc_extraction_cache(gc_limit);
         let is_squashfs = meta.payload_format == format::PAYLOAD_FORMAT_SQUASHFS;
-        if is_squashfs {
+        lazy_bg = if is_squashfs {
             extract_squashfs_atomic(&[payload.as_slice()], &cache_root)?;
+            None
         } else if meta.lazy_load {
             let priority = priority_files(&meta);
-            extraction::extract_atomic_lazy(&[payload.as_slice()], &cache_root, &priority)?;
+            // Namespaced launches must not background-extract: any spawned
+            // thread makes a later unshare(CLONE_NEWUSER) fail EINVAL, and
+            // pivot_root strands the thread's absolute cache path.
+            extraction::extract_atomic_lazy(
+                &[payload.as_slice()],
+                &cache_root,
+                &priority,
+                meta.isolation < 2,
+            )?
         } else {
             extract_atomic(&[payload.as_slice()], &cache_root)?;
-        }
+            None
+        };
         write_layer_manifest(&cache_root, &meta)?;
     }
 
@@ -889,6 +911,16 @@ fn run() -> io::Result<()> {
             "[daedalus] version {version} is quarantined after a failed health check; rolling back"
         );
         return rollback_to_previous(&bin_path, verbose);
+    }
+
+    // Namespaced launches need a single-threaded process for
+    // unshare(CLONE_NEWUSER|CLONE_NEWNS) and a rootfs that is not mutating
+    // behind pivot_root, so finish the lazy background fill first. Lighter
+    // isolation levels keep filling the rootfs while the app runs.
+    if meta.isolation >= 2 {
+        if let Some(handle) = lazy_bg.take() {
+            let _ = handle.join();
+        }
     }
 
     if !meta.services.is_empty() {
@@ -992,45 +1024,39 @@ fn self_exe() -> io::Result<PathBuf> {
 /// Compute priority files for lazy extraction.
 ///
 /// Description:
-/// Returns the entrypoint path and the runtime interpreter path as the minimum
-/// set of files needed to start the app. The rest of the payload is extracted
-/// in the background.
+/// Payload-relative tar paths that must land on disk before the app starts:
+/// the entrypoint script(s) referenced by the resolved argv (e.g.
+/// `app/app.py`) plus any build-time `lazy_priority` entries. The runtime
+/// interpreter is intentionally NOT a priority file — it is resolved from the
+/// host's PATH, so no path inside the payload ever matches it.
+///
+/// The tar stores entries relative to the rootfs root (never absolute), and
+/// `extract_atomic_lazy` matches them exactly, so every entry here must use
+/// that same convention.
 ///
 /// Return: Vec of PathBuf
 fn priority_files(meta: &Metadata) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = Vec::new();
 
-    let entrypoint = meta.effective_entrypoint();
-    if let Some(first) = entrypoint.first() {
-        let prog = first.split_whitespace().next().unwrap_or(first);
-        if prog.starts_with('/') {
-            files.push(PathBuf::from(prog));
-        } else {
-            files.push(PathBuf::from("/app").join(prog));
+    for arg in meta.effective_entrypoint() {
+        // Absolute argv entries reference the packaged app; the payload path
+        // is the tar-relative form (drop the leading `/`). Interpreter
+        // arguments (`python3`, `node`) have no slash and are skipped — they
+        // resolve from the host's PATH, not from the payload. Taking the last
+        // whitespace token also covers the legacy single-string form
+        // `"python3 /app/app.py"`.
+        let token = arg.rsplit(' ').next().unwrap_or(arg);
+        if let Some(rel) = token.strip_prefix('/') {
+            files.push(PathBuf::from(rel));
         }
     }
 
-    let runtime = meta.effective_runtime();
-    let interpreter = match runtime {
-        "python" | "python3" => Some("python3"),
-        "node" => Some("node"),
-        "deno" => Some("deno"),
-        "java" => Some("java"),
-        "ruby" => Some("ruby"),
-        "php" => Some("php"),
-        "perl" => Some("perl"),
-        "go" => Some("go"),
-        "hugo" => Some("hugo"),
-        "ollama" | "gemma" => Some("ollama"),
-        "wasm" => Some("wasmtime"),
-        "electron" => Some("electron"),
-        _ => None,
-    };
-
-    if let Some(interp) = interpreter {
-        files.push(PathBuf::from("/app").join(interp));
+    for p in &meta.lazy_priority {
+        files.push(PathBuf::from(p));
     }
 
+    files.sort();
+    files.dedup();
     files
 }
 
@@ -2226,6 +2252,7 @@ mod tests {
             entrypoint_layer: Some("python3".into()),
             hooks: None,
             lazy_load: false,
+            lazy_priority: Vec::new(),
             encryption: None,
             mcp_tools: None,
         };
@@ -2275,6 +2302,7 @@ mod tests {
             entrypoint_layer: None,
             hooks: None,
             lazy_load: false,
+            lazy_priority: Vec::new(),
             encryption: None,
             mcp_tools: None,
         };
@@ -2361,5 +2389,68 @@ mod tests {
         let (_, _, _, meta) = result.unwrap();
         assert_eq!(meta.name, "test");
         assert_eq!(meta.runtime, "python3");
+    }
+
+    #[test]
+    /// `priority_files_uses_payload_relative_paths` - priority files use payload relative paths.
+    ///
+    /// Description:
+    /// The tar stores entries relative (e.g. `app/app.py`); priorities must
+    /// share that convention or no entry matches and extraction fails.
+    ///
+    /// Return: nothing
+    fn priority_files_uses_payload_relative_paths() {
+        let meta: Metadata = serde_json::from_value(serde_json::json!({
+            "name": "test",
+            "runtime": "python",
+            "entrypoint": ["python3", "/app/app.py"],
+            "lazy_priority": ["app/models/config.json"],
+        }))
+        .unwrap();
+        let mut files: Vec<String> = priority_files(&meta)
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        files.sort();
+        assert_eq!(files, ["app/app.py", "app/models/config.json"]);
+    }
+
+    #[test]
+    /// `priority_files_handles_legacy_string_entrypoint` - priority files handles legacy string entrypoint.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn priority_files_handles_legacy_string_entrypoint() {
+        let meta: Metadata = serde_json::from_value(serde_json::json!({
+            "name": "test",
+            "runtime": "python",
+            "entrypoint": ["python3 /app/app.py"],
+        }))
+        .unwrap();
+        let files: Vec<String> = priority_files(&meta)
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(files, ["app/app.py"]);
+    }
+
+    #[test]
+    /// `priority_files_never_lists_the_runtime_interpreter` - priority files never list the runtime interpreter.
+    ///
+    /// Description:
+    /// The interpreter resolves from the host PATH at runtime; it has no
+    /// payload path, so it must never be a priority entry.
+    ///
+    /// Return: nothing
+    fn priority_files_never_lists_the_runtime_interpreter() {
+        let meta: Metadata = serde_json::from_value(serde_json::json!({
+            "name": "test",
+            "runtime": "python",
+            "entrypoint": ["python3", "/app/app.py"],
+        }))
+        .unwrap();
+        let files = priority_files(&meta);
+        assert_eq!(files, [PathBuf::from("app/app.py")]);
     }
 }

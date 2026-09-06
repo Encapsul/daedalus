@@ -47,6 +47,32 @@ tmp directory is created in the **same** parent directory as the target.
 > launcher's own overhead is on the order of milliseconds. The < 100 ms
 > end-to-end goal will require squashfs+mmap (no extraction) in Phase 3.
 
+## Lazy-loading priority extraction
+
+`daedalus build --lazy-load` shrinks cold-start latency by extracting only the
+entrypoint plus an explicit priority set before launching, then filling the
+rest of the app tree in the background:
+
+```bash
+daedalus build app --lazy-load --lazy-priority app.py,models/,config.json
+```
+
+- Priority specs may be **app-relative** (`main.py`) or **payload-relative**
+  (`app/main.py`); directories expand recursively (skipping `.git` /
+  `__pycache__`), capped at 2048 files.
+- The entrypoint script is always a priority; the interpreter (`python3`,
+  `node`, ...) is never one — it resolves from the host PATH.
+- `[build] lazy_priority = ["main.py"]` in `.daedalus.toml` works too; CLI
+  flags win over config.
+- On hosts with fewer than 4 cores or less than 3 GiB RAM, `--lazy-load`
+  without an explicit priority list auto-disables (background extraction
+  would steal CPU from the app); an explicit priority list keeps it on.
+- **Isolation ≥ 2** (sandbox): extraction is synchronous so the user-namespace
+  `unshare(CLONE_NEWUSER|CLONE_NEWNS)` stays single-threaded (spawning any
+  thread makes it fail with `EINVAL`), and `pivot_root` would strand a
+  background thread's absolute cache path anyway. The lazy gain shows on
+  isolation 0/1 launches.
+
 ## Two separate caches
 
 | | Extraction cache | Build cache |

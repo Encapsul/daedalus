@@ -21,6 +21,7 @@ pub mod format;
 pub mod gpu;
 pub mod include;
 pub mod layer;
+pub mod lazy;
 pub mod legacy;
 pub mod manifest;
 pub mod mcp;

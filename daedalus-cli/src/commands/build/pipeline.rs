@@ -4,6 +4,7 @@ use daedalus_core::detect;
 use daedalus_core::embed::{self, RuntimeProfile};
 use daedalus_core::encrypt;
 use daedalus_core::layer::{Capability, RuntimeLayer, SerializableLayer};
+use daedalus_core::lazy;
 use daedalus_core::metadata::{BunFeatures, EmbeddedInterpreter};
 use daedalus_core::paths::cache_dir;
 use daedalus_core::pkgmgr;
@@ -285,6 +286,18 @@ pub(crate) fn build_single_target(
         None
     };
 
+    let lazy_on = super::args::lazy_enabled(args.lazy_load, &plan.lazy_priority);
+    let lazy_priority = if lazy_on {
+        if plan.lazy_priority.is_empty() {
+            Vec::new()
+        } else {
+            lazy::expand_priority_paths(&plan.lazy_priority, &rootfs)
+                .with_context(|| "invalid --lazy-priority; give paths relative to the app dir")?
+        }
+    } else {
+        Vec::new()
+    };
+
     let meta = daedalus_core::assembly::build_meta_json(
         &app_name,
         runtime_name,
@@ -311,7 +324,8 @@ pub(crate) fn build_single_target(
             post_hooks,
             layers: Some(layers),
             entrypoint_layer: Some(runtime_name.clone()),
-            lazy_load: args.lazy_load,
+            lazy_load: lazy_on,
+            lazy_priority,
             mcp_tools,
             model_id: plan.model_id.clone(),
             services: plan
