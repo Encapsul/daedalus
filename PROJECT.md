@@ -120,7 +120,7 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 - **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
 - **Rust core**: `daedalus-core` crate — format, compress, detect, pkgmgr, tar, assembly, sign, verify, scan, PyO3 bindings
 - **Rust CLI**: `daedalus-cli` crate — 15 commands (build, run, inspect, scan, sign, verify, keygen, trust, doctor, env, clean, selftest, upgrade, completion, man)
-- **Tests**: 127 Rust (106 daedalus-core + 17 daedalus-cli + 4 daedalus-stub) (0 failures)
+- **Tests**: 358 Rust (331 daedalus-core + 23 daedalus-cli + 4 daedalus-stub) (0 failures)
 - **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), GitHub signing key id=1064819. Note: Codespaces `gh-gpgsign` proxy currently returns 403 (GPG signing not enabled) — recent commits are unsigned until the environment permits it.
 
 ## Release workflow
