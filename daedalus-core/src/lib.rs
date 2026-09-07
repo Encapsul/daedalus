@@ -19,6 +19,7 @@ pub mod embed;
 pub mod encrypt;
 pub mod format;
 pub mod gpu;
+pub mod http_parse;
 pub mod include;
 pub mod layer;
 pub mod lazy;
