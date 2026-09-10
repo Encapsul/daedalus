@@ -5,7 +5,7 @@
 use std::io;
 use std::path::PathBuf;
 
-use ed25519_dalek::{Signature, Verifier};
+use ed25519_dalek::Signature;
 use sha2::{Digest, Sha256};
 
 use crate::Footer;
@@ -48,7 +48,11 @@ pub fn verify_ed25519<R: std::io::Read + std::io::Seek>(
     let sig = Signature::from_bytes(sig_bytes);
 
     let keys = load_trusted_keys()?;
-    if !keys.iter().any(|k| k.verify(&hash, &sig).is_ok()) {
+    // `verify_strict` (not `verify`) rejects small-order public keys and
+    // signatures (ZIP-215 weak-key/signature malleability). The trust dir is
+    // operator-controlled, but strict verification closes the malleability
+    // class for free and matches the project's Ed25519 rules.
+    if !keys.iter().any(|k| k.verify_strict(&hash, &sig).is_ok()) {
         return Err(crate::err("Ed25519 signature verification failed"));
     }
     Ok(())
@@ -171,5 +175,40 @@ mod tests {
         let mut expected = [0u8; 32];
         expected[0] = 1;
         assert!(verify_sha256(data, &expected).is_err());
+    }
+
+    #[test]
+    /// Strict verification must reject the ZIP-215 small-order forgery that
+    /// cofactorless (non-strict) verification accepts.
+    ///
+    /// The identity public key A = identity with the signature (R = identity,
+    /// s = 0) satisfies the cofactorless equation R == s·B + k·A trivially
+    /// (both sides are the identity point). This is the classic replay of the
+    /// 8-torsion/weak-key class the launcher must refuse.
+    fn strict_verification_rejects_small_order_forgery() {
+        use ed25519_dalek::Verifier;
+
+        // Compressed encoding of the identity point: y=1, x-sign bit 0.
+        let mut weak_key_bytes = [0u8; 32];
+        weak_key_bytes[0] = 1;
+        let Ok(weak_key) = ed25519_dalek::VerifyingKey::from_bytes(&weak_key_bytes) else {
+            return; // dalek rejects the encoding outright; nothing to prove.
+        };
+
+        // (R = identity, s = 0) is a valid-for-cofactorless signature over any
+        // message under the weak key.
+        let mut sig_bytes = [0u8; 64];
+        sig_bytes[0] = 1;
+        let sig = Signature::from_bytes(&sig_bytes);
+        let msg = b"anything";
+
+        assert!(
+            weak_key.verify(msg, &sig).is_ok(),
+            "precondition: non-strict verification accepts the identity forgery"
+        );
+        assert!(
+            weak_key.verify_strict(msg, &sig).is_err(),
+            "strict verification must reject small-order public keys/signatures"
+        );
     }
 }

@@ -68,6 +68,7 @@ Une application web est un binaire daedalus qui contient :
 - ✅ `registry push/pull/list` — content-addressable layer sharing
 - ✅ `swap` — hot-swap layers without rebuild
 - ✅ `publish` — publish layers to local/remote CAS after build
+- ✅ JRE minimal embarqué par `jlink` par défaut (module closure via `jdeps`), échappements `--full-jre` / `--jlink-modules` — artefact Java auto-suffisant, sans `java` hôte
 
 ### Stub launcher (`daedalus-stub`)
 - ✅ Lecture footer/metadata depuis `/proc/self/exe`
@@ -77,6 +78,8 @@ Une application web est un binaire daedalus qui contient :
 - ✅ SISR delta update
 - ✅ Layer manifest tracking (cache-aware warm start)
 - ✅ Capability-based sandboxing (seccomp + Landlock)
+- ✅ Authenticité at-rest : signature Ed25519 et manifeste SISR vérifiés au démarrage à froid — refus d'exécution si la clé n'est pas dans l'ancre de confiance utilisateur
+- ✅ Politique symlink de l'extraction : symlinks relatifs in-root autorisés, tout absolu/cassé rejeté
 
 ---
 

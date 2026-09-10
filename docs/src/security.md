@@ -2,26 +2,21 @@
 
 A tool that distributes and executes code needs security built into its architecture. This page documents each attack surface, the naive flaw, and the current defense.
 
-Status: SHA-256 integrity, atomic extraction, Ed25519 signatures, user namespaces + pivot_root, seccomp-bpf denylist, and AES-256-GCM encryption are all implemented.
+Status: SHA-256 integrity, atomic extraction, Ed25519 signatures (strict verification, **signing on by default**), user namespaces + pivot_root, seccomp-bpf denylist, and AES-256-GCM encryption are all implemented.
 
 ## 1. Authenticity — Ed25519 signatures
 
 **Attack:** Anyone can produce a `.daedalus`, and the user cannot verify its origin or whether it was modified.
 
-**Defense:** Every `.daedalus` can be signed. The launcher verifies the signature before extracting anything. Invalid or missing signatures result in execution refusal.
+**Defense:** Every `.daedalus` is signed **by default**. A self-generated, self-trusted dev key signs each build (see `daedalus build --skip-sign` to opt out, `--key` to override), and the launcher verifies the signature before extracting anything. Invalid signatures result in execution refusal.
 
 ```bash
-# Generate a keypair
-$ daedalus keygen --key-dir $XDG_DATA_HOME/daedalus/keys
-a1b2c3d4e5f6...
-
-# Sign a .daedalus (in-place, writes v3 footer)
-$ daedalus sign my_app.daedalus --key $XDG_DATA_HOME/daedalus/keys/a1b2c3d4e5f6.key
-[daedalus] signed my_app.daedalus
+# Build (signed by default with the auto-generated, self-trusted dev key)
+$ daedalus build my_app/ -o my_app.daedalus
 
 # Verify before running
-$ daedalus verify my_app.daedalus --trusted-dir $XDG_DATA_HOME/daedalus/trusted-keys
-[daedalus] signature verified for /path/to/my_app.daedalus
+$ daedalus verify my_app.daedalus
+[daedalus] OK: signature verified
 ```
 
 **Why Ed25519 over RSA:**
@@ -29,11 +24,19 @@ $ daedalus verify my_app.daedalus --trusted-dir $XDG_DATA_HOME/daedalus/trusted-
 - Timing-attack resistant by design (constant-time scalar multiplication).
 - Standard in modern protocols (SSH, TLS 1.3, Signal, WireGuard).
 
-**Trust model:** Trusted public keys live in `$XDG_DATA_HOME/daedalus/trusted-keys/`. The launcher accepts the file if any trusted key verifies the signature. There is no central authority — trust is local and explicit.
+**Trust model:** Trusted public keys live in `~/.daedalus/trusted-keys/` (or
+`$DAEDALUS_TRUSTED_DIR`). The launcher accepts the file if any trusted key
+verifies the signature. There is no central authority — trust is local and
+explicit. The home-relative default (not `$XDG_DATA_HOME`) is intentional: the
+stub resolves trust anchors without consulting environment variables that could
+be spoofed in sandboxed or elevated (`sudo`/setuid) contexts.
+
+Signature verification is **strict** (`ed25519_dalek::verify_strict`): small-order
+(weak) public keys and signatures — ZIP-215 malleability — are rejected.
 
 ```bash
 # Trust a key
-$ daedalus trust $XDG_DATA_HOME/daedalus/keys/a1b2c3d4e5f6.pub
+$ daedalus trust ~/.daedalus/keys/a1b2c3d4e5f6.pub
 [daedalus] trusted key a1b2c3d4e5f6...
 ```
 

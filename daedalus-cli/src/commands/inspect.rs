@@ -7,7 +7,7 @@ use std::path::PathBuf;
 #[derive(Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct InspectArgs {
-    /// Path to the .daedalus file
+    /// Path to the .daedalus file, or `-` to read from stdin
     pub file: PathBuf,
 
     /// Output as JSON
@@ -44,17 +44,29 @@ pub fn run(args: InspectArgs) -> Result<()> {
         return Ok(());
     }
 
-    let mut f = std::fs::File::open(&args.file)
-        .with_context(|| {
-            let name = args.file.display();
-            if !args.file.exists() {
-                anyhow::anyhow!("file not found: {name}")
-            } else {
-                anyhow::anyhow!("cannot open file: {name}")
-            }
-        })
-        .with_context(|| format!("check the path and try again: {}", args.file.display()))?;
-    let footer = Footer::read_from(&mut f).context("failed to read daedalus footer")?;
+    // Read the binary from a file or from stdin (`-`) into a seekable cursor,
+    // since Footer/read_at require `Read + Seek`.
+    let display_name = if crate::stdio::is_dash(&args.file.to_string_lossy()) {
+        "stdin".to_string()
+    } else {
+        args.file.display().to_string()
+    };
+    let mut source: std::io::Cursor<Vec<u8>> =
+        if crate::stdio::is_dash(&args.file.to_string_lossy()) {
+            crate::stdio::read_stdin_cursor()?
+        } else {
+            let bytes = std::fs::read(&args.file).with_context(|| {
+                let name = args.file.display();
+                if !args.file.exists() {
+                    anyhow::anyhow!("file not found: {name}")
+                } else {
+                    anyhow::anyhow!("cannot open file: {name}")
+                }
+            })?;
+            std::io::Cursor::new(bytes)
+        };
+
+    let footer = Footer::read_from(&mut source).context("failed to read daedalus footer")?;
 
     let arch_name = match footer.arch {
         ARCH_X86_64 => "x86_64",
@@ -63,13 +75,13 @@ pub fn run(args: InspectArgs) -> Result<()> {
     };
 
     let payload =
-        daedalus_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)
+        daedalus_core::format::read_at(&mut source, footer.meta_offset, footer.meta_size as usize)
             .context("failed to read metadata payload")?;
     let meta: serde_json::Value =
         serde_json::from_slice(&payload).context("failed to parse metadata JSON")?;
 
     if args.sbom {
-        let sbom = generate_sbom(&args.file, &meta, arch_name, &footer);
+        let sbom = generate_sbom(&display_name, &meta, arch_name, &footer);
         let json_str = serde_json::to_string_pretty(&sbom)?;
         if let Some(ref path) = args.output {
             std::fs::write(path, &json_str)
@@ -83,7 +95,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
 
     if args.json {
         let info = serde_json::json!({
-            "file": args.file.display().to_string(),
+            "file": display_name,
             "format_version": footer.format_version,
             "arch": arch_name,
             "signed": footer.is_signed(),
@@ -99,7 +111,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
                 .with_context(|| format!("failed to write to {}", path.display()))?;
             eprintln!("Wrote JSON to {}", path.display());
         } else if args.plain {
-            println!("file\t{}", args.file.display());
+            println!("file\t{display_name}");
             println!("format\tv{}", footer.format_version);
             println!("arch\t{arch_name}");
             println!("signed\t{}", footer.is_signed());
@@ -183,7 +195,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
             println!("{json_str}");
         }
     } else {
-        println!("File:        {}", args.file.display());
+        println!("File:        {display_name}");
         println!("Format:      v{}", footer.format_version);
         println!("Arch:        {arch_name}");
         println!("Signed:      {}", footer.is_signed());
@@ -300,7 +312,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
 ///
 /// Return: nothing
 fn generate_sbom(
-    _file: &std::path::Path,
+    _file: &str,
     meta: &serde_json::Value,
     arch: &str,
     footer: &daedalus_core::format::Footer,

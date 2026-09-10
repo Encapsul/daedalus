@@ -14,6 +14,50 @@ use crate::nanos;
 use tar::Archive;
 use zstd::Decoder;
 
+/// Whether a symlink/hardlink target escapes the extraction root.
+///
+/// The blunt "reject any absolute or `..` target" rule rejects legitimate
+/// in-root relative links (the Java JRE is exposed to the PATH as
+/// `usr/bin/java -> ../lib/jvm/java/bin/java`, both inside the rootfs). Bare
+/// `..` targets and absolute targets are still rejected — the target is
+/// lexically resolved against `base` (the link's directory for symlinks,
+/// POSIX convention relative to the link location; the extraction root for
+/// hardlinks, tar convention relative to the archive root) and must stay
+/// inside `root`. Mirrors the payload builder's `guarded_symlink_target`
+/// (daedalus-core/src/tar.rs) — the stub enforces the same contract.
+fn link_target_escapes(root: &Path, base: &Path, target: &Path) -> bool {
+    if target.is_absolute() {
+        return true;
+    }
+    !lexically_normalize(&base.join(target)).starts_with(root)
+}
+
+/// Collapse `.` and `..` components without touching the filesystem.
+fn lexically_normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// Base directory against which a link target is resolved: the entry's own
+/// directory for symlinks (POSIX), the extraction root for hardlinks (tar).
+fn link_base(root: &Path, entry_path: &Path, is_symlink: bool) -> PathBuf {
+    if is_symlink {
+        if let Some(parent) = entry_path.parent() {
+            return root.join(parent);
+        }
+    }
+    root.to_path_buf()
+}
+
 /// Default maximum total decompressed bytes across all tar entries (1 GB).
 const DEFAULT_MAX_DECOMPRESSED_BYTES: u64 = 1024 * 1024 * 1024;
 /// Default maximum number of files in a single tar archive.
@@ -164,8 +208,8 @@ pub fn write_source_manifest(
 ///
 /// Description:
 /// Decompresses each blob with zstd, unpacks the tar archive, enforces
-/// decompression-bomb limits, and rejects symlinks with absolute targets
-/// or `..` traversal. Extraction is atomic via tmp+rename.
+/// decompression-bomb limits, and rejects symlinks/hardlinks whose target
+/// escapes the extraction root. Extraction is atomic via tmp+rename.
 ///
 /// Return: nothing
 pub fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
@@ -212,15 +256,23 @@ pub fn extract_atomic(blobs: &[&[u8]], cache_root: &Path) -> io::Result<()> {
                     ));
                 }
                 // Defense-in-depth: reject symlinks/hardlinks whose target
-                // escapes the rootfs (absolute paths or `..` traversal).
-                // A signed artifact shouldn't contain these, but a compromised
-                // key or cache would bypass signature verification.
+                // escapes the rootfs. A signed artifact shouldn't contain
+                // these, but a compromised key or cache would bypass
+                // signature verification.
                 if let Some(link_name) = entry.link_name()? {
-                    let link_str = link_name.to_string_lossy();
-                    if link_str.starts_with('/') || link_str.contains("..") {
+                    let entry_path = entry.path()?;
+                    let is_symlink = entry.header().entry_type().is_symlink();
+                    if link_target_escapes(
+                        tmp_rootfs,
+                        &link_base(tmp_rootfs, &entry_path, is_symlink),
+                        &link_name,
+                    ) {
                         return Err(io::Error::new(
                             io::ErrorKind::InvalidData,
-                            format!("symlink/hardlink target escapes rootfs: {link_str}"),
+                            format!(
+                                "symlink/hardlink target escapes rootfs: {}",
+                                link_name.to_string_lossy()
+                            ),
                         ));
                     }
                 }
@@ -350,11 +402,18 @@ pub fn extract_atomic_lazy(
         }
 
         if let Some(link_name) = entry.link_name()? {
-            let link_str = link_name.to_string_lossy();
-            if link_str.starts_with('/') || link_str.contains("..") {
+            let is_symlink = entry.header().entry_type().is_symlink();
+            if link_target_escapes(
+                &tmp_rootfs,
+                &link_base(&tmp_rootfs, &path_buf, is_symlink),
+                &link_name,
+            ) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("symlink/hardlink target escapes rootfs: {link_str}"),
+                    format!(
+                        "symlink/hardlink target escapes rootfs: {}",
+                        link_name.to_string_lossy()
+                    ),
                 ));
             }
         }
@@ -445,11 +504,19 @@ fn extract_remaining(blobs: &[Vec<u8>], cache_root: &Path) -> io::Result<()> {
         }
 
         if let Some(link_name) = entry.link_name()? {
-            let link_str = link_name.to_string_lossy();
-            if link_str.starts_with('/') || link_str.contains("..") {
+            let entry_path = entry.path()?;
+            let is_symlink = entry.header().entry_type().is_symlink();
+            if link_target_escapes(
+                &rootfs,
+                &link_base(&rootfs, &entry_path, is_symlink),
+                &link_name,
+            ) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("symlink/hardlink target escapes rootfs: {link_str}"),
+                    format!(
+                        "symlink/hardlink target escapes rootfs: {}",
+                        link_name.to_string_lossy()
+                    ),
                 ));
             }
         }
@@ -637,8 +704,9 @@ mod tests {
         assert!(!cache_root_trustworthy(&dir.path().join("absent")));
     }
 
-    /// Chaos: tar symlinks with absolute targets or `..` traversal must be
-    /// rejected to prevent path traversal outside the rootfs.
+    /// Chaos: tar symlinks with absolute targets or `..` traversal that
+    /// escapes the rootfs must be rejected to prevent path traversal outside
+    /// it.
     #[cfg(unix)]
     /// `build_symlink_tar` - build symlink tar.
     /// `@link_target`: link target
@@ -721,6 +789,31 @@ mod tests {
         assert!(
             result.is_ok(),
             "safe relative symlink should be allowed: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    /// `extract_allows_in_root_parent_symlink` - a `..` target is fine when it
+    /// stays inside the rootfs (Java launcher: `usr/bin/java ->
+    /// ../lib/jvm/java/bin/java`).
+    fn extract_allows_in_root_parent_symlink() {
+        let dir = TempDir::new().unwrap();
+        let cache_root = dir.path().join("hash");
+        let mut tar = tar::Builder::new(Vec::new());
+        let mut header = tar::Header::new_gnu();
+        header.set_path("usr/bin/java").unwrap();
+        header.set_link_name("../lib/jvm/java/bin/java").unwrap();
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_size(0);
+        header.set_cksum();
+        tar.append(&header, &mut &[][..]).unwrap();
+        let compressed = compress_zstd(&tar.into_inner().unwrap());
+
+        let result = extract_atomic(&[&compressed], &cache_root);
+        assert!(
+            result.is_ok(),
+            "in-root `..` symlink should be allowed: {:?}",
             result.err()
         );
     }

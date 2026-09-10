@@ -94,6 +94,14 @@ pub fn run(args: &DashboardArgs) -> Result<()> {
         return Ok(());
     }
 
+    use std::io::IsTerminal;
+    if !std::io::stdout().is_terminal() {
+        anyhow::bail!(
+            "refusing to start the interactive dashboard outside a terminal; \
+             pass --json for machine-readable output"
+        );
+    }
+
     let mut terminal = ratatui::init();
     let _guard = ShutdownGuard;
 

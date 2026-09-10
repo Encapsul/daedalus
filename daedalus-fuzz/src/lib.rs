@@ -6,11 +6,15 @@
 //! - CLI argument parsing (all subcommands)
 //! - Encryption/decryption path (AES-256-GCM)
 //! - SISR manifest parsing
+//! - HTTP request-head parsing (serve-parse)
+//! - Runnable-artifact registry (publish/fetch/index recovery)
+//! - Runtime detection of hostile app trees (detect/entrypoint hardening)
 //!
 //! Run: `cargo run -p daedalus-fuzz -- [SUBCOMMAND]`
 
 pub mod cli_fuzz;
 pub mod crypto_fuzz;
+pub mod detect_fuzz;
 pub mod format_fuzz;
 pub mod harness;
 pub mod registry_fuzz;

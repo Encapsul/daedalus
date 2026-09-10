@@ -7,7 +7,10 @@ use arbitrary::Unstructured;
 
 use crate::cli_fuzz::CliFuzzTarget;
 use crate::crypto_fuzz::CryptoFuzzTarget;
+use crate::detect_fuzz::DetectFuzzTarget;
 use crate::format_fuzz::FormatFuzzTarget;
+use crate::registry_fuzz::RegistryFuzzTarget;
+use crate::serve_fuzz::ServeFuzzTarget;
 use crate::sisr_fuzz::SisrManifestFuzzTarget;
 use crate::stub_fuzz::StubFuzzTarget;
 use rand::Rng;
@@ -191,6 +194,9 @@ impl TargetRegistry {
         targets.insert("cli", Arc::new(CliFuzzTarget));
         targets.insert("crypto", Arc::new(CryptoFuzzTarget));
         targets.insert("sisr", Arc::new(SisrManifestFuzzTarget));
+        targets.insert("serve-parse", Arc::new(ServeFuzzTarget));
+        targets.insert("registry", Arc::new(RegistryFuzzTarget));
+        targets.insert("detect", Arc::new(DetectFuzzTarget));
         Self { targets }
     }
     pub fn get(&self, name: &str) -> Option<Arc<dyn FuzzTarget>> {
@@ -457,6 +463,6 @@ mod tests {
     async fn test_harness_creation() {
         let config = FuzzConfig::default();
         let harness = FuzzHarness::new(config);
-        assert_eq!(harness.registry.all_names().len(), 5);
+        assert_eq!(harness.registry.all_names().len(), 8);
     }
 }

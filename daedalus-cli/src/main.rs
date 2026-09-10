@@ -5,6 +5,7 @@ mod commands;
 mod error;
 mod pager;
 mod remote_cache;
+mod stdio;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{
@@ -19,7 +20,8 @@ use std::process::ExitCode;
     name = "daedalus",
     version,
     about = "Package any app into a single self-extracting binary",
-    long_about = "daedalus compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  daedalus build ./myapp -o myapp.de\n  daedalus run myapp.de\n  daedalus inspect myapp.de\n  daedalus keygen\n  daedalus sign myapp.de --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.de\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish\n\nDocumentation: https://github.com/Encapsul/daedalus/blob/main/README.md"
+    long_about = "daedalus compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  daedalus build ./myapp -o myapp.de\n  daedalus run myapp.de\n  daedalus inspect myapp.de\n  daedalus keygen\n  daedalus sign myapp.de --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.de\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish",
+    after_help = "Documentation: https://github.com/Encapsul/daedalus/blob/main/README.md\nIssues: https://github.com/Encapsul/daedalus/issues"
 )]
 #[allow(clippy::struct_excessive_bools)]
 struct Cli {

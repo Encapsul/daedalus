@@ -1483,8 +1483,10 @@ fn ensure_wasmtime_download(
 ///
 /// Checks for `cargo` on PATH first. If missing, falls back to a cached
 /// `~/.cargo/bin/cargo` or uses `rustup` to install the stable toolchain.
-/// Returns the directory containing the `cargo` binary so the caller can
-/// prepend it to PATH.
+/// As a last resort, auto-downloads `rustup-init` and installs stable into an
+/// isolated `~/.cache/daedalus/build-tools/rustup-host/` so a build never
+/// hard-fails on a missing toolchain. Returns the directory containing the
+/// `cargo` binary so the caller can prepend it to PATH.
 pub(crate) fn ensure_rust(verbose: bool) -> Result<PathBuf> {
     if let Ok(cargo_path) = which::which("cargo") {
         if verbose {
@@ -1514,50 +1516,200 @@ pub(crate) fn ensure_rust(verbose: bool) -> Result<PathBuf> {
         local.exists().then_some(local)
     });
 
-    if let Some(rustup) = rustup {
-        if verbose {
-            eprintln!("  installing Rust stable toolchain via rustup...");
-        }
-        let status = std::process::Command::new(&rustup)
-            .args(["install", "stable"])
-            .status()
-            .with_context(|| format!("failed to run `{} install stable`", rustup.display()))?;
-        if !status.success() {
-            anyhow::bail!(
-                "`{} install stable` failed with exit code {}",
-                rustup.display(),
-                status.code().unwrap_or(-1)
-            );
-        }
-        let status = std::process::Command::new(&rustup)
-            .args(["default", "stable"])
-            .status()
-            .with_context(|| format!("failed to run `{} default stable`", rustup.display()))?;
-        if !status.success() {
-            anyhow::bail!(
-                "`{} default stable` failed with exit code {}",
-                rustup.display(),
-                status.code().unwrap_or(-1)
-            );
-        }
+    let rustup = match rustup {
+        Some(rustup) => rustup,
+        // No system toolchain and no rustup to drive: bootstrap our own.
+        None => return ensure_rustup_download(verbose),
+    };
+
+    if verbose {
+        eprintln!("  installing Rust stable toolchain via rustup...");
+    }
+    let status = std::process::Command::new(&rustup)
+        .args(["install", "stable"])
+        .status()
+        .with_context(|| format!("failed to run `{} install stable`", rustup.display()))?;
+    if !status.success() {
+        anyhow::bail!(
+            "`{} install stable` failed with exit code {}",
+            rustup.display(),
+            status.code().unwrap_or(-1)
+        );
+    }
+    let status = std::process::Command::new(&rustup)
+        .args(["default", "stable"])
+        .status()
+        .with_context(|| format!("failed to run `{} default stable`", rustup.display()))?;
+    if !status.success() {
+        anyhow::bail!(
+            "`{} default stable` failed with exit code {}",
+            rustup.display(),
+            status.code().unwrap_or(-1)
+        );
+    }
+    if verbose {
+        eprintln!(
+            "  Rust stable toolchain installed at {}",
+            rust_bin.display()
+        );
+    }
+    Ok(rust_bin)
+}
+
+/// Bootstrap a self-contained Rust toolchain by downloading `rustup-init` and
+/// installing `stable` into an isolated location under the cache dir.
+///
+/// `RUSTUP_HOME`/`CARGO_HOME` are pointed at `~/.cache/daedalus/build-tools/`
+/// so the install never pollutes the user's real `~/.cargo` and the resulting
+/// `cargo` can be prepended to PATH for the build. Only used when neither a
+/// system `cargo` nor a system `rustup` exists, so it preserves the project's
+/// "prefer the host/current toolchain" behaviour.
+fn ensure_rustup_download(verbose: bool) -> Result<PathBuf> {
+    let base = tools_dir_for("rustup", None);
+    let toolchain_dir = base.join("toolchain");
+    let rustup_home = base.join("rustup");
+    let cargo_home = base.join("cargo");
+    let cargo_bin = cargo_home.join("bin");
+    let cargo = cargo_bin.join("cargo");
+
+    if cargo.exists() {
         if verbose {
             eprintln!(
-                "  Rust stable toolchain installed at {}",
-                rust_bin.display()
+                "  using bootstrapped Rust toolchain from {}",
+                cargo_bin.display()
             );
         }
-        return Ok(rust_bin);
+        return Ok(cargo_bin);
     }
 
-    anyhow::bail!(
-        "cargo not found on PATH — install Rust via rustup: https://rustup.rs\n         \n\
-         After installing rustup, run:\n\
-         \n\
-         rustup install stable\n\
-         rustup default stable\n\
-         \n\
-         Then re-run daedalus."
-    );
+    std::fs::create_dir_all(&toolchain_dir)
+        .context("failed to create rustup bootstrap directory")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700)).ok();
+    }
+
+    let rustup_init = base.join("rustup-init");
+    let rustup_init = match download_rustup_init(&base, verbose) {
+        Some(path) => path,
+        None => {
+            anyhow::bail!(
+                "cargo not found on PATH and auto-download failed — \
+                 install Rust manually: https://rustup.rs"
+            );
+        }
+    };
+
+    if verbose {
+        eprintln!(
+            "  installing Rust stable via {} (RUSTUP_HOME={})...",
+            rustup_init.display(),
+            rustup_home.display()
+        );
+    }
+    let status = std::process::Command::new(&rustup_init)
+        .args([
+            "-y",
+            "--default-toolchain",
+            "stable",
+            "--no-modify-path",
+            "--profile",
+            "minimal",
+        ])
+        .env("RUSTUP_HOME", &rustup_home)
+        .env("CARGO_HOME", &cargo_home)
+        .status()
+        .with_context(|| {
+            format!(
+                "failed to run `{}` (rustup-init) — install Rust manually: https://rustup.rs",
+                rustup_init.display()
+            )
+        })?;
+    if !status.success() {
+        anyhow::bail!(
+            "rustup-init failed with exit code {} — install Rust manually: https://rustup.rs",
+            status.code().unwrap_or(-1)
+        );
+    }
+
+    if !cargo.exists() {
+        anyhow::bail!(
+            "rustup-init finished but cargo is missing at {} — install Rust \
+             manually: https://rustup.rs",
+            cargo.display()
+        );
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).ok();
+    }
+    if verbose {
+        eprintln!("  Rust stable toolchain ready at {}", cargo_bin.display());
+    }
+    Ok(cargo_bin)
+}
+
+/// Download the official `rustup-init` binary for the host platform into
+/// `base/`. Returns the path to the downloaded binary, or `None` on any
+/// download/extraction failure so the caller can surface a manual install hint.
+fn download_rustup_init(base: &Path, verbose: bool) -> Option<std::path::PathBuf> {
+    let rustup_init = base.join("rustup-init");
+    if rustup_init.exists() {
+        return Some(rustup_init);
+    }
+    let triple = host_rustup_triple();
+    let (url_path, is_windows) = match triple.as_str() {
+        "x86_64-unknown-linux-gnu" => ("x86_64-unknown-linux-gnu/rustup-init", false),
+        "aarch64-unknown-linux-gnu" => ("aarch64-unknown-linux-gnu/rustup-init", false),
+        "x86_64-apple-darwin" => ("x86_64-apple-darwin/rustup-init", false),
+        "aarch64-apple-darwin" => ("aarch64-apple-darwin/rustup-init", false),
+        "x86_64-pc-windows-msvc" => ("x86_64-pc-windows-msvc/rustup-init.exe", true),
+        "aarch64-pc-windows-msvc" => ("aarch64-pc-windows-msvc/rustup-init.exe", true),
+        _ => {
+            if verbose {
+                eprintln!("  unsupported host for rustup auto-download: {triple}");
+            }
+            return None;
+        }
+    };
+    let url = format!("https://static.rust-lang.org/rustup/dist/{url_path}");
+    if verbose {
+        eprintln!("  downloading rustup-init for {triple}...");
+    }
+    let response = reqwest::blocking::get(&url).ok()?.error_for_status().ok()?;
+    if is_windows {
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut std::io::BufReader::new(response), &mut bytes).ok()?;
+        std::fs::write(&rustup_init, bytes).ok()?;
+    } else {
+        let mut file = std::fs::File::create(&rustup_init).ok()?;
+        std::io::copy(&mut std::io::BufReader::new(response), &mut file).ok()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&rustup_init, std::fs::Permissions::from_mode(0o755)).ok()?;
+        }
+    }
+    Some(rustup_init)
+}
+
+/// The rustup 4-string host triple for the current build machine, fed into the
+/// `static.rust-lang.org/rustup/dist/<triple>` download path.
+fn host_rustup_triple() -> String {
+    let arch = match std::env::consts::ARCH {
+        "x86_64" | "amd64" => "x86_64",
+        "aarch64" | "arm64" => "aarch64",
+        arch => arch,
+    };
+    let os = match std::env::consts::OS {
+        "linux" => "unknown-linux-gnu",
+        "macos" => "apple-darwin",
+        "windows" => "pc-windows-msvc",
+        os => os,
+    };
+    format!("{arch}-{os}")
 }
 
 /// Ensure an Electron runtime is available for the requested target.
@@ -1910,5 +2062,57 @@ mod tests {
         assert!(url.contains("astral-sh/python-build-standalone"));
         assert!(url.contains("aarch64-unknown-linux-musl"));
         assert!(url.contains("install_only"));
+    }
+
+    #[test]
+    /// host_rustup_triple_matches_expected_layout - the rustup host triple maps
+    /// to a static.rust-lang.org download directory.
+    fn host_rustup_triple_matches_expected_layout() {
+        let triple = host_rustup_triple();
+        // Every supported host maps to a known bootstrappable triple.
+        assert!(
+            matches!(
+                triple.as_str(),
+                "x86_64-unknown-linux-gnu"
+                    | "aarch64-unknown-linux-gnu"
+                    | "x86_64-apple-darwin"
+                    | "aarch64-apple-darwin"
+                    | "x86_64-pc-windows-msvc"
+                    | "aarch64-pc-windows-msvc"
+            ),
+            "unexpected host triple {triple}"
+        );
+        // The URL derived from the triple is well-formed.
+        let (url_path, is_windows) = match triple.as_str() {
+            "x86_64-unknown-linux-gnu" => ("x86_64-unknown-linux-gnu/rustup-init", false),
+            "aarch64-unknown-linux-gnu" => ("aarch64-unknown-linux-gnu/rustup-init", false),
+            "x86_64-apple-darwin" => ("x86_64-apple-darwin/rustup-init", false),
+            "aarch64-apple-darwin" => ("aarch64-apple-darwin/rustup-init", false),
+            "x86_64-pc-windows-msvc" => ("x86_64-pc-windows-msvc/rustup-init.exe", true),
+            "aarch64-pc-windows-msvc" => ("aarch64-pc-windows-msvc/rustup-init.exe", true),
+            _ => unreachable!(),
+        };
+        let url = format!("https://static.rust-lang.org/rustup/dist/{url_path}");
+        assert!(url.starts_with("https://static.rust-lang.org/rustup/dist/"));
+        assert_eq!(is_windows, cfg!(windows));
+    }
+
+    #[test]
+    /// host_rustup_triple_deterministic_and_path_safe - the downloaded URL is
+    /// derived from consts only and contains no path- or URL-breaking bytes.
+    fn host_rustup_triple_deterministic_and_path_safe() {
+        let triple = host_rustup_triple();
+        assert_eq!(triple, host_rustup_triple(), "triple must be deterministic");
+        assert!(
+            !triple.contains('/') && !triple.contains('\\'),
+            "no separators"
+        );
+        assert!(!triple.contains(".."), "no dot segments");
+        assert!(
+            triple
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_'),
+            "URL-safe alphabet only"
+        );
     }
 }

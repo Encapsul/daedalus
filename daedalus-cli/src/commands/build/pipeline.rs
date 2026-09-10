@@ -209,7 +209,7 @@ pub(crate) fn build_single_target(
     // ── Embed interpreter / N-API addons / RoadRunner into the rootfs ──
     // Skip when reusing rootfs — interpreter already present in payload.
     if reuse_binary.is_none() {
-        embed_interpreters(args, plan, &rootfs, target.as_deref());
+        embed_interpreters(args, plan, &rootfs, target.as_deref())?;
     }
 
     // ── Payload: compress (tar+zstd or squashfs) ──────────────────────
@@ -365,13 +365,22 @@ pub(crate) fn build_single_target(
     //
     // Signing happens BEFORE the cache store so the cached artifact is the
     // complete, signed binary — a cache hit must not serve an unsigned copy.
-    if !args.enable_sisr {
-        if let Some(key_path) = &args.key {
-            if verbose {
-                eprintln!("Signing...");
-            }
-            crate::commands::sign::sign_file(output, key_path, !verbose)?;
+    //
+    // Signing is ON by default: without `--skip-sign`, every build carries an
+    // Ed25519 signature from the self-trusted dev key (or `--key`), so
+    // `daedalus verify` authenticates it out of the box.
+    if !args.enable_sisr && !args.skip_sign {
+        let key_path = match &args.key {
+            Some(p) => p.clone(),
+            None => crate::commands::sign::ensure_dev_key()
+                .context("failed to ready the default dev signing key")?,
+        };
+        if verbose {
+            eprintln!("Signing (key: {})...", key_path.display());
         }
+        let key_bytes = std::fs::read(&key_path)
+            .with_context(|| format!("failed to read signing key at {}", key_path.display()))?;
+        crate::commands::sign::sign_file(output, &key_bytes, !verbose)?;
     }
 
     // ── Store in build cache ──────────────────────────────────────────
@@ -1520,61 +1529,96 @@ fn resolve_cross_interpreter(
     download
 }
 
+/// The host OS in `parse_target`'s token vocabulary (`darwin`/`windows`/
+/// `linux`). `std::env::consts::OS` reports macOS as `"macos"`, which would
+/// otherwise never equal a target's `"darwin"`.
+fn host_os_target_token() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "darwin",
+        os => os,
+    }
+}
+
 /// Embed the interpreter, `N-API` addons and `RoadRunner` into the staged rootfs.
 ///
 /// When `target` is set and differs from the host architecture, downloads a
 /// target-specific interpreter (Python via `python-build-standalone`, Node.js
 /// via official binaries) and embeds that. Otherwise uses the host's
 /// interpreter from PATH.
-fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target: Option<&str>) {
+fn embed_interpreters(
+    args: &BuildArgs,
+    plan: &BuildPlan,
+    rootfs: &Path,
+    target: Option<&str>,
+) -> Result<()> {
     let app_dir = &plan.app_dir;
     let verbose = plan.verbose;
 
     let host_arch = std::env::consts::ARCH;
-    let is_cross = target.is_some_and(|t| parse_target(t).0 != host_arch);
+    // `parse_target` normalises the OS token ("darwin"/"windows"/"linux");
+    // `std::env::consts::OS` spells macOS as "macos", so normalise for the
+    // cross-vs-native check. OS matters: `--target x86_64-apple-darwin` on an
+    // x86_64 Linux host must download the darwin runtime, not embed host.
+    let host_os = host_os_target_token();
+    let is_cross = target.is_some_and(|t| {
+        let (arch, os) = parse_target(t);
+        arch != host_arch || os.as_str() != host_os
+    });
 
     let embedded_interpreter_str = resolve_embed_interpreter(args, &plan.runtime_name);
 
-    let mut interpreter_embedded = false;
-    if let Some(ref interpreter_name) = embedded_interpreter_str {
-        let interp_path = if is_cross {
-            resolve_cross_interpreter(
-                interpreter_name,
-                target,
-                verbose,
-                args.electron_url.as_deref(),
-            )
-        } else {
-            None
-        };
+    // Java: embed a minimal `jlink` JRE by default (drops ~150 MB vs the full
+    // host JRE). Skipped for cross-target builds: `jlink` emits a host-arch
+    // image and Java's native libs are arch-specific, same limitation as the
+    // full-JRE embed. Falls back to the full JRE internally when no JDK 9+
+    // toolchain or app modules are found; `--full-jre` opts out.
+    let jlink_embedded = plan.runtime == detect::Runtime::Java
+        && !is_cross
+        && super::jlink::embed_minimal_jre(args, rootfs, verbose)?;
 
-        if let Some(ref path) = interp_path {
-            interpreter_embedded = embed_primary_interpreter(path, rootfs, app_dir, verbose);
-            if plan.runtime_name == "electron" && interpreter_embedded {
-                embed_electron_resources(path, rootfs, verbose);
-            }
+    let mut interpreter_embedded = jlink_embedded;
+    if !jlink_embedded {
+        if let Some(ref interpreter_name) = embedded_interpreter_str {
+            let interp_path = if is_cross {
+                resolve_cross_interpreter(
+                    interpreter_name,
+                    target,
+                    verbose,
+                    args.electron_url.as_deref(),
+                )
+            } else {
+                None
+            };
 
-            // For a downloaded, isolated runtime the single binary is not
-            // enough: the install tree holds DLLs/stdlib/data the runtime
-            // needs. Copy it with a per-runtime profile.
-            if interpreter_embedded {
-                if let Some(install_dir) = runtime_install_dir(interpreter_name, target) {
-                    let _ = embed::embed_runtime_dir(
-                        &install_dir,
-                        &runtime_profile(interpreter_name),
-                        rootfs,
-                        verbose,
-                    );
-                }
-            }
-        } else {
-            let host_path = which::which(interpreter_name)
-                .ok()
-                .or_else(|| embed::find_interpreter_host(interpreter_name));
-            if let Some(path) = host_path {
-                interpreter_embedded = embed_primary_interpreter(&path, rootfs, app_dir, verbose);
+            if let Some(ref path) = interp_path {
+                interpreter_embedded = embed_primary_interpreter(path, rootfs, app_dir, verbose);
                 if plan.runtime_name == "electron" && interpreter_embedded {
-                    embed_electron_resources(&path, rootfs, verbose);
+                    embed_electron_resources(path, rootfs, verbose);
+                }
+
+                // For a downloaded, isolated runtime the single binary is not
+                // enough: the install tree holds DLLs/stdlib/data the runtime
+                // needs. Copy it with a per-runtime profile.
+                if interpreter_embedded {
+                    if let Some(install_dir) = runtime_install_dir(interpreter_name, target) {
+                        let _ = embed::embed_runtime_dir(
+                            &install_dir,
+                            &runtime_profile(interpreter_name),
+                            rootfs,
+                            verbose,
+                        );
+                    }
+                }
+            } else {
+                let host_path = which::which(interpreter_name)
+                    .ok()
+                    .or_else(|| embed::find_interpreter_host(interpreter_name));
+                if let Some(path) = host_path {
+                    interpreter_embedded =
+                        embed_primary_interpreter(&path, rootfs, app_dir, verbose);
+                    if plan.runtime_name == "electron" && interpreter_embedded {
+                        embed_electron_resources(&path, rootfs, verbose);
+                    }
                 }
             }
         }
@@ -1584,6 +1628,13 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
     embed_napi_addons_if_node(&plan.runtime_name, rootfs, verbose);
     embed_roadrunner(app_dir, rootfs, verbose);
 
+    // Full-JRE Java embed (--full-jre / jlink skipped): `embed_java_config`
+    // wires an absolute symlink the payload builder drops; fix it like the
+    // jlink path so the embedded JRE is actually used at runtime.
+    if plan.runtime == detect::Runtime::Java && !jlink_embedded && interpreter_embedded {
+        super::jlink::fixup_jre_launcher(rootfs)?;
+    }
+
     if !interpreter_embedded && verbose && embedded_interpreter_str.is_some() {
         eprintln!("  (interpreter embedding skipped)");
     }
@@ -1592,6 +1643,7 @@ fn embed_interpreters(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path, target:
     // tool's own cache dir is removed — never a shared `/tmp` path, which
     // another user/process may own or have symlinked (roadmap #36).
     let _ = std::fs::remove_dir_all(cache_dir().join("build-tools"));
+    Ok(())
 }
 
 /// Explicit `--embed-interpreter` wins, else the runtime's default binary.
@@ -1700,20 +1752,26 @@ fn embed_primary_interpreter(
 /// Embed Electron's `resources/` directory alongside the binary so the
 /// runtime can find its Chromium/V8 snapshot and default app at exec time.
 fn embed_electron_resources(interpreter_path: &Path, rootfs: &Path, verbose: bool) {
-    let resources_src = interpreter_path
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("resources"))
-        .unwrap_or_else(|| interpreter_path.with_extension("resources"));
-    if !resources_src.is_dir() {
+    // Electron ships `resources/` in the same directory as the `electron`
+    // binary — both for a downloaded dist (`tools_dir/bin/resources`) and a
+    // typical host install (`/usr/lib/electron/resources`). Probe the binary's
+    // directory first, then one level up as a fallback.
+    let bin_dir = interpreter_path.parent().unwrap_or(interpreter_path);
+    let resources_src = [
+        bin_dir.join("resources"),
+        bin_dir.parent().unwrap_or(bin_dir).join("resources"),
+    ]
+    .into_iter()
+    .find(|p| p.is_dir());
+    let Some(resources_src) = resources_src else {
         if verbose {
             eprintln!(
-                "  embed: no electron resources dir at {}",
-                resources_src.display()
+                "  embed: no electron resources dir found beside {}",
+                interpreter_path.display()
             );
         }
         return;
-    }
+    };
 
     let bin_dir = rootfs.join("usr/bin");
     let dest_resources = bin_dir.join("resources");
@@ -2730,5 +2788,149 @@ mod tests {
             .iter()
             .find(|l| matches!(l, daedalus_core::layer::SerializableLayer::Config(_)));
         assert!(config_layer.is_some(), "expected a ConfigLayer");
+    }
+
+    /// host_os_target_token maps the OS to the parse_target vocabulary.
+    #[test]
+    fn host_os_target_token_matches_target_vocab() {
+        let token = host_os_target_token();
+        // Every host OS maps to a token parse_target emits.
+        assert!(
+            matches!(token, "darwin" | "linux" | "windows"),
+            "unexpected host OS token {token}"
+        );
+        // On macOS, std::env::consts::OS == "macos" but the token is "darwin".
+        if cfg!(target_os = "macos") {
+            assert_eq!(token, "darwin");
+            assert_eq!(std::env::consts::OS, "macos");
+        }
+    }
+
+    /// embed_electron_resources copies a `resources/` dir found beside the
+    /// electron binary into `rootfs/usr/bin/`, mirroring the downloaded dist
+    /// layout `tools_dir/bin/electron` + `tools_dir/bin/resources`.
+    #[test]
+    fn embed_electron_resources_finds_beside_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        let resources = bin_dir.join("resources");
+        std::fs::create_dir_all(&resources).unwrap();
+        std::fs::write(resources.join("default_app.asar"), b"asar").unwrap();
+        let electron = bin_dir.join("electron");
+        std::fs::write(&electron, b"elf").unwrap();
+
+        let rootfs = tempfile::tempdir().unwrap();
+        embed_electron_resources(&electron, rootfs.path(), false);
+
+        let dest = rootfs.path().join("usr/bin/resources");
+        assert!(dest.is_dir(), "resources should be embedded as a dir");
+        assert!(dest.join("default_app.asar").is_file());
+    }
+
+    /// When a host-style electron install puts resources one level above the
+    /// binary (`/usr/lib/electron/electron` + `/usr/lib/electron/resources`),
+    /// the fallback probe still finds it.
+    #[test]
+    fn embed_electron_resources_finds_parent_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let install = dir.path().join("electron");
+        let resources = install.join("resources");
+        std::fs::create_dir_all(&resources).unwrap();
+        std::fs::write(resources.join("default_app.asar"), b"asar").unwrap();
+        let electron = install.join("electron");
+        std::fs::write(&electron, b"elf").unwrap();
+
+        let rootfs = tempfile::tempdir().unwrap();
+        embed_electron_resources(&electron, rootfs.path(), false);
+
+        let dest = rootfs.path().join("usr/bin/resources");
+        assert!(dest.is_dir());
+        assert!(dest.join("default_app.asar").is_file());
+    }
+
+    /// Chaos: no `resources/` nearby → no panic, no destination created.
+    #[test]
+    fn embed_electron_resources_missing_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let electron = dir.path().join("bin").join("electron");
+        let rootfs = tempfile::tempdir().unwrap();
+        embed_electron_resources(&electron, rootfs.path(), false);
+        assert!(!rootfs.path().join("usr/bin/resources").exists());
+    }
+
+    /// Chaos: a *file* named `resources` must not be treated as a directory.
+    #[test]
+    fn embed_electron_resources_skips_file_named_resources() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("resources"), b"{{asar}}").unwrap();
+        let electron = bin.join("electron");
+        let rootfs = tempfile::tempdir().unwrap();
+        embed_electron_resources(&electron, rootfs.path(), false);
+        assert!(!rootfs.path().join("usr/bin/resources").exists());
+    }
+
+    /// Chaos: an empty resources dir copies as an empty dir.
+    #[test]
+    fn embed_electron_resources_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        std::fs::create_dir_all(bin.join("resources")).unwrap();
+        let rootfs = tempfile::tempdir().unwrap();
+        embed_electron_resources(&bin.join("electron"), rootfs.path(), false);
+        assert!(rootfs.path().join("usr/bin/resources").is_dir());
+    }
+
+    /// Chaos: nested entries, weird filenames and a pre-populated destination
+    /// survive the embed (destination is replaced, never merged).
+    #[test]
+    fn embed_electron_resources_copies_nested_and_replaces() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        let resources = bin.join("resources");
+        std::fs::create_dir_all(resources.join("locales")).unwrap();
+        std::fs::write(resources.join("default_app.asar"), b"asar").unwrap();
+        std::fs::write(resources.join("locales/en-US.pak"), b"pak").unwrap();
+        std::fs::create_dir_all(resources.join("app with spaces")).unwrap();
+        std::fs::write(resources.join("app with spaces/app"), b"x").unwrap();
+
+        let rootfs = tempfile::tempdir().unwrap();
+        let dest = rootfs.path().join("usr/bin/resources");
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("stale.asar"), b"stale").unwrap();
+
+        embed_electron_resources(&bin.join("electron"), rootfs.path(), false);
+        assert!(dest.join("default_app.asar").is_file());
+        assert!(dest.join("locales/en-US.pak").is_file());
+        assert!(dest.join("app with spaces/app").is_file());
+        assert!(!dest.join("stale.asar").exists(), "destination is replaced");
+    }
+
+    /// Chaos: a symlink loop inside the source tree must terminate (copied as
+    /// an entry, not followed) instead of recursing forever.
+    #[cfg(unix)]
+    #[test]
+    fn embed_electron_resources_symlink_loop_terminates() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        let resources = bin.join("resources");
+        std::fs::create_dir_all(&resources).unwrap();
+        std::fs::write(resources.join("default_app.asar"), b"asar").unwrap();
+        symlink(&resources, resources.join("loop")).unwrap();
+
+        let rootfs = tempfile::tempdir().unwrap();
+        embed_electron_resources(&bin.join("electron"), rootfs.path(), false);
+        let dest = rootfs.path().join("usr/bin/resources");
+        assert!(dest.join("default_app.asar").is_file());
+    }
+
+    /// Chaos: an interpreter path without a directory component probes nothing
+    /// dangerous and never panics.
+    #[test]
+    fn embed_electron_resources_relative_binary() {
+        let rootfs = tempfile::tempdir().unwrap();
+        embed_electron_resources(std::path::Path::new("electron"), rootfs.path(), false);
     }
 }

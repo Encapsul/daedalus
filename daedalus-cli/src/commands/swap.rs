@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
     long_about = "Replaces a named file inside the payload of a .daedalus binary and reassembles the artifact with an updated integrity hash.\n\nUsage: daedalus swap <binary> <layer-name> <new-file> [-o output]\n\nLimitations:\n- Plain zstd-tar payloads only (v2). Does not support squashfs (v5).\n- Invalidates any Ed25519 binary signature (re-sign with `daedalus sign` after swap)."
 )]
 pub struct SwapArgs {
-    /// Path to the .daedalus binary
+    /// Path to the .daedalus binary, or `-` to read from stdin
     #[arg()]
     pub binary: PathBuf,
 
@@ -31,7 +31,7 @@ pub struct SwapArgs {
     #[arg()]
     pub new_file: PathBuf,
 
-    /// Output path (default: overwrites input)
+    /// Output path (`-` streams the result to stdout; default: overwrites input)
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
@@ -58,23 +58,33 @@ pub struct SwapArgs {
 ///
 /// Return: Result containing anyhow::Result<()>
 pub fn run(args: SwapArgs) -> anyhow::Result<()> {
-    let binary_data = std::fs::read(&args.binary)
-        .with_context(|| format!("failed to read {}", args.binary.display()))?;
+    let binary_display = if crate::stdio::is_dash(&args.binary.to_string_lossy()) {
+        "stdin".to_string()
+    } else {
+        args.binary.display().to_string()
+    };
+    let binary_data = if crate::stdio::is_dash(&args.binary.to_string_lossy()) {
+        crate::stdio::read_stdin_cursor()?.into_inner()
+    } else {
+        std::fs::read(&args.binary)
+            .with_context(|| format!("failed to read {}", args.binary.display()))?
+    };
 
     let new_data = std::fs::read(&args.new_file)
         .with_context(|| format!("failed to read {}", args.new_file.display()))?;
 
-    let output = args.output.unwrap_or_else(|| {
+    let output = args.output.clone().unwrap_or_else(|| {
         let mut p = args.binary.clone();
         p.set_extension("daedalus");
         p
     });
+    let output_display = if crate::stdio::is_stdout_output(&output) {
+        "stdout".to_string()
+    } else {
+        output.display().to_string()
+    };
 
-    eprintln!(
-        "[daedalus] swap: {} -> {}",
-        args.binary.display(),
-        output.display()
-    );
+    eprintln!("[daedalus] swap: {} -> {}", binary_display, output_display);
     eprintln!("[daedalus] layer: {}", args.layer_name);
     eprintln!(
         "[daedalus] new file: {} ({} bytes)",
@@ -82,26 +92,29 @@ pub fn run(args: SwapArgs) -> anyhow::Result<()> {
         new_data.len()
     );
 
-    swap_layer(
-        &binary_data,
-        &new_data,
-        &args.layer_name,
-        &args.new_file,
-        &output,
-    )?;
+    let new_binary = swap_layer_bytes(&binary_data, &new_data, &args.layer_name, &args.new_file)?;
+
+    if crate::stdio::is_stdout_output(&output) {
+        use std::io::Write;
+        std::io::stdout().write_all(&new_binary)?;
+        std::io::stdout().flush()?;
+    } else {
+        std::fs::write(&output, new_binary)
+            .with_context(|| format!("failed to write {}", output.display()))?;
+    }
 
     if args.json {
         let info = serde_json::json!({
             "command": "swap",
-            "binary": args.binary.display().to_string(),
+            "binary": binary_display,
             "layer_name": args.layer_name,
             "new_file": args.new_file.display().to_string(),
-            "output": output.display().to_string(),
+            "output": output_display,
             "success": true,
         });
         println!("{}", serde_json::to_string_pretty(&info)?);
     } else {
-        eprintln!("[daedalus] swap complete: {}", output.display());
+        eprintln!("[daedalus] swap complete: {}", output_display);
     }
     Ok(())
 }
@@ -123,21 +136,21 @@ fn has_executable_extension(path: &str) -> bool {
         || path.eq_ignore_ascii_case(".exe")
 }
 
-/// swap_layer - replace a file in a .daedalus tar payload and reassemble.
+/// swap_layer_bytes - replace a file in a .daedalus tar payload and reassemble.
 ///
 /// Description:
 /// Decompresses the zstd-tar payload, replaces the target file, re-serializes
 /// with deterministic ordering and fixed mtime/uid/gid, recompresses, and
-/// writes the new binary with an updated footer hash.
+/// returns the new binary with an updated footer hash. The caller decides
+/// whether to write it to a file or stream it to stdout.
 ///
-/// Return: nothing
-fn swap_layer(
+/// Return: the rebuilt `.daedalus` bytes
+fn swap_layer_bytes(
     binary_data: &[u8],
     new_file_data: &[u8],
     _layer_name: &str,
     new_file_path: &Path,
-    output: &PathBuf,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<u8>> {
     use daedalus_core::compress::{compress, decompress};
     use daedalus_core::format::Footer;
     use std::io::Cursor;
@@ -237,10 +250,8 @@ fn swap_layer(
         compress(&tar_buf).with_context(|| "failed to recompress payload".to_string())?;
 
     let new_binary = assemble_daedalus_bytes(stub_bytes, &new_payload_compressed, metadata_bytes)?;
-    std::fs::write(output, new_binary)
-        .with_context(|| format!("failed to write {}", output.display()))?;
 
-    Ok(())
+    Ok(new_binary)
 }
 
 /// Assemble a .daedalus binary from components.

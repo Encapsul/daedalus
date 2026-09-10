@@ -29,6 +29,8 @@ fn gradle_version_ok() -> bool {
                 .lines()
                 .find(|l| l.contains("Gradle"))
                 .and_then(|l| l.split_whitespace().nth(1))
+                // "8.11.1" → major "8"; the whole dotted version fails u32 parse.
+                .and_then(|v| v.split('.').next())
                 .and_then(|v| v.parse::<u32>().ok())
                 .map(|major| major >= 7)
                 .unwrap_or(false);
@@ -122,13 +124,21 @@ fn java_app_is_detected_built_and_runs() {
             project.to_str().unwrap(),
             "-o",
             out.to_str().unwrap(),
-            // No JRE in the rootfs otherwise — the stub refuses to exec.
+            // `--embed-interpreter java` (no `--full-jre`) must now take the
+            // jlink minimal-JRE default path, not the full-JRE embed.
             "--embed-interpreter",
             "java",
+            // Make the embedded-interpreter machinery explain which path it
+            // took, so the test can prove jlink (not full JRE) was used.
+            "--verbose",
         ])
         // NOTE: no `--no-install` — it also skips the gradle build itself,
         // and this test must exercise it.
         .env("DAEDALUS_STUB_PATH", &stub)
+        // Isolate signing state: default dev key under XDG_DATA_HOME, self-trusted
+        // into DAEDALUS_TRUSTED_DIR, which the run below shares with the stub.
+        .env("XDG_DATA_HOME", tmp.path().join("data"))
+        .env("DAEDALUS_TRUSTED_DIR", tmp.path().join("trusted"))
         .output()
         .expect("failed to spawn daedalus build");
     let stderr = String::from_utf8_lossy(&build.stderr).into_owned();
@@ -137,6 +147,10 @@ fn java_app_is_detected_built_and_runs() {
         "daedalus build must succeed for a Java app: {stderr}"
     );
     assert!(out.is_file(), "artifact must exist: {stderr}");
+    assert!(
+        stderr.contains("jlink"),
+        "default Java embed must use the jlink minimal-JRE path, stderr: {stderr}"
+    );
 
     // The assembled artifact is self-extracting: running it must extract the
     // rootfs (JRE included) and exec `java -jar /app/hello-1.0.jar`.
@@ -149,6 +163,7 @@ fn java_app_is_detected_built_and_runs() {
         .env("XDG_CACHE_HOME", tmp.path().join("cache"))
         .env("XDG_DATA_HOME", tmp.path().join("data"))
         .env("HOME", tmp.path().join("home"))
+        .env("DAEDALUS_TRUSTED_DIR", tmp.path().join("trusted"))
         .output()
         .expect("failed to run the assembled Java artifact");
     let stdout = String::from_utf8_lossy(&run.stdout).into_owned();

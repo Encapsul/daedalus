@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 //! Standalone Ed25519 crypto tool for key generation, signing, and verification.
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
@@ -182,7 +182,7 @@ fn cmd_verify(args: &[String]) -> i32 {
     };
 
     let sig = Signature::from_bytes(&sig_bytes);
-    match pub_key.verify(&hash, &sig) {
+    match pub_key.verify_strict(&hash, &sig) {
         Ok(()) => 0,
         Err(_) => 1,
     }

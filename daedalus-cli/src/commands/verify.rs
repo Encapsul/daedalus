@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use daedalus_core::format::{Footer, SIG_BLOCK_SIZE, SIG_LEN};
 use daedalus_core::paths::trusted_keys_dir;
-use ed25519_dalek::{Verifier, VerifyingKey};
+use ed25519_dalek::VerifyingKey;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
@@ -28,7 +28,7 @@ fn write_json_output(value: &serde_json::Value, output: Option<&std::path::Path>
 
 #[derive(Args)]
 pub struct VerifyArgs {
-    /// Path to the .daedalus file
+    /// Path to the .daedalus file, or `-` to read from stdin
     pub file: PathBuf,
 
     /// Directory containing trusted public keys
@@ -63,9 +63,21 @@ pub struct VerifyArgs {
 pub fn run(args: VerifyArgs) -> Result<()> {
     let trusted_dir = args.trusted_dir.unwrap_or_else(trusted_keys_dir);
 
-    let mut f = std::fs::File::open(&args.file)
-        .with_context(|| format!("failed to open {}", args.file.display()))?;
-    let footer = Footer::read_from(&mut f).context("failed to read daedalus footer")?;
+    let display_name = if crate::stdio::is_dash(&args.file.to_string_lossy()) {
+        "stdin".to_string()
+    } else {
+        args.file.display().to_string()
+    };
+    let mut source: std::io::Cursor<Vec<u8>> =
+        if crate::stdio::is_dash(&args.file.to_string_lossy()) {
+            crate::stdio::read_stdin_cursor()?
+        } else {
+            let bytes = std::fs::read(&args.file)
+                .with_context(|| format!("failed to open {}", args.file.display()))?;
+            std::io::Cursor::new(bytes)
+        };
+
+    let footer = Footer::read_from(&mut source).context("failed to read daedalus footer")?;
 
     let has_sig_block = footer.format_version >= 3 && footer.sig_offset != 0;
     if has_sig_block != footer.is_signed() {
@@ -74,7 +86,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     if !has_sig_block {
         if args.json {
             let info = serde_json::json!({
-                "file": args.file.display().to_string(),
+                "file": display_name,
                 "signed": false,
             });
             write_json_output(&info, args.output.as_deref())?;
@@ -85,7 +97,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     }
 
     // Read sig block: [sig_size:u32le][64-byte ed25519 signature]
-    let sig_data = daedalus_core::format::read_at(&mut f, footer.sig_offset, SIG_BLOCK_SIZE)?;
+    let sig_data = daedalus_core::format::read_at(&mut source, footer.sig_offset, SIG_BLOCK_SIZE)?;
     let sig_size = u32::from_le_bytes([sig_data[0], sig_data[1], sig_data[2], sig_data[3]]);
     if sig_size != SIG_LEN as u32 {
         anyhow::bail!(
@@ -97,12 +109,12 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 
     // Read payload and metadata for hash
     let payload = daedalus_core::format::read_at(
-        &mut f,
+        &mut source,
         footer.payload_offset,
         footer.payload_csize as usize,
     )?;
     let meta =
-        daedalus_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)?;
+        daedalus_core::format::read_at(&mut source, footer.meta_offset, footer.meta_size as usize)?;
 
     // SHA-256(payload || meta || footer) — the footer is hashed so a downgrade
     // of format_version/FLAG_SIGNED invalidates the signature instead of
@@ -127,7 +139,10 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     let mut verified_key: Option<String> = None;
 
     for (key_path, vk) in &keys {
-        if vk.verify(&hash, &sig).is_ok() {
+        // `verify_strict` (not `verify`) rejects small-order public keys and
+        // signatures (ZIP-215 weak-key/signature malleability) — see
+        // daedalus-stub/src/crypto.rs for the same hardening on the launcher.
+        if vk.verify_strict(&hash, &sig).is_ok() {
             verified = true;
             verified_key = Some(key_path.display().to_string());
             if !args.quiet {
@@ -139,7 +154,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 
     if args.json {
         let info = serde_json::json!({
-            "file": args.file.display().to_string(),
+            "file": display_name,
             "signed": true,
             "verified": verified,
             "key": verified_key,
