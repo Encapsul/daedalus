@@ -390,7 +390,178 @@ fn detect_php(dir: &Path) -> bool {
 ///
 /// Return: true or false
 fn detect_perl(dir: &Path) -> bool {
-    dir.join("Makefile.PL").is_file() || dir.join("cpanfile").is_file()
+    // Classical Perl project markers.
+    if dir.join("Makefile.PL").is_file() || dir.join("cpanfile").is_file() {
+        return true;
+    }
+
+    // A Mojolicious app exposes a start script under `script/` (e.g.
+    // `script/my_app`) that loads a matching module from `lib/` which pulls in
+    // Mojolicious. Resolve the module from the script's `use <Module>` line,
+    // then confirm the module exists and is Mojolicious-based.
+    if script_dir_is_dir(dir) {
+        if let Some(module) = mojolicious_module_from_scripts(dir) {
+            return module.exists();
+        }
+        return detect_perl_script(dir);
+    }
+
+    detect_perl_script(dir)
+}
+
+/// Read every start script under `script/` and return the first module path in
+/// `lib/` it explicitly loads (via `use <Module>`) whose module source
+/// references Mojolicious.
+fn mojolicious_module_from_scripts(dir: &Path) -> Option<std::path::PathBuf> {
+    let script_dir = dir.join("script");
+    let scripts: Vec<_> = std::fs::read_dir(&script_dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let file_name = match p.file_name() {
+                Some(n) => n.to_string_lossy(),
+                None => return false,
+            };
+            !file_name.ends_with(".pl") && !file_name.starts_with('.') && p.is_file()
+        })
+        .collect();
+    if scripts.is_empty() {
+        return None;
+    }
+    for script in &scripts {
+        // Skip, don't bail: one unreadable script (binary content, a
+        // permission-denied file) must not abort detection of the others.
+        let Ok(content) = std::fs::read_to_string(script) else {
+            continue;
+        };
+        // A Mojolicious start script typically does `<Module>->start` and the
+        // module itself is loaded with `use <Module>`. Grab the most specific
+        // `use Foo;` referring to an app module (skip Mojo/Mojolicious themselves).
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("use ") {
+                let module = rest
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .trim_end_matches(';');
+                if module.is_empty()
+                    || module.starts_with("Mojo")
+                    || module.starts_with("Mojolicious")
+                {
+                    continue;
+                }
+                if let Some(path) = module_path_to_pm(dir, module) {
+                    // Only a script whose module resolves counts; a hostile
+                    // `use` line never makes detection probe outside
+                    // `app/lib/` (module_path_to_pm guards the components).
+                    if path.exists() {
+                        return Some(path);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Convert a Perl package name (`My::App`) into its `lib/` file path
+/// (`lib/My/App.pm`), resolving relative to Perl's standard `lib` layout.
+///
+/// Returns `None` when the package name is not a safe CPAN-style name: a
+/// hostile `use ../../etc/passwd;` from an app script is a traversal attempt
+/// (single-component names carry the separators straight through) and must
+/// never make detection probe paths outside `app/lib/`.
+fn module_path_to_pm(dir: &Path, module: &str) -> Option<std::path::PathBuf> {
+    let mut parts = module.split("::").peekable();
+    let mut rel = std::path::PathBuf::new();
+    while let Some(part) = parts.next() {
+        if !is_safe_package_component(part) {
+            return None;
+        }
+        let is_last = parts.peek().is_none();
+        rel.push(if is_last {
+            format!("{part}.pm")
+        } else {
+            part.to_string()
+        });
+    }
+    Some(dir.join("lib").join(rel))
+}
+
+/// A single Perl package component (`My`) used to build `lib/` paths. Only
+/// word-like names are accepted so arbitrary `use` lines can never traverse
+/// out of `app/lib`.
+fn is_safe_package_component(component: &str) -> bool {
+    !component.is_empty()
+        && component
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn script_dir_is_dir(dir: &Path) -> bool {
+    std::fs::read_dir(dir.join("script")).is_ok()
+}
+
+/// A loose-heuristik for a bare Perl script that pulls in Mojolicious: detect
+/// the `use Mojo::` import in any `.pl` file so `daedalus build` picks the
+/// right interpreter for a one-file web app.
+fn detect_perl_script(dir: &Path) -> bool {
+    let patterns = ["Mojo::", "Mojolicious::"];
+    let candidates = ["app.pl", "main.pl", "script/app", "script/server"];
+    candidates.iter().any(|rel| {
+        let path = dir.join(rel);
+        path.is_file()
+            && std::fs::read_to_string(&path)
+                .is_ok_and(|content| patterns.iter().any(|p| content.contains(p)))
+    })
+}
+
+/// Resolve the Mojolicious start script for a Perl app.
+///
+/// Mojolicious layouts mirror the naming convention `script/<app>` +
+/// `lib/<App>.pm`. Returns the relative path (e.g. `script/myapp`) when such a
+/// pair is found, so `resolve_entrypoint` can launch `perl script/myapp`.
+fn mojolicious_script(dir: &Path) -> Option<String> {
+    let script_dir = dir.join("script");
+    let lib_dir = dir.join("lib");
+    if !script_dir.is_dir() || !lib_dir.is_dir() {
+        return None;
+    }
+    let entries = std::fs::read_dir(&script_dir).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.ends_with(".pl") || name_str.starts_with('.') {
+            continue;
+        }
+        // Skip, don't bail: a subdirectory or a script without a `use` line
+        // must not prevent scanning the other start scripts.
+        let path = entry.path();
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Some(module) = content
+            .lines()
+            .map(|l| l.trim())
+            .find_map(|l| l.strip_prefix("use "))
+        else {
+            continue;
+        };
+        let module = module
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .trim_end_matches(';');
+        if module.is_empty() || module.starts_with("Mojo") || module.starts_with("Mojolicious") {
+            continue;
+        }
+        if module_path_to_pm(dir, module).is_some_and(|p| p.is_file()) {
+            return Some(format!("script/{name_str}"));
+        }
+    }
+    None
 }
 
 /// `detect_hugo` - detect hugo.
@@ -773,6 +944,13 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
         }
         Runtime::Php => resolve_php_entrypoint(app_dir),
         Runtime::Perl => {
+            // A Mojolicious app exposes a start script under `script/<app>`
+            // whose basename matches a module under `lib/<App>.pm`. Prefer it
+            // so `Mojolicious`'s built-in server starts with the right app.
+            let mojo_script = mojolicious_script(app_dir);
+            if let Some(script) = mojo_script {
+                return Some(vec!["perl".into(), format!("/app/{}", script)]);
+            }
             let entry = find_first_file(app_dir, &["app.pl", "main.pl", "bin/app"])?;
             Some(vec!["perl".into(), format!("/app/{}", entry)])
         }
@@ -1446,6 +1624,130 @@ mod tests {
         std::fs::write(dir.path().join("main.js"), "console.log('hello')").unwrap();
         // Without "electron" in package.json, this is Node, not Electron.
         assert_eq!(detect_runtime(dir.path()), Some(Runtime::Node));
+    }
+
+    #[test]
+    /// `detect_mojolicious_script_lib` - detect a Mojolicious app by its
+    /// `script/<app>` + `lib/<App>.pm` pair.
+    fn detect_mojolicious_script_lib() {
+        let dir = TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("script")).unwrap();
+        std::fs::create_dir(dir.path().join("lib")).unwrap();
+        std::fs::write(
+            dir.path().join("script/my_app"),
+            "#!/usr/bin/env perl\nuse MyApp;\nMyApp->start;\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("lib/MyApp.pm"),
+            "package MyApp;\nuse Mojo::Base -strict;\n",
+        )
+        .unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Perl));
+        assert_eq!(
+            resolve_entrypoint(dir.path(), Runtime::Perl),
+            Some(vec!["perl".into(), "/app/script/my_app".into()])
+        );
+    }
+
+    #[test]
+    /// `detect_mojolicious_script_uses_mojo` - a bare `.pl` script importing
+    /// Mojo pulls in the Perl runtime without a full Makefile.PL.
+    fn detect_mojolicious_script_uses_mojo() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("app.pl"),
+            "use Mojo::Base -strict;\nuse Mojolicious::Lite;\n",
+        )
+        .unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Perl));
+        assert_eq!(
+            resolve_entrypoint(dir.path(), Runtime::Perl),
+            Some(vec!["perl".into(), "/app/app.pl".into()])
+        );
+    }
+
+    #[test]
+    /// `detect_perl_classical` - a Makefile.PL still routes to Perl.
+    fn detect_perl_classical() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("Makefile.PL"), "use ExtUtils::MakeMaker;\n").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Perl));
+    }
+
+    #[test]
+    /// `module_path_to_pm_maps_package` - a CPAN name becomes a nested `lib/`
+    /// path with the final component carrying the `.pm` suffix.
+    fn module_path_to_pm_maps_package() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(
+            module_path_to_pm(dir.path(), "My::App::Server").unwrap(),
+            dir.path().join("lib/My/App/Server.pm")
+        );
+        assert_eq!(
+            module_path_to_pm(dir.path(), "MyApp").unwrap(),
+            dir.path().join("lib/MyApp.pm")
+        );
+    }
+
+    #[test]
+    /// `module_path_to_pm_rejects_traversal` - separators, dot segments,
+    /// shells and control bytes in a `use` line must never escape `lib/`.
+    fn module_path_to_pm_rejects_traversal() {
+        let dir = TempDir::new().unwrap();
+        let hostile = [
+            "../../../etc/passwd",
+            "../..::..::etc::passwd",
+            "..::etc::passwd",
+            "My/App",
+            "My\\App",
+            "My::App::;rm -rf /",
+            "My::App::with\0nul",
+            "",
+            ".",
+            "..",
+            "My::.",
+            "::",
+            "M y::App",
+        ];
+        for module in hostile {
+            assert_eq!(
+                module_path_to_pm(dir.path(), module),
+                None,
+                "hostile module {module:?} must not resolve to a path"
+            );
+        }
+    }
+
+    #[test]
+    /// `module_path_to_pm_never_probes_outside` - a script that `use`s a
+    /// traversal path must not trigger Perl detection via a decoy file planted
+    /// outside the app directory. The decoy exists on disk, so a vulnerable
+    /// implementation (bare component join) would detect Perl.
+    fn module_path_to_pm_never_probes_outside() {
+        let parent = TempDir::new().unwrap();
+        // Decoy module OUTSIDE any app/lib, e.g. a real file a traversal
+        // `use ../../../decoy` would resolve against.
+        std::fs::write(parent.path().join("decoy.pm"), "package decoy;\n").unwrap();
+        let app = parent.path().join("app");
+        std::fs::create_dir(&app).unwrap();
+        std::fs::create_dir(app.join("script")).unwrap();
+        std::fs::create_dir(app.join("lib")).unwrap();
+        // Two levels of ".." from app/lib lands on the tempdir root, where
+        // the decoy lives; a bare-component join would resolve it.
+        std::fs::write(app.join("script/x"), "use ../../decoy;\n").unwrap();
+
+        // Guard rejects "../decoy" → scripts with a traversal module are
+        // ignored → Perl is not detected via an out-of-tree decoy (None is
+        // the bare-tree outcome; Binary or another runtime would also pass).
+        assert_ne!(
+            detect_runtime(&app),
+            Some(Runtime::Perl),
+            "traversal use line must not detect Perl via an out-of-tree decoy"
+        );
+        // With Makefile.PL the app is legitimately Perl regardless.
+        std::fs::write(app.join("Makefile.PL"), "use ExtUtils::MakeMaker;\n").unwrap();
+        assert_eq!(detect_runtime(&app), Some(Runtime::Perl));
     }
 
     #[test]

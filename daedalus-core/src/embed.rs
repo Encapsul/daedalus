@@ -1132,7 +1132,6 @@ fn embed_perl_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Re
 /// Embed Java JRE: find java.home and copy lib/ (contains rt.jar / modules).
 fn embed_java_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::Result<usize> {
     let mut count = 0;
-
     let java_home_output = std::process::Command::new(interp_path)
         .args(["-XshowSettings:properties", "-version"])
         .output()
@@ -1248,13 +1247,29 @@ fn update_ini_value(content: &str, key: &str, value: &str) -> String {
 }
 
 /// Recursively copy a directory.
+/// Recursively copy a directory, following symlinks to real files and
+/// skipping broken symlinks/symlink dirs.
 pub fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            let target = fs::read_link(&src_path)?;
+            let resolved = if target.is_absolute() {
+                target
+            } else {
+                src_path.parent().unwrap_or(src).join(&target)
+            };
+            if resolved.is_file() {
+                fs::copy(&resolved, &dst_path)?;
+            }
+            // Skip broken symlinks and symlinked directories.
+            continue;
+        }
+        if file_type.is_dir() {
             copy_dir_recursive(&src_path, &dst_path)?;
         } else {
             fs::copy(&src_path, &dst_path)?;

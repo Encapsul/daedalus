@@ -1,5 +1,6 @@
 mod args;
 mod deps;
+mod jlink;
 mod payload;
 mod pipeline;
 mod sign;
@@ -21,6 +22,11 @@ use std::path::Path;
 /// Description:
 ///
 /// Return: Result containing Result<()>
+/// Orchestrates the full multi-stage build (resolve -> plan -> per-target
+/// pipeline -> optional publish). It naturally exceeds 100 lines because each
+/// stage is a distinct, sequential step; folding them into helpers would
+/// obscure the flat top-level order.
+#[allow(clippy::too_many_lines)]
 pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
     // Quiet mode overrides verbose
     let verbose = verbose && !args.quiet;
@@ -63,6 +69,7 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         .with_context(|| format!("invalid --isolation value: '{isolation}'"))?;
 
     let targets = args::resolve_targets(&args, config.build.target.as_deref());
+    reject_stdout_multi_target(&args, &targets)?;
     let outputs = args::output_paths(&args, &targets);
     let (entrypoint_args, mut services) = args::parse_entrypoints(&args.entrypoint);
     args::apply_service_overrides(&mut services, &args.service_port, &args.service_timeout)?;
@@ -111,13 +118,13 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
 
     // Universal binary: build multi-arch slices and assemble into one file.
     if args.universal {
-        return build_universal(&args, &plan, &args.output);
+        return run_universal(&args, &plan);
     }
 
     // Build one artifact per target; each gets its own output path.
     let mut json_results: Vec<serde_json::Value> = Vec::new();
     for (target, output) in plan.targets.iter().zip(&plan.outputs) {
-        if let Some(result) = build_single_target(&args, &plan, target.clone(), output)? {
+        if let Some(result) = build_one_output(&args, &plan, target.as_deref(), output)? {
             json_results.push(result);
         }
     }
@@ -143,6 +150,57 @@ pub fn run(args: BuildArgs, verbose: bool) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&doc)?);
     }
     Ok(())
+}
+
+/// Reject `-o -` when the build produces more than one artifact.
+///
+/// A single pipe cannot carry two binaries; each target needs its own output,
+/// so streaming to stdout is only meaningful for a single-target build.
+fn reject_stdout_multi_target(args: &BuildArgs, targets: &[Option<String>]) -> Result<()> {
+    if targets.len() > 1 && crate::stdio::is_stdout_output(&args.output) {
+        anyhow::bail!(
+            "`-o -` is only valid for a single target build; \
+             this build produces {} artifacts and stdout cannot hold them all",
+            targets.len()
+        );
+    }
+    Ok(())
+}
+
+/// Build a universal (multi-arch) binary into `args.output`.
+///
+/// A universal binary cannot stream to stdout: it is a single concatenation of
+/// per-arch slices assembled into one file, which stdout cannot hold positionally.
+fn run_universal(args: &BuildArgs, plan: &BuildPlan) -> Result<()> {
+    if crate::stdio::is_stdout_output(&args.output) {
+        anyhow::bail!("`--universal -o -` is not supported: stdout cannot hold a universal binary");
+    }
+    build_universal(args, plan, &args.output)
+}
+
+/// Build a single target into `output`.
+///
+/// `-o -` stages the artifact in a temp file (assembly needs seekable output)
+/// and streams those bytes to stdout directly, so a pipeline can feed the
+/// binary to the next stage without it ever landing on disk under a name.
+fn build_one_output(
+    args: &BuildArgs,
+    plan: &BuildPlan,
+    target: Option<&str>,
+    output: &Path,
+) -> Result<Option<serde_json::Value>> {
+    let (phys_output, stream_to_stdout) = if crate::stdio::is_stdout_output(output) {
+        let tmp = crate::stdio::temp_sink_from_output(output)?;
+        (tmp, true)
+    } else {
+        (output.to_path_buf(), false)
+    };
+    let result = build_single_target(args, plan, target.map(str::to_string), &phys_output)?;
+    if stream_to_stdout {
+        crate::stdio::copy_to_stdout(&phys_output)?;
+        std::fs::remove_file(&phys_output).ok();
+    }
+    Ok(result)
 }
 
 /// CLI flags win over `[build] lazy_priority` from config.

@@ -15,7 +15,7 @@ const MAX_DOWNLOAD_BYTES: u64 = 32 << 30;
 
 #[derive(Args)]
 pub struct RunArgs {
-    /// Path to the .de file, or an http(s)/registry URL from which to fetch it
+    /// Path to the .de file, an http(s)/registry URL, or `-` to read from stdin
     pub file: PathBuf,
 
     /// Arguments forwarded to the embedded app
@@ -44,6 +44,15 @@ pub fn run(args: RunArgs) -> Result<()> {
     let path_arg = args.file.to_string_lossy();
     let file = if is_remote_url(&path_arg) {
         fetch_from_url(&path_arg, args.verbose)?
+    } else if crate::stdio::is_dash(&path_arg) {
+        // `run -` executes a .de streamed in on stdin. The stub reads its own
+        // `/proc/self/exe`, so the bytes must live on disk with the exec bit:
+        // validate the footer first, then stage them in the run cache and exec.
+        let bytes = crate::stdio::read_stdin_cursor()?;
+        if !verify_de_bytes(bytes.get_ref())? {
+            anyhow::bail!("stdin is not a valid .de file");
+        }
+        stage_stdin_de(bytes.get_ref())?
     } else {
         args.file.clone()
     };
@@ -83,6 +92,36 @@ pub fn run(args: RunArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Stage a `.de` read from stdin into the run cache and return its path.
+/// The path is made executable so the OS will run it as a binary.
+fn stage_stdin_de(bytes: &[u8]) -> Result<std::path::PathBuf> {
+    let dir = daedalus_core::paths::cache_dir().join("run");
+    std::fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;
+    let unique = format!(
+        "stdin.{}.de",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let path = dir.join(unique);
+    std::fs::write(&path, bytes).with_context(|| format!("failed to stage {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .with_context(|| format!("failed to mark {} executable", path.display()))?;
+    }
+    Ok(path)
+}
+
+/// verify_de_bytes - check that a byte buffer carries a valid `.de` footer.
+fn verify_de_bytes(bytes: &[u8]) -> Result<bool> {
+    use daedalus_core::format::Footer;
+    let mut cursor = std::io::Cursor::new(bytes);
+    Ok(Footer::read_from(&mut cursor).is_ok())
 }
 
 /// is_remote_url - whether the argument names a remote source rather than a file.

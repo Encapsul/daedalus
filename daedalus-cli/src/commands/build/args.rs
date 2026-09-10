@@ -274,7 +274,14 @@ pub(crate) fn target_slug(target: Option<&str>) -> Option<String> {
 /// One output path per target. A single target keeps the historical naming
 /// (`-o app.de` stays `app.de`); multiple targets get a `<name>-<target>`
 /// suffix so linux and windows artifacts never overwrite each other.
+///
+/// `-o -` streams the single artifact to stdout: a single-target build returns
+/// the sentinel `PathBuf("-")`; it is rejected for multi-target builds because
+/// two binaries cannot both go to the same pipe.
 pub(crate) fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<PathBuf> {
+    if targets.len() == 1 && args.output.to_string_lossy() == "-" {
+        return vec![PathBuf::from("-")];
+    }
     if targets.len() == 1 {
         let t = targets[0].as_deref();
         let is_windows_target = t.is_some_and(|t| parse_target(t).1 == "windows");
@@ -437,11 +444,22 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
         let rel = p.strip_prefix(&plan.app_dir).unwrap_or(p);
         canonical.push(format!("include={}", rel.display()));
     }
-    if let Some(key) = &args.key {
+    if args.skip_sign {
+        // An unsigned build must never be served from a cache entry produced by
+        // a signed build (and vice versa), so encode the signing mode.
+        canonical.push("sign=off".to_string());
+    } else if let Some(key) = &args.key {
         let content = std::fs::read(key)
             .map(|b| hex::encode(sha2::Sha256::digest(&b)))
             .unwrap_or_else(|_| "unreadable".to_string());
+        // sign=on distinguishes the (signed) default from an explicit skip.
+        canonical.push("sign=on".to_string());
         canonical.push(format!("key={content}"));
+    } else {
+        // Default: signed with the auto-generated dev key. Because the dev key
+        // is stable per machine, the fingerprint need not change per machine —
+        // only signal that the output is signed (as opposed to `--skip-sign`).
+        canonical.push("sign=on(default-key)".to_string());
     }
 
     let mut hasher = sha2::Sha256::new();
@@ -484,13 +502,18 @@ pub struct BuildArgs {
     #[arg(default_value = ".")]
     pub app: PathBuf,
 
-    /// Output file path
+    /// Output file path (`-` streams the artifact to stdout for pipelining)
     #[arg(short, long, default_value = "app.de")]
     pub output: PathBuf,
 
-    /// Signing key path
+    /// Signing key path (default: auto-generated self-trusted dev key)
     #[arg(short, long)]
     pub key: Option<PathBuf>,
+
+    /// Skip signing entirely (builds an unsigned binary; `verify` cannot
+    /// authenticate it). Defaults to signing with the dev key.
+    #[arg(long)]
+    pub skip_sign: bool,
 
     /// Isolation mode: sandbox, none, or 0-2
     #[arg(long, default_value = "sandbox")]
@@ -556,6 +579,15 @@ pub struct BuildArgs {
     /// Skip dependency installation
     #[arg(long)]
     pub no_install: bool,
+
+    /// Embed the full host JRE instead of a minimal `jlink` image (Java 9+)
+    #[arg(long)]
+    pub full_jre: bool,
+
+    /// Override the `jlink` module closure (comma-separated JDK modules) for
+    /// the minimal JRE. Use when `jdeps` cannot see reflective module usage.
+    #[arg(long)]
+    pub jlink_modules: Option<String>,
 
     /// Environment file to bake in (KEY=VALUE per line)
     #[arg(long)]
@@ -827,6 +859,7 @@ pub(crate) fn default_build_args() -> BuildArgs {
         landlock: false,
         squashfs: false,
         key: None,
+        skip_sign: false,
         enable_sisr: false,
         update_url: None,
         publish: None,
@@ -872,6 +905,8 @@ pub(crate) fn default_build_args() -> BuildArgs {
         lazy_priority: Vec::new(),
         encrypt: None,
         model: None,
+        full_jre: false,
+        jlink_modules: None,
     }
 }
 

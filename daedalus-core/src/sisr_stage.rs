@@ -7,7 +7,7 @@
 
 use std::io;
 
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
@@ -106,7 +106,7 @@ impl RemoteManifest {
         };
         let msg = signing_message(&self.merkle_root, &manifest_bytes);
         let sig = Signature::from_bytes(&self.signature);
-        public.verify(&msg, &sig).is_ok()
+        public.verify_strict(&msg, &sig).is_ok()
     }
 
     /// Verifies the Ed25519 signature against any key in `publics`.
@@ -207,7 +207,7 @@ pub fn verify(
 ) -> bool {
     let msg = signing_message(merkle_root, manifest_bytes);
     public
-        .verify(&msg, &Signature::from_bytes(signature))
+        .verify_strict(&msg, &Signature::from_bytes(signature))
         .is_ok()
 }
 

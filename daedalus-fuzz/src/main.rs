@@ -12,8 +12,8 @@ use std::time::Duration;
     about = "High-throughput structure-aware fuzzer for daedalus"
 )]
 struct Args {
-    /// Target(s) to fuzz (comma-separated: format,stub,cli,crypto,sisr)
-    #[arg(short, long, default_value = "format,stub,cli,crypto,sisr")]
+    /// Target(s) to fuzz (comma-separated: format,stub,cli,crypto,sisr,serve-parse,registry,detect)
+    #[arg(short, long, default_value = "format,stub,cli,crypto,sisr,serve-parse,registry,detect")]
     targets: String,
 
     /// Maximum number of iterations per worker

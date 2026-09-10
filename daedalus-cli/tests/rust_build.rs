@@ -103,6 +103,11 @@ fn rust_app_is_detected_built_and_runs() {
         // NOTE: no `--no-install` — it also skips the cargo build itself
         // (same semantics as the Go path), and this test must exercise it.
         .env("DAEDALUS_STUB_PATH", &stub)
+        // Isolate signing state: the default dev key lands under XDG_DATA_HOME
+        // and is self-trusted into DAEDALUS_TRUSTED_DIR. The run below shares
+        // the same trust anchor, so the stub accepts the signature.
+        .env("XDG_DATA_HOME", tmp.path().join("data"))
+        .env("DAEDALUS_TRUSTED_DIR", tmp.path().join("trusted"))
         .output()
         .expect("failed to spawn daedalus build");
     let stderr = String::from_utf8_lossy(&build.stderr).into_owned();
@@ -123,6 +128,7 @@ fn rust_app_is_detected_built_and_runs() {
         .env("XDG_CACHE_HOME", tmp.path().join("cache"))
         .env("XDG_DATA_HOME", tmp.path().join("data"))
         .env("HOME", tmp.path().join("home"))
+        .env("DAEDALUS_TRUSTED_DIR", tmp.path().join("trusted"))
         .output()
         .expect("failed to run the assembled Rust artifact");
     let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
