@@ -1,8 +1,6 @@
 # Rust
 target/
 .cargo/config.toml
-/xbin
-xbin
 
 # Python
 __pycache__/
@@ -12,10 +10,6 @@ __pycache__/
 /build/
 dist/
 
-# Artefacts xbin
-*.xbin
-*.xbin.*
-
 # Benchmarks (generated)
 benchmarks/results/
 benchmarks/report.md
@@ -24,7 +18,7 @@ benchmarks/apps/
 
 # Cross-packager comparison (build artifacts, per-run cache)
 benchmarks/comparison/work/
-benchmarks/comparison/results/*/xbin-cache/
+benchmarks/comparison/results/*/daedalus-cache/
 
 
 # Repo (extracted source trees)

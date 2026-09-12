@@ -18,7 +18,7 @@ pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
 }
 
 /// Compress bytes with zstd at a specific level.
-/// Level 3 = fast, 19 = best compression. Default for x.bin layers is 3.
+/// Level 3 = fast, 19 = best compression. Default for daedalus layers is 3.
 pub fn compress_with_level(data: &[u8], level: i32) -> io::Result<Vec<u8>> {
     let mut encoder = zstd::Encoder::new(Vec::new(), level)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;

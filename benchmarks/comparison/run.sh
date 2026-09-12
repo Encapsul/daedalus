@@ -2,12 +2,12 @@
 # benchmarks/comparison/run.sh
 #
 # Cross-packager benchmark: packs the same reference app with every packager
-# available on the host (x.bin, Docker, pkg, AppImage, Flatpak) and measures:
+# available on the host (daedalus, Docker, pkg, AppImage, Flatpak) and measures:
 #
 #   artifact size       - size of the single distributable file/image
 #   on-disk footprint   - space used at run time (extracted rootfs / image)
 #   cold start          - launch to first HTTP 200
-#   warm start          - second launch (cache hit), x.bin only
+#   warm start          - second launch (cache hit), daedalus only
 #   idle RSS            - resident set of the serving process
 #   host deps           - packages/services the host must provide
 #
@@ -23,7 +23,7 @@
 #
 # Environment:
 #   DAEDALUS_BIN      path to the daedalus CLI (default: /tmp/daedalus-stub-target/release/daedalus)
-#   XBIN_STUB_PATH path to a freshly built stub (default: make stub)
+#   DAEDALUS_STUB_PATH path to a freshly built stub (default: make stub)
 #   PORT_BASE      first port of the measurement range (default: 21300)
 
 set -u
@@ -48,15 +48,15 @@ require_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 # Ensure a freshly built stub is used (find_stub silently prefers old
 # installed stubs otherwise — see daedalus-cli/src/commands/build.rs).
-if [ -z "${XBIN_STUB_PATH:-}" ]; then
+if [ -z "${DAEDALUS_STUB_PATH:-}" ]; then
     MUSL_STUB="$REPO_ROOT/target/x86_64-unknown-linux-musl/release/daedalus-stub"
     if [ ! -f "$MUSL_STUB" ]; then
         log "building stub (make stub)"
         (cd "$REPO_ROOT" && make stub) >/dev/null 2>&1
     fi
     if [ -f "$MUSL_STUB" ]; then
-        XBIN_STUB_PATH="$MUSL_STUB"
-        export XBIN_STUB_PATH
+        DAEDALUS_STUB_PATH="$MUSL_STUB"
+        export DAEDALUS_STUB_PATH
     else
         log "WARNING: no fresh stub found; daedalus may embed a stale installed stub"
     fi
@@ -86,8 +86,8 @@ collect_profile() {
         echo "tmp_free:    $(df -h /tmp 2>/dev/null | awk 'NR==2{print $4}')"
         echo "env:         $env_type"
         echo "live_system: $live"
-        echo "daedalus:        $($XBIN_BIN --version 2>/dev/null || echo n/a)"
-        echo "stub:        ${XBIN_STUB_PATH:-n/a} ($(stat -c%s "${XBIN_STUB_PATH:-/nonexistent}" 2>/dev/null || echo '?') bytes)"
+        echo "daedalus:        $($DAEDALUS_BIN --version 2>/dev/null || echo n/a)"
+        echo "stub:        ${DAEDALUS_STUB_PATH:-n/a} ($(stat -c%s "${DAEDALUS_STUB_PATH:-/nonexistent}" 2>/dev/null || echo '?') bytes)"
         echo "node:        $(node --version 2>/dev/null || echo n/a)"
         echo "docker:      $(docker --version 2>/dev/null || echo n/a)"
         echo "pkg:         @yao-pkg/pkg@latest node24-linux-x64"
@@ -161,14 +161,14 @@ fmt_mib() {
 cell() { [ -n "$1" ] && echo "$1" || echo "n/a"; }
 
 # ---------------------------------------------------------------------------
-# x.bin
+# daedalus
 # ---------------------------------------------------------------------------
-measure_xbin() {
+measure_daedalus() {
     local port=$((PORT_BASE + 1))
     log "daedalus: building"
     local t0 t1
     t0=$(now_ms)
-    "$XBIN_BIN" build "$APP_DIR" -o "$WORK/hello.de" >/dev/null 2>&1
+    "$DAEDALUS_BIN" build "$APP_DIR" -o "$WORK/hello.de" >/dev/null 2>&1
     t1=$(now_ms)
     local build_ms=$((t1 - t0))
     local artifact_size
@@ -376,7 +376,7 @@ measure_flatpak() {
 render_markdown() {
     local md="$OUT_DIR/comparison.md"
     {
-        echo "# Comparative Benchmark — x.bin vs Docker / pkg / AppImage / Flatpak"
+        echo "# Comparative Benchmark — daedalus vs Docker / pkg / AppImage / Flatpak"
         echo
         echo "_Generated: $(date -u +%Y-%m-%dT%H:%MZ) — machine: \`$MACHINE\`_"
         echo "_Reference app: \`${APP_DIR}\` (Node.js HTTP server, zero deps)_"
@@ -405,9 +405,9 @@ render_markdown() {
         echo "## Methodology"
         echo
         echo "- **Cold start** = wall time from launch to first HTTP 200."
-        echo "- **Warm start** = second launch of the same artifact (extraction cache hit). Only x.bin caches; the other packagers re-launch every time."
-        echo "- **Idle RSS** = resident set of the process actually listening on the port, 1s after first response (Linux VmRSS, resolved via \`ss\`). Some packagers re-exec/spawn children (AppImage runtime, x.bin exec) — the server process is measured, not the launched PID."
-        echo "- **On-disk footprint** = space used at run time (x.bin: extracted rootfs cache; Docker: uncompressed image; pkg/AppImage: the artifact itself)."
+        echo "- **Warm start** = second launch of the same artifact (extraction cache hit). Only daedalus caches; the other packagers re-launch every time."
+        echo "- **Idle RSS** = resident set of the process actually listening on the port, 1s after first response (Linux VmRSS, resolved via \`ss\`). Some packagers re-exec/spawn children (AppImage runtime, daedalus exec) — the server process is measured, not the launched PID."
+        echo "- **On-disk footprint** = space used at run time (daedalus: extracted rootfs cache; Docker: uncompressed image; pkg/AppImage: the artifact itself)."
         echo "- **Host deps** = packages/services the target host must provide."
         echo "- Flatpak requires a Flatpak host + OSTree runtimes; not measured in this container."
         echo "- Every run records a **machine profile** (\`results/<machine>/profile.txt\`) — comparing two machines without their profile is meaningless."
@@ -422,7 +422,7 @@ main() {
     collect_profile
     log "machine: $MACHINE  app: $APP_DIR  out: $OUT_DIR"
     cat "$OUT_DIR/profile.txt"
-    measure_xbin || true
+    measure_daedalus || true
     measure_docker || true
     measure_pkg || true
     measure_appimage || true

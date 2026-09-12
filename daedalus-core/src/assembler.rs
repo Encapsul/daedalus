@@ -113,7 +113,7 @@ mod tests {
 
         // Footer: last 92 bytes, with magic + payload/meta offsets.
         let mut footer = [0u8; 92];
-        footer[5..10].copy_from_slice(&[0x58, 0x42, 0x49, 0x4E, 0x01]); // "XBIN\x01"
+        footer[5..10].copy_from_slice(&[0x44, 0x41, 0x45, 0x01, 0x00]); // "DAE\x01\x00"
         footer[10] = 5; // format version
         footer[16..24].copy_from_slice(&(payload_offset as u64).to_le_bytes());
         footer[24..32].copy_from_slice(&(payload.len() as u64).to_le_bytes());
