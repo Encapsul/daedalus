@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# benchmarks/run.sh — x.bin vs native benchmark suite
+# benchmarks/run.sh — daedalus vs native benchmark suite
 #
 # Reproducible benchmarks for daedalus against 3 real-world Python apps.
 # Produces: benchmarks/report.md + benchmarks/results.json
@@ -28,10 +28,10 @@ WORK="/tmp/daedalus-bench"
 APPS_DIR="$WORK/apps"
 PORT_BASE=19800
 
-# Xbin command — use the Rust CLI binary.
-XBIN_BIN="$REPO_ROOT/target/release/daedalus"
+# daedalus command — use the Rust CLI binary.
+DAEDALUS_BIN="$REPO_ROOT/target/release/daedalus"
 daedalus() {
-    "$XBIN_BIN" "$@"
+    "$DAEDALUS_BIN" "$@"
 }
 
 # Detect cargo bin (for stub build).
@@ -354,11 +354,11 @@ JEOF
 # daedalus: build + cold start + warm start + RSS + cache size
 # ---------------------------------------------------------------------------
 
-run_xbin() {
+run_daedalus() {
     local name="$1" app_dir="$2" port="$3"
     header "DAEDALUS: $name"
 
-    local tmp_xbin="$WORK/${name}.de"
+    local tmp_de="$WORK/${name}.de"
 
     # 1) Build .de
     log "Building .de for $name..."
@@ -366,7 +366,7 @@ run_xbin() {
     t0=$(python3 -c "import time; print(time.monotonic())")
 
     cd "$REPO_ROOT"
-    if ! daedalus build "$app_dir" -o "$tmp_xbin" 2>&1 | tail -20; then
+    if ! daedalus build "$app_dir" -o "$tmp_de" 2>&1 | tail -20; then
         fail "daedalus build failed for $name"
         echo "{\"app\":\"$name\",\"phase\":\"daedalus\",\"error\":\"build failed\"}" \
             > "$RESULTS_DIR/${name}-daedalus.json"
@@ -378,10 +378,10 @@ run_xbin() {
     ok "build: ${build_time}s"
 
     # 2) .de size
-    local xb_bytes xb_human
-    xb_bytes=$(stat -c%s "$tmp_xbin")
-    xb_human=$(numfmt --to=iec "$xb_bytes" 2>/dev/null || echo "${xb_bytes}B")
-    ok ".de size: $xb_human"
+    local de_bytes de_human
+    de_bytes=$(stat -c%s "$tmp_de")
+    de_human=$(numfmt --to=iec "$de_bytes" 2>/dev/null || echo "${de_bytes}B")
+    ok ".de size: $de_human"
 
     # 3) Cold start — clear cache, measure extraction + launch
     log "Cold start (clearing cache)..."
@@ -391,8 +391,8 @@ run_xbin() {
     local t0 t1 cold
     t0=$(python3 -c "import time; print(time.monotonic())")
 
-    chmod +x "$tmp_xbin"
-    "$tmp_xbin" &
+    chmod +x "$tmp_de"
+    "$tmp_de" &
     local bpid=$!
     echo "$bpid" > "$WORK/${name}-daedalus.pid"
 
@@ -400,7 +400,7 @@ run_xbin() {
         fail "daedalus $name: cold start failed (${TIMEOUT_COLD_START}s)"
         kill "$bpid" 2>/dev/null; wait "$bpid" 2>/dev/null || true
         rm -f "$WORK/${name}-daedalus.pid"
-        echo "{\"app\":\"$name\",\"phase\":\"daedalus\",\"error\":\"cold start timed out\",\"build_time_s\":$build_time,\"xbin_size_bytes\":$xb_bytes}" \
+        echo "{\"app\":\"$name\",\"phase\":\"daedalus\",\"error\":\"cold start timed out\",\"build_time_s\":$build_time,\"de_size_bytes\":$de_bytes}" \
             > "$RESULTS_DIR/${name}-daedalus.json"
         return 1
     fi
@@ -423,7 +423,7 @@ run_xbin() {
 
     t0=$(python3 -c "import time; print(time.monotonic())")
 
-    "$tmp_xbin" &
+    "$tmp_de" &
     bpid=$!
     echo "$bpid" > "$WORK/${name}-daedalus.pid"
 
@@ -431,7 +431,7 @@ run_xbin() {
         fail "daedalus $name: warm start timed out"
         kill "$bpid" 2>/dev/null; wait "$bpid" 2>/dev/null || true
         rm -f "$WORK/${name}-daedalus.pid"
-        echo "{\"app\":\"$name\",\"phase\":\"daedalus\",\"error\":\"warm start timed out\",\"build_time_s\":$build_time,\"xbin_size_bytes\":$xb_bytes,\"cold_start_time_s\":$cold}" \
+        echo "{\"app\":\"$name\",\"phase\":\"daedalus\",\"error\":\"warm start timed out\",\"build_time_s\":$build_time,\"de_size_bytes\":$de_bytes,\"cold_start_time_s\":$cold}" \
             > "$RESULTS_DIR/${name}-daedalus.json"
         return 1
     fi
@@ -468,7 +468,7 @@ run_xbin() {
 {
   "app": "$name", "phase": "daedalus",
   "build_time_s": $build_time,
-  "xbin_size_bytes": $xb_bytes, "xbin_size_human": "$xb_human",
+  "de_size_bytes": $de_bytes, "de_size_human": "$de_human",
   "cold_start_time_s": $cold, "warm_start_time_s": $warm,
   "rss_cold_kb": $rss_cold, "rss_warm_kb": $rss_warm,
   "rss_kb": $rss_final,
@@ -543,7 +543,7 @@ rust_ver = run("rustc --version 2>&1")
 zstd_ver = run("zstd --version 2>&1 | head -1")
 
 lines = []
-lines.append("# x.bin Benchmark Report\n")
+lines.append("# daedalus Benchmark Report\n")
 lines.append(f"**Date:** {now}  ")
 lines.append(f"**Machine:** `{hostname}`  ")
 lines.append(f"**CPU:** {nproc} cores  ")
@@ -593,8 +593,8 @@ for a in apps:
 
     lines.append(f"| Artifact size | "
         f"{fmt_b(bl.get('venv_size_bytes') if bl else None)} | "
-        f"{fmt_b(xb.get('xbin_size_bytes') if xb else None)} | "
-        f"{pct(bl.get('venv_size_bytes') if bl else None, xb.get('xbin_size_bytes') if xb else None)} |")
+        f"{fmt_b(xb.get('de_size_bytes') if xb else None)} | "
+        f"{pct(bl.get('venv_size_bytes') if bl else None, xb.get('de_size_bytes') if xb else None)} |")
 
     lines.append(f"| Cold start | "
         f"{fmt_s(bl.get('cold_start_time_s') if bl else None)} | "
@@ -654,7 +654,7 @@ PYEOF
 main() {
     echo -e "${BOLD}"
     echo "============================================"
-    echo " x.bin vs native benchmark suite"
+    echo " daedalus vs native benchmark suite"
     echo "============================================"
     echo -e "${NC}"
 
@@ -683,21 +683,21 @@ main() {
     local ytdlp_dir
     ytdlp_dir=$(setup_ytdlp)
     run_baseline "yt-dlp" "$ytdlp_dir" "$PORT_BASE" || true
-    run_xbin    "yt-dlp" "$ytdlp_dir" "$PORT_BASE" || true
+    run_daedalus    "yt-dlp" "$ytdlp_dir" "$PORT_BASE" || true
 
     # ---- App 2: open-webui proxy (heavy ML) ----
     local owu_dir
     owu_dir=$(setup_openwebui)
     run_baseline "open-webui" "$owu_dir" "$((PORT_BASE+1))" \
         "--extra-index-url https://download.pytorch.org/whl/cpu torch numpy transformers" || true
-    run_xbin "open-webui" "$owu_dir" "$((PORT_BASE+1))" || true
+    run_daedalus "open-webui" "$owu_dir" "$((PORT_BASE+1))" || true
 
     # ---- App 3: whisper (hard, heavy ML) ----
     local wp_dir
     wp_dir=$(setup_whisper)
     run_baseline "whisper" "$wp_dir" "$((PORT_BASE+2))" \
         "--extra-index-url https://download.pytorch.org/whl/cpu $REPOS_DIR/whisper" || true
-    run_xbin "whisper" "$wp_dir" "$((PORT_BASE+2))" || true
+    run_daedalus "whisper" "$wp_dir" "$((PORT_BASE+2))" || true
 
     # ---- Generate report ----
     generate_report

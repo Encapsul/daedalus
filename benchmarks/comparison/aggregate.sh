@@ -29,7 +29,7 @@ get() { # get <k=v lines> <key>
 }
 
 {
-    echo "# Comparative Benchmark — x.bin vs Docker / pkg / AppImage / Flatpak"
+    echo "# Comparative Benchmark — daedalus vs Docker / pkg / AppImage / Flatpak"
     echo
     echo "_Aggregated: $(date -u +%Y-%m-%dT%H:%MZ)_"
     echo

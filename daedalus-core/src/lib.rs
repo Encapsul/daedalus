@@ -1,4 +1,4 @@
-//! `daedalus-core` — core library for the x.bin build tool.
+//! `daedalus-core` — core library for the daedalus build tool.
 //!
 //! Provides format parsing, compression, runtime detection, and package manager
 //! detection. Used by the Rust CLI (`daedalus-cli`) and the launcher stub

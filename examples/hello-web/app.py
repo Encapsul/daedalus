@@ -1,7 +1,7 @@
 """App web d'exemple — serveur HTTP stdlib, zéro dépendance externe.
 
-Démontre le cas d'usage cible de xbin : un serveur web headless qui démarre
-avec ./hello-web.xbin et sert sur localhost.
+Démontre le cas d'usage cible de daedalus : un serveur web headless qui démarre
+avec ./hello-web.de et sert sur localhost.
 """
 
 import os
@@ -15,9 +15,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         body = (
             "<!doctype html><html><head><meta charset=utf-8>"
-            "<title>xbin</title></head><body style='font-family:system-ui;"
+            "<title>daedalus</title></head><body style='font-family:system-ui;"
             "max-width:40rem;margin:4rem auto'>"
-            "<h1>Hello from xbin 🚀</h1>"
+            "<h1>Hello from daedalus 🚀</h1>"
             f"<p>Ce serveur tourne depuis un seul fichier exécutable.</p>"
             f"<p>Python {sys.version.split()[0]} — PID {os.getpid()}</p>"
             "</body></html>"

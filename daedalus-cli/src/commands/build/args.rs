@@ -787,7 +787,7 @@ pub struct BuildArgs {
 }
 
 #[derive(Default, Deserialize)]
-pub(crate) struct XbinConfig {
+pub(crate) struct DaedalusConfig {
     #[serde(default)]
     pub(crate) build: BuildConfig,
     #[serde(default)]
@@ -823,17 +823,17 @@ pub(crate) struct PackageConfig {
     pub license: Option<String>,
 }
 
-pub(crate) fn load_config(app_dir: &Path) -> XbinConfig {
+pub(crate) fn load_config(app_dir: &Path) -> DaedalusConfig {
     let config_path = app_dir.join(".daedalus.toml");
     if !config_path.exists() {
-        return XbinConfig::default();
+        return DaedalusConfig::default();
     }
     match std::fs::read_to_string(&config_path) {
         Ok(content) => toml::from_str(&content).unwrap_or_else(|e| {
             eprintln!("[daedalus] warning: invalid .daedalus.toml: {e}");
-            XbinConfig::default()
+            DaedalusConfig::default()
         }),
-        Err(_) => XbinConfig::default(),
+        Err(_) => DaedalusConfig::default(),
     }
 }
 

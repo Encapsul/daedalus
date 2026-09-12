@@ -59,7 +59,7 @@ cli:
 
 # Hybrid install: tries system-wide, falls back to user-level
 install:
-	@printf "\nBuilding x.bin (this may take a minute)...\n"
+	@printf "\nBuilding daedalus (this may take a minute)...\n"
 	cargo build --release -p daedalus-cli
 	@if sudo test -w /usr/local/bin 2>/dev/null; then \
 		printf "\nInstalling to /usr/local/bin...\n"; \
@@ -67,7 +67,7 @@ install:
 		sudo chmod +x /usr/local/bin/daedalus; \
 		printf "\n✅ Installed to /usr/local/bin/daedalus\n"; \
 		printf "   Verify: daedalus --version\n"; \
-		printf "   You can now remove the x.bin repo!\n"; \
+		printf "   You can now remove the daedalus repo!\n"; \
 	else \
 		printf "\nInstalling to ~/.local/bin (no admin required)...\n"; \
 		mkdir -p ~/.local/bin; \
@@ -78,7 +78,7 @@ install:
 		printf "   echo 'export PATH=\"\$$HOME/.local/bin:\$$PATH\"' >> \$$HOME/.bashrc\n"; \
 		printf "   source \$$HOME/.bashrc\n"; \
 		printf "   Then verify: daedalus --version\n"; \
-		printf "   You can remove the x.bin repo when done.\n"; \
+		printf "   You can remove the daedalus repo when done.\n"; \
 	fi
 
 # Build the hello-web example .ere (requires stub + cli).
@@ -194,7 +194,7 @@ release: dist
 	@echo "Release v$(VERSION) created: https://github.com/Encapsul/daedalus/releases/tag/v$(VERSION)"
 
 help:
-	@echo "x.bin — package any app into a single self-extracting ELF binary"
+	@echo "daedalus — package any app into a single self-extracting ELF binary"
 	@echo ""
 	@echo "Targets:"
 	@echo "  make             Build stub + CLI for host"

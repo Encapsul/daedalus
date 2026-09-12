@@ -123,7 +123,7 @@ else
     BUILD_TIME="${BUILD_MS}ms"
 fi
 
-XBIN_VER=$("$DAEDALUS" --version 2>/dev/null | head -1 | sed 's/^daedalus //' || echo "unknown")
+DAEDALUS_VER=$("$DAEDALUS" --version 2>/dev/null | head -1 | sed 's/^daedalus //' || echo "unknown")
 
 # ── Estimate: would this build survive on 8GB tmpfs live USB? ─────────
 # On tmpfs live USB, /tmp + swap ≈ RAM. daedalus needs: source + rootfs + payload + tar
@@ -138,7 +138,7 @@ cat > "$OUT_FILE" <<EOF
 # Benchmark: ${APP_NAME}
 
 - **Date**: $(date -Iseconds)
-- **Tool**: daedalus ${XBIN_VER}
+- **Tool**: daedalus ${DAEDALUS_VER}
 
 ## Machine
 

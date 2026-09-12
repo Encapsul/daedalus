@@ -1,4 +1,4 @@
-# Comparative Benchmark — x.bin vs Docker / pkg / AppImage / Flatpak
+# Comparative Benchmark — daedalus vs Docker / pkg / AppImage / Flatpak
 
 _Aggregated: 2026-08-07T12:11Z_
 
@@ -15,7 +15,7 @@ _Aggregated: 2026-08-07T12:11Z_
 
 | Machine | Packager | Artifact | On-disk | Cold start | Warm start | Idle RSS | Host deps |
 |---------|----------|----------|---------|------------|------------|----------|-----------|
-| codespaces-ba69ea | xbin | 44.0 MiB | 122.6 MiB | 2142 ms | 96 ms | 48.6 MiB | none |
+| codespaces-ba69ea | daedalus | 44.0 MiB | 122.6 MiB | 2142 ms | 96 ms | 48.6 MiB | none |
 | codespaces-ba69ea | docker | 76.7 MiB | 76.7 MiB | 6147 ms | n/a ms | 50.0 MiB | docker-daemon |
 | codespaces-ba69ea | pkg | 70.2 MiB | 70.2 MiB | 109 ms | n/a ms | 55.0 MiB | none |
 | codespaces-ba69ea | appimage | 24.4 MiB | 24.4 MiB | 29 ms | n/a ms | 55.6 MiB | fuse-or-extract |

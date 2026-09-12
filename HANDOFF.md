@@ -572,14 +572,14 @@ All must pass. If any fails, your change introduced a regression.
 
 **WordPress** — Cannot package as single binary:
 - Requires LAMP stack: Apache/Nginx + MySQL/MariaDB + php-fpm
-- x.bin currently uses `php -S` built-in server as a fallback, but this is NOT production-ready
+- daedalus currently uses `php -S` built-in server as a fallback, but this is NOT production-ready
 - For true WordPress support: would need to embed nginx + php-fpm + SQLite (or bundle MySQL)
 - **Status**: documented, not implementable without a fundamentally different approach
 
 **Vite** — Not a production runtime:
 - Vite is a build tool / dev server, not a production application
 - After `vite build`, output is static files in `dist/`
-- x.bin could serve static files, but Vite itself is not the runtime
+- daedalus could serve static files, but Vite itself is not the runtime
 - **Status**: not applicable as standalone runtime
 
 ## .env file baking — 2026-07-20
@@ -1005,7 +1005,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 
 ## Real-app testing — URGENT (all runtimes)
 
-**Why**: Unit tests pass but we've never tested with real apps. Toy examples hide real bugs — missing shared libs, wrong entrypoints, broken dep resolution, env issues. We need to prove x.bin works on production apps for every runtime.
+**Why**: Unit tests pass but we've never tested with real apps. Toy examples hide real bugs — missing shared libs, wrong entrypoints, broken dep resolution, env issues. We need to prove daedalus works on production apps for every runtime.
 
 **Process per app**: `git clone` → `daedalus build` → run → document pass/fail/bugs → fix → re-test
 
@@ -1046,7 +1046,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 ## Next steps (future)
 
 ### Real-app testing — top 200 GitHub projects (HIGH PRIORITY)
-- **Goal**: prove x.bin works on real-world apps, not just toy examples
+- **Goal**: prove daedalus works on real-world apps, not just toy examples
 - **Approach**: test `daedalus build` against top 200 GitHub repos (by stars), curate the ones that work as prebuilt downloads
 - **Target repos to test** (Python/Node.js focus, apps not libraries):
   - **Python web**: flask (pallets/flask), fastapi (tiangolo/fastapi), django (django/django), sanic (sanic-org/sanic), litestar (litestar-org/litestar)
@@ -1073,9 +1073,9 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - Run full end-to-end build+sign+verify cycle for aarch64 once stub is compiled locally
 - GitHub Actions official action (`action-daedalus/build`) — for CI/CD workflows
 
-### Competitor feature gaps (x.bin vs Bun vs Deno Deploy)
+### Competitor feature gaps (daedalus vs Bun vs Deno Deploy)
 
-| Feature | Bun | Deno Deploy | x.bin | Priority | Status |
+| Feature | Bun | Deno Deploy | daedalus | Priority | Status |
 |---------|-----|-------------|-------|----------|--------|
 | `.env` file baking | Built-in `.env` | `.env` per playground | ✅ Implemented | HIGH | DONE |
 | Version metadata in binary | ✅ | ✅ | ✅ Implemented | HIGH | DONE |
@@ -1090,7 +1090,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 | Health checks | N/A | Built-in | ✅ `--health-port` | MEDIUM | DONE |
 | OpenTelemetry | N/A | Auto-instrumented | ✅ `--otel-endpoint` | MEDIUM | DONE |
 
-### Competitive analysis: x.bin vs Bun vs Wasmer (2026-07-23)
+### Competitive analysis: daedalus vs Bun vs Wasmer (2026-07-23)
 
 **Bun (`bun build --compile`)**:
 - Compiles JS/TS into standalone executable, embeds entire Bun runtime (~50MB)
@@ -1109,15 +1109,15 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 - SDKs in Rust, Python, JS, Go, Ruby, C
 - Security: sandboxed execution, metering (instruction limits)
 
-**Where x.bin is unique**:
-- Packaging sans recompilation — Bun oblige à re-bundler, Wasmer oblige à recompiler en WASM. x.bin prend l'app telle quelle.
-- Tiny overhead — Bun embarque ~50MB de runtime, x.bin ajoute ~100KB de stub.
+**Where daedalus is unique**:
+- Packaging sans recompilation — Bun oblige à re-bundler, Wasmer oblige à recompiler en WASM. daedalus prend l'app telle quelle.
+- Tiny overhead — Bun embarque ~50MB de runtime, daedalus ajoute ~100KB de stub.
 - Intégrité + signature — SHA-256 + Ed25519 sign/verify + chiffrement v4. Bun n'a que codesign macOS. Wasmer a le sandbox.
 - Cache intelligent — Si le hash est déjà extrait, on saute l'extraction.
 - Multi-langue — Python, Node, Go, Rust, PHP… sans changer une ligne de code.
 
-**Where x.bin is weaker**:
-- Bun's `--compile` produces self-contained binaries (no runtime needed on target). x.bin requires python3/node/etc. on target.
+**Where daedalus is weaker**:
+- Bun's `--compile` produces self-contained binaries (no runtime needed on target). daedalus requires python3/node/etc. on target.
 - Bun has bytecode compilation, cross-compilation for the app itself, full-stack HTML embedding, minification, sourcemaps.
 - Wasmer has cloud deployment, WASM universality, registry, metering, SDKs in 6 languages.
 
@@ -1298,7 +1298,7 @@ Full audit against https://clig.dev — 12 gaps identified, 11 commits, all fixe
 ## README rewrite (2026-07-17)
 
 - **File**: `README.md` — full rewrite modeled after Bun's README style.
-- **Structure**: centered logo placeholder → title → badges → nav links → "What is x.bin?" → Install → Quick links (4 categories) → Guides (4 categories) → How it works → Example apps → Contributing → License.
+- **Structure**: centered logo placeholder → title → badges → nav links → "What is daedalus?" → Install → Quick links (4 categories) → Guides (4 categories) → How it works → Example apps → Contributing → License.
 - **Logo**: references `logo.png` in repo root — user will create their own.
 - **Install**: git clone + `make stub` + `cargo build -p daedalus-cli` — Rust CLI is primary
 - **Quick links**: organized by Build, Runtime, Security, CLI — all link to mdbook docs.
