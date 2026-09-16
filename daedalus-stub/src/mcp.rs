@@ -212,6 +212,10 @@ mod tests {
 
     #[test]
     fn tools_call_runs_echo_tool() {
+        // The stub's process supervisor reaps ANY child (`waitpid(-1, ...)`),
+        // so a concurrent fork-based test would steal this `cat` child and we
+        // would get ECHILD. Serialize with the other child-spawning tests.
+        let _guard = crate::exec::FORK_TEST_LOCK.lock().unwrap();
         let line = handle_line(
             r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"echo","arguments":{"x":1}}}"#,
             &tools(),

@@ -330,6 +330,7 @@ mod tests {
         assert_eq!(tar1, tar2);
     }
 
+    #[cfg(unix)]
     #[test]
     /// `symlink_preserved_as_symlink_entry` - symlink preserved as symlink entry.
     ///
@@ -361,6 +362,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     /// `escaping_symlink_target_is_dropped` - escaping symlink target is dropped.
     ///

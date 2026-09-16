@@ -188,8 +188,8 @@ pub fn spawn(
             flags,
             env_block.as_ptr() as *mut c_void,
             cwd_wide.as_ref().map_or(std::ptr::null(), Vec::as_ptr),
-            &mut si,
-            &mut pi,
+            &raw mut si,
+            &raw mut pi,
         )
     };
 
@@ -252,7 +252,7 @@ pub fn try_wait(child: &Child) -> io::Result<Option<i32>> {
 fn exit_code(child: &Child) -> io::Result<i32> {
     let mut code: u32 = 0;
     // SAFETY: GetExitCodeProcess writes the exit code after success.
-    let rc = unsafe { GetExitCodeProcess(child.handle, &mut code) };
+    let rc = unsafe { GetExitCodeProcess(child.handle, &raw mut code) };
     if rc == 0 {
         return Err(io::Error::new(
             io::ErrorKind::Other,

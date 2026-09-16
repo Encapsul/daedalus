@@ -40,10 +40,13 @@ walkdir = "2"               # recursive directory scan for native libs
 aes-gcm = "0.10"            # AES-256-GCM payload decryption
 hkdf = "0.12"               # HKDF-SHA256 key derivation for decryption
 
-# HTTP client for --daedalus-update: Linux-only (macOS lacks cross-compiled
-# ring/rustls without SDK). Update feature falls back to disabled on macOS.
-[target.'cfg(target_os = "linux")'.dependencies]
-ureq = "3"
+# HTTP client for --daedalus-update, on every platform.
+# Plain HTTP, no TLS/ring: the update channel is authenticated by the
+# Ed25519-signed manifest and per-chunk SHA-256 verification — never by the
+# transport — so dropping TLS keeps cross-compiles (darwin/windows, no native
+# C toolchain) green without lowering the trust level. ureq 3 defaults to
+# rustls/ring, which is exactly what made the target-specific gate necessary.
+ureq = { version = "3", default-features = false }
 
 [dev-dependencies]
 daedalus-core = { path = "../daedalus-core" }

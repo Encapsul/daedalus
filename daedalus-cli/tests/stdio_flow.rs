@@ -17,6 +17,10 @@ use daedalus_core::assembly::{assemble_daedalus, AssemblyInput};
 use predicates::prelude::*;
 use std::path::{Path, PathBuf};
 
+mod common;
+#[cfg(unix)]
+use common::locate_stub;
+
 fn daedalus() -> Command {
     let mut cmd = Command::cargo_bin("daedalus").unwrap();
     cmd.env("NO_COLOR", "1");
@@ -189,35 +193,7 @@ fn verify_unsigned_stdin_reports_not_signed() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("not signed"));
 }
 
-/// Locate a runnable stub, skipping when none can be produced so CI without a
-/// full Rust/musl toolchain still passes.
-fn locate_stub() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("DAEDALUS_STUB_PATH") {
-        let p = PathBuf::from(path);
-        if p.is_file() {
-            return Some(p);
-        }
-    }
-    let ok = std::process::Command::new("cargo")
-        .args(["build", "-q", "-p", "daedalus-stub"])
-        .status()
-        .ok()?
-        .success();
-    if !ok {
-        return None;
-    }
-    let target = std::env::var("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .expect("manifest dir has parent")
-                .join("target")
-        });
-    let stub = target.join("debug/daedalus-stub");
-    stub.is_file().then_some(stub)
-}
-
+#[cfg(unix)]
 #[test]
 fn build_streams_artifact_to_stdout() {
     let Some(stub) = locate_stub() else {
@@ -279,12 +255,14 @@ fn build_streams_artifact_to_stdout() {
     );
 }
 
+#[cfg(unix)]
 fn tmpdir_owned() -> PathBuf {
     tempfile::tempdir().unwrap().keep()
 }
 
 /// Compile a tiny native executable (runtime-Binary detection requires an
 /// ELF/PE). Returns None when no C compiler is available.
+#[cfg(unix)]
 fn compile_native_binary(dir: PathBuf) -> Option<PathBuf> {
     let src = dir.join("h.c");
     std::fs::write(&src, "int main(void){return 0;}\n").ok()?;
@@ -299,6 +277,7 @@ fn compile_native_binary(dir: PathBuf) -> Option<PathBuf> {
     ok.then_some(out)
 }
 
+#[cfg(unix)]
 #[test]
 fn build_to_dash_respects_multi_target_rejection() {
     // Multi-target with `-o -` cannot work — two artifacts cannot share one

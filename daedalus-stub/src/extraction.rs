@@ -737,6 +737,7 @@ mod tests {
         zstd::stream::encode_all(cursor, 0).unwrap()
     }
 
+    #[cfg(unix)]
     #[test]
     /// `extract_rejects_absolute_symlink` - extract rejects absolute symlink.
     ///
@@ -756,6 +757,7 @@ mod tests {
         assert!(err.to_string().contains("escapes rootfs"));
     }
 
+    #[cfg(unix)]
     #[test]
     /// `extract_rejects_traversal_symlink` - extract rejects traversal symlink.
     ///
@@ -773,6 +775,7 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("escapes rootfs"));
     }
 
+    #[cfg(unix)]
     #[test]
     /// `extract_allows_safe_relative_symlink` - extract allows safe relative symlink.
     ///

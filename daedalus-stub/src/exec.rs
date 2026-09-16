@@ -1344,14 +1344,14 @@ pub fn spawn_app_windows(
 pub fn find_in_bin_paths(rootfs: &Path, name: &str) -> Option<PathBuf> {
     #[cfg(windows)]
     let candidates = if name == "python3" {
-        [
+        vec![
             "python3".to_string(),
             "python3.exe".to_string(),
             "python".to_string(),
             "python.exe".to_string(),
         ]
     } else {
-        [name.to_string(), format!("{name}.exe")]
+        vec![name.to_string(), format!("{name}.exe")]
     };
     #[cfg(not(windows))]
     let candidates = [name.to_string()];
@@ -1773,17 +1773,20 @@ extern "C" fn signal_forward(sig: i32) {
     }
 }
 
+/// Serializes child-spawning stub tests. `wait_for_children` reaps ANY child
+/// with `waitpid(-1, ...)`, so a fork-based supervisor test running while
+/// another test's child (e.g. the MCP `cat` tool) is alive will steal and reap
+/// it, producing a spurious ECHILD. Every test that spawns a process must hold
+/// this lock so no two child-producing tests ever overlap.
+#[cfg(test)]
+pub(crate) static FORK_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::DatabaseConfig;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
-    #[cfg(unix)]
-    use std::sync::Mutex;
-
-    /// Serializes fork-based tests (see `wait_for_children` docs).
-    static FORK_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     /// `make_resolve_returns_absolute_when_pivot` - make resolve returns absolute when pivot.
@@ -1822,6 +1825,7 @@ mod tests {
         assert!(!check_executable("/nonexistent/binary"));
     }
 
+    #[cfg(unix)]
     #[test]
     /// `entrypoint_executable_falls_back_to_rootfs_interpreter` - entrypoint executable falls back to rootfs interpreter.
     ///
@@ -1841,6 +1845,7 @@ mod tests {
         assert!(entrypoint_is_executable(b"python3", "python3", rootfs));
     }
 
+    #[cfg(unix)]
     #[test]
     /// `entrypoint_executable_rejects_absolute_missing_path` - entrypoint executable rejects absolute missing path.
     ///
@@ -1988,6 +1993,7 @@ mod tests {
         assert_eq!(detect_web_port(tmp.path(), "node"), Some(3000));
     }
 
+    #[cfg(unix)]
     #[test]
     /// `wait_for_children_ignores_spurious_and_waits_for_tracked` - wait for children ignores spurious and waits for tracked.
     ///
@@ -2026,6 +2032,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     /// `wait_for_children_ok_when_tracked_exits_zero` - wait for children ok when tracked exits zero.
     ///
