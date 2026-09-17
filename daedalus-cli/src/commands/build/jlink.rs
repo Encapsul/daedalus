@@ -288,6 +288,7 @@ pub fn fixup_jre_launcher(rootfs: &Path) -> Result<()> {
             )
         })?;
     }
+    #[cfg(target_os = "linux")]
     embed_image_deps(&image, rootfs)?;
 
     let bin_java = rootfs.join("usr/bin/java");
@@ -311,6 +312,12 @@ pub fn fixup_jre_launcher(rootfs: &Path) -> Result<()> {
 /// launcher reaches the PATH via the `/usr/bin/java` symlink, `$ORIGIN` is
 /// `/usr/bin`, so its RUNPATH (`$ORIGIN/../lib`) misses the image lib dir —
 /// but the stub's `LD_LIBRARY_PATH` includes /usr/lib.
+///
+/// Linux-only: it embeds ELF/glibc system libs into a bare pivot_root tree.
+/// On macOS there is nothing to embed — the launcher finds libjvm relative to
+/// its real path (`java.home`) inside the image and system dylibs resolve from
+/// the dyld shared cache (and `ldd` does not even exist there).
+#[cfg(target_os = "linux")]
 fn embed_image_deps(image: &Path, rootfs: &Path) -> Result<()> {
     let mut binaries = vec![image.join("bin/java")];
     let mut image_libs = BTreeSet::new();
@@ -354,6 +361,7 @@ fn embed_image_deps(image: &Path, rootfs: &Path) -> Result<()> {
 /// (`/lib/x86_64-linux-gnu`) which is NOT in the pivot-root
 /// `LD_LIBRARY_PATH` — only `/usr/lib/x86_64-linux-gnu` is. The dynamic
 /// loader (`ld-linux`) keeps its absolute interp path.
+#[cfg(target_os = "linux")]
 fn copy_ldd_deps(binary: &Path, rootfs: &Path) -> Result<()> {
     let output = Command::new("ldd")
         .arg(binary)

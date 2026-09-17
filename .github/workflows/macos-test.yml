@@ -49,7 +49,8 @@ jobs:
 
       - name: Smoke test (x86_64)
         run: |
-          /tmp/daedalus-stub-target/release/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.de 2>&1
+          DAEDALUS_STUB_PATH=target/x86_64-apple-darwin/release/daedalus-stub \
+            target/x86_64-apple-darwin/release/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.de 2>&1
           /tmp/hello-web.de &
           PID=$!
           sleep 5
