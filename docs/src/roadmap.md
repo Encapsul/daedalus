@@ -94,9 +94,16 @@ ni Node, ni quoi que ce soit.
 
 ## Priorité
 
-1. **Cross-platform CI** — prouver « ça tourne partout » : windows-check, cross windows-gnu, native-macos, smoke tests (2ab5d7b + e75c97a corrigent les dernières races) 
-2. **Adoption** — démo 60 s, mini hub (~10 apps), installateurs `brew`/`pip`/`curl`
+1. **Cross-platform CI** — prouver « ça tourne partout » : windows-check, cross windows-gnu, native-macos, smoke tests (2ab5d7b + e75c97a corrigent les dernières races ; cargo-audit vert depuis rustls 0.23.45, native-macos vert) — reste windows-check core test + smoke-test-windows, bloqués par l'accès aux logs CI
+2. **Adoption** — démo 60 s ✅ (guide + clinic-agent mesuré : build 6,2 s / run 1,5 s), installateurs `curl`/`brew`/`powershell` (install.sh + install.ps1 + formula fournis), mini hub (~10 apps, catalog + build.sh)
 3. **Runtimes supplémentaires** — Dart/Flutter et Zig d'abord (écosystème dev + single binary)
+
+## Adoption — livré
+
+- **Démo 60 s** : [guide](./guides/demo-60s.md) — clinic-agent (Gemma offline) : build 6,2 s → artefact 16,9 MB → run 1,5 s à froid.
+- **Installation zero-friction** : `install.sh` (Linux/macOS, sans sudo, vérifié sha256 contre `checksums.txt`), `install.ps1` (Windows), formula Homebrew dans `packaging/homebrew/daedalus.rb`.
+- **Hub** : [hub/catalog.json](../hub/catalog.json) — 4 apps vérifiées (hello-web, hello-node, bottle-web, clinic-agent) + 6 recettes (Express, FastAPI, Spring Boot, Rails, Laravel, Go). `hub/build.sh` rebuild.
+- **Stub discovery** : `daedalus build` trouve désormais le stub natif (living next to the CLI, ou triple hôte) sans `DAEDALUS_STUB_PATH`.
 
 ## Ce qui n'est PAS prioritaire
 

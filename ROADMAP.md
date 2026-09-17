@@ -5,13 +5,14 @@ Single source of truth for daedalus planning. `docs/ROADMAP.md` points here;
 
 ## Current status
 
-Cross-platform CI is the open item: Linux CI is green; Windows/macOS builds and
-checks were fixed in `2ab5d7b` + `e75c97a` (Linux-only ELF helper gating, macOS
-Java/jlink embed, workflow paths). The remaining validation is watching the
-post-push GitHub Actions run go green on `windows-check`, `cross
-x86_64-pc-windows-gnu`, `native-macos` and the cross-platform smoke tests.
-Product-wise: runtimes are all production-grade on Linux, Java JRE embed
-(jlink) now works on macOS, adoption (demo, hub, installers) has not started.
+Cross-platform CI is the open item: Linux CI is green; macOS native (all steps
+incl. smoke) and cargo-audit are green since `60625dd`. Remaining: the two
+Windows jobs (`windows-check` core test, `smoke-test-windows`) — pre-existing
+failures blocked on CI log access (read-only token). Product-wise: adoption
+is underway — 60 s demo guide (measured 6.2 s build / 1.5 s run), one-command
+installers (`install.sh`, `install.ps1`, Homebrew formula), `hub/catalog.json`
+(4 verified apps + 6 recipes); runtimes are production-grade on Linux and Java
+JRE embed (jlink) works on macOS.
 
 ## Runtimes
 
@@ -111,11 +112,11 @@ not the codecs).
 
 | Lever | Action | Status |
 |-------|--------|--------|
-| Demo / time-to-first-value | 60 s homepage demo (Streamlit or Ollama + model): `daedalus build` → an artifact that runs on a bare machine. Key message: "it's just the file." | Not started |
+| Demo / time-to-first-value | 60 s homepage demo (Streamlit or Ollama + model): `daedalus build` → an artifact that runs on a bare machine. Key message: "it's just the file." | Done (measured: 6.2 s build / 1.5 s first run for the offline clinic-agent; guide in `docs/src/guides/demo-60s.md`) |
 | Trust (#1) | `--sign` on by default with the dev key, `daedalus verify foo.de` in one gesture, dated "security" page + audit. Signing is the headline feature, not an option (a self-extracting binary smells like malware otherwise). | Default signing done (auto dev key + self-trust, `--skip-sign` to opt out); dated audit 2026-09-09 in SECURITY.md (strict Ed25519 verify); website security page remaining |
 | Niche wedge | Target distribution of agents / AI-apps to non-technical users (Ollama/Gemma use cases). A niche of 1000 frustrated devs > 100k curious. | Not started |
-| Ecosystem / network effect | `daedalus hub` — community catalog of reusable packaged apps (builds on `daedalus registry`). Start with ONE template per popular runtime, not a platform. | Not started |
-| Zero-friction install | `brew` / `cargo install` / `pip` / `curl` install, static signed binary every release. Install < 10 s, no compile flag needed. | cargo install OK; others to do |
+| Ecosystem / network effect | `daedalus hub` — community catalog of reusable packaged apps (builds on `daedalus registry`). Start with ONE template per popular runtime, not a platform. | Started (`hub/catalog.json`: 4 verified apps + 6 recipes — one per runtime; `hub/build.sh`; guide in `docs/src/guides/hub.md`) |
+| Zero-friction install | `brew` / `cargo install` / `pip` / `curl` install, static signed binary every release. Install < 10 s, no compile flag needed. | `install.sh` (Linux/macOS) + `install.ps1` (Windows) shipped (checksum-verified, no sudo); cargo install OK; brew tap + crates.io + pip remaining |
 | Trap to avoid | No expert-oriented docs or format benchmarks as the lead feature — adoption comes from the first task unlocked. | — |
 
 Execution order: demo (1) → default signing (2) → minimal hub with ~10 packaged apps

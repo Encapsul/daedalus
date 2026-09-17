@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["apps"],
+  "properties": {
+    "apps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "runtime", "template", "description"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "name": { "type": "string" },
+          "runtime": { "type": "string" },
+          "template": { "enum": ["application", "service", "plugin"] },
+          "description": { "type": "string" },
+          "source": { "type": "string" },
+          "build": { "type": "array", "items": { "type": "string" } },
+          "recipe": {
+            "type": "object",
+            "properties": {
+              "layout": { "type": "array", "items": { "type": "string" } },
+              "build": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "run": { "anyOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+          "port": { "type": "integer" },
+          "buildable": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
