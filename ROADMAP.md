@@ -1,5 +1,18 @@
 # Roadmap
 
+Single source of truth for daedalus planning. `docs/ROADMAP.md` points here;
+`docs/src/roadmap.md` is the public summary for the website.
+
+## Current status
+
+Cross-platform CI is the open item: Linux CI is green; Windows/macOS builds and
+checks were fixed in `2ab5d7b` + `e75c97a` (Linux-only ELF helper gating, macOS
+Java/jlink embed, workflow paths). The remaining validation is watching the
+post-push GitHub Actions run go green on `windows-check`, `cross
+x86_64-pc-windows-gnu`, `native-macos` and the cross-platform smoke tests.
+Product-wise: runtimes are all production-grade on Linux, Java JRE embed
+(jlink) now works on macOS, adoption (demo, hub, installers) has not started.
+
 ## Runtimes
 
 ### Complete / production-ready
@@ -11,7 +24,7 @@
 - Perl (Mojolicious, single-file `Mojo::` apps)
 - Electron (cross-arch/OS binary embed, `resources/` bundled)
 - Go (static binary, cross-compile)
-- Rust (cargo build, auto-download toolchain)
+- Rust (cargo build, auto-download toolchain; auto-downloads `rustup-init` + installs stable into `~/.cache` when no system cargo/rustup)
 - .NET/C# (self-contained, cross-RID)
 - Binary (ELF/PE staging)
 - Deno (toolchain download + deno cache)
@@ -19,14 +32,8 @@
 - Wasm (wasmtime embed)
 - Ollama (detection + `ollama serve` entrypoint)
 - Gemma (offline `.gguf` bundling via `--model`, `ollama run <model>`, no cloud/GPU)
-
-### Partial — needs work
-
-| Runtime | Gap | Priority |
-|---------|-----|----------|
-| Rust | ✅ Auto-downloads `rustup-init` + installs stable into `~/.cache` when no system cargo/rustup | ~~P1~~ |
-| Electron | ✅ Cross-OS/arch binary embed (OS-aware `is_cross`, `resources/` embedded beside binary) | ~~P2~~ |
-| Perl | ✅ Mojolicious-specific detection added (script/ + lib/<App>.pm layout, `Mojo::` imports) | ~~P3~~ |
+- Perl (Mojolicious-specific detection: script/ + lib/ layout, `Mojo::` imports)
+- Electron (cross-OS/arch binary embed, OS-aware `is_cross`, `resources/` embedded beside binary)
 
 ### Missing — planned
 
@@ -73,7 +80,7 @@
 | Encryption (AES-256-GCM) | Done |
 | Ed25519 signing | Done |
 | Squashfs payload | Done |
-| jlink minimal JRE | Not started |
+| jlink minimal JRE | Done |
 | Build cache | Done |
 | Parallel multi-target | Done |
 | Universal binary (`--universal`) | Done (polyglot shell launcher, multi-arch slices) |
@@ -81,6 +88,7 @@
 | Registry CAS (`daedalus registry push/pull/list`) | Done |
 | Lazy loading (`--lazy-load`) | Done (priority extraction + background thread) |
 | Multi-service build (`--entrypoint service=cmd`) | Done |
+| Metadata templates (`--template application|service|plugin`) | Done |
 
 ## Security
 
@@ -93,7 +101,7 @@
 | Ed25519 bit validation (CVE-2023-48022) | Done |
 | SISR publisher signature | Done |
 | Capability-based sandboxing (seccomp + Landlock) | Done |
-| At-rest authenticity | Roadmap #45 |
+| At-rest authenticity (SISR manifest + Ed25519 checked at cold start) | Done |
 
 ## Product & adoption
 

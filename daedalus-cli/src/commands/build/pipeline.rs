@@ -306,6 +306,7 @@ pub(crate) fn build_single_target(
         &env_pairs,
         &daedalus_core::assembly::MetaOptions {
             version: version_info,
+            template: args.template.map(Into::into).unwrap_or_default(),
             author,
             description,
             license,

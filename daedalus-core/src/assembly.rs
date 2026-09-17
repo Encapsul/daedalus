@@ -145,6 +145,11 @@ pub fn build_meta_json(
 
     apply_meta_options(&mut meta, options)?;
 
+    // Every artifact declares a template so tooling can classify a `.de`
+    // without executing it (`inspect` surfaces it; the stub ignores the key).
+    meta["template"] = serde_json::to_value(options.template)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
     if bun_features.health_check.enabled {
         meta["health_check"] = serde_json::to_value(&bun_features.health_check)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -256,9 +261,27 @@ pub struct ServiceSpec {
     pub ready_timeout: u64,
 }
 
+/// Kind of packaged artifact, recorded in the metadata as `template`.
+/// Pure discovery metadata for tooling and host apps — it documents the
+/// intended lifecycle of a `.de` (or one of its services) but never changes
+/// the binary layout or the stub's execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AppTemplate {
+    /// Runnable, user-facing app (web server, CLI, agent).
+    #[default]
+    Application,
+    /// Background worker/daemon that runs alongside latency-critical services.
+    Service,
+    /// Extension consumed by a host application; no standalone entrypoint.
+    Plugin,
+}
+
 /// Options for metadata construction.
 #[allow(clippy::struct_excessive_bools)]
 pub struct MetaOptions {
+    /// Artifact kind recorded in `meta["template"]` for tooling/hosts.
+    pub template: AppTemplate,
     pub version: Option<String>,
     pub author: Option<String>,
     pub description: Option<String>,
@@ -685,6 +708,7 @@ mod tests {
     fn build_meta_json_produces_valid_json() {
         let opts = MetaOptions {
             version: Some("1.0".into()),
+            template: AppTemplate::default(),
             author: None,
             description: None,
             license: None,
@@ -724,6 +748,7 @@ mod tests {
         assert_eq!(parsed["name"], "myapp");
         assert_eq!(parsed["runtime"], "python");
         assert_eq!(parsed["version"], "1.0");
+        assert_eq!(parsed["template"], "application");
         // Layers should be populated with a default RuntimeLayer
         assert!(parsed["layers"].is_array());
         let layers = parsed["layers"].as_array().unwrap();
@@ -748,6 +773,7 @@ mod tests {
     fn services_serialize_into_metadata() {
         let opts = MetaOptions {
             version: None,
+            template: AppTemplate::Service,
             author: None,
             description: None,
             license: None,
@@ -790,6 +816,7 @@ mod tests {
         )
         .expect("meta serialization failed");
         let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        assert_eq!(parsed["template"], "service");
         let services = parsed["services"].as_array().expect("services array");
         assert_eq!(services.len(), 1);
         assert_eq!(services[0]["name"], "api");
@@ -808,6 +835,7 @@ mod tests {
     fn gpu_backend_serializes_into_metadata() {
         let opts = MetaOptions {
             version: None,
+            template: AppTemplate::Service,
             author: None,
             description: None,
             license: None,
@@ -875,6 +903,7 @@ mod tests {
     fn lazy_priority_serializes_into_metadata() {
         let opts = MetaOptions {
             version: None,
+            template: AppTemplate::Service,
             author: None,
             description: None,
             license: None,

@@ -86,17 +86,17 @@ ni Node, ni quoi que ce soit.
 - [x] `.lazy_done` marker when background extraction completes
 - [x] Works with zstd+tar payloads (squashfs falls back to full extraction)
 
-## Phase 6 — Templates + multi-service (PARTIAL)
+## Phase 6 — Templates + multi-service ✅
 
 - [x] Champ `services` dans metadata, détection mode serveur dans `daedalus selftest`
-- [ ] Build multi-service : `daedalus build ./services --entrypoint api=api.py --entrypoint worker=worker.py`
-- [ ] Templates de metadata : `application`, `service`, `plugin`
+- [x] Build multi-service : `daedalus build ./services --entrypoint service=cmd`
+- [x] Templates de metadata : `daedalus build --template application|service|plugin`, recordé dans `meta["template"]` pour le discovery par les outils/hôtes
 
 ## Priorité
 
-1. **Phase 5** (lazy loading) — **performance**, ne pas charger gros assets au démarrage
-2. **Phase 6** (templates + multi-service) — **storytelling**, prouve que le format est universel
-3. **Registry CAS** — **adoption**, partager des couches entre artefacts (`daedalus registry push/pull/list` déjà implémenté)
+1. **Cross-platform CI** — prouver « ça tourne partout » : windows-check, cross windows-gnu, native-macos, smoke tests (2ab5d7b + e75c97a corrigent les dernières races) 
+2. **Adoption** — démo 60 s, mini hub (~10 apps), installateurs `brew`/`pip`/`curl`
+3. **Runtimes supplémentaires** — Dart/Flutter et Zig d'abord (écosystème dev + single binary)
 
 ## Ce qui n'est PAS prioritaire
 
