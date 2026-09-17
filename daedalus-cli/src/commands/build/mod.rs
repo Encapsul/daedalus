@@ -229,7 +229,7 @@ fn resolve_build_runtime(
         detect::Runtime::Gemma
     } else {
         detect::detect_runtime(app_dir).context(
-            "could not detect runtime — supported: python, node, deno, java, ruby, dotnet, go, php, perl, hugo, ollama, gemma, wasm, binary",
+            "could not detect runtime — supported: python, node, deno, flutter, dart, java, ruby, dotnet, go, zig, php, perl, hugo, ollama, gemma, wasm, binary",
         )?
     };
     if verbose {

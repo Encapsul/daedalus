@@ -33,6 +33,9 @@ JRE embed (jlink) works on macOS.
 - Wasm (wasmtime embed)
 - Ollama (detection + `ollama serve` entrypoint)
 - Gemma (offline `.gguf` bundling via `--model`, `ollama run <model>`, no cloud/GPU)
+- Zig (build.zig/build.zig.zon detection, `zig build -Doptimize=ReleaseFast -Dtarget`, toolchain auto-download from ziglang manifest, AOT native)
+- Dart (pubspec.yaml detection, `dart compile exe` AOT, toolchain auto-download from dart-archive; host-only — cross AOT refused with clear error)
+- Flutter (pubspec with `sdk: flutter` detection, `flutter build <platform> --release`, desktop bundle; requires the Flutter SDK on PATH)
 - Perl (Mojolicious-specific detection: script/ + lib/ layout, `Mojo::` imports)
 - Electron (cross-OS/arch binary embed, OS-aware `is_cross`, `resources/` embedded beside binary)
 
@@ -43,8 +46,6 @@ JRE embed (jlink) works on macOS.
 | Swift | iOS/macOS apps, trending via SwiftUI |
 | Kotlin | Android/JVM backend, growing |
 | Lua | Game mods, Neovim configs, OpenResty |
-| Dart/Flutter | Mobile + web, growing |
-| Zig | Trending language, single binary |
 | OCaml/Elm | Functional web, niche but real |
 | R | Data science, Shiny apps |
 | Elixir | Phoenix framework, real-time |

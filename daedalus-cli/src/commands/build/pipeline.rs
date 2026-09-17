@@ -13,9 +13,9 @@ use std::path::{Path, PathBuf};
 
 use super::args::{config_fingerprint, parse_target, BuildArgs, BuildPlan};
 use super::deps::{
-    check_php_platform_reqs, ensure_composer, ensure_deno, ensure_electron, ensure_go, ensure_hugo,
-    ensure_node, ensure_python, ensure_rust, ensure_wasmtime, has_workspace_protocol,
-    interpreter_bin, is_command_available, resolve_command, tools_dir_for,
+    check_php_platform_reqs, ensure_composer, ensure_dart, ensure_deno, ensure_electron, ensure_go,
+    ensure_hugo, ensure_node, ensure_python, ensure_rust, ensure_wasmtime, ensure_zig,
+    has_workspace_protocol, interpreter_bin, is_command_available, resolve_command, tools_dir_for,
 };
 use super::payload::{copy_dir_recursive_with, create_squashfs_payload, include_points_to_env};
 use super::sign::sign_macos_binary;
@@ -201,10 +201,13 @@ pub(crate) fn build_single_target(
     // ── Build Go / Rust binaries, Maven/Gradle JARs, .NET binaries ────────
     let go_binary_name = build_go_binary(plan, target.as_deref(), &rootfs)?;
     let rust_binary_name = build_rust_binary(plan, target.as_deref(), &rootfs)?;
+    let zig_binary_name = build_zig_binary(plan, target.as_deref(), &rootfs)?;
     let java_jar_name = build_java_binary(plan, &rootfs)?;
     let dotnet_binary_name = build_dotnet_binary(plan, target.as_deref(), &rootfs)?;
     let hugo_binary_name = build_hugo_binary(plan, target.as_deref(), &rootfs)?;
     let _deno_binary_name = build_deno_binary(plan, target.as_deref(), &rootfs)?;
+    let dart_binary_name = build_dart_binary(plan, target.as_deref(), &rootfs)?;
+    let flutter_binary_name = build_flutter_binary(plan, target.as_deref(), &rootfs)?;
 
     // ── Embed interpreter / N-API addons / RoadRunner into the rootfs ──
     // Skip when reusing rootfs — interpreter already present in payload.
@@ -228,9 +231,12 @@ pub(crate) fn build_single_target(
         go_binary_name
             .as_deref()
             .or(rust_binary_name.as_deref())
+            .or(zig_binary_name.as_deref())
             .or(java_jar_name.as_deref())
             .or(dotnet_binary_name.as_deref())
-            .or(hugo_binary_name.as_deref()),
+            .or(hugo_binary_name.as_deref())
+            .or(dart_binary_name.as_deref())
+            .or(flutter_binary_name.as_deref()),
         args.wasi,
         args.component_model,
     );
@@ -975,6 +981,293 @@ fn build_rust_binary(
         eprintln!("  Rust binary built successfully");
     }
     Ok(Some(bin_name))
+}
+
+/// Build the Zig binary into `rootfs/app` and strip source files. Returns the
+/// binary name, or `None` when the app is not Zig or `--no-install` is set.
+fn build_zig_binary(
+    plan: &BuildPlan,
+    target: Option<&str>,
+    rootfs: &Path,
+) -> Result<Option<String>> {
+    if plan.runtime != detect::Runtime::Zig || plan.no_install {
+        return Ok(None);
+    }
+    let app_dir = &plan.app_dir;
+    let verbose = plan.verbose;
+
+    let zig_bin_path = ensure_zig(verbose)?;
+
+    // `zig build` installs release artifacts under `zig-out/bin/`. The Zig
+    // standard template exposes `-Doptimize` and `-Dtarget` via
+    // `standardOptimizeOption`/`standardTargetOptions`.
+    let mut cmd = std::process::Command::new(&zig_bin_path);
+    cmd.arg("build").arg("-Doptimize=ReleaseFast");
+    if let Some(target_str) = target {
+        let zig_target = zig_target_triple(target_str)?;
+        cmd.arg(format!("-Dtarget={zig_target}"));
+        if verbose {
+            eprintln!("  cross-compiling Zig for {zig_target}");
+        }
+    }
+    cmd.current_dir(app_dir);
+    if verbose {
+        eprintln!("  zig build -Doptimize=ReleaseFast...");
+    }
+    let status = cmd
+        .status()
+        .context("failed to run `zig build` — is Zig installed? (https://ziglang.org)")?;
+    if !status.success() {
+        anyhow::bail!("`zig build` failed with exit code {status}");
+    }
+
+    // Locate the install artifact: `zig-out/bin/<name>` (or `<name>.exe`).
+    let zig_out = app_dir.join("zig-out").join("bin");
+    let entries = std::fs::read_dir(&zig_out)
+        .with_context(|| format!("no install artifacts in {}", zig_out.display()))?;
+    let mut files: Vec<_> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    files.sort();
+    let Some(bin_name) = files.first() else {
+        anyhow::bail!("`zig build` succeeded but zig-out/bin is empty");
+    };
+
+    let staged = rootfs.join("app").join(bin_name);
+    std::fs::copy(zig_out.join(bin_name), &staged)
+        .with_context(|| format!("failed to stage {bin_name}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))?;
+    }
+
+    strip_compiled_sources(rootfs, bin_name);
+    if verbose {
+        eprintln!("  Zig binary built successfully");
+    }
+    Ok(Some(bin_name.clone()))
+}
+
+/// Build the Dart AOT executable into `rootfs/app` and strip source files.
+/// Returns the binary name, or `None` when the app is not Dart or
+/// `--no-install` is set. `dart compile exe` only targets the build host, so
+/// cross-compilation is rejected up front.
+fn build_dart_binary(
+    plan: &BuildPlan,
+    target: Option<&str>,
+    rootfs: &Path,
+) -> Result<Option<String>> {
+    if plan.runtime != detect::Runtime::Dart || plan.no_install {
+        return Ok(None);
+    }
+    let app_dir = &plan.app_dir;
+    let verbose = plan.verbose;
+
+    if let Some(t) = target {
+        let (arch, os) = parse_target(t);
+        let host_arch = std::env::consts::ARCH;
+        let host_os = if std::env::consts::OS == "macos" {
+            "darwin"
+        } else {
+            std::env::consts::OS
+        };
+        if arch != host_arch || os != host_os {
+            anyhow::bail!(
+                "Dart AOT compilation targets the build host only — build on the target platform directly (no --target for Dart)"
+            );
+        }
+    }
+
+    let dart_bin_path = ensure_dart(verbose)?;
+
+    let entry = detect::dart_entry_script(app_dir).ok_or_else(|| {
+        anyhow::anyhow!("no Dart entry script found (expected bin/main.dart or lib/main.dart)")
+    })?;
+    let bin_name = std::path::Path::new(&entry)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .ok_or_else(|| anyhow::anyhow!("invalid Dart entry script: {entry}"))?;
+
+    // Resolve dependencies first — `dart compile exe` needs package_config.
+    let pub_status = std::process::Command::new(&dart_bin_path)
+        .arg("pub")
+        .arg("get")
+        .current_dir(app_dir)
+        .status()
+        .context("failed to run `dart pub get`")?;
+    if !pub_status.success() {
+        anyhow::bail!("`dart pub get` failed with exit code {pub_status}");
+    }
+
+    let staged = rootfs.join("app").join(&bin_name);
+    let status = std::process::Command::new(&dart_bin_path)
+        .args(["compile", "exe", &entry, "-o"])
+        .arg(&staged)
+        .current_dir(app_dir)
+        .status()
+        .context("failed to run `dart compile exe`")?;
+    if !status.success() {
+        anyhow::bail!("`dart compile exe` failed with exit code {status}");
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))?;
+    }
+
+    strip_compiled_sources(rootfs, &bin_name);
+    if verbose {
+        eprintln!("  Dart binary built successfully");
+    }
+    Ok(Some(bin_name))
+}
+
+/// Build a Flutter app for the target platform and stage the release bundle
+/// into `rootfs/app/bundle/`. Returns the bundle-relative executable path, or
+/// `None` when the app is not Flutter or `--no-install` is set.
+///
+/// The Flutter SDK is not auto-downloaded (a ~1GB toolchain) — the system
+/// `flutter` binary is required, mirroring how Java/.NET builds need their SDK.
+fn build_flutter_binary(
+    plan: &BuildPlan,
+    target: Option<&str>,
+    rootfs: &Path,
+) -> Result<Option<String>> {
+    if plan.runtime != detect::Runtime::Flutter || plan.no_install {
+        return Ok(None);
+    }
+    let app_dir = &plan.app_dir;
+    let verbose = plan.verbose;
+
+    if !is_command_available("flutter") {
+        anyhow::bail!(
+            "`flutter` not found on PATH — Flutter builds need the Flutter SDK \
+             (https://docs.flutter.dev/get-started/install). The SDK is too large to auto-download."
+        );
+    }
+
+    // The build platform follows `--target`, defaulting to the host OS.
+    let platform = match target {
+        Some(t) => match parse_target(t).1.as_str() {
+            "windows" => "windows",
+            "darwin" => "macos",
+            "linux" => "linux",
+            other => anyhow::bail!("unsupported cross-compile OS for Flutter: {other}"),
+        },
+        None => match std::env::consts::OS {
+            "windows" => "windows",
+            "macos" => "macos",
+            _ => "linux",
+        },
+    };
+
+    let pub_status = std::process::Command::new("flutter")
+        .args(["pub", "get"])
+        .current_dir(app_dir)
+        .status()
+        .context("failed to run `flutter pub get`")?;
+    if !pub_status.success() {
+        anyhow::bail!("`flutter pub get` failed with exit code {pub_status}");
+    }
+
+    let build_status = std::process::Command::new("flutter")
+        .args(["build", platform, "--release"])
+        .current_dir(app_dir)
+        .status()
+        .context("failed to run `flutter build`")?;
+    if !build_status.success() {
+        anyhow::bail!("`flutter build {platform}` failed with exit code {build_status}");
+    }
+
+    // Locate the release bundle for the platform.
+    let bundle_src = match platform {
+        "linux" => {
+            let arch = if std::env::consts::ARCH == "aarch64" {
+                "arm64"
+            } else {
+                "x64"
+            };
+            app_dir
+                .join("build")
+                .join("linux")
+                .join(arch)
+                .join("release")
+                .join("bundle")
+        }
+        "windows" => app_dir
+            .join("build")
+            .join("windows")
+            .join("x64")
+            .join("runner")
+            .join("Release"),
+        "macos" => app_dir
+            .join("build")
+            .join("macos")
+            .join("Build")
+            .join("Products")
+            .join("Release"),
+        _ => unreachable!(),
+    };
+    if !bundle_src.is_dir() {
+        anyhow::bail!(
+            "`flutter build {platform}` succeeded but release bundle not found at {}",
+            bundle_src.display()
+        );
+    }
+
+    let bundle_dst = rootfs.join("app").join("bundle");
+    copy_dir_recursive_with(&bundle_src, &bundle_dst, false)?;
+
+    let app_name = pubspec_display_name(app_dir);
+    if verbose {
+        eprintln!("  Flutter bundle staged to app/bundle ({app_name})");
+    }
+    Ok(Some(format!("bundle/{app_name}")))
+}
+
+/// Human-readable app name for a Flutter app (pubspec `name:` or "app").
+fn pubspec_display_name(app_dir: &Path) -> String {
+    std::fs::read_to_string(app_dir.join("pubspec.yaml"))
+        .ok()
+        .and_then(|c| {
+            c.lines().find_map(|l| {
+                let rest = l.trim_start().strip_prefix("name:")?;
+                let name = rest.split('#').next()?.trim();
+                (!name.is_empty()).then(|| name.to_string())
+            })
+        })
+        .unwrap_or_else(|| "app".to_string())
+}
+
+/// `zig` target triple for `--target`, translated from daedalus arch/os names.
+/// Zig accepts `x86_64-linux-gnu`, `x86_64-linux-musl`, `aarch64-macos`, etc.
+fn zig_target_triple(target: &str) -> Result<String> {
+    let (arch, os) = parse_target(target);
+    let arch = match arch.as_str() {
+        "x86_64" | "amd64" => "x86_64",
+        "aarch64" | "arm64" => "aarch64",
+        other => anyhow::bail!("unsupported cross-compile architecture for Zig: {other}"),
+    };
+    let base = match os.as_str() {
+        "linux" => format!("{arch}-linux"),
+        "darwin" => format!("{arch}-macos"),
+        "windows" => format!("{arch}-windows"),
+        other => anyhow::bail!("unsupported cross-compile OS for Zig: {other}"),
+    };
+    Ok(match base.as_str() {
+        "x86_64-linux" | "aarch64-linux" => {
+            if target.contains("musl") {
+                format!("{base}-musl")
+            } else {
+                format!("{base}-gnu")
+            }
+        }
+        _ => base,
+    })
 }
 
 /// Build the Maven/Gradle JAR into `rootfs/app` and strip source files.
@@ -2933,5 +3226,53 @@ mod tests {
     fn embed_electron_resources_relative_binary() {
         let rootfs = tempfile::tempdir().unwrap();
         embed_electron_resources(std::path::Path::new("electron"), rootfs.path(), false);
+    }
+
+    #[test]
+    fn zig_target_triple_maps_os_and_abi() {
+        assert_eq!(
+            zig_target_triple("x86_64-unknown-linux-gnu").unwrap(),
+            "x86_64-linux-gnu"
+        );
+        assert_eq!(
+            zig_target_triple("aarch64-unknown-linux-musl").unwrap(),
+            "aarch64-linux-musl"
+        );
+        assert_eq!(
+            zig_target_triple("amd64-unknown-linux-gnu").unwrap(),
+            "x86_64-linux-gnu"
+        );
+        assert_eq!(
+            zig_target_triple("aarch64-apple-darwin").unwrap(),
+            "aarch64-macos"
+        );
+        assert_eq!(
+            zig_target_triple("x86_64-pc-windows-msvc").unwrap(),
+            "x86_64-windows"
+        );
+        assert_eq!(
+            zig_target_triple("arm64-apple-darwin").unwrap(),
+            "aarch64-macos"
+        );
+        assert!(zig_target_triple("s390x-unknown-linux-gnu").is_err());
+        assert!(zig_target_triple("wasm32-unknown-unknown").is_err());
+    }
+
+    #[test]
+    fn pubspec_display_name_reads_name_field() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("pubspec.yaml"),
+            "name: daedalus_demo\nenvironment:\n  sdk: \">=3.0.0 <4.0.0\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            pubspec_display_name(dir.path()),
+            "daedalus_demo".to_string()
+        );
+        assert_eq!(
+            pubspec_display_name(dir.path().join("nope").as_path()),
+            "app".to_string()
+        );
     }
 }

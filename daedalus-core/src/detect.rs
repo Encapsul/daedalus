@@ -1,7 +1,7 @@
 //! Runtime detection — identifies which runtime an app directory uses.
 //!
 //! Detection order matches the Python registry:
-//! Python > Deno > Node > Electron > Java > Ruby > .NET > Rust > Go > PHP > Perl > Hugo > Wasm > Binary
+//! Python > Deno > Node > Electron > Flutter > Dart > Java > Ruby > .NET > Rust > Zig > Go > PHP > Perl > Hugo > Wasm > Binary
 
 use std::io::Read;
 use std::path::Path;
@@ -13,10 +13,16 @@ pub enum Runtime {
     Deno,
     Node,
     Electron,
+    /// A Flutter UI app (pubspec dependency on the `flutter` SDK).
+    Flutter,
+    /// A pure Dart CLI/server app (Dart SDK only, no Flutter engine).
+    Dart,
     Java,
     Ruby,
     Dotnet,
     Rust,
+    /// A Zig project (`build.zig`) compiled to a native binary via `zig build`.
+    Zig,
     Go,
     Php,
     Perl,
@@ -40,10 +46,13 @@ impl Runtime {
             Self::Deno => "deno",
             Self::Node => "node",
             Self::Electron => "electron",
+            Self::Flutter => "flutter",
+            Self::Dart => "dart",
             Self::Java => "java",
             Self::Ruby => "ruby",
             Self::Dotnet => "dotnet",
             Self::Rust => "rust",
+            Self::Zig => "zig",
             Self::Go => "go",
             Self::Php => "php",
             Self::Perl => "perl",
@@ -64,10 +73,13 @@ impl Runtime {
             "deno" => Some(Self::Deno),
             "node" => Some(Self::Node),
             "electron" => Some(Self::Electron),
+            "flutter" => Some(Self::Flutter),
+            "dart" => Some(Self::Dart),
             "java" => Some(Self::Java),
             "ruby" => Some(Self::Ruby),
             "dotnet" => Some(Self::Dotnet),
             "rust" => Some(Self::Rust),
+            "zig" => Some(Self::Zig),
             "go" => Some(Self::Go),
             "php" => Some(Self::Php),
             "perl" => Some(Self::Perl),
@@ -104,6 +116,9 @@ pub fn detect_runtime(app_dir: &Path) -> Option<Runtime> {
                     .is_some()
             }
             Runtime::Rust => app_dir.join("Cargo.toml").is_file(),
+            Runtime::Zig => app_dir.join("build.zig").is_file(),
+            Runtime::Dart => dart_entry_script(app_dir).is_some(),
+            Runtime::Flutter => app_dir.join("lib/main.dart").is_file(),
             Runtime::Go => {
                 app_dir.join("main.go").is_file()
                     || app_dir.join("go.mod").is_file()
@@ -133,6 +148,11 @@ fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
     if detect_electron(dir) {
         candidates.push((Runtime::Electron, true));
     }
+    if detect_flutter(dir) {
+        candidates.push((Runtime::Flutter, true));
+    } else if detect_dart(dir) {
+        candidates.push((Runtime::Dart, true));
+    }
     if detect_gemma(dir) {
         candidates.push((Runtime::Gemma, true));
     } else if detect_ollama(dir) {
@@ -152,6 +172,9 @@ fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
     }
     if detect_rust(dir) {
         candidates.push((Runtime::Rust, true));
+    }
+    if detect_zig(dir) {
+        candidates.push((Runtime::Zig, true));
     }
     if detect_go(dir) {
         candidates.push((Runtime::Go, true));
@@ -310,6 +333,76 @@ fn detect_rust(dir: &Path) -> bool {
     // package.json (e.g. Tauri) stays Node by priority — the JS toolchain
     // owns the root manifest there.
     dir.join("Cargo.toml").is_file()
+}
+
+/// `detect_zig` - detect zig.
+/// `@dir`: directory path
+///
+/// Description:
+///
+/// Return: true or false
+fn detect_zig(dir: &Path) -> bool {
+    dir.join("build.zig").is_file() || dir.join("build.zig.zon").is_file()
+}
+
+/// `detect_dart` - detect dart.
+/// `@dir`: directory path
+///
+/// Description:
+///
+/// Return: true or false
+///
+/// A Dart project has a `pubspec.yaml` without a `flutter` SDK dependency
+/// (those are Flutter projects) and at least one reachable entry script.
+fn detect_dart(dir: &Path) -> bool {
+    if dir.join("pubspec.yaml").is_file() && !detect_flutter(dir) {
+        return dart_entry_script(dir).is_some();
+    }
+    false
+}
+
+/// `detect_flutter` - detect flutter.
+/// `@dir`: directory path
+///
+/// Description:
+///
+/// Return: true or false
+fn detect_flutter(dir: &Path) -> bool {
+    // The Flutter tool generators write `flutter: { sdk: flutter }` under
+    // `dependencies:` — the "sdk: flutter" line is the unambiguous marker
+    // (a bare `flutter:` also appears as a top-level asset section).
+    std::fs::read_to_string(dir.join("pubspec.yaml"))
+        .is_ok_and(|c| c.lines().any(|l| l.contains("sdk: flutter")))
+}
+
+/// The `name:` field of a pubspec.yaml, mirroring Dart's package name rules.
+fn pubspec_name(dir: &Path) -> Option<String> {
+    let contents = std::fs::read_to_string(dir.join("pubspec.yaml")).ok()?;
+    contents.lines().find_map(|line| {
+        let rest = line.trim_start().strip_prefix("name:")?;
+        let name = rest.split('#').next()?.trim();
+        (name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && !name.is_empty())
+            .then(|| name.to_string())
+    })
+}
+
+/// The Dart entry script relative to the project root: `bin/main.dart` (Dart
+/// CLI convention), `lib/main.dart`, or the first `.dart` file in `bin/`.
+pub fn dart_entry_script(dir: &Path) -> Option<String> {
+    if dir.join("bin/main.dart").is_file() {
+        return Some("bin/main.dart".into());
+    }
+    if dir.join("lib/main.dart").is_file() {
+        return Some("lib/main.dart".into());
+    }
+    std::fs::read_dir(dir.join("bin"))
+        .ok()?
+        .flatten()
+        .find(|e| {
+            let p = e.path();
+            p.is_file() && p.extension().is_some_and(|e| e == "dart")
+        })
+        .map(|e| format!("bin/{}", e.file_name().to_string_lossy().into_owned()))
 }
 
 /// `detect_go` - detect go.
@@ -881,9 +974,22 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
                 format!("/app/{}", entry),
             ])
         }
-        Runtime::Go | Runtime::Rust | Runtime::Binary => {
+        Runtime::Go | Runtime::Rust | Runtime::Zig | Runtime::Binary => {
             let bin = find_native_binary(app_dir)?;
             Some(vec![format!("/app/{}", bin)])
+        }
+        Runtime::Dart => {
+            // AOT-compiled by the CLI to `rootfs/app/<script stem>`; resolve
+            // the same name from source so relocation stays stable.
+            let entry = dart_entry_script(app_dir)?;
+            let stem = Path::new(&entry).file_stem()?.to_str()?.to_string();
+            Some(vec![format!("/app/{stem}")])
+        }
+        Runtime::Flutter => {
+            // Staged as the platform release bundle under `rootfs/app/bundle/`
+            // by the CLI (`build/<platform>/.../release/bundle`).
+            let name = pubspec_name(app_dir).unwrap_or_else(|| "app".into());
+            Some(vec![format!("/app/bundle/{name}")])
         }
         Runtime::Dotnet => {
             // 0. Self-contained publish: look for native executable in publish/ dir
@@ -1563,6 +1669,117 @@ mod tests {
     fn rust_runtime_name_roundtrip() {
         assert_eq!(Runtime::Rust.name(), "rust");
         assert_eq!(Runtime::from_name("rust"), Some(Runtime::Rust));
+    }
+
+    #[test]
+    /// `zig_detection_and_name_roundtrip` - zig detection and name roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn zig_detection_and_name_roundtrip() {
+        assert_eq!(Runtime::Zig.name(), "zig");
+        assert_eq!(Runtime::from_name("zig"), Some(Runtime::Zig));
+
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("build.zig"), "pub fn main() !void {}\n").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Zig));
+    }
+
+    /// A pre-built ELF in the Zig source root resolves to `/app/<name>` —
+    /// same contract as Go/Rust/Binary when a binary is checked into the repo.
+    #[test]
+    /// `zig_entrypoint_finds_built_binary` - zig entrypoint finds built binary.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn zig_entrypoint_finds_built_binary() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("build.zig"), "").unwrap();
+        let bin = dir.path().join("myapp");
+        std::fs::write(&bin, b"\x7fELF fake binary").unwrap();
+        assert_eq!(
+            resolve_entrypoint(dir.path(), Runtime::Zig),
+            Some(vec!["/app/myapp".to_string()])
+        );
+    }
+
+    /// A `build.zig.zon` without `build.zig` also marks a Zig project.
+    #[test]
+    /// `zig_zon_detection` - zig zon detection.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn zig_zon_detection() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("build.zig.zon"), ".\n").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Zig));
+    }
+
+    #[test]
+    /// `dart_detection_and_name_roundtrip` - dart detection and name roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn dart_detection_and_name_roundtrip() {
+        assert_eq!(Runtime::Dart.name(), "dart");
+        assert_eq!(Runtime::from_name("dart"), Some(Runtime::Dart));
+
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("pubspec.yaml"),
+            "name: hello_dart\nenvironment:\n  sdk: \">=3.0.0 <4.0.0\"\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("bin")).unwrap();
+        std::fs::write(dir.path().join("bin/main.dart"), "void main() {}\n").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Dart));
+        assert_eq!(
+            resolve_entrypoint(dir.path(), Runtime::Dart),
+            Some(vec!["/app/main".to_string()])
+        );
+    }
+
+    /// A Dart project without a reachable entry script is not detected: the
+    /// compile step needs a concrete `dart compile exe` target.
+    #[test]
+    /// `dart_without_entry_is_not_detected` - dart without entry is not detected.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn dart_without_entry_is_not_detected() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("pubspec.yaml"), "name: no_entry\n").unwrap();
+        assert_eq!(detect_runtime(dir.path()), None);
+    }
+
+    #[test]
+    /// `flutter_detection_and_name_roundtrip` - flutter detection and name roundtrip.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn flutter_detection_and_name_roundtrip() {
+        assert_eq!(Runtime::Flutter.name(), "flutter");
+        assert_eq!(Runtime::from_name("flutter"), Some(Runtime::Flutter));
+
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("pubspec.yaml"),
+            "name: hello_flutter\nenvironment:\n  sdk: \">=3.0.0 <4.0.0\"\ndependencies:\n  flutter:\n    sdk: flutter\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("lib")).unwrap();
+        std::fs::write(dir.path().join("lib/main.dart"), "void main() {}\n").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Flutter));
+        assert_eq!(
+            resolve_entrypoint(dir.path(), Runtime::Flutter),
+            Some(vec!["/app/bundle/hello_flutter".to_string()])
+        );
     }
 
     /// After `cargo build`, the compiled ELF in the app dir is the entrypoint
