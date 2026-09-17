@@ -39,6 +39,23 @@ Before finishing any code change, run:
 5. `cargo test --workspace`
 6. `cargo build --release && ./target/release/daedalus build examples/hello-web -o /tmp/test.de && ./target/release/daedalus inspect /tmp/test.de`
 
+## Working with agents (growth edge)
+
+Rules distilled from the Paxel builder-profile review. They bind both the
+operator and the agent.
+
+- **Plan before execution.** Before a multi-step task, state a short plan: goal,
+  likely failure points, the exact commands to run, and what "done" means (a
+  green verification loop, an artifact that runs). Do not start editing before
+  the plan is stated.
+- **Redirects need current state.** When steering an agent off its path, first
+  get: what is done, what is committed/pushed, and the cheapest validation step.
+  No new large direction before validating where the work actually stands.
+- **Close the loop after environment fixes.** After PATH / toolchain /
+  installed-dependency fixes, ALWAYS re-verify final success and keep the proof
+  (command output or exit code) in the session. "It should work now" is not done
+  — a green result is done.
+
 ## Security Rules
 
 - No `unsafe` in `daedalus-core/` (only `stub/src/main.rs`)
