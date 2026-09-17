@@ -2,6 +2,28 @@
 
 All notable changes to daedalus are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Zig runtime** — detects `build.zig`/`build.zig.zon`, auto-downloads the
+  stable Zig toolchain from ziglang.org, runs `zig build -Doptimize=ReleaseFast
+  -Dtarget=<triple>` and stages the native binary. Cross-compilation supported
+  via daedalus `--target` (translated to Zig triples, e.g.
+  `x86_64-unknown-linux-gnu` → `x86_64-linux-gnu`).
+
+- **Dart runtime** — detects `pubspec.yaml` (non-Flutter), auto-downloads the
+  Dart SDK from dart-archive, runs `dart pub get` + `dart compile exe` (AOT
+  compilation). Host-only: cross-compilation is refused with a clear error since
+  the AOT compiler only targets the build host.
+
+- **Flutter runtime** — detects `pubspec.yaml` with `sdk: flutter`, runs
+  `flutter build <platform> --release` and bundles the desktop release into
+  `rootfs/app/bundle/`. Requires the Flutter SDK on PATH (SDK too large to
+  auto-download).
+
+- Hub catalog entries for Zig, Dart, and Flutter.
+
 ## [1.0.0] — 2026-08-03 — SISR
 
 First major release integrating SISR (Self-Incremental Sovereign
