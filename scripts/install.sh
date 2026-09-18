@@ -19,13 +19,14 @@ detect_platform() {
   arch="$(uname -m)"
 
   case "$os" in
-    Linux*)  os="linux" ;;
-    Darwin*) os="macos" ;;
-    *)       err "unsupported OS: $os" ;;
+    Linux*)                      os="linux" ;;
+    Darwin*)                     os="darwin" ;;
+    MINGW*|MSYS*|CYGWIN*)        os="windows" ;;
+    *)                           err "unsupported OS: $os" ;;
   esac
 
   case "$arch" in
-    x86_64|amd64)   arch="x64" ;;
+    x86_64|amd64)   arch="amd64" ;;
     aarch64|arm64)  arch="arm64" ;;
     *)              err "unsupported architecture: $arch" ;;
   esac
@@ -71,13 +72,16 @@ main() {
   platform="$(detect_platform)"
   info "detected platform: ${platform}"
 
-  # Get latest version from GitHub API
+  # Get latest version from GitHub API.
+  # `cut -d'"' -f4` on `"tag_name": "v0.7.0",` yields `v0.7.0`. Prefer it over
+  # a sed regex: BSD sed (macOS) does not support GNU `\?` quantifiers, so the
+  # sed variant returned the whole line and produced a malformed download URL.
   if command -v curl &>/dev/null; then
     version="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"v\?\([^"]*\)".*/\1/')"
+      | grep '"tag_name"' | head -1 | cut -d'"' -f4)"
   elif command -v wget &>/dev/null; then
     version="$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" \
-      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"v\?\([^"]*\)".*/\1/')"
+      | grep '"tag_name"' | head -1 | cut -d'"' -f4)"
   else
     err "curl or wget required"
   fi
@@ -86,6 +90,9 @@ main() {
     err "could not determine latest version"
   fi
 
+  # The API reports the tag WITH its leading `v`; asset names do NOT carry it
+  # (e.g. `daedalus_0.7.0_darwin_arm64.tar.gz`).
+  version="${version#v}"
   tag="v${version}"
   info "latest version: ${version}"
 
@@ -104,7 +111,11 @@ main() {
   tmpdir="$(mktemp -d)"
   trap 'rm -rf "${tmpdir}"' EXIT
 
-  asset="daedalus-${platform}.tar.gz"
+  local os arch plat_dir
+  os="${platform%-*}"
+  arch="${platform#*-}"
+  plat_dir="daedalus_${version}_${os}_${arch}"
+  asset="${plat_dir}.tar.gz"
   url="${GITHUB}/releases/download/${tag}/${asset}"
 
   info "downloading ${asset}..."
@@ -131,9 +142,9 @@ main() {
   info "extracting..."
   tar xzf "${tmpdir}/${asset}" -C "${tmpdir}"
 
-  local extracted_dir="${tmpdir}/daedalus-${platform}"
+  local extracted_dir="${tmpdir}/${plat_dir}"
   if [ ! -d "$extracted_dir" ]; then
-    extracted_dir="$(find "${tmpdir}" -maxdepth 1 -type d -name 'daedalus-*' | head -1)"
+    extracted_dir="$(find "${tmpdir}" -maxdepth 1 -type d -name 'daedalus_*' | head -1)"
   fi
 
   if [ ! -d "$extracted_dir" ]; then
