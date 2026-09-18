@@ -726,12 +726,26 @@ fn detect_binary(dir: &Path) -> bool {
     native_count == 1
 }
 
-/// True if `path` is an ELF or PE (`.exe`) executable by magic bytes.
+/// Magic bytes for native executables: ELF, PE (MZ), and Mach-O.
+const MACHO_MAGIC: [&[u8; 4]; 6] = [
+    &[0xfe, 0xed, 0xfa, 0xce], // MH_MAGIC   (32-bit, big-endian)
+    &[0xfe, 0xed, 0xfa, 0xcf], // MH_MAGIC_64 (64-bit, big-endian)
+    &[0xce, 0xfa, 0xed, 0xfe], // MH_CIGAM   (32-bit, little-endian)
+    &[0xcf, 0xfa, 0xed, 0xfe], // MH_CIGAM_64 (64-bit, little-endian)
+    &[0xca, 0xfe, 0xba, 0xbe], // FAT_MAGIC  (universal, big-endian)
+    &[0xbe, 0xba, 0xfe, 0xca], // FAT_CIGAM  (universal, little-endian)
+];
+
+/// True if `path` is an ELF, PE (`MZ`), or Mach-O executable by magic bytes.
 fn is_native_binary(path: &Path) -> bool {
     let mut magic = [0u8; 4];
     std::fs::File::open(path)
         .and_then(|mut f| f.read_exact(&mut magic))
-        .map(|()| &magic[..] == b"\x7fELF" || (magic[0] == b'M' && magic[1] == b'Z'))
+        .map(|()| {
+            &magic[..] == b"\x7fELF"
+                || (magic[0] == b'M' && magic[1] == b'Z')
+                || MACHO_MAGIC.contains(&&magic)
+        })
         .unwrap_or(false)
 }
 
@@ -1797,6 +1811,36 @@ mod tests {
         std::fs::write(dir.path().join("app.exe"), b"MZ\x90\x00").unwrap();
         std::fs::write(dir.path().join("app2"), b"\x7fELF\x02\x01").unwrap();
         assert_ne!(detect_runtime(dir.path()), Some(Runtime::Binary));
+    }
+
+    #[test]
+    /// `macho_as_binary` - detect Mach-O (macOS native) as a binary runtime.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn macho_as_binary() {
+        for magic in [
+            &[0xfe, 0xed, 0xfa, 0xce][..], // MH_MAGIC
+            &[0xfe, 0xed, 0xfa, 0xcf][..], // MH_MAGIC_64
+            &[0xce, 0xfa, 0xed, 0xfe][..], // MH_CIGAM
+            &[0xcf, 0xfa, 0xed, 0xfe][..], // MH_CIGAM_64
+            &[0xca, 0xfe, 0xba, 0xbe][..], // FAT_MAGIC
+            &[0xbe, 0xba, 0xfe, 0xca][..], // FAT_CIGAM
+        ] {
+            let dir = TempDir::new().unwrap();
+            std::fs::write(dir.path().join("app"), magic).unwrap();
+            assert_eq!(
+                detect_runtime(dir.path()),
+                Some(Runtime::Binary),
+                "magic {:02x?} must be detected as a native binary",
+                magic
+            );
+            assert_eq!(
+                resolve_entrypoint(dir.path(), Runtime::Binary),
+                Some(vec!["/app/app".into()])
+            );
+        }
     }
 
     #[test]

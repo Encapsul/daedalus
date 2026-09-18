@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![cfg(target_os = "linux")]
 //! Chaos-monkey suite for the daedalus stub launcher.
 //!
 //! Philosophy: every test feeds the launcher hostile input — truncated binaries,

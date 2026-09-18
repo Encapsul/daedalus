@@ -6,10 +6,18 @@
 //! `$XDG_DATA_HOME/daedalus/keys`) and `DAEDALUS_TRUSTED_DIR` (trust anchor) so
 //! nothing leaks into a real user's `~/.local/share/daedalus` or
 //! `~/.daedalus/trusted-keys`.
+//!
+//! Unix-only: it drives `cc`-built ELF executables (runtime-Binary detection
+//! needs ELF) and executes assembled artifacts at rest — both unix-specific.
+
+#![cfg(unix)]
 
 use assert_cmd::Command;
 use daedalus_core::assembly::{assemble_daedalus, AssemblyInput};
 use predicates::prelude::*;
+
+mod common;
+use common::locate_stub;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -365,32 +373,4 @@ fn skip_sign_binary_still_runs_legacy_without_trust() {
         String::from_utf8_lossy(&run.stdout).contains("hello-from-at-rest-binary"),
         "unsigned legacy run must exec the app, stderr: {stderr}"
     );
-}
-
-/// Uses the same stub-location strategy as `stdio_flow.rs`.
-fn locate_stub() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("DAEDALUS_STUB_PATH") {
-        let p = PathBuf::from(path);
-        if p.is_file() {
-            return Some(p);
-        }
-    }
-    let ok = std::process::Command::new("cargo")
-        .args(["build", "-q", "-p", "daedalus-stub"])
-        .status()
-        .ok()?
-        .success();
-    if !ok {
-        return None;
-    }
-    let target = std::env::var("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .expect("manifest dir has parent")
-                .join("target")
-        });
-    let stub = target.join("debug/daedalus-stub");
-    stub.is_file().then_some(stub)
 }
