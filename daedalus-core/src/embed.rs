@@ -195,14 +195,16 @@ pub fn find_interpreter_host(name: &str) -> Option<PathBuf> {
 pub(crate) fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
     // `ldd` is a Linux ELF tool. On Windows the interpreter (e.g. the official
     // node.exe) is a self-contained PE that resolves its DLLs via PATH and the
-    // system dirs, so there is nothing to embed here. Return empty instead of
-    // aborting the whole embed.
-    #[cfg(not(unix))]
+    // system dirs, so there is nothing to embed here. macOS Mach-O binaries
+    // resolve against the dyld shared cache, whose dylibs must not be copied.
+    // Only Linux rootfs needs these `.so` dependencies embedded. Return empty
+    // instead of aborting the whole embed on the other hosts.
+    #[cfg(not(target_os = "linux"))]
     {
         let _ = interp_path;
         Ok(Vec::new())
     }
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     {
         let output = Command::new("ldd")
             .arg(interp_path)
@@ -259,7 +261,7 @@ pub(crate) fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
 /// Extract the ELF interpreter (dynamic loader) path from a single `ldd`
 /// output line. The loader line has no `=>`, e.g.
 /// `/lib64/ld-linux-x86-64.so.2 (0x00007f...)`.
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn parse_loader_line(line: &str) -> Option<PathBuf> {
     let line = line.trim();
     if !line.starts_with('/') || line.contains("=>") {
@@ -277,14 +279,16 @@ fn parse_loader_line(line: &str) -> Option<PathBuf> {
 /// `/lib64/ld-linux-x86-64.so.2`). Without it in the rootfs, the kernel
 /// cannot exec the embedded binary under `pivot_root` isolation.
 fn elf_interpreter_path(interp_path: &Path) -> io::Result<Option<PathBuf>> {
-    #[cfg(not(unix))]
+    // Only Linux ELF binaries have an interpreter (`ld-linux`/`ld-musl`) that
+    // must be present in the rootfs for `pivot_root` to exec them. Windows PE
+    // and macOS Mach-O resolve their loaders from PATH and the dyld shared
+    // cache respectively, so there is nothing to embed.
+    #[cfg(not(target_os = "linux"))]
     {
         let _ = interp_path;
-        // No ELF dynamic loader on Windows; the interpreter is a self-contained
-        // PE that resolves its DLLs via PATH/system dirs.
         Ok(None)
     }
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     {
         let output = match Command::new("ldd").arg(interp_path).output() {
             Ok(o) => o,
@@ -1510,7 +1514,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     /// `parse_loader_line_glibc` - parse loader line glibc.
     ///
     /// Description:
@@ -1525,7 +1529,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     /// `parse_loader_line_musl` - parse loader line musl.
     ///
     /// Description:
@@ -1540,7 +1544,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     /// `parse_loader_line_rejects_regular_deps` - parse loader line rejects regular deps.
     ///
     /// Description:
