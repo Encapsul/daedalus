@@ -107,6 +107,27 @@ pub(crate) enum GpuArg {
     None,
 }
 
+/// Artifact kind for `--template`; recorded as metadata only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum TemplateArg {
+    /// Runnable user-facing app (web server, CLI, agent)
+    Application,
+    /// Background worker/daemon running alongside services
+    Service,
+    /// Extension consumed by a host application
+    Plugin,
+}
+
+impl From<TemplateArg> for daedalus_core::assembly::AppTemplate {
+    fn from(value: TemplateArg) -> Self {
+        match value {
+            TemplateArg::Application => Self::Application,
+            TemplateArg::Service => Self::Service,
+            TemplateArg::Plugin => Self::Plugin,
+        }
+    }
+}
+
 /// A named service parsed from `--entrypoint name=cmd,arg1,...`.
 ///
 /// Merged with `--service-port`/`--service-timeout` overrides so the
@@ -617,6 +638,12 @@ pub struct BuildArgs {
     #[arg(long)]
     pub license: Option<String>,
 
+    /// Artifact kind recorded in the metadata (`application`, `service`,
+    /// `plugin`). Discovery metadata for tooling/host apps — it does not
+    /// change the binary layout. Defaults to `application`.
+    #[arg(long, value_enum)]
+    pub template: Option<TemplateArg>,
+
     /// Dry run — show what would be built without building
     #[arg(long)]
     pub dry_run: bool,
@@ -871,6 +898,7 @@ pub(crate) fn default_build_args() -> BuildArgs {
         author: None,
         description: None,
         license: None,
+        template: None,
         dry_run: false,
         update: false,
         include: Vec::new(),
@@ -913,6 +941,25 @@ pub(crate) fn default_build_args() -> BuildArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    /// `template_arg_maps_to_core_template` - template arg maps to core template.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn template_arg_maps_to_core_template() {
+        use daedalus_core::assembly::AppTemplate;
+        assert_eq!(
+            AppTemplate::from(TemplateArg::Application),
+            AppTemplate::Application
+        );
+        assert_eq!(
+            AppTemplate::from(TemplateArg::Service),
+            AppTemplate::Service
+        );
+        assert_eq!(AppTemplate::from(TemplateArg::Plugin), AppTemplate::Plugin);
+    }
 
     #[test]
     /// sandbox_default_maps_to_level_2 - sandbox default maps to level 2.
