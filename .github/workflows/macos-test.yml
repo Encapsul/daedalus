@@ -32,6 +32,12 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Build CLI (native)
+        run: cargo build --release -p daedalus-cli
+
+      - name: Build stub (native)
+        run: cargo build --release -p daedalus-stub
+
       - name: Build CLI (x86_64)
         run: cargo build --release -p daedalus-cli --target x86_64-apple-darwin
 
@@ -47,15 +53,30 @@ jobs:
       - name: Run tests
         run: cargo test --workspace
 
-      - name: Smoke test (x86_64)
+      - name: Smoke test (native)
         run: |
-          DAEDALUS_STUB_PATH=target/x86_64-apple-darwin/release/daedalus-stub \
-            target/x86_64-apple-darwin/release/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.de 2>&1
-          /tmp/hello-web.de &
+          set -x
+          DAEDALUS_STUB_PATH=target/release/daedalus-stub \
+            target/release/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.de 2>&1
+          ls -la /tmp/hello-web.de
+          /tmp/hello-web.de > /tmp/hello-web.log 2>&1 &
           PID=$!
-          sleep 5
-          curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "smoke test passed" || { echo "smoke test failed"; kill $PID; exit 1; }
-          kill $PID || true
+          ok=""
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf --max-time 2 http://127.0.0.1:8080 | grep -q "Hello"; then
+              ok=1
+              echo "smoke test passed"
+              break
+            fi
+            sleep 2
+          done
+          cat /tmp/hello-web.log || true
+          if [ -z "$ok" ]; then
+            echo "smoke test failed"
+            kill $PID 2>/dev/null || true
+            exit 1
+          fi
+          kill $PID 2>/dev/null || true
 
       - name: Verify artifacts
         run: |

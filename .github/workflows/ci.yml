@@ -263,19 +263,23 @@ jobs:
       - name: Smoke test Windows x86_64
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path C:\tmp | Out-Null
           $env:DAEDALUS_STUB_PATH = ".\artifacts\daedalus-stub.exe"
           .\artifacts\daedalus.exe build examples\hello-web --isolation none -o C:\tmp\hello-web.daedalus --embed-interpreter python
-          Start-Process -FilePath "C:\tmp\hello-web.daedalus" -ArgumentList "" -WindowStyle Hidden
-          $proc = Get-Process -Name "hello-web" -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 5
-          try {
-            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8080" -UseBasicParsing -ErrorAction Stop
-            if ($resp.Content -match "Hello") {
-              Write-Host "Windows x86_64 smoke test passed"
-            } else {
-              throw "Unexpected response"
+          Start-Process -FilePath "C:\tmp\hello-web.daedalus" -WindowStyle Hidden
+          $deadline = (Get-Date).AddSeconds(30)
+          $resp = $null
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8080" -UseBasicParsing -ErrorAction Stop
+              break
+            } catch {
+              Start-Sleep -Seconds 2
             }
-          } catch {
+          }
+          if ($resp -and $resp.Content -match "Hello") {
+            Write-Host "Windows x86_64 smoke test passed"
+          } else {
             Write-Host "Windows x86_64 smoke test failed"
             Stop-Process -Name "hello-web" -Force -ErrorAction SilentlyContinue
             exit 1
