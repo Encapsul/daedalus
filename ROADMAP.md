@@ -38,6 +38,7 @@ installers (`install.sh`, `install.ps1`, Homebrew formula), `hub/catalog.json`
 - Flutter (pubspec with `sdk: flutter` detection, `flutter build <platform> --release`, desktop bundle; requires the Flutter SDK on PATH)
 - Perl (Mojolicious-specific detection: script/ + lib/ layout, `Mojo::` imports)
 - Electron (cross-OS/arch binary embed, OS-aware `is_cross`, `resources/` embedded beside binary)
+- Lua (main.lua/init.lua detection, host `lua` interpreter embed + shared-lib deps, direct script exec)
 
 ### Missing - planned
 
@@ -45,7 +46,6 @@ installers (`install.sh`, `install.ps1`, Homebrew formula), `hub/catalog.json`
 |---------|-----------|
 | Swift | iOS/macOS apps, trending via SwiftUI |
 | Kotlin | Android/JVM backend, growing |
-| Lua | Game mods, Neovim configs, OpenResty |
 | OCaml/Elm | Functional web, niche but real |
 | R | Data science, Shiny apps |
 | Elixir | Phoenix framework, real-time |

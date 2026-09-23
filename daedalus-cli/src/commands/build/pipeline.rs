@@ -1954,6 +1954,7 @@ fn resolve_embed_interpreter(args: &BuildArgs, runtime_name: &str) -> Option<Str
         "hugo" => Some("hugo".to_string()),
         "electron" => Some("electron".to_string()),
         "wasm" => Some("wasmtime".to_string()),
+        "lua" => Some("lua".to_string()),
         _ => None,
     }
 }
@@ -2514,6 +2515,7 @@ fn resolve_bun_interpreter(
             "ruby" => EmbeddedInterpreter::Ruby,
             "php" => EmbeddedInterpreter::Php,
             "perl" => EmbeddedInterpreter::Perl,
+            "lua" => EmbeddedInterpreter::Lua,
             "java" => EmbeddedInterpreter::Java,
             "go" => EmbeddedInterpreter::Go,
             "wasm" => EmbeddedInterpreter::Wasm,
@@ -2527,6 +2529,7 @@ fn resolve_bun_interpreter(
         "php" => (Some(EmbeddedInterpreter::Php), None),
         "ruby" => (Some(EmbeddedInterpreter::Ruby), None),
         "deno" => (Some(EmbeddedInterpreter::Deno), None),
+        "lua" => (Some(EmbeddedInterpreter::Lua), None),
         _ => (None, None),
     }
 }
