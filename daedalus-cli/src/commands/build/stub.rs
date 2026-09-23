@@ -10,7 +10,12 @@ use super::args::parse_target;
 /// 2. `target/<triple>/release/daedalus-stub` (workspace build)
 /// 3. `/tmp/daedalus-stub-target/<triple>/release/daedalus-stub` (AGENTS.md path)
 /// 4. `stub/target/<triple>/release/daedalus-stub` (legacy layout)
-/// 5. `which daedalus-stub` (system install, with warning)
+/// 5. next to the running `daedalus` binary (installed distributions)
+/// 6. `which daedalus-stub` (system install, with warning)
+///
+/// Without a `--target`, the native host triple is used so a plain
+/// `daedalus build` finds the stub that runs on this machine (macOS and
+/// Windows hosts used to only look for the musl Linux stub).
 pub(crate) fn find_stub(target: Option<&str>) -> Result<PathBuf> {
     if let Ok(path) = std::env::var("DAEDALUS_STUB_PATH") {
         let p = PathBuf::from(path);
@@ -28,7 +33,7 @@ pub(crate) fn find_stub(target: Option<&str>) -> Result<PathBuf> {
         Some((arch, os)) if os == "darwin" => format!("{arch}-apple-darwin"),
         Some((arch, os)) if os == "windows" => format!("{arch}-pc-windows-gnu"),
         Some((arch, _)) => format!("{arch}-unknown-linux-musl"),
-        None => String::from("x86_64-unknown-linux-musl"),
+        None => native_arch_suffix(),
     };
 
     let stub_name = if is_windows {
@@ -36,7 +41,8 @@ pub(crate) fn find_stub(target: Option<&str>) -> Result<PathBuf> {
     } else {
         "daedalus-stub"
     };
-    let candidates = [
+
+    let mut candidates = vec![
         PathBuf::from(&target_dir)
             .join(&arch_suffix)
             .join("release")
@@ -50,6 +56,13 @@ pub(crate) fn find_stub(target: Option<&str>) -> Result<PathBuf> {
             .join("release")
             .join(stub_name),
     ];
+
+    // Installed distributions ship daedalus-stub next to the daedalus binary.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(stub_name));
+        }
+    }
 
     for candidate in &candidates {
         if candidate.exists() {
@@ -66,6 +79,16 @@ pub(crate) fn find_stub(target: Option<&str>) -> Result<PathBuf> {
     }
 
     anyhow::bail!("daedalus-stub not found — run: make stub")
+}
+
+/// Native stub triple for the host, so no-`--target` builds resolve the stub
+/// that actually runs on this machine.
+fn native_arch_suffix() -> String {
+    match std::env::consts::OS {
+        "macos" => format!("{}-apple-darwin", std::env::consts::ARCH),
+        "windows" => format!("{}-pc-windows-gnu", std::env::consts::ARCH),
+        _ => format!("{}-unknown-linux-musl", std::env::consts::ARCH),
+    }
 }
 
 /// Read `app_hash` and `rt_deps_hash` from an existing `.daedalus` file's metadata.
@@ -128,5 +151,23 @@ mod tests {
     fn find_stub_windows_suffix() {
         let result = find_stub(Some("win-x64"));
         assert!(result.is_err() || result.is_ok(), "should not panic");
+    }
+
+    #[test]
+    /// `native_arch_suffix` - host triple, not the musl default, on macOS/Windows.
+    ///
+    /// Description:
+    ///
+    /// Return: nothing
+    fn native_arch_suffix_matches_host() {
+        let suffix = native_arch_suffix();
+        match std::env::consts::OS {
+            "macos" => assert_eq!(suffix, format!("{}-apple-darwin", std::env::consts::ARCH)),
+            "windows" => assert_eq!(suffix, format!("{}-pc-windows-gnu", std::env::consts::ARCH)),
+            _ => assert_eq!(
+                suffix,
+                format!("{}-unknown-linux-musl", std::env::consts::ARCH)
+            ),
+        }
     }
 }
