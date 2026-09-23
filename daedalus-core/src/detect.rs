@@ -1,7 +1,7 @@
 //! Runtime detection — identifies which runtime an app directory uses.
 //!
 //! Detection order matches the Python registry:
-//! Python > Deno > Node > Electron > Flutter > Dart > Java > Ruby > .NET > Rust > Zig > Go > PHP > Perl > Hugo > Wasm > Binary
+//! Python > Deno > Node > Electron > Flutter > Dart > Java > Ruby > .NET > Rust > Zig > Go > PHP > Perl > Lua > Hugo > Wasm > Binary
 
 use std::io::Read;
 use std::path::Path;
@@ -26,6 +26,7 @@ pub enum Runtime {
     Go,
     Php,
     Perl,
+    Lua,
     Hugo,
     Ollama,
     /// A bundled Google Gemma model served through a local Ollama runtime.
@@ -56,6 +57,7 @@ impl Runtime {
             Self::Go => "go",
             Self::Php => "php",
             Self::Perl => "perl",
+            Self::Lua => "lua",
             Self::Hugo => "hugo",
             Self::Ollama => "ollama",
             Self::Gemma => "gemma",
@@ -83,6 +85,7 @@ impl Runtime {
             "go" => Some(Self::Go),
             "php" => Some(Self::Php),
             "perl" => Some(Self::Perl),
+            "lua" => Some(Self::Lua),
             "hugo" => Some(Self::Hugo),
             "ollama" => Some(Self::Ollama),
             "gemma" => Some(Self::Gemma),
@@ -184,6 +187,9 @@ fn detect_runtime_candidates(dir: &Path) -> Vec<(Runtime, bool)> {
     }
     if detect_perl(dir) {
         candidates.push((Runtime::Perl, true));
+    }
+    if detect_lua(dir) {
+        candidates.push((Runtime::Lua, true));
     }
     if detect_hugo(dir) {
         candidates.push((Runtime::Hugo, true));
@@ -657,6 +663,11 @@ fn mojolicious_script(dir: &Path) -> Option<String> {
     None
 }
 
+/// `detect_lua` - detect lua
+fn detect_lua(dir: &Path) -> bool {
+    dir.join("main.lua").is_file() || dir.join("init.lua").is_file()
+}
+
 /// `detect_hugo` - detect hugo.
 /// `@dir`: directory path
 ///
@@ -1073,6 +1084,10 @@ pub fn resolve_entrypoint(app_dir: &Path, runtime: Runtime) -> Option<Vec<String
             }
             let entry = find_first_file(app_dir, &["app.pl", "main.pl", "bin/app"])?;
             Some(vec!["perl".into(), format!("/app/{}", entry)])
+        }
+        Runtime::Lua => {
+            let entry = find_first_file(app_dir, &["main.lua", "init.lua"])?;
+            Some(vec!["lua".into(), format!("/app/{}", entry)])
         }
         Runtime::Wasm => {
             let entry = find_first_file(app_dir, &["index.wasm", "app.wasm", "main.wasm"])?;
@@ -1813,6 +1828,33 @@ mod tests {
         std::fs::write(dir.path().join("artisan"), "").unwrap();
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
         assert_eq!(detect_runtime(dir.path()), Some(Runtime::Php));
+    }
+
+    #[test]
+    fn detect_lua_app() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("main.lua"), "print('hello')").unwrap();
+        assert_eq!(detect_runtime(dir.path()), Some(Runtime::Lua));
+    }
+
+    #[test]
+    fn lua_entrypoint_resolves_main() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("main.lua"), "print('hello')").unwrap();
+        assert_eq!(
+            resolve_entrypoint(dir.path(), Runtime::Lua),
+            Some(vec!["lua".into(), "/app/main.lua".into()])
+        );
+    }
+
+    #[test]
+    fn lua_entrypoint_falls_back_to_init() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("init.lua"), "print('hello')").unwrap();
+        assert_eq!(
+            resolve_entrypoint(dir.path(), Runtime::Lua),
+            Some(vec!["lua".into(), "/app/init.lua".into()])
+        );
     }
 
     #[test]
