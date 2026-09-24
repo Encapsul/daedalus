@@ -35,6 +35,8 @@
 # Guides
 
 - [Quickstart](./guides/quickstart.md)
+- [The 60-second demo](./guides/demo-60s.md)
+- [The hub](./guides/hub.md)
 - [Python](./guides/python.md)
 - [Node.js](./guides/node.md)
 - [Java](./guides/java.md)
