@@ -1,0 +1,125 @@
+{
+  "$schema": "./catalog.schema.json",
+  "$comment": "Community catalog of daedalus-packaged apps. One template per popular runtime (ROADMAP: adoption). Apps marked buildable:true have source in this repo and can be rebuilt with hub/build.sh. Recipe rows document the canonical source layout to replicate outside the repo.",
+  "apps": [
+    {
+      "id": "hello-web",
+      "name": "hello-web",
+      "runtime": "python",
+      "template": "application",
+      "description": "Zero-dependency Python HTTP server. The fastest 'it's just the file' demo.",
+      "source": "examples/hello-web",
+      "build": ["daedalus", "build", "./examples/hello-web", "-o", "hub/dist/hello-web.de"],
+      "run": "./hello-web.de",
+      "port": 8080,
+      "buildable": true
+    },
+    {
+      "id": "hello-node",
+      "name": "hello-node",
+      "runtime": "node",
+      "template": "application",
+      "description": "Minimal Node.js HTTP server (stdlib http).",
+      "source": "examples/hello-node",
+      "build": ["daedalus", "build", "./examples/hello-node", "-o", "hub/dist/hello-node.de"],
+      "run": "./hello-node.de",
+      "port": 8080,
+      "buildable": true
+    },
+    {
+      "id": "bottle-web",
+      "name": "bottle-web",
+      "runtime": "python",
+      "template": "application",
+      "description": "Python Bottle app with a vendored site-packages directory — shows dependency embedding with zero pip/network.",
+      "source": "examples/bottle-web",
+      "build": ["daedalus", "build", "./examples/bottle-web", "-o", "hub/dist/bottle-web.de"],
+      "run": "./bottle-web.de",
+      "port": 8080,
+      "buildable": true
+    },
+    {
+      "id": "clinic-agent",
+      "name": "clinic-agent",
+      "runtime": "python",
+      "template": "application",
+      "description": "Offline AI for rural clinics / agricultural cooperatives. Gemma via local Ollama with a pure-stdlib offline fallback. Flagship demo.",
+      "source": "examples/offline-health-agri",
+      "build": ["daedalus", "build", "./examples/offline-health-agri", "-o", "hub/dist/clinic-agent.de"],
+      "run": ["./clinic-agent.de", "diagnose"],
+      "buildable": true
+    },
+    {
+      "id": "express-demo",
+      "name": "Express API",
+      "runtime": "node",
+      "template": "service",
+      "description": "Canonical Express app: package.json + index.js + node_modules. Build with SISR delta updates for free.",
+      "recipe": {
+        "layout": ["package.json (dependencies: express)", "index.js", "node_modules/ (installed)"],
+        "build": ["daedalus", "build", "./express-demo", "-o", "express-api.de", "--template", "service"]
+      },
+      "buildable": false
+    },
+    {
+      "id": "fastapi-demo",
+      "name": "FastAPI service",
+      "runtime": "python",
+      "template": "service",
+      "description": "Canonical FastAPI app: app/main.py + requirements.txt. --teleport-style dependency embed via pipdle-free vendoring or --embed-interpreter.",
+      "recipe": {
+        "layout": ["app/main.py (FastAPI)", "requirements.txt", "venv or site-packages vendored"],
+        "build": ["daedalus", "build", "./fastapi-demo", "-o", "fastapi.de", "--template", "service"]
+      },
+      "buildable": false
+    },
+    {
+      "id": "spring-boot-api",
+      "name": "Spring Boot API",
+      "runtime": "java",
+      "template": "service",
+      "description": "Spring Boot service. daedalus embeds a minimal jlink JRE (--embed-interpreter java) so the artifact runs without a system JDK.",
+      "recipe": {
+        "layout": ["mvnw or gradlew", "pom.xml / build.gradle (spring-boot-starter-web)", "src/main/java/**"],
+        "build": ["daedalus", "build", "./spring-api", "-o", "spring-api.de", "--embed-interpreter", "java", "--template", "service"]
+      },
+      "buildable": false
+    },
+    {
+      "id": "rails-api",
+      "name": "Rails API",
+      "runtime": "ruby",
+      "template": "service",
+      "description": "Ruby on Rails service. Bundler is auto-detected from the Gemfile.",
+      "recipe": {
+        "layout": ["Gemfile (rails, rails-api)", "app/**", "config.ru"],
+        "build": ["daedalus", "build", "./rails-api", "-o", "rails-api.de", "--template", "service"]
+      },
+      "buildable": false
+    },
+    {
+      "id": "laravel-api",
+      "name": "Laravel API",
+      "runtime": "php",
+      "template": "service",
+      "description": "PHP Laravel service — detected by composer.json.",
+      "recipe": {
+        "layout": ["composer.json (laravel/framework)", "artisan", "app/**"],
+        "build": ["daedalus", "build", "./laravel-api", "-o", "laravel-api.de", "--template", "service"]
+      },
+      "buildable": false
+    },
+    {
+      "id": "gin-server",
+      "name": "Go server (Gin)",
+      "runtime": "go",
+      "template": "service",
+      "description": "Go binary: daedalus runs `go build` via Cargo-style detection and stages the resulting static binary.",
+      "recipe": {
+        "layout": ["go.mod (gin-gonic/gin)", "main.go"],
+        "build": ["daedalus", "build", "./gin-server", "-o", "gin-server.de", "--template", "service"]
+      },
+      "buildable": false
+    }
+  ]
+}
