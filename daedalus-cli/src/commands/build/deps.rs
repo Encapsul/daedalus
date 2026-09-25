@@ -53,6 +53,17 @@ pub(crate) fn interpreter_bin(bin_dir: &Path, name: &str, target: Option<&str>) 
     })
 }
 
+/// `<name>` on the build host, `<name>.exe` when the host is Windows. Host-only
+/// toolchain lookups (Zig, Dart) use this instead of `interpreter_bin`, which
+/// keys off the *target*.
+fn host_bin_name(name: &str) -> String {
+    if std::env::consts::OS == "windows" {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    }
+}
+
 /// The `<os>-<arch>` suffix used to namespace per-target tool installs, or
 /// `host` when building without a target. Shared by every `ensure_*` so each
 /// runtime resolves to the same install directory.
@@ -1943,6 +1954,383 @@ fn extract_electron_zip<R: std::io::Read + std::io::Seek>(
             .with_context(|| format!("failed to create {}", target.display()))?;
         std::io::copy(&mut entry, &mut file)
             .with_context(|| format!("failed to unpack {}", stripped.display()))?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Zig toolchain (host-only: `zig build -Dtarget=...` handles cross)
+// ---------------------------------------------------------------------------
+
+/// Parse a `major.minor.patch` version string into a comparable tuple.
+/// Non-semver keys (snapshots like `master`, `0.16.0-dev.123`) return `None`.
+fn zig_semver(v: &str) -> Option<(u32, u32, u32)> {
+    let parts: Vec<&str> = v.split('.').collect();
+    let major: u32 = parts.first()?.parse().ok()?;
+    let minor: u32 = parts.get(1)?.parse().ok()?;
+    let patch: u32 = parts.get(2)?.parse().ok()?;
+    Some((major, minor, patch))
+}
+
+/// Ensure `zig` is available on the build host. Returns the full path to the
+/// `zig` binary. Prefers a system `zig`; otherwise downloads the latest stable
+/// release into `~/.cache/daedalus/build-tools/zig-host/`.
+pub(crate) fn ensure_zig(verbose: bool) -> Result<PathBuf> {
+    let tools_dir = tools_dir_for("zig", None);
+    let zig_bin = zig_bin_path(&tools_dir);
+
+    if zig_bin.exists() {
+        if verbose {
+            eprintln!("  using cached zig from {}", tools_dir.display());
+        }
+        return Ok(zig_bin);
+    }
+
+    if let Ok(p) = which::which("zig") {
+        if verbose {
+            eprintln!("  using system zig from {}", p.display());
+        }
+        return Ok(p);
+    }
+
+    if verbose {
+        eprintln!("  downloading zig to {}...", tools_dir.display());
+    }
+    std::fs::create_dir_all(&tools_dir).context("failed to create build tools directory")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            tools_dir.parent().unwrap_or(tools_dir.as_path()),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .ok();
+    }
+
+    ensure_zig_download(tools_dir, verbose)
+}
+
+#[allow(clippy::too_many_lines)]
+fn ensure_zig_download(tools_dir: PathBuf, verbose: bool) -> Result<PathBuf> {
+    let manifest: serde_json::Value =
+        reqwest::blocking::get("https://ziglang.org/download/index.json")
+            .context("failed to reach ziglang.org")?
+            .json()
+            .context("failed to parse Zig download manifest")?;
+
+    let version = if let Ok(pinned) = std::env::var("DAEDALUS_ZIG_VERSION") {
+        if verbose {
+            eprintln!("  using pinned zig version {pinned} (DAEDALUS_ZIG_VERSION)");
+        }
+        pinned
+    } else {
+        // The manifest keys include "master" (a snapshot) and older releases;
+        // pick the highest semantic `0.x.y` stable version. Dev/preview keys
+        // fail semver parsing and are skipped automatically.
+        manifest
+            .as_object()
+            .and_then(|m| {
+                m.keys()
+                    .filter_map(|k| zig_semver(k).map(|sem| (sem, k)))
+                    .max_by_key(|(sem, _)| *sem)
+                    .map(|(_, k)| k.clone())
+            })
+            .ok_or_else(|| anyhow::anyhow!("no stable Zig version found in download manifest"))?
+    };
+
+    let entry = manifest
+        .get(&version)
+        .ok_or_else(|| anyhow::anyhow!("Zig version {version} not found in manifest"))?;
+
+    // The manifest has per-arch objects keyed like "x86_64-linux", "aarch64-macos".
+    let host_key = match (std::env::consts::ARCH, std::env::consts::OS) {
+        ("x86_64", "linux") => "x86_64-linux",
+        ("aarch64", "linux") => "aarch64-linux",
+        ("x86_64", "macos") => "x86_64-macos",
+        ("aarch64", "macos") => "aarch64-macos",
+        ("x86_64", "windows") => "x86_64-windows",
+        (arch, os) => anyhow::bail!("unsupported host for Zig: {arch}-{os}"),
+    };
+
+    let arch_entry = entry
+        .get(host_key)
+        .ok_or_else(|| anyhow::anyhow!("Zig {version} has no prebuilt for {host_key}"))?;
+
+    let url = arch_entry
+        .get("tarball")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Zig manifest missing tarball URL"))?;
+
+    if verbose {
+        eprintln!("  downloading zig {version} ({host_key})...");
+    }
+
+    let response = reqwest::blocking::get(url)
+        .with_context(|| format!("failed to download Zig archive from {url}"))?;
+
+    if cfg!(target_os = "windows") {
+        let mut bytes = Vec::new();
+        let mut reader = std::io::BufReader::new(response);
+        std::io::Read::read_to_end(&mut reader, &mut bytes).context("failed to read Zig zip")?;
+        extract_zig_zip(std::io::Cursor::new(bytes), &tools_dir)?;
+    } else {
+        let reader = std::io::BufReader::new(response);
+        let decoder = xz2::read::XzDecoder::new(reader);
+        let mut archive = tar::Archive::new(decoder);
+        for entry in archive
+            .entries()
+            .context("failed to read Zig tarball entries")?
+        {
+            let mut entry = entry.context("failed to read tarball entry")?;
+            let path = entry.path()?.into_owned();
+            let stripped: PathBuf = path.components().skip(1).collect();
+            if stripped.components().count() == 0 {
+                continue;
+            }
+            let target = tools_dir.join(&stripped);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create directory {}", parent.display()))?;
+            }
+            entry
+                .unpack(&target)
+                .with_context(|| format!("failed to unpack {}", stripped.display()))?;
+        }
+    }
+
+    let zig_bin = zig_bin_path(&tools_dir);
+    if !zig_bin.exists() {
+        anyhow::bail!(
+            "downloaded Zig archive missing zig binary — install manually: https://ziglang.org/download/"
+        );
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&zig_bin, std::fs::Permissions::from_mode(0o755)).ok();
+    }
+
+    if verbose {
+        eprintln!("  zig {version} ready at {}", tools_dir.display());
+    }
+
+    Ok(zig_bin)
+}
+
+/// The `zig` executable location: modern dists (0.16+) ship it at the archive
+/// root, older ones under `bin/`. The binary stays put because Zig resolves its
+/// `lib/` directory relative to the executable.
+fn zig_bin_path(tools_dir: &Path) -> PathBuf {
+    let flat = tools_dir.join(host_bin_name("zig"));
+    let legacy = tools_dir.join("bin").join(host_bin_name("zig"));
+    if flat.exists() {
+        flat
+    } else {
+        legacy
+    }
+}
+
+fn extract_zig_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Path) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(reader).context("failed to read Zig zip")?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).context("failed to read zip entry")?;
+        let name = std::path::Path::new(entry.name());
+        if name.is_absolute()
+            || name
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            continue;
+        }
+        let stripped: PathBuf = name.components().skip(1).collect();
+        if stripped.components().count() == 0 {
+            continue;
+        }
+        let target = tools_dir.join(&stripped);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&target).context("failed to create directory")?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).context("failed to create directory")?;
+        }
+        let mut file = std::fs::File::create(&target).context("failed to create file")?;
+        std::io::copy(&mut entry, &mut file).context("failed to unpack zip entry")?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Dart SDK (host-only: `dart compile exe` only targets the build host)
+// ---------------------------------------------------------------------------
+
+/// Ensure the Dart SDK is available. Returns the full path to the `dart`
+/// binary. Prefers a system `dart`; otherwise downloads the latest stable SDK
+/// into `~/.cache/daedalus/build-tools/dart-host/`.
+pub(crate) fn ensure_dart(verbose: bool) -> Result<PathBuf> {
+    let tools_dir = tools_dir_for("dart", None);
+    // Extraction strips the archive's single top-level `dart-sdk/` dir, so the
+    // SDK root lands directly in `tools_dir` with `dart` under `bin/`.
+    let dart_bin = tools_dir.join("bin").join(host_bin_name("dart"));
+
+    if dart_bin.exists() {
+        if verbose {
+            eprintln!("  using cached dart from {}", tools_dir.display());
+        }
+        return Ok(dart_bin);
+    }
+
+    if let Ok(p) = which::which("dart") {
+        if verbose {
+            eprintln!("  using system dart from {}", p.display());
+        }
+        return Ok(p);
+    }
+
+    if verbose {
+        eprintln!("  downloading dart to {}...", tools_dir.display());
+    }
+    std::fs::create_dir_all(&tools_dir).context("failed to create build tools directory")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            tools_dir.parent().unwrap_or(tools_dir.as_path()),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .ok();
+    }
+
+    ensure_dart_download(tools_dir, verbose)
+}
+
+#[allow(clippy::too_many_lines)]
+fn ensure_dart_download(tools_dir: PathBuf, verbose: bool) -> Result<PathBuf> {
+    let version = if let Ok(pinned) = std::env::var("DAEDALUS_DART_VERSION") {
+        if verbose {
+            eprintln!("  using pinned dart version {pinned} (DAEDALUS_DART_VERSION)");
+        }
+        pinned
+    } else {
+        let ver_json: serde_json::Value = reqwest::blocking::get(
+            "https://storage.googleapis.com/dart-archive/channels/stable/release/latest/VERSION",
+        )
+        .context("failed to reach Dart archive")?
+        .json()
+        .context("failed to parse Dart version manifest")?;
+        ver_json
+            .get("version")
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .ok_or_else(|| anyhow::anyhow!("Dart VERSION manifest missing 'version'"))?
+    };
+
+    let (dart_os, dart_arch) = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => ("linux", "x64"),
+        ("linux", "aarch64") => ("linux", "arm64"),
+        ("macos", "x86_64") => ("macos", "x64"),
+        ("macos", "aarch64") => ("macos", "arm64"),
+        ("windows", "x86_64") => ("windows", "x64"),
+        ("windows", "aarch64") => ("windows", "arm64"),
+        (os, arch) => anyhow::bail!("unsupported host for Dart: {arch}-{os}"),
+    };
+
+    let sdk_stem = format!("dartsdk-{dart_os}-{dart_arch}");
+    // Naming changed over time: current releases are `...-release.zip`, older
+    // ones were plain `dartsdk-{os}-{arch}.zip`. Probe both.
+    let candidates = [format!("{sdk_stem}-release.zip"), format!("{sdk_stem}.zip")];
+    let mut bytes: Option<Vec<u8>> = None;
+    for sdk in &candidates {
+        let url = format!(
+            "https://storage.googleapis.com/dart-archive/channels/stable/release/{version}/sdk/{sdk}"
+        );
+        let response = reqwest::blocking::get(&url);
+        if let Ok(resp) = response {
+            if resp.status().is_success() {
+                if verbose {
+                    eprintln!("  downloading dart {version} ({sdk})...");
+                }
+                let mut into = Vec::new();
+                let mut reader = std::io::BufReader::new(resp);
+                std::io::Read::read_to_end(&mut reader, &mut into)
+                    .context("failed to read Dart SDK zip")?;
+                bytes = Some(into);
+                break;
+            }
+        }
+    }
+    let bytes = bytes.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Dart SDK {version} not found on dart-archive — install manually: https://dart.dev/get-dart"
+        )
+    })?;
+    extract_dart_zip(std::io::Cursor::new(bytes), &tools_dir)?;
+
+    let dart_bin = tools_dir.join("bin").join(host_bin_name("dart"));
+    if !dart_bin.exists() {
+        anyhow::bail!(
+            "downloaded Dart SDK missing dart binary — install manually: https://dart.dev/get-dart"
+        );
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // `dart compile exe` spawns sibling binaries (`dartaotruntime`, and
+        // `bin/utils/gen_snapshot`), so make the whole bin/ tree executable.
+        // Zip extraction can lose the exec bits, which execve reports as EACCES.
+        fn chmod_tree(dir: &std::path::Path) {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        chmod_tree(&path);
+                    } else {
+                        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+                            .ok();
+                    }
+                }
+            }
+        }
+        chmod_tree(&tools_dir.join("bin"));
+    }
+
+    if verbose {
+        eprintln!("  dart {version} ready at {}", tools_dir.display());
+    }
+
+    Ok(tools_dir.join("bin").join(host_bin_name("dart")))
+}
+
+fn extract_dart_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Path) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(reader).context("failed to read Dart zip")?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).context("failed to read zip entry")?;
+        let name = std::path::Path::new(entry.name());
+        if name.is_absolute()
+            || name
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            continue;
+        }
+        // The Dart SDK zip wraps all content under `dart-sdk/` — strip that prefix
+        // so the SDK root lands directly in `tools_dir`.
+        let stripped: PathBuf = name.components().skip(1).collect();
+        if stripped.components().count() == 0 {
+            continue;
+        }
+        let target = tools_dir.join(&stripped);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&target).context("failed to create directory")?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).context("failed to create directory")?;
+        }
+        let mut file = std::fs::File::create(&target).context("failed to create file")?;
+        std::io::copy(&mut entry, &mut file).context("failed to unpack zip entry")?;
     }
     Ok(())
 }
