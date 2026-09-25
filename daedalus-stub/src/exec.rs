@@ -1231,7 +1231,7 @@ pub fn resolve_entrypoint(
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "unsupported runtime '{}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, rust, go, php, perl, hugo, ollama, gemma, wasm, binary",
+                "unsupported runtime '{}' in metadata — supported: python, deno, node, electron, flutter, dart, java, ruby, dotnet, rust, zig, go, php, perl, hugo, ollama, gemma, wasm, binary",
                 runtime_str
             ),
         ));
@@ -1239,9 +1239,13 @@ pub fn resolve_entrypoint(
     let resolve = make_resolve(rootfs, use_pivot);
     let mut prog = resolve(&entrypoint_vec[0]);
 
-    // Compiled binaries (go/rust/dotnet/binary) exec `entrypoint[0]` directly;
-    // interpreted runtimes get their interpreter prepended to argv.
-    let direct_exec = matches!(runtime_str.as_str(), "go" | "rust" | "dotnet" | "binary");
+    // Compiled binaries (go/rust/zig/dart/flutter/dotnet/binary) exec
+    // `entrypoint[0]` directly; interpreted runtimes get their interpreter
+    // prepended to argv.
+    let direct_exec = matches!(
+        runtime_str.as_str(),
+        "go" | "rust" | "zig" | "dart" | "flutter" | "dotnet" | "binary"
+    );
     let interpreter_name = runtime_interpreter(&runtime_str)
         .map(str::to_string)
         .unwrap_or_else(|| {
@@ -2182,7 +2186,7 @@ mod tests {
         ] {
             assert!(runtime_interpreter(name).is_some(), "runtime: {name}");
         }
-        for name in ["go", "rust", "binary"] {
+        for name in ["go", "rust", "zig", "dart", "flutter", "binary"] {
             assert!(runtime_interpreter(name).is_none(), "runtime: {name}");
         }
         assert!(runtime_interpreter("cobol").is_none());

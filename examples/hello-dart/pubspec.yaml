@@ -1,0 +1,8 @@
+name: hello_dart
+description: A minimal Dart CLI packaged by daedalus.
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies: {}

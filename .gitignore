@@ -59,6 +59,12 @@ environment_details.txt
 *.gguf
 examples/*/.deps/
 examples/baguettotron/
+# Zig/Dart/Flutter example build products
+examples/*/zig-out/
+examples/*/.zig-cache/
+examples/*/.dart_tool/
+examples/*/pubspec.lock
+examples/*/build/
 # gstack/opencode skills (managed externally)
 .opencode/
 yc
