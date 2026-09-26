@@ -119,7 +119,43 @@
         "layout": ["go.mod (gin-gonic/gin)", "main.go"],
         "build": ["daedalus", "build", "./gin-server", "-o", "gin-server.de", "--template", "service"]
       },
-      "buildable": false
-    }
-  ]
-}
+       "buildable": false
+     },
+     {
+       "id": "zig-binary",
+       "name": "Zig binary",
+       "runtime": "zig",
+       "template": "application",
+       "description": "Zig binary: daedalus runs `zig build` via detection of build.zig/build.zig.zon and stages the resulting native binary.",
+       "recipe": {
+         "layout": ["build.zig", "src/main.zig"],
+         "build": ["daedalus", "build", ".", "-o", "hello-zig.de"]
+       },
+       "buildable": false
+     },
+     {
+       "id": "dart-cli",
+       "name": "Dart CLI",
+       "runtime": "dart",
+       "template": "application",
+       "description": "Dart AOT-compiled CLI: daedalus runs `dart compile exe` on the entrypoint and packages the resulting native binary.",
+       "recipe": {
+         "layout": ["pubspec.yaml", "bin/main.dart"],
+         "build": ["daedalus", "build", ".", "-o", "hello-dart.de"]
+       },
+       "buildable": false
+     },
+     {
+       "id": "flutter-app",
+       "name": "Flutter app",
+       "runtime": "flutter",
+       "template": "application",
+       "description": "Flutter desktop bundle: daedalus runs `flutter build <platform>` and bundles the release into a self-extracting .de.",
+       "recipe": {
+         "layout": ["pubspec.yaml", "lib/main.dart"],
+         "build": ["daedalus", "build", ".", "-o", "flutter-app.de"]
+       },
+       "buildable": false
+     }
+   ]
+ }
