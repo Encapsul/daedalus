@@ -96,7 +96,13 @@ ni Node, ni quoi que ce soit.
 
 1. **Cross-platform CI** — prouver « ça tourne partout » : windows-check, cross windows-gnu, native-macos, smoke tests (2ab5d7b + e75c97a corrigent les dernières races ; cargo-audit vert depuis rustls 0.23.45, native-macos vert) — reste windows-check core test + smoke-test-windows, bloqués par l'accès aux logs CI
 2. **Adoption** — démo 60 s ✅ (guide + clinic-agent mesuré : build 6,2 s / run 1,5 s), installateurs `curl`/`brew`/`powershell` (install.sh + install.ps1 + formula fournis), mini hub (~10 apps, catalog + build.sh)
-3. **Runtimes supplémentaires** — Dart/Flutter et Zig d'abord (écosystème dev + single binary)
+3. **Runtimes supplémentaires** ✅ — Dart/Flutter et Zig ajoutés (écosystème dev + single binary). Zig : auto-téléchargement toolchain + AOT natif, e2e validé. Dart : auto-téléchargement SDK + `dart compile exe`, e2e validé. Flutter : bundle desktop via `flutter build`, code présent (Flutter SDK requis, pas d'auto-download du SDK). Guides : [`zig`](./guides/zig.md), [`dart`](./guides/dart.md), [`flutter`](./guides/flutter.md), 3 recettes hub.
+
+## Runtimes supplémentaires — livré
+
+- **Zig** : détection (`build.zig` / `build.zig.zon`), auto-téléchargement toolchain (ziglang.org manifest, tri par version stable), `zig build -Doptimize=ReleaseFast -Dtarget=<triple>`, auto-zig implicit.
+- **Dart** : détection (`pubspec.yaml` sans `sdk: flutter`), auto-téléchargement SDK (dart-archive), `dart compile exe` (AOT). Cross-compilation refusée (host-only, message explicite).
+- **Flutter** : détection (`sdk: flutter`), `flutter build <platform> --release`, bundle dans `rootfs/app/bundle/`. Flutter SDK requis (pas d'auto-download — trop volumineux).
 
 ## Adoption — livré
 
