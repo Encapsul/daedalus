@@ -104,6 +104,26 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 - Changing encryption/signing logic in `encrypt.rs`.
 - Adding new `unsafe` blocks or FFI bindings.
 
+## Agent workflow (growth edge)
+
+Rules distilled from the Paxel builder-profile review. They bind BOTH sides: the
+operator and the agent.
+
+**Plan before execution:**
+- Before starting a multi-step task, state a short plan up front: goal, likely
+  failure points, the exact commands to run, and what "done" means (a pass on the
+  verification loop, an artifact that runs, etc.). Do not start editing before
+  the plan is stated.
+- When redirecting mid-task, first report the current state: what is done, what
+  is committed/pushed, and the cheapest validation step. No new large direction
+  change before validating where the work actually stands.
+
+**Close the loop after environment fixes:**
+- After fixing PATH / toolchain / installed-dependency issues, ALWAYS re-verify
+  final success and capture the proof in the session: the successful command
+  output (or exit code) that shows the fix worked. A "it should work now" is not
+  done — a green result is done.
+
 ## Testing
 
 - Unit tests: `#[cfg(test)] mod tests` in each module.
