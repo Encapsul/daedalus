@@ -122,28 +122,26 @@
        "buildable": false
      },
      {
-       "id": "zig-binary",
-       "name": "Zig binary",
+       "id": "hello-zig",
+       "name": "hello-zig",
        "runtime": "zig",
        "template": "application",
-       "description": "Zig binary: daedalus runs `zig build` via detection of build.zig/build.zig.zon and stages the resulting native binary.",
-       "recipe": {
-         "layout": ["build.zig", "src/main.zig"],
-         "build": ["daedalus", "build", ".", "-o", "hello-zig.de"]
-       },
-       "buildable": false
+       "description": "Minimal Zig CLI: daedalus runs `zig build` via build.zig detection and stages the resulting native binary. Toolchain auto-downloads on first build.",
+       "source": "examples/hello-zig",
+       "build": ["daedalus", "build", "./examples/hello-zig", "-o", "hub/dist/hello-zig.de"],
+       "run": "./hello-zig.de",
+       "buildable": true
      },
      {
-       "id": "dart-cli",
-       "name": "Dart CLI",
+       "id": "hello-dart",
+       "name": "hello-dart",
        "runtime": "dart",
        "template": "application",
-       "description": "Dart AOT-compiled CLI: daedalus runs `dart compile exe` on the entrypoint and packages the resulting native binary.",
-       "recipe": {
-         "layout": ["pubspec.yaml", "bin/main.dart"],
-         "build": ["daedalus", "build", ".", "-o", "hello-dart.de"]
-       },
-       "buildable": false
+       "description": "Minimal Dart CLI: daedalus AOT-compiles `dart compile exe` and packages the native binary. SDK auto-downloads on first build.",
+       "source": "examples/hello-dart",
+       "build": ["daedalus", "build", "./examples/hello-dart", "-o", "hub/dist/hello-dart.de"],
+       "run": "./hello-dart.de",
+       "buildable": true
      },
      {
        "id": "flutter-app",

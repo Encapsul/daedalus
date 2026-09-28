@@ -108,7 +108,7 @@ ni Node, ni quoi que ce soit.
 
 - **Démo 60 s** : [guide](./guides/demo-60s.md) — clinic-agent (Gemma offline) : build 6,2 s → artefact 16,9 MB → run 1,5 s à froid.
 - **Installation zero-friction** : `install.sh` (Linux/macOS, sans sudo, vérifié sha256 contre `checksums.txt`), `install.ps1` (Windows), formula Homebrew dans `packaging/homebrew/daedalus.rb`.
-- **Hub** : [hub/catalog.json](../hub/catalog.json) — 4 apps vérifiées (hello-web, hello-node, bottle-web, clinic-agent) + 6 recettes (Express, FastAPI, Spring Boot, Rails, Laravel, Go). `hub/build.sh` rebuild.
+- **Hub** : [hub/catalog.json](../hub/catalog.json) — 6 apps vérifiées (hello-web, hello-node, bottle-web, clinic-agent, hello-zig, hello-dart) + 7 recettes (Express, FastAPI, Spring Boot, Rails, Laravel, Go, Flutter). `hub/build.sh` rebuild.
 - **Stub discovery** : `daedalus build` trouve désormais le stub natif (living next to the CLI, ou triple hôte) sans `DAEDALUS_STUB_PATH`.
 
 ## Ce qui n'est PAS prioritaire
