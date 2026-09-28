@@ -1,6 +1,6 @@
 [package]
 name = "daedalus-stub"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 description = "daedalus launcher stub — self-extracting ELF that runs the embedded app"
 publish = false
@@ -15,7 +15,7 @@ path = "src/bin/daedalus-crypto.rs"
 
 [dependencies]
 # Shared core library (format parsing, constants).
-daedalux-core = { version = "0.7.0", path = "../daedalus-core" }
+daedalux-core = { version = "0.7.1", path = "../daedalus-core" }
 # Mostly pure-Rust: tar, sha2, serde, ed25519-dalek are all pure Rust.
 # backhand (squashfs) pulls in zstd-sys which requires a C compiler (cc crate)
 # at build time.  A C toolchain (gcc/musl-gcc) and pkg-config are therefore
@@ -50,7 +50,7 @@ hkdf = "0.12"               # HKDF-SHA256 key derivation for decryption
 ureq = { version = "3", default-features = false }
 
 [dev-dependencies]
-daedalux-core = { version = "0.7.0", path = "../daedalus-core" }
+daedalux-core = { version = "0.7.1", path = "../daedalus-core" }
 tempfile = "3"
 tar = "0.4"
 zstd = { version = "0.13", features = ["zstdmt"] }

@@ -2,7 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Encapsul/daedalus/ci.yml?branch=main&label=build)](https://github.com/Encapsul/daedalus/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.7.0-green.svg)](https://github.com/Encapsul/daedalus/releases)
+[![Version](https://img.shields.io/badge/version-0.7.1-green.svg)](https://github.com/Encapsul/daedalus/releases)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)]()
 [![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)
