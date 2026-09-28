@@ -65,6 +65,9 @@ examples/*/.zig-cache/
 examples/*/.dart_tool/
 examples/*/pubspec.lock
 examples/*/build/
+# Node example build products (hub/build.sh runs npm install)
+examples/*/node_modules/
+examples/*/package-lock.json
 # gstack/opencode skills (managed externally)
 .opencode/
 yc
