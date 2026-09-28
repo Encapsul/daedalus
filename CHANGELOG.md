@@ -7,6 +7,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **`cargo install daedalux`**: daedalus is published to crates.io (`daedalux` CLI + `daedalux-core` library). `cargo install daedalux` installs the `daedalus` binary; on first `build` the matching `daedalus-stub` is downloaded from the GitHub release (SHA-256 verified against `checksums.txt`) and cached under `~/.cache/daedalus/stubs/<version>/<arch>/`.
+- Shared GitHub release asset helpers in `daedalus-cli/src/release.rs` (`release_tags`, `asset_name`, `download_release_asset`) so the stub fallback and upgrade path agree with the release pipeline naming and checksum format.
 - **Run straight from the registry**: `daedalus run http://host:port/artifact/app:v2` (or `registry://host:…`) downloads a published `.de`, verifies its footer, caches it under `~/.cache/daedalus/downloads` keyed by URL hash, marks it executable, and runs it — re-runs reuse the cache. npx-style app distribution.
 - **Runnable artifact registry**: the registry now stores the full `.de` binary under a `name:tag` alias, not just layers.
   - `registry push FILE --name name[:tag] [--local DIR | --registry URL]` publishes a runnable binary; `registry pull --name name[:tag] -o out.de` fetches it (local and remote). Untagged names default to `:latest`.
@@ -28,7 +30,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - System config detection module `daedalus-core/src/system_info.rs` (`SystemConfig`, `detect()`, `compute_universal_slices()`) for resource-adaptive builds
 
 ### Fixed
-- **`registry push` remote was broken**: it POSTed the raw binary to the layer `/push` endpoint, which the server tried to JSON-parse as a layer (400). Remote pushes now target the correct endpoint — full binaries go to `/artifact`, layers to `/push` as JSON.
+- **`daedalus upgrade` matched the wrong release asset**: it built `daedalus-{version}-{platform}.tar.gz` and fetched `{url}.sha256`, but releases use `daedalus_{version}_{os}_{arch}.tar.gz` with a single `checksums.txt`, and the archive has no `bin/` subdirectory (binaries sit at the archive root). The command now derives the asset from `release_tags`, parses `checksums.txt`, and copies the binaries from the extracted top level. This also fixes the `platform` reference in `--json` output (undefined after the refactor).
+- `registry push` remote was broken: it POSTed the raw binary to the layer `/push` endpoint, which the server tried to JSON-parse as a layer (400). Remote pushes now target the correct endpoint — full binaries go to `/artifact`, layers to `/push` as JSON.
 - `registry push` rejected `.de` files (extension check still required `.daedalus` after the 0.6.0 rename); both extensions are accepted now
 - **`--lazy-load` runtime failure**: priority files used absolute `/app/...` paths that never matched the tar's payload-relative entries (and wrongly listed the host PATH interpreter as a payload file), so every lazy build errored with `priority files not found in payload: /app/python3`. Priorities are now payload-relative and the interpreter is never one.
 - Stub lazy extraction skipped non-priority tar entries without draining them, misaligning the stream and breaking extraction with `Invalid argument (os error 22)` whenever a non-priority entry was followed by more data — entries are now drained before skipping

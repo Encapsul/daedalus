@@ -4,6 +4,7 @@
 mod commands;
 mod error;
 mod pager;
+mod release;
 mod remote_cache;
 mod stdio;
 

@@ -41,6 +41,8 @@ daedalus_<version>_windows_amd64.tar.gz   *.exe
 checksums.txt
 ```
 
-`cargo install` also works (`cargo install --path daedalus-cli`, or via
-crates.io when published), but the stub must then be installed separately —
-the release archives above are the supported one-command path.
+`cargo install daedalux` installs the CLI from crates.io. The stub is not
+bundled with the crate — on first `daedalus build` the CLI auto-downloads the
+matching `daedalus-stub` from the latest release archive after verifying its
+SHA-256 against `checksums.txt` (see `daedalus-cli/src/release.rs`). The
+release archives above are the supported one-command path.

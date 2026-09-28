@@ -2,7 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Encapsul/daedalus/ci.yml?branch=main&label=build)](https://github.com/Encapsul/daedalus/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](https://github.com/Encapsul/daedalus/releases)
+[![Version](https://img.shields.io/badge/version-0.7.0-green.svg)](https://github.com/Encapsul/daedalus/releases)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)]()
 [![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)
@@ -24,7 +24,10 @@ The binary format (`[stub][payload][metadata][footer]`) is a universal executabl
 ## Quick start
 
 ```bash
-# Install
+# Install (crates.io)
+cargo install daedalux
+
+# Or install via the install script (Linux/macOS)
 curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash
 
 # Build a Python app with Gemma embedded
@@ -33,6 +36,10 @@ cd your-app && daedalus build . -o myapp.daedalus
 # Run — Ollama auto-starts, Gemma model loads locally
 ./myapp.daedalus
 ```
+
+`cargo install daedalux` ships only the CLI; on first `daedalus build` it downloads
+the matching stub from the GitHub release (SHA-256 verified against `checksums.txt`)
+and caches it under `~/.cache/daedalus/stubs/`.
 
 ## Supported runtimes
 
@@ -145,9 +152,9 @@ cargo build --release
 
 | Crate | Purpose |
 |-------|---------|
-| `daedalus-core` | Shared library: format, compression, detection, signing, assembly |
-| `daedalus-stub` | Self-extracting launcher (Linux ELF only today; macOS/Windows PE planned) |
-| `daedalus-cli` | CLI tool (cross-platform) |
+| `daedalux-core` | Shared library: format, compression, detection, signing, assembly (published crates.io as `daedalux-core`) |
+| `daedalus-stub` | Self-extracting launcher (Linux ELF only today; not published to crates.io) |
+| `daedalux` | CLI tool (cross-platform; published crates.io as `daedalux`, installs the `daedalus` binary) |
 
 ## Configuration
 

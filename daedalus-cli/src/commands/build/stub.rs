@@ -1,7 +1,8 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
 use super::args::parse_target;
+use crate::release;
 
 /// Locate the stub binary for the requested target triple.
 ///
@@ -78,17 +79,94 @@ pub(crate) fn find_stub(target: Option<&str>) -> Result<PathBuf> {
         return Ok(p);
     }
 
-    anyhow::bail!("daedalus-stub not found — run: make stub")
+    // Nothing local: `cargo install daedalux` ships only the CLI, so fetch the
+    // matching (verified) stub from the GitHub release and cache it.
+    match download_stub_fallback(&arch_suffix, stub_name) {
+        Ok(stub) => Ok(stub),
+        // Include the download error so a network/checksum failure is not
+        // mistaken for a missing build artifact.
+        Err(e) => anyhow::bail!("daedalus-stub not found locally and download failed: {e:#}"),
+    }
 }
 
 /// Native stub triple for the host, so no-`--target` builds resolve the stub
 /// that actually runs on this machine.
-fn native_arch_suffix() -> String {
+pub(crate) fn native_arch_suffix() -> String {
     match std::env::consts::OS {
         "macos" => format!("{}-apple-darwin", std::env::consts::ARCH),
         "windows" => format!("{}-pc-windows-gnu", std::env::consts::ARCH),
         _ => format!("{}-unknown-linux-musl", std::env::consts::ARCH),
     }
+}
+
+/// `cargo install daedalux` ships only the CLI, so fetch the matching stub
+/// from the GitHub release when no local stub exists. The release asset is
+/// SHA-256 verified against `checksums.txt` before the stub is cached under
+/// `~/.cache/daedalus/stubs/`; a checksum miss aborts (fail closed).
+fn download_stub_fallback(arch_suffix: &str, stub_name: &str) -> Result<PathBuf> {
+    let version = env!("CARGO_PKG_VERSION");
+
+    let cache_stub = daedalus_core::paths::cache_dir()
+        .join("stubs")
+        .join(version)
+        .join(arch_suffix)
+        .join(stub_name);
+    if cache_stub.exists() {
+        return Ok(cache_stub);
+    }
+
+    let tarball = release::download_release_asset(version, arch_suffix, false)?;
+
+    let tmp = tempfile::tempdir().context("failed to create temp dir")?;
+    let archive_path = tmp.path().join("stub.tar.gz");
+    std::fs::write(&archive_path, &tarball)
+        .with_context(|| format!("failed to write {}", archive_path.display()))?;
+
+    let stub_data = extract_stub_bytes(&archive_path, stub_name)?;
+    if let Some(parent) = cache_stub.parent() {
+        std::fs::create_dir_all(parent).context("failed to create stub cache dir")?;
+    }
+    std::fs::write(&cache_stub, &stub_data).context("failed to write cached stub")?;
+    make_executable(&cache_stub)?;
+    Ok(cache_stub)
+}
+
+/// Extract the stub binary from the release tarball without unpacking the
+/// whole tree to disk.
+fn extract_stub_bytes(archive_path: &Path, stub_name: &str) -> Result<Vec<u8>> {
+    use std::io::Read;
+
+    let file = std::fs::File::open(archive_path)
+        .with_context(|| format!("failed to open {}", archive_path.display()))?;
+    let decoder = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(decoder);
+    for entry in archive.entries().context("failed to read tarball")? {
+        let mut entry = entry.context("failed to read tarball entry")?;
+        let path = entry.path().context("failed to read entry path")?;
+        if path.ends_with(stub_name) {
+            let mut bytes = Vec::new();
+            entry
+                .read_to_end(&mut bytes)
+                .context("failed to read stub")?;
+            return Ok(bytes);
+        }
+    }
+    anyhow::bail!("{} not present in {}", stub_name, archive_path.display())
+}
+
+/// Ensure the cached stub is executable (the release tarball is world-readable).
+fn make_executable(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perm = std::fs::metadata(path)
+            .with_context(|| format!("failed to stat {}", path.display()))?
+            .permissions();
+        perm.set_mode(0o755);
+        std::fs::set_permissions(path, perm)
+            .with_context(|| format!("failed to chmod {}", path.display()))?;
+    }
+    Ok(())
 }
 
 /// Read `app_hash` and `rt_deps_hash` from an existing `.daedalus` file's metadata.
