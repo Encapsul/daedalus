@@ -277,13 +277,32 @@ fn fetch_latest_version() -> Result<String> {
         .build()
         .context("failed to create HTTP client")?;
 
-    let resp = client
-        .get(GITHUB_API)
+    // Authenticate when a token is present to raise the GitHub API rate
+    // limit (`GITHUB_TOKEN` is the conventional GitHub CI variable).
+    let mut request = client.get(GITHUB_API);
+    request = request
         .header("Accept", "application/vnd.github.v3+json")
-        .send()
-        .context("failed to fetch latest release")?;
+        .header(
+            "User-Agent",
+            format!("daedalus/{}", env!("CARGO_PKG_VERSION")),
+        );
+    if let Ok(token) =
+        std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("DAEDALUS_GITHUB_TOKEN"))
+    {
+        request = request.header("Authorization", format!("Bearer {token}"));
+    }
 
-    let data: serde_json::Value = resp.json().context("failed to parse GitHub API response")?;
+    let resp = request.send().context("failed to fetch latest release")?;
+
+    let status = resp.status();
+    let body = resp.text().context("failed to read release API response")?;
+    if !status.is_success() {
+        anyhow::bail!("GitHub API returned {status}: {body}");
+    }
+
+    let data: serde_json::Value =
+        serde_json::from_str(&body).context("failed to parse GitHub API response")?;
+
     let tag = data
         .get("tag_name")
         .and_then(|v: &serde_json::Value| v.as_str())
