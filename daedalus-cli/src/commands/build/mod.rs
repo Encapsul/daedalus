@@ -10,6 +10,7 @@ mod stub;
 pub(crate) use args::{load_config, BuildArgs, BuildPlan, GpuArg};
 use payload::{count_files, print_tree};
 use pipeline::{build_single_target, build_universal, warn_sandbox_noops};
+pub(crate) use stub::native_arch_suffix;
 
 use anyhow::{Context, Result};
 use daedalus_core::detect;

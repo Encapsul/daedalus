@@ -3,6 +3,9 @@ use clap::Args;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
+use crate::commands::build::native_arch_suffix;
+use crate::release;
+
 const GITHUB_API: &str = "https://api.github.com/repos/Encapsul/daedalus/releases/latest";
 
 #[derive(Args)]
@@ -70,13 +73,14 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
         return Ok(());
     }
 
-    let platform = detect_platform()?;
+    let arch_suffix = native_arch_suffix();
     if args.verbose {
-        eprintln!("[daedalus] platform: {platform}");
+        eprintln!("[daedalus] arch suffix: {arch_suffix}");
     }
 
     let tag = format!("v{latest}");
-    let asset = format!("daedalus-{latest}-{platform}.tar.gz");
+    let (os_tag, arch_tag) = release::release_tags(&arch_suffix)?;
+    let asset = release::asset_name(&latest, &os_tag, &arch_tag);
     let url = format!("https://github.com/Encapsul/daedalus/releases/download/{tag}/{asset}");
 
     if args.dry_run {
@@ -85,7 +89,7 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
                 "command": "upgrade",
                 "current": current,
                 "latest": latest,
-                "platform": platform,
+                "platform": format!("{os_tag}_{arch_tag}"),
                 "url": url,
                 "success": true,
                 "message": "dry run",
@@ -93,7 +97,7 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&info)?);
         } else {
             eprintln!("Would upgrade from {current} to {latest}");
-            eprintln!("  platform: {platform}");
+            eprintln!("  platform: {os_tag}_{arch_tag}");
             eprintln!("  url:      {url}");
         }
         return Ok(());
@@ -104,8 +108,9 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
 
     // Fetch the expected checksum BEFORE downloading and fail closed: a
     // release whose integrity cannot be verified is never installed.
-    let checksum_url = format!("{url}.sha256");
-    let expected = fetch_checksum(&checksum_url)
+    let checksum_url =
+        format!("https://github.com/Encapsul/daedalus/releases/download/{tag}/checksums.txt");
+    let expected = fetch_checksum(&checksum_url, &asset)
         .context("failed to fetch release checksum; refusing an unverified upgrade")?;
     if args.verbose {
         eprintln!("[daedalus] expected checksum {expected}");
@@ -144,12 +149,20 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     let extracted = std::fs::read_dir(tmp.path())
         .context("failed to read temp dir")?
         .flatten()
-        .find(|e| e.path().is_dir() && e.file_name().to_string_lossy().starts_with("daedalus-"))
+        .find(|e| e.path().is_dir() && e.file_name().to_string_lossy().starts_with("daedalus_"))
         .context("unexpected archive structure")?;
 
-    let bin_dir = extracted.path().join("bin");
-    if !bin_dir.is_dir() {
-        anyhow::bail!("no bin/ directory in archive");
+    // The release archive holds the binaries at the top level of the
+    // `daedalus_<version>_<os>_<arch>` directory (no `bin/` subfolder).
+    let extract_dir = extracted.path();
+    let binaries: Vec<PathBuf> = std::fs::read_dir(extract_dir)
+        .context("failed to read extracted directory")?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    if binaries.is_empty() {
+        anyhow::bail!("no binaries in archive");
     }
 
     // Find install location
@@ -190,19 +203,20 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
         anyhow::bail!("--no-input passed but sudo is required; pass --force to skip or --no-sudo to fail fast");
     }
 
-    for entry in std::fs::read_dir(&bin_dir).context("failed to read bin/ directory")? {
-        let entry = entry?;
-        let dest = install_dir.join(entry.file_name());
+    for binary in &binaries {
+        let dest = install_dir.join(
+            binary
+                .file_name()
+                .context("binary has no file name")?
+                .to_string_lossy()
+                .to_string(),
+        );
         if is_writable(&dest) {
-            std::fs::copy(entry.path(), &dest)
+            std::fs::copy(binary, &dest)
                 .with_context(|| format!("failed to copy to {}", dest.display()))?;
         } else if needs_sudo {
             let status = std::process::Command::new("sudo")
-                .args([
-                    "cp",
-                    &entry.path().to_string_lossy(),
-                    &dest.to_string_lossy(),
-                ])
+                .args(["cp", &binary.to_string_lossy(), &dest.to_string_lossy()])
                 .status()
                 .context("failed to run sudo cp")?;
             if !status.success() {
@@ -219,7 +233,7 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
             "command": "upgrade",
             "current": current,
             "latest": latest,
-            "platform": platform,
+            "platform": format!("{os_tag}_{arch_tag}"),
             "success": true,
         });
         println!("{}", serde_json::to_string_pretty(&info)?);
@@ -227,30 +241,28 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     Ok(())
 }
 
-/// detect_platform - detect the current OS and architecture as a platform tag.
-///
-/// Description:
-/// Maps (OS, ARCH) to the release asset suffix, e.g. linux-x64, linux-arm64.
-///
-/// Return: Result containing Result<String>
-fn detect_platform() -> Result<String> {
-    let os = std::env::consts::OS;
-    let arch = std::env::consts::ARCH;
+/// fetch_checksum - fetch the SHA-256 of one asset from a release's
+/// `checksums.txt`. Missing asset = no checksum = refuse the download.
+fn fetch_checksum(checksums_url: &str, asset: &str) -> Result<String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .context("failed to create HTTP client")?;
 
-    let os_str = match os {
-        "linux" => "linux",
-        "macos" => "macos",
-        "windows" => "win",
-        _ => anyhow::bail!("unsupported OS: {os}"),
-    };
+    let resp = client
+        .get(checksums_url)
+        .send()
+        .context("failed to fetch checksum")?;
+    let text = resp.text().context("failed to read checksum")?;
 
-    let arch_str = match arch {
-        "x86_64" => "x64",
-        "aarch64" => "arm64",
-        _ => anyhow::bail!("unsupported architecture: {arch}"),
-    };
-
-    Ok(format!("{os_str}-{arch_str}"))
+    for line in text.lines() {
+        let mut fields = line.split_whitespace();
+        let hash = fields.next().context("malformed checksum line")?;
+        if fields.any(|f| f.trim_start_matches('*') == asset) {
+            return Ok(hash.to_string());
+        }
+    }
+    anyhow::bail!("no checksum for {asset} in {checksums_url}")
 }
 
 /// fetch_latest_version - query the GitHub releases API for the latest tag.
@@ -313,29 +325,6 @@ fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
     }
     std::fs::write(dest, &bytes).context("failed to write file")?;
     Ok(())
-}
-
-/// fetch_checksum - fetch a SHA-256 checksum string from a URL.
-/// @url: URL
-///
-/// Description:
-/// GETs the URL and returns the first whitespace-delimited token (the hash).
-///
-/// Return: Result containing Result<String>
-fn fetch_checksum(url: &str) -> Result<String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .context("failed to create HTTP client")?;
-
-    let resp = client.get(url).send().context("failed to fetch checksum")?;
-    let text = resp.text().context("failed to read checksum")?;
-    let hash = text
-        .split_whitespace()
-        .next()
-        .context("empty checksum")?
-        .to_string();
-    Ok(hash)
 }
 
 /// sha256_file - compute the SHA-256 hex digest of a file.
@@ -413,20 +402,15 @@ mod tests {
     use super::*;
 
     #[test]
-    /// test_detect_platform_linux_x64 - test detect platform linux x64.
-    ///
-    /// Description:
-    ///
-    /// Return: nothing
-    fn test_detect_platform_linux_x64() {
-        // This test runs on the current platform, just verify it doesn't panic
-        let p = detect_platform();
-        assert!(p.is_ok());
-        let p = p.unwrap();
-        assert!(p.contains('-'));
-        if std::env::consts::OS == "linux" {
-            assert!(p.starts_with("linux"));
-        }
+    /// test_host_maps_to_release_asset - the native host must map to a real
+    /// release asset tag (fail closed otherwise).
+    fn test_host_maps_to_release_asset() {
+        let suffix = native_arch_suffix();
+        let (os_tag, arch_tag) = release::release_tags(&suffix).unwrap();
+        assert!(
+            os_tag.contains("linux") || os_tag.contains("darwin") || os_tag.contains("windows")
+        );
+        assert!(arch_tag == "amd64" || arch_tag == "arm64");
     }
 
     #[test]
