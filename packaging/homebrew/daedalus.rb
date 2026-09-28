@@ -44,10 +44,11 @@ class Daedalus < Formula
   end
 
   def install
-    dir = Dir["daedalus_*"][0] # release tarballs carry a versioned folder
-    bin.install "#{dir}/daedalus", "daedalus"
-    bin.install "#{dir}/daedalus-stub", "daedalus-stub"
-    bin.install "#{dir}/daedalus-crypto", "daedalus-crypto" if File.exist?("#{dir}/daedalus-crypto")
+    # Homebrew unwraps the versioned folder from the release tarball and
+    # stages directly inside it, so the binaries live at the install root.
+    bin.install "daedalus"
+    bin.install "daedalus-stub"
+    bin.install "daedalus-crypto" if File.exist?("daedalus-crypto")
   end
 
   test do

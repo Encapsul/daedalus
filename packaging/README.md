@@ -24,9 +24,15 @@ into a user-local `bin` directory with the stub beside the CLI.
   Installs into `%LOCALAPPDATA%\daedalus\bin` — no admin. Uses the built-in
   `tar` on Windows 10+.
 
-- **Homebrew** — `homebrew/daedalus.rb`. This formula is for a `brew tap`;
-  fill the four `sha256` values (see the comment at the top of the formula)
-  and add the file to the tap repository. Not yet published.
+- **Homebrew** — tap `Encapsul/homebrew-daedalus`:
+
+  ```bash
+  brew install Encapsul/homebrew-daedalus/daedalus
+  ```
+
+  Installs the signed release binary (`daedalus` + `daedalus-stub` +
+  `daedalus-crypto`) from the release archives. The formula lives in
+  `homebrew/daedalus.rb` here and is mirrored in the tap repository.
 
 ## Release assets
 
