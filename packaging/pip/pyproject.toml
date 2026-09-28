@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daedalus"
+version = "0.7.1"
+description = "Package any app into a single self-extracting binary (release launcher)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+keywords = ["packaging", "binary", "self-extracting", "static"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.scripts]
+daedalus = "daedalus.launcher:main"
+
+[tool.setuptools]
+packages = ["daedalus"]

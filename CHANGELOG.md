@@ -9,6 +9,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ## [0.7.1] - 2026-09-28
 
 ### Added
+- **PyPI**: `pip install daedalus` (`packaging/pip/`) — a stdlib-only launcher that downloads the matching release binary on first run (SHA-256 verified against `checksums.txt`), caches it under `~/.cache/daedalus/pip/`, and execs it. 9 unit tests; verified end-to-end (venv install → build → run).
 - **Homebrew tap**: `Encapsul/homebrew-daedalus` — `brew install Encapsul/homebrew-daedalus/daedalus` installs the signed release binaries (`daedalus` + `daedalus-stub` + `daedalus-crypto`), sha256-pinned per platform, verified end-to-end on macOS amd64.
 - **`cargo install daedalux`**: daedalus is published to crates.io (`daedalux` CLI + `daedalux-core` library). `cargo install daedalux` installs the `daedalus` binary; on first `build` the matching `daedalus-stub` is downloaded from the GitHub release (SHA-256 verified against `checksums.txt`) and cached under `~/.cache/daedalus/stubs/<version>/<arch>/`.
 - Shared GitHub release asset helpers in `daedalus-cli/src/release.rs` (`release_tags`, `asset_name`, `download_release_asset`) so the stub fallback and upgrade path agree with the release pipeline naming and checksum format.
