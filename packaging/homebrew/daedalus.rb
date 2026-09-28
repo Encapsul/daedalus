@@ -26,20 +26,20 @@ class Daedalus < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/Encapsul/daedalus/releases/download/v0.7.1/daedalus_0.7.1_darwin_arm64.tar.gz"
-      sha256 "REPLACE_WITH_DARWIN_ARM64_SHA256"
+      sha256 "eff660c3d3a3fb2c71333040fa3b7537fe4aee53059e4fd1b31b51b9a90a0681"
     else
       url "https://github.com/Encapsul/daedalus/releases/download/v0.7.1/daedalus_0.7.1_darwin_amd64.tar.gz"
-      sha256 "REPLACE_WITH_DARWIN_AMD64_SHA256"
+      sha256 "367b7173d30609ab26adfbf57a91d99665bfef5e7f7220d4bddec84cc43118d7"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
       url "https://github.com/Encapsul/daedalus/releases/download/v0.7.1/daedalus_0.7.1_linux_arm64.tar.gz"
-      sha256 "REPLACE_WITH_LINUX_ARM64_SHA256"
+      sha256 "93124131364d3e663820018da7b0e41a6e8b38322ad7140632b69d66d1e04c90"
     else
       url "https://github.com/Encapsul/daedalus/releases/download/v0.7.1/daedalus_0.7.1_linux_amd64.tar.gz"
-      sha256 "REPLACE_WITH_LINUX_AMD64_SHA256"
+      sha256 "2b7ff59a1c01ef307f5386007ad6856636af2092e8a00f41a0b4c408503825f2"
     end
   end
 
