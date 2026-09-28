@@ -182,9 +182,9 @@ env_file = ".env"
 cargo fmt --check
 
 # Lint (per-crate, see AGENTS.md)
-cargo clippy -p daedalus-core --all-targets -- -D warnings
+cargo clippy -p daedalux-core --all-targets -- -D warnings
 cargo clippy -p daedalus-stub --all-targets -- -D warnings
-cargo clippy -p daedalus-cli --all-targets -- -D warnings
+cargo clippy -p daedalux --all-targets -- -D warnings
 
 # Tests
 cargo test --workspace

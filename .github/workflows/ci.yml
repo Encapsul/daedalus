@@ -45,7 +45,7 @@ jobs:
         run: make stub
 
       - name: Build CLI
-        run: cargo build --release -p daedalus-cli
+        run: cargo build --release -p daedalux
 
       - name: Run tests
         run: cargo test --workspace
@@ -88,17 +88,17 @@ jobs:
 
       - name: Clippy core+cli for Windows (-D warnings)
         run: |
-          cargo clippy -p daedalus-core --all-targets --target x86_64-pc-windows-msvc -- -D warnings
-          cargo clippy -p daedalus-cli --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+          cargo clippy -p daedalux-core --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+          cargo clippy -p daedalux --all-targets --target x86_64-pc-windows-msvc -- -D warnings
 
       - name: Build CLI for Windows
-        run: cargo build -p daedalus-cli --target x86_64-pc-windows-msvc
+        run: cargo build -p daedalux --target x86_64-pc-windows-msvc
 
       - name: Test core for Windows
-        run: cargo test -p daedalus-core --target x86_64-pc-windows-msvc
+        run: cargo test -p daedalux-core --target x86_64-pc-windows-msvc
 
       - name: Test CLI (embed + deps) for Windows
-        run: cargo test -p daedalus-cli --target x86_64-pc-windows-msvc
+        run: cargo test -p daedalux --target x86_64-pc-windows-msvc
 
   clippy-fmt:
     runs-on: ubuntu-latest
@@ -109,11 +109,11 @@ jobs:
           targets: x86_64-unknown-linux-musl
       - run: cargo fmt --check
       - name: Lint per-crate (core)
-        run: cargo clippy -p daedalus-core --all-targets -- -D warnings
+        run: cargo clippy -p daedalux-core --all-targets -- -D warnings
       - name: Lint per-crate (stub)
         run: cargo clippy -p daedalus-stub --all-targets -- -D warnings
       - name: Lint per-crate (cli)
-        run: cargo clippy -p daedalus-cli --all-targets -- -D warnings
+        run: cargo clippy -p daedalux --all-targets -- -D warnings
 
   cargo-audit:
     runs-on: ubuntu-latest
@@ -182,7 +182,7 @@ jobs:
         run: cargo zigbuild --release -p daedalus-stub --target ${{ matrix.target }}
 
       - name: Build CLI (cross)
-        run: cargo zigbuild --release -p daedalus-cli --target ${{ matrix.target }}
+        run: cargo zigbuild --release -p daedalux --target ${{ matrix.target }}
 
       - name: Verify artifact format
         shell: bash

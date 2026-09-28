@@ -726,7 +726,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "daedalus-cli"
+name = "daedalus-stub"
+version = "0.7.0"
+dependencies = [
+ "aes-gcm",
+ "backhand",
+ "daedalux-core",
+ "dirs",
+ "ed25519-dalek",
+ "hex",
+ "hkdf",
+ "libc",
+ "num_cpus",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tempfile",
+ "toml 0.8.23",
+ "ureq",
+ "walkdir",
+ "zeroize",
+ "zstd",
+ "zstd-sys",
+]
+
+[[package]]
+name = "daedalux"
 version = "0.7.0"
 dependencies = [
  "anyhow",
@@ -736,7 +763,7 @@ dependencies = [
  "clap_complete",
  "clap_mangen",
  "crossterm 0.28.1",
- "daedalus-core",
+ "daedalux-core",
  "ed25519-dalek",
  "flate2",
  "hex",
@@ -764,7 +791,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "daedalus-core"
+name = "daedalux-core"
 version = "0.7.0"
 dependencies = [
  "aes-gcm",
@@ -792,33 +819,6 @@ dependencies = [
  "which",
  "zeroize",
  "zstd",
-]
-
-[[package]]
-name = "daedalus-stub"
-version = "0.7.0"
-dependencies = [
- "aes-gcm",
- "backhand",
- "daedalus-core",
- "dirs",
- "ed25519-dalek",
- "hex",
- "hkdf",
- "libc",
- "num_cpus",
- "rand 0.8.8",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tempfile",
- "toml 0.8.23",
- "ureq",
- "walkdir",
- "zeroize",
- "zstd",
- "zstd-sys",
 ]
 
 [[package]]

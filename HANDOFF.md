@@ -367,7 +367,7 @@ If you edited any `.py`, `.rs`, `.toml`, or `.yml` file → continue. Otherwise 
 ### 2. Does it compile / import?
 ```bash
 cargo check                                          # Rust core & CLI
-cargo clippy -p daedalus-core --all-targets -- -D warnings  # Lint
+cargo clippy -p daedalux-core --all-targets -- -D warnings  # Lint
 cargo fmt --check                                    # Format
 cargo test --workspace                               # Tests
 ```
