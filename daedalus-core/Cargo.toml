@@ -1,6 +1,6 @@
 [package]
 name = "daedalux-core"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 description = "daedalus core library — format, compression, runtime detection, package manager detection"
 license = "MIT"

@@ -51,7 +51,7 @@ if [ -z "$VERSION" ]; then
     VERSION=$(fetch "https://api.github.com/repos/Encapsul/daedalus/releases/latest" \
         | sed -n 's/.*"tag_name": *"\(v[^"]*\)".*/\1/p' | head -1)
     if [ -z "$VERSION" ]; then
-        VERSION=v0.7.0
+        VERSION=v0.7.1
         echo "daedalus installer: could not resolve latest release, falling back to $VERSION" >&2
     fi
 fi
