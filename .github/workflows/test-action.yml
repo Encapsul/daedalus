@@ -30,7 +30,7 @@ jobs:
       # Build and install daedalus so the action can find it
       - name: Build daedalus from source
         run: |
-          cargo build --release -p daedalus-cli
+          cargo build --release -p daedalux
           /tmp/daedalus-stub-target/release/daedalus --version
 
       # Create a minimal test app

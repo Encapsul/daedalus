@@ -1,15 +1,19 @@
 [package]
-name = "daedalus-cli"
+name = "daedalux"
 version = "0.7.0"
 edition = "2021"
 description = "daedalus CLI — package any app into a single self-extracting binary"
+license = "MIT"
+repository = "https://github.com/Encapsul/daedalus"
+keywords = ["packaging", "self-extracting", "appimage", "bundler", "single-binary"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
 
 [[bin]]
 name = "daedalus"
 path = "src/main.rs"
 
 [dependencies]
-daedalus-core = { path = "../daedalus-core" }
+daedalux-core = { version = "0.7.0", path = "../daedalus-core" }
 clap = { version = "4", features = ["derive", "suggestions"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

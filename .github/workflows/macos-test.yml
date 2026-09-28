@@ -33,16 +33,16 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build CLI (native)
-        run: cargo build --release -p daedalus-cli
+        run: cargo build --release -p daedalux
 
       - name: Build stub (native)
         run: cargo build --release -p daedalus-stub
 
       - name: Build CLI (x86_64)
-        run: cargo build --release -p daedalus-cli --target x86_64-apple-darwin
+        run: cargo build --release -p daedalux --target x86_64-apple-darwin
 
       - name: Build CLI (aarch64)
-        run: cargo build --release -p daedalus-cli --target aarch64-apple-darwin
+        run: cargo build --release -p daedalux --target aarch64-apple-darwin
 
       - name: Build stub (x86_64)
         run: cargo build --release -p daedalus-stub --target x86_64-apple-darwin
@@ -155,10 +155,10 @@ jobs:
         run: cargo zigbuild --release -p daedalus-stub --target aarch64-apple-darwin
 
       - name: Build CLI (x86_64-apple-darwin)
-        run: cargo zigbuild --release -p daedalus-cli --target x86_64-apple-darwin
+        run: cargo zigbuild --release -p daedalux --target x86_64-apple-darwin
 
       - name: Build CLI (aarch64-apple-darwin)
-        run: cargo zigbuild --release -p daedalus-cli --target aarch64-apple-darwin
+        run: cargo zigbuild --release -p daedalux --target aarch64-apple-darwin
 
       - name: Verify artifacts
         run: |

@@ -33,9 +33,9 @@ make fmt          # Auto-format all code
 
 Before finishing any code change, run:
 1. `cargo fmt --check`
-2. `cargo clippy -p daedalus-core --all-targets -- -D warnings`
+2. `cargo clippy -p daedalux-core --all-targets -- -D warnings`
 3. `cargo clippy -p daedalus-stub --all-targets -- -D warnings`
-4. `cargo clippy -p daedalus-cli --all-targets -- -D warnings`
+4. `cargo clippy -p daedalux --all-targets -- -D warnings`
 5. `cargo test --workspace`
 6. `cargo build --release && ./target/release/daedalus build examples/hello-web -o /tmp/test.de && ./target/release/daedalus inspect /tmp/test.de`
 

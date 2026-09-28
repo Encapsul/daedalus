@@ -10,7 +10,7 @@ publish = false
 [workspace]
 
 [dependencies]
-daedalus-core = { path = "../daedalus-core" }
+daedalux-core = { path = "../daedalus-core" }
 arbitrary = { version = "1.3", features = ["derive"] }
 proptest = "1.0"
 rand = "0.8"

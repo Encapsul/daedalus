@@ -9,7 +9,7 @@ daedalus packages any app into a single self-extracting ELF binary. Rust workspa
 - **vfat filesystem**: repo lives on vfat (no exec bit). Cargo target dir is `/tmp/daedalus-stub-target` (set in `.cargo/config.toml`). Build artifacts cannot live in the repo tree.
 - **PATH**: tools installed in `~/.local/bin`. Prefix with `export PATH="$HOME/.local/bin:$PATH"` when running pip-installed tools.
 - **musl target**: stub builds with `--target $(uname -m)-unknown-linux-musl` for static linking. Requires `rustup target add` and a C compiler (musl-tools on Ubuntu).
-- **CI runs clippy per-crate**, not workspace-wide: `cargo clippy -p daedalus-core --all-targets -- -D warnings`, then same for `daedalus-stub`, then `daedalus-cli`.
+- **CI runs clippy per-crate**, not workspace-wide: `cargo clippy -p daedalux-core --all-targets -- -D warnings`, then same for `daedalus-stub`, then `daedalux`.
 
 ## Commands
 

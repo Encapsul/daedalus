@@ -80,7 +80,7 @@ jobs:
         run: cargo zigbuild --release --target ${{ matrix.target }} -p daedalus-stub
 
       - name: Build CLI
-        run: cargo zigbuild --release --target ${{ matrix.target }} -p daedalus-cli
+        run: cargo zigbuild --release --target ${{ matrix.target }} -p daedalux
 
       - name: Package
         run: |
@@ -135,7 +135,7 @@ jobs:
         run: cargo zigbuild --release -p daedalus-stub --target x86_64-apple-darwin
 
       - name: Build CLI
-        run: cargo zigbuild --release -p daedalus-cli --target x86_64-apple-darwin
+        run: cargo zigbuild --release -p daedalux --target x86_64-apple-darwin
 
       - name: Verify
         run: |
@@ -186,7 +186,7 @@ jobs:
         run: cargo zigbuild --release -p daedalus-stub --target aarch64-apple-darwin
 
       - name: Build CLI
-        run: cargo zigbuild --release -p daedalus-cli --target aarch64-apple-darwin
+        run: cargo zigbuild --release -p daedalux --target aarch64-apple-darwin
 
       - name: Verify
         run: |
@@ -235,7 +235,7 @@ jobs:
         run: cargo zigbuild --release -p daedalus-stub --target x86_64-pc-windows-gnu
 
       - name: Build CLI
-        run: cargo zigbuild --release -p daedalus-cli --target x86_64-pc-windows-gnu
+        run: cargo zigbuild --release -p daedalux --target x86_64-pc-windows-gnu
 
       - name: Verify
         run: |
@@ -346,7 +346,7 @@ jobs:
       - name: Build aarch64 stub + CLI
         run: |
           cargo zigbuild --release --target aarch64-unknown-linux-musl -p daedalus-stub
-          cargo zigbuild --release --target aarch64-unknown-linux-musl -p daedalus-cli
+          cargo zigbuild --release --target aarch64-unknown-linux-musl -p daedalux
       - name: Build hello-web for aarch64
         run: |
           "$CARGO_TARGET_DIR"/aarch64-unknown-linux-musl/release/daedalus build examples/hello-web --target aarch64 -o /tmp/hello-web-aarch64.daedalus
