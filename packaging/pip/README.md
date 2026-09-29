@@ -1,10 +1,10 @@
 # daedalus (PyPI)
 
-`pip install daedalus` installs the `daedalus` CLI - it packages any app into
+`pip install daedalux` installs the `daedalus` CLI - it packages any app into
 a single self-extracting binary.
 
 ```bash
-pip install daedalus
+pip install daedalux
 daedalus build ./my-app -o my-app.de
 ./my-app.de
 ```
@@ -17,5 +17,5 @@ and `daedalus-crypto` tools ship in the same download, so `daedalus build`
 works immediately.
 
 Platforms with release assets: Linux/macOS/Windows × amd64/arm64.
-`pip install daedalus --upgrade` releases the launcher; run any `daedalus`
+`pip install daedalux --upgrade` releases the launcher; run any `daedalus`
 command once to pull a newer binary.

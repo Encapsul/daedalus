@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "daedalus"
+name = "daedalux"
 version = "0.7.1"
 description = "Package any app into a single self-extracting binary (release launcher)"
 readme = "README.md"
