@@ -105,6 +105,11 @@ pub fn embed_interpreter_from_path(
         );
     }
 
+    #[cfg(windows)]
+    if is_python_binary(interp_path) {
+        count += copy_windows_python_runtime(interp_path, &bin_dir)?;
+    }
+
     // Find and copy shared library dependencies via ldd
     let deps = ldd_deps(interp_path)?;
     let mut seen = HashSet::new();
@@ -166,6 +171,50 @@ pub fn embed_interpreter_from_path(
         .unwrap_or("unknown");
     count += embed_runtime_config(interp_name, interp_path, rootfs, app_dir, verbose)?;
 
+    Ok(count)
+}
+
+/// True when `path` is a CPython launcher (`python.exe`, `python3.exe`).
+#[cfg(windows)]
+fn is_python_binary(path: &Path) -> bool {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("python") || s.eq_ignore_ascii_case("python3"))
+}
+
+/// Windows `python.exe` is not self-contained: it needs `python3.dll`,
+/// `pythonXY.dll` and the VC runtime next to it, and its extension modules
+/// (`.pyd`) live in `DLLs/`. Copy them beside the embedded interpreter so the
+/// loader resolves them from the application directory instead of relying on
+/// the build host's PATH or registry.
+#[cfg(windows)]
+fn copy_windows_python_runtime(interp_path: &Path, bin_dir: &Path) -> io::Result<usize> {
+    let Some(src_dir) = interp_path.parent() else {
+        return Ok(0);
+    };
+    let mut count = 0;
+    for entry in fs::read_dir(src_dir)? {
+        let path = entry?.path();
+        let is_dll = path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("dll"));
+        let is_debug = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| s.ends_with("_d"));
+        if is_dll && !is_debug && path.is_file() {
+            if let Some(name) = path.file_name() {
+                fs::copy(&path, bin_dir.join(name))?;
+                count += 1;
+            }
+        }
+    }
+    let dlls = src_dir.join("DLLs");
+    if dlls.is_dir() {
+        let target = bin_dir.join("DLLs");
+        copy_dir_recursive(&dlls, &target)?;
+        count += count_dir_files(&target);
+    }
     Ok(count)
 }
 
@@ -971,10 +1020,13 @@ fn embed_python_config(interp_path: &Path, rootfs: &Path, verbose: bool) -> io::
 
     let stdlib_path = PathBuf::from(&stdlib);
     if stdlib_path.is_dir() {
-        let target = rootfs
-            .join("usr")
-            .join("lib")
-            .join(stdlib_path.file_name().unwrap_or(stdlib_path.as_os_str()));
+        // Windows python.exe finds `Lib\` next to itself; elsewhere the
+        // interpreter looks under usr/lib.
+        #[cfg(windows)]
+        let lib_root = rootfs.join("usr").join("bin");
+        #[cfg(not(windows))]
+        let lib_root = rootfs.join("usr").join("lib");
+        let target = lib_root.join(stdlib_path.file_name().unwrap_or(stdlib_path.as_os_str()));
         copy_dir_recursive(&stdlib_path, &target)?;
         count += count_dir_files(&target);
         if verbose {
