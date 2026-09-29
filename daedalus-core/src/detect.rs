@@ -1244,6 +1244,13 @@ fn detect_bun_entry(app_dir: &Path) -> Option<Vec<String>> {
 
 /// Find a self-contained .NET native executable in a publish directory.
 /// Returns the relative path if found.
+/// Render a relative path with `/` separators, whatever the host separator is.
+/// Entrypoints are paths inside the (Linux) payload, never host paths.
+fn to_slash(path: &Path) -> Option<String> {
+    let parts: Option<Vec<&str>> = path.components().map(|c| c.as_os_str().to_str()).collect();
+    parts.map(|p| p.join("/"))
+}
+
 pub fn find_dotnet_self_contained(app_dir: &Path) -> Option<String> {
     let publish_candidates = [app_dir.join("publish"), app_dir.join("bin").join("Release")];
     for publish_dir in &publish_candidates {
@@ -1254,20 +1261,14 @@ pub fn find_dotnet_self_contained(app_dir: &Path) -> Option<String> {
             for entry in entries.flatten() {
                 let p = entry.path();
                 if p.is_file() && is_native_binary(&p) {
-                    return p
-                        .strip_prefix(app_dir)
-                        .ok()
-                        .and_then(|p| p.to_str().map(String::from));
+                    return p.strip_prefix(app_dir).ok().and_then(to_slash);
                 }
                 if p.is_dir() {
                     if let Ok(sub) = std::fs::read_dir(&p) {
                         for entry in sub.flatten() {
                             let ep = entry.path();
                             if ep.is_file() && is_native_binary(&ep) {
-                                return ep
-                                    .strip_prefix(app_dir)
-                                    .ok()
-                                    .and_then(|p| p.to_str().map(String::from));
+                                return ep.strip_prefix(app_dir).ok().and_then(to_slash);
                             }
                         }
                     }
@@ -1512,7 +1513,7 @@ fn find_node_entry_in_subpackage(sub_dir: &Path, rel: &Path) -> Option<String> {
     let contents = std::fs::read_to_string(&pkg_path).ok()?;
     let pkg: serde_json::Value = serde_json::from_str(&contents).ok()?;
 
-    let rel_str = rel.to_str()?;
+    let rel_str = to_slash(rel)?;
 
     // Check "main" field
     if let Some(main) = pkg.get("main").and_then(|v| v.as_str()) {
@@ -2453,11 +2454,7 @@ start = "uvicorn main:app"
         )
         .unwrap();
         let ep = resolve_entrypoint(dir.path(), Runtime::Dotnet);
-        let expected = PathBuf::from("/app")
-            .join("bin")
-            .join("Release")
-            .join("myapp");
-        assert_eq!(ep, Some(vec![expected.to_string_lossy().into_owned()]));
+        assert_eq!(ep, Some(vec!["/app/bin/Release/myapp".to_string()]));
     }
 
     #[test]
