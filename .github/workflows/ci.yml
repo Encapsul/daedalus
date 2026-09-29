@@ -232,20 +232,40 @@ jobs:
         run: |
           chmod +x artifacts/x86_64/daedalus artifacts/x86_64/daedalus-stub
           DAEDALUS_STUB_PATH=artifacts/x86_64/daedalus-stub ./artifacts/x86_64/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.daedalus
-          /tmp/hello-web.daedalus &
+          /tmp/hello-web.daedalus > /tmp/hello-web.log 2>&1 &
           PID=$!
-          sleep 5
-          curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "macOS x86_64 smoke test passed" || { echo "macOS x86_64 smoke test failed"; kill $PID; exit 1; }
+          ok=""
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf --max-time 2 http://127.0.0.1:8080 | grep -q "Hello"; then ok=1; break; fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then
+            echo "macOS x86_64 smoke test failed"
+            cat /tmp/hello-web.log || true
+            kill $PID 2>/dev/null || true
+            exit 1
+          fi
+          echo "macOS x86_64 smoke test passed"
           kill $PID || true
 
       - name: Smoke test arm64
         run: |
           chmod +x artifacts/arm64/daedalus artifacts/arm64/daedalus-stub
           DAEDALUS_STUB_PATH=artifacts/arm64/daedalus-stub ./artifacts/arm64/daedalus build examples/hello-web --isolation none -o /tmp/hello-web-arm64.daedalus
-          /tmp/hello-web-arm64.daedalus &
+          /tmp/hello-web-arm64.daedalus > /tmp/hello-web-arm64.log 2>&1 &
           PID=$!
-          sleep 5
-          curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "macOS arm64 smoke test passed" || { echo "macOS arm64 smoke test failed"; kill $PID; exit 1; }
+          ok=""
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf --max-time 2 http://127.0.0.1:8080 | grep -q "Hello"; then ok=1; break; fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then
+            echo "macOS arm64 smoke test failed"
+            cat /tmp/hello-web-arm64.log || true
+            kill $PID 2>/dev/null || true
+            exit 1
+          fi
+          echo "macOS arm64 smoke test passed"
           kill $PID || true
 
   smoke-test-windows:
@@ -265,11 +285,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path C:\tmp | Out-Null
           $env:DAEDALUS_STUB_PATH = ".\artifacts\daedalus-stub.exe"
-          .\artifacts\daedalus.exe build examples\hello-web --isolation none -o C:\tmp\hello-web.daedalus --embed-interpreter python
-          Start-Process -FilePath "C:\tmp\hello-web.daedalus" -WindowStyle Hidden
+          # The output is a PE launcher: give it an .exe name so Windows runs it
+          # directly instead of going through file associations.
+          .\artifacts\daedalus.exe build examples\hello-web --isolation none -o C:\tmp\hello-web.exe --embed-interpreter python
+          $proc = Start-Process -FilePath "C:\tmp\hello-web.exe" -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput C:\tmp\hello-web.out.log -RedirectStandardError C:\tmp\hello-web.err.log
           $deadline = (Get-Date).AddSeconds(30)
           $resp = $null
-          while ((Get-Date) -lt $deadline) {
+          while ((Get-Date) -lt $deadline -and -not $proc.HasExited) {
             try {
               $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8080" -UseBasicParsing -ErrorAction Stop
               break
@@ -281,6 +304,11 @@ jobs:
             Write-Host "Windows x86_64 smoke test passed"
           } else {
             Write-Host "Windows x86_64 smoke test failed"
+            if ($proc.HasExited) { Write-Host "app exited early with code $($proc.ExitCode)" }
+            Write-Host "--- app stdout ---"
+            Get-Content C:\tmp\hello-web.out.log -ErrorAction SilentlyContinue
+            Write-Host "--- app stderr ---"
+            Get-Content C:\tmp\hello-web.err.log -ErrorAction SilentlyContinue
             Stop-Process -Name "hello-web" -Force -ErrorAction SilentlyContinue
             exit 1
           }
