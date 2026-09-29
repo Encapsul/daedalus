@@ -34,7 +34,7 @@ into a user-local `bin` directory with the stub beside the CLI.
   `daedalus-crypto`) from the release archives. The formula lives in
   `homebrew/daedalus.rb` here and is mirrored in the tap repository.
 
-- **PyPI** - `pip install daedalus` (`pip/`). Installs a thin launcher that
+- **PyPI** - `pip install daedalux` (`pip/`). Installs a thin launcher that
   downloads the matching release binary on first run (SHA-256 verified
   against `checksums.txt`), caches it under `~/.cache/daedalus/pip/`, and
   execs it; strict stdlib, no compilation, no sudo.

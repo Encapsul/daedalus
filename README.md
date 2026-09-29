@@ -32,7 +32,7 @@ deployments (clinics, farms, fleets) update without a full re-download.
 # Install - any one of these
 cargo install daedalux                                            # crates.io
 brew install encapsul/daedalus/daedalus                          # Homebrew tap
-pip install daedalus                                             # PyPI
+pip install daedalux                                             # PyPI
 curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash   # install script (Linux/macOS)
 
 # Build a Python app with Gemma embedded
