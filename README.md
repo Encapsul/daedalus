@@ -7,15 +7,20 @@
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)]()
 [![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)
 
-## AI model packaging (Gemma via Ollama, on-device)
+## What it is
 
-daedalus compiles any web, server, or CLI application into a single self-contained executable **and** can package local AI models (Gemma via Ollama, Llama.cpp, etc.) embedded in the binary, running entirely offline — no cloud, no GPU, zero runtime cost. See [AI and edge runtimes](docs/src/guides/ai-edge.md).
+daedalus packages any web, server, or CLI app into a **single self-extracting
+binary** — interpreter, dependencies, and app in one file, no runtime to install
+on the target machine. Anything that runs on a Linux box can be shipped as one ELF.
 
-## AI anywhere
+The flagship use case is **on-device AI**: package Ollama (or Llama.cpp) plus a
+local model plus your app into one `.de` file that runs fully offline — no cloud,
+no GPU, no runtime cost. See [AI and edge runtimes](docs/src/guides/ai-edge.md).
 
-daedalus is the deployment layer for local AI. Package Ollama + any local model + your app in one `.de` binary. Deploy AI in low-connectivity environments, on-premise, or air-gapped. No cloud dependency, no GPU required. Update models via SISR delta updates over 960kbps links.
-
-The binary format (`[stub][payload][metadata][footer]`) is a universal executable artifact — capable of transporting any application, microservice, or plugin as a single portable unit.
+Deployment features that plain archives don't give you: SHA-256-verified cold
+start, optional Ed25519 signing and trust anchors, sandboxed runs, and **SISR
+delta updates** — reconstruct and roll back layers over 960kbps links, so field
+deployments (clinics, farms, fleets) update without a full re-download.
 
 ---
 
@@ -24,11 +29,11 @@ The binary format (`[stub][payload][metadata][footer]`) is a universal executabl
 ## Quick start
 
 ```bash
-# Install (crates.io)
-cargo install daedalux
-
-# Or install via the install script (Linux/macOS)
-curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash
+# Install — any one of these
+cargo install daedalux                                            # crates.io
+brew install encapsul/daedalus/daedalus                          # Homebrew tap
+pip install daedalus                                             # PyPI
+curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash   # install script (Linux/macOS)
 
 # Build a Python app with Gemma embedded
 cd your-app && daedalus build . -o myapp.daedalus
@@ -39,7 +44,8 @@ cd your-app && daedalus build . -o myapp.daedalus
 
 `cargo install daedalux` ships only the CLI; on first `daedalus build` it downloads
 the matching stub from the GitHub release (SHA-256 verified against `checksums.txt`)
-and caches it under `~/.cache/daedalus/stubs/`.
+and caches it under `~/.cache/daedalus/stubs/`. The Homebrew tap and PyPI package
+ship the CLI, stub, and crypto tools together.
 
 ## Supported runtimes
 
@@ -66,7 +72,9 @@ and caches it under `~/.cache/daedalus/stubs/`.
 [stub][payload][metadata][footer]
 ```
 
-- **Stub**: statically-linked launcher (currently Linux ELF only; macOS/Windows PE support is planned) that reads its own binary, verifies integrity, extracts the payload, and `execvp`s the entrypoint
+- **Stub**: statically-linked launcher (Linux ELF; musl, so it owns no dynamic
+  dependencies — the only host dependency is the Linux kernel). It reads its own
+  binary, verifies integrity, extracts the payload, and `execvp`s the entrypoint
 - **Payload**: zstd-compressed tar archive (or squashfs) of the application + runtime
 - **Metadata**: JSON with runtime info, entrypoint, layers, capabilities
 - **Footer**: magic `0xBEEF_CAFE`, format magic `DAE\x01`, format version, integrity SHA-256 hash
@@ -177,10 +185,18 @@ env_file = ".env"
 ## Security
 
 - **Ed25519 signing**: binaries can be signed and verified against trusted keys
-- **SHA-256 integrity**: footer hash verifies payload tampering at runtime
+  (keys enforce the Ed25519 bit, CVE-2023-48022)
+- **SHA-256 integrity**: footer hash verifies payload tampering at runtime, and every
+  download (stub, upgrade, brew/PyPI/install.sh) is verified against `checksums.txt`
 - **AES-256-GCM encryption**: optional payload encryption with external key (`--encrypt` / `--decrypt-key`)
 - **Namespace isolation**: user/mount namespaces + optional seccomp on Linux; App Sandbox on macOS; process isolation on Windows
+- **Ephemeral `selftest`**: run an untrusted `.de` in a throwaway sandbox first
 - **Delta updates (SISR)**: the stub verifies an embedded Ed25519 signature at cold start
+- **SBOM**: `daedalus inspect --sbom` lists exactly what a `.de` contains
+
+Trust model: distributes through the same channels auditors already trust
+(crates.io, Homebrew, PyPI) rather than piping random binaries, and ships the
+verify/sign/trust story built in, not as an afterthought.
 
 ## Development
 
