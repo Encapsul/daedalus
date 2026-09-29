@@ -96,7 +96,13 @@ fn collect_dir(current: &Path, rootfs: &Path, out: &mut Vec<String>) -> io::Resu
 /// Strip the rootfs prefix to get the payload-relative (tar) path string.
 fn relative_of(path: &Path, rootfs: &Path) -> io::Result<String> {
     path.strip_prefix(rootfs)
-        .map(|p| p.to_string_lossy().into_owned())
+        .map(|p| {
+            // Tar entry names always use `/`, whatever the host separator is.
+            p.components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("prefix: {e}")))
 }
 
