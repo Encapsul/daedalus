@@ -232,7 +232,7 @@ jobs:
         run: |
           chmod +x artifacts/x86_64/daedalus artifacts/x86_64/daedalus-stub
           DAEDALUS_STUB_PATH=artifacts/x86_64/daedalus-stub ./artifacts/x86_64/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.daedalus
-          /tmp/hello-web.daedalus > /tmp/hello-web.log 2>&1 &
+          DAEDALUS_VERBOSE=1 /tmp/hello-web.daedalus > /tmp/hello-web.log 2>&1 &
           PID=$!
           ok=""
           for i in 1 2 3 4 5 6 7 8 9 10; do
@@ -242,17 +242,24 @@ jobs:
           if [ -z "$ok" ]; then
             echo "macOS x86_64 smoke test failed"
             cat /tmp/hello-web.log || true
+            echo "--- diagnostics ---"
+            uname -m; file /tmp/hello-web.daedalus
+            kill -0 $PID 2>/dev/null && echo "launcher pid $PID still alive" || echo "launcher pid $PID exited"
+            ps -axo pid,ppid,stat,command | grep -i -E "hello-web|python" | grep -v grep || true
+            lsof -nP -iTCP -sTCP:LISTEN || true
             kill $PID 2>/dev/null || true
+            pkill -f app.py 2>/dev/null || true
             exit 1
           fi
           echo "macOS x86_64 smoke test passed"
           kill $PID || true
 
       - name: Smoke test arm64
+        if: always()
         run: |
           chmod +x artifacts/arm64/daedalus artifacts/arm64/daedalus-stub
           DAEDALUS_STUB_PATH=artifacts/arm64/daedalus-stub ./artifacts/arm64/daedalus build examples/hello-web --isolation none -o /tmp/hello-web-arm64.daedalus
-          /tmp/hello-web-arm64.daedalus > /tmp/hello-web-arm64.log 2>&1 &
+          DAEDALUS_VERBOSE=1 /tmp/hello-web-arm64.daedalus > /tmp/hello-web-arm64.log 2>&1 &
           PID=$!
           ok=""
           for i in 1 2 3 4 5 6 7 8 9 10; do
@@ -262,7 +269,13 @@ jobs:
           if [ -z "$ok" ]; then
             echo "macOS arm64 smoke test failed"
             cat /tmp/hello-web-arm64.log || true
+            echo "--- diagnostics ---"
+            uname -m; file /tmp/hello-web-arm64.daedalus
+            kill -0 $PID 2>/dev/null && echo "launcher pid $PID still alive" || echo "launcher pid $PID exited"
+            ps -axo pid,ppid,stat,command | grep -i -E "hello-web|python" | grep -v grep || true
+            lsof -nP -iTCP -sTCP:LISTEN || true
             kill $PID 2>/dev/null || true
+            pkill -f app.py 2>/dev/null || true
             exit 1
           fi
           echo "macOS arm64 smoke test passed"
