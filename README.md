@@ -10,16 +10,16 @@
 ## What it is
 
 daedalus packages any web, server, or CLI app into a **single self-extracting
-binary** — interpreter, dependencies, and app in one file, no runtime to install
+binary** - interpreter, dependencies, and app in one file, no runtime to install
 on the target machine. Anything that runs on a Linux box can be shipped as one ELF.
 
 The flagship use case is **on-device AI**: package Ollama (or Llama.cpp) plus a
-local model plus your app into one `.de` file that runs fully offline — no cloud,
+local model plus your app into one `.de` file that runs fully offline - no cloud,
 no GPU, no runtime cost. See [AI and edge runtimes](docs/src/guides/ai-edge.md).
 
 Deployment features that plain archives don't give you: SHA-256-verified cold
 start, optional Ed25519 signing and trust anchors, sandboxed runs, and **SISR
-delta updates** — reconstruct and roll back layers over 960kbps links, so field
+delta updates** - reconstruct and roll back layers over 960kbps links, so field
 deployments (clinics, farms, fleets) update without a full re-download.
 
 ---
@@ -29,7 +29,7 @@ deployments (clinics, farms, fleets) update without a full re-download.
 ## Quick start
 
 ```bash
-# Install — any one of these
+# Install - any one of these
 cargo install daedalux                                            # crates.io
 brew install encapsul/daedalus/daedalus                          # Homebrew tap
 pip install daedalus                                             # PyPI
@@ -38,7 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/inst
 # Build a Python app with Gemma embedded
 cd your-app && daedalus build . -o myapp.daedalus
 
-# Run — Ollama auto-starts, Gemma model loads locally
+# Run - Ollama auto-starts, Gemma model loads locally
 ./myapp.daedalus
 ```
 
@@ -73,7 +73,7 @@ ship the CLI, stub, and crypto tools together.
 ```
 
 - **Stub**: statically-linked launcher (Linux ELF; musl, so it owns no dynamic
-  dependencies — the only host dependency is the Linux kernel). It reads its own
+  dependencies - the only host dependency is the Linux kernel). It reads its own
   binary, verifies integrity, extracts the payload, and `execvp`s the entrypoint
 - **Payload**: zstd-compressed tar archive (or squashfs) of the application + runtime
 - **Metadata**: JSON with runtime info, entrypoint, layers, capabilities
@@ -224,9 +224,9 @@ See [CODE_STYLE.md](CODE_STYLE.md) for Rust style guidelines and [AGENTS.md](AGE
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT - see [LICENSE](LICENSE) for details.
 
 ## Community
 
-- [GitHub Issues](https://github.com/Encapsul/daedalus/issues) — report bugs or request features
-- `daedalus feedback --browser` — open the feedback page quickly
+- [GitHub Issues](https://github.com/Encapsul/daedalus/issues) - report bugs or request features
+- `daedalus feedback --browser` - open the feedback page quickly

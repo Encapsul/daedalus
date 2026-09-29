@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# benchmarks/run-bench.sh — Build an app with daedalus and record machine specs + memory peak.
+# benchmarks/run-bench.sh - Build an app with daedalus and record machine specs + memory peak.
 #
 # Usage:
 #   ./benchmarks/run-bench.sh <app-dir> [output-name]

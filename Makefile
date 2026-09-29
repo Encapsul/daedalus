@@ -4,7 +4,7 @@ TARGET   ?= $(HOST_ARCH)-unknown-linux-musl
 TOOLS    := /tmp/daedalus-stub-target
 VERSION  ?= $(shell cargo pkgid -p daedalus-core 2>/dev/null | awk -F'#' '{print $$2}' || echo "0.5.0")
 DIST_DIR := dist
-# Cargo target dir — override to keep builds off a full root fs, e.g.
+# Cargo target dir - override to keep builds off a full root fs, e.g.
 #   make dist CARGO_TARGET_DIR=/tmp/daedalus-release-target
 export CARGO_TARGET_DIR := $(or $(CARGO_TARGET_DIR),$(CURDIR)/target)
 
@@ -133,9 +133,9 @@ clean:
 #
 # Each Linux archive bundles the three binaries produced by this
 # workspace for that platform:
-#   daedalus          — the CLI tool
-#   daedalus-stub     — the statically linked launcher (musl ELF)
-#   daedalus-crypto   — the signing/inspection utility (musl ELF)
+#   daedalus          - the CLI tool
+#   daedalus-stub     - the statically linked launcher (musl ELF)
+#   daedalus-crypto   - the signing/inspection utility (musl ELF)
 #
 # Components are Linux-only today (the stub launcher is Linux-only and
 # daedalus-core uses std::os::unix APIs), so this release ships Linux
@@ -194,7 +194,7 @@ release: dist
 	@echo "Release v$(VERSION) created: https://github.com/Encapsul/daedalus/releases/tag/v$(VERSION)"
 
 help:
-	@echo "daedalus — package any app into a single self-extracting ELF binary"
+	@echo "daedalus - package any app into a single self-extracting ELF binary"
 	@echo ""
 	@echo "Targets:"
 	@echo "  make             Build stub + CLI for host"

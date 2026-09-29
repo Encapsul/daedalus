@@ -12,7 +12,7 @@ daedalus detects Zig applications by looking for `build.zig` or `build.zig.zon` 
 2. Locates the `zig` toolchain: system `zig` on PATH, otherwise the latest stable release is auto-downloaded into `~/.cache/daedalus/build-tools/zig-host/`
 3. Runs `zig build -Doptimize=ReleaseFast -Dtarget=<triple>` with the target translated from `--target`
 4. Stages the produced executable into `rootfs/app/` and strips it
-5. No runtime interpreter needed — signature `../hello-zig` style entrypoints exec the binary directly
+5. No runtime interpreter needed - signature `../hello-zig` style entrypoints exec the binary directly
 
 ## Requirements
 
@@ -86,6 +86,6 @@ daedalus build . --target x86_64-unknown-linux-gnu -o my-zig-app-linux.de
 
 ## Notes
 
-- The `.de` runs `zig build` entrypoint as a native binary — no `zig` needed on the target host
+- The `.de` runs `zig build` entrypoint as a native binary - no `zig` needed on the target host
 - Zig resolves its `lib/` directory relative to the executable, so the auto-downloaded toolchain is kept in place in the cache (never moved)
 - `strip_compiled_sources` applies to the Zig output

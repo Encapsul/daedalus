@@ -2,8 +2,8 @@
 #![cfg(target_os = "linux")]
 //! Chaos-monkey suite for the daedalus stub launcher.
 //!
-//! Philosophy: every test feeds the launcher hostile input — truncated binaries,
-//! flipped bytes, traversal targets, concurrent writers, garbage indexes —
+//! Philosophy: every test feeds the launcher hostile input - truncated binaries,
+//! flipped bytes, traversal targets, concurrent writers, garbage indexes -
 //! and asserts two invariants:
 //! 1. the tool fails *cleanly* (no panic, non-zero or explicit refusal),
 //! 2. pre-existing artifacts are never left half-written or corrupted.

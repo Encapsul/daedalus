@@ -45,7 +45,7 @@ pub fn create_backup(src: &Path, backup: &Path) -> io::Result<()> {
     writer.commit(backup)
 }
 
-/// Atomically swaps `backup` over `bin` — the rollback itself.
+/// Atomically swaps `backup` over `bin` - the rollback itself.
 ///
 /// `bin` keeps its own path; only its bytes and permissions are replaced,
 /// exactly like the forward SISR swap, so the on-disk path remains stable for

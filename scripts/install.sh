@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — install or upgrade daedalus
+# install.sh - install or upgrade daedalus
 # Usage: curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash
 set -euo pipefail
 
@@ -121,10 +121,10 @@ main() {
   info "downloading ${asset}..."
   if command -v curl &>/dev/null; then
     curl -fsSL "$url" -o "${tmpdir}/${asset}" \
-      || err "download failed — is version ${version} available for ${platform}?"
+      || err "download failed - is version ${version} available for ${platform}?"
   else
     wget -q "$url" -O "${tmpdir}/${asset}" \
-      || err "download failed — is version ${version} available for ${platform}?"
+      || err "download failed - is version ${version} available for ${platform}?"
   fi
 
   # Download checksums.txt
@@ -148,7 +148,7 @@ main() {
   fi
 
   if [ ! -d "$extracted_dir" ]; then
-    err "unexpected archive structure — no directory found"
+    err "unexpected archive structure - no directory found"
   fi
 
   # Install binaries

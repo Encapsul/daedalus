@@ -63,9 +63,9 @@ daedalus build ./my_app -o my_app.daedalus \
 
 This produces two artifacts:
 
-- `my_app.daedalus` — the self-extracting binary (payload is content-addressed;
+- `my_app.daedalus` - the self-extracting binary (payload is content-addressed;
   unchanged chunks can be reused in place during an update);
-- `my_app.daedalus.manifest` — the signed `XBMR` remote manifest that the launcher
+- `my_app.daedalus.manifest` - the signed `XBMR` remote manifest that the launcher
   fetches and verifies before applying an update.
 
 Publish both, plus the chunk files, to the update channel so target machines
@@ -88,13 +88,13 @@ private key bytes are never printed; under Unix a key file that is not mode
 2. Copies the app into a rootfs, optionally embedding an interpreter.
 3. Creates a deterministic `zstd+tar` payload (or SquashFS).
 4. Builds metadata (env, entrypoint, hashes, `update_url`).
-5. Assembles the binary — with `--enable-sisr` the payload is content-chunked
+5. Assembles the binary - with `--enable-sisr` the payload is content-chunked
    (64 KiB targets) and the signed manifest is emitted.
 
 ## Dry run
 
-`--dry-run` prints the full plan — runtime, isolation, compression, SISR,
-package managers, file count — without building anything:
+`--dry-run` prints the full plan - runtime, isolation, compression, SISR,
+package managers, file count - without building anything:
 
 ```bash
 daedalus build ./my_app --enable-sisr --update-url https://… --dry-run

@@ -7,9 +7,9 @@ Single source of truth for daedalus planning. `docs/ROADMAP.md` points here;
 
 Cross-platform CI is the open item: Linux CI is green; macOS native (all steps
 incl. smoke) and cargo-audit are green since `60625dd`. Remaining: the two
-Windows jobs (`windows-check` core test, `smoke-test-windows`) — pre-existing
+Windows jobs (`windows-check` core test, `smoke-test-windows`) - pre-existing
 failures blocked on CI log access (read-only token). Product-wise: adoption
-is underway — 60 s demo guide (measured 6.2 s build / 1.5 s run), one-command
+is underway - 60 s demo guide (measured 6.2 s build / 1.5 s run), one-command
 installers (`install.sh`, `install.ps1`, Homebrew formula), `hub/catalog.json`
 (6 verified apps + 7 recipes); runtimes are production-grade on Linux, macOS
 (Java jlink embed) and single-binary (Zig, Dart);
@@ -34,12 +34,12 @@ installers (`install.sh`, `install.ps1`, Homebrew formula), `hub/catalog.json`
 - Ollama (detection + `ollama serve` entrypoint)
 - Gemma (offline `.gguf` bundling via `--model`, `ollama run <model>`, no cloud/GPU)
 - Zig (build.zig/build.zig.zon detection, `zig build -Doptimize=ReleaseFast -Dtarget`, toolchain auto-download from ziglang manifest, AOT native)
-- Dart (pubspec.yaml detection, `dart compile exe` AOT, toolchain auto-download from dart-archive; host-only — cross AOT refused with clear error)
+- Dart (pubspec.yaml detection, `dart compile exe` AOT, toolchain auto-download from dart-archive; host-only - cross AOT refused with clear error)
 - Flutter (pubspec with `sdk: flutter` detection, `flutter build <platform> --release`, desktop bundle; requires the Flutter SDK on PATH)
 - Perl (Mojolicious-specific detection: script/ + lib/ layout, `Mojo::` imports)
 - Electron (cross-OS/arch binary embed, OS-aware `is_cross`, `resources/` embedded beside binary)
 
-### Missing — planned
+### Missing - planned
 
 | Runtime | Rationale |
 |---------|-----------|
@@ -107,7 +107,7 @@ installers (`install.sh`, `install.ps1`, Homebrew formula), `hub/catalog.json`
 
 ## Product & adoption
 
-North star: make any app **consumable in one gesture** (`./app.de`) — no install, no
+North star: make any app **consumable in one gesture** (`./app.de`) - no install, no
 expertise. Packaging is the decisive adoption factor (VLC lesson: the user sees the movie,
 not the codecs).
 
@@ -116,9 +116,9 @@ not the codecs).
 | Demo / time-to-first-value | 60 s homepage demo (Streamlit or Ollama + model): `daedalus build` → an artifact that runs on a bare machine. Key message: "it's just the file." | Done (measured: 6.2 s build / 1.5 s first run for the offline clinic-agent; guide in `docs/src/guides/demo-60s.md`) |
 | Trust (#1) | `--sign` on by default with the dev key, `daedalus verify foo.de` in one gesture, dated "security" page + audit. Signing is the headline feature, not an option (a self-extracting binary smells like malware otherwise). | Default signing done (auto dev key + self-trust, `--skip-sign` to opt out); dated audit 2026-09-09 in SECURITY.md (strict Ed25519 verify); website security page remaining |
 | Niche wedge | Target distribution of agents / AI-apps to non-technical users (Ollama/Gemma use cases). A niche of 1000 frustrated devs > 100k curious. | Not started |
-| Ecosystem / network effect | `daedalus hub` — community catalog of reusable packaged apps (builds on `daedalus registry`). Start with ONE template per popular runtime, not a platform. | Started (`hub/catalog.json`: 6 verified apps + 7 recipes — one per runtime; `hub/build.sh`; guide in `docs/src/guides/hub.md`) |
-| Zero-friction install | `brew` / `cargo install` / `pip` / `curl` install, static signed binary every release. Install < 10 s, no compile flag needed. | `install.sh` (Linux/macOS) + `install.ps1` (Windows) shipped (checksum-verified, no sudo); crates.io live (`cargo install daedalux`, stub auto-downloads on first build); brew tap live (`Encapsul/homebrew-daedalus`, verified end-to-end on macOS amd64); PyPI package built (`packaging/pip`, `pip install daedalus` launcher, verified locally) — publish remaining |
-| Trap to avoid | No expert-oriented docs or format benchmarks as the lead feature — adoption comes from the first task unlocked. | — |
+| Ecosystem / network effect | `daedalus hub` - community catalog of reusable packaged apps (builds on `daedalus registry`). Start with ONE template per popular runtime, not a platform. | Started (`hub/catalog.json`: 6 verified apps + 7 recipes - one per runtime; `hub/build.sh`; guide in `docs/src/guides/hub.md`) |
+| Zero-friction install | `brew` / `cargo install` / `pip` / `curl` install, static signed binary every release. Install < 10 s, no compile flag needed. | `install.sh` (Linux/macOS) + `install.ps1` (Windows) shipped (checksum-verified, no sudo); crates.io live (`cargo install daedalux`, stub auto-downloads on first build); brew tap live (`Encapsul/homebrew-daedalus`, verified end-to-end on macOS amd64); PyPI package built (`packaging/pip`, `pip install daedalus` launcher, verified locally) - publish remaining |
+| Trap to avoid | No expert-oriented docs or format benchmarks as the lead feature - adoption comes from the first task unlocked. | - |
 
 Execution order: demo (1) → default signing (2) → minimal hub with ~10 packaged apps
 (4) → AI-app word of mouth (3).

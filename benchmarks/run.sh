@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# benchmarks/run.sh — daedalus vs native benchmark suite
+# benchmarks/run.sh - daedalus vs native benchmark suite
 #
 # Reproducible benchmarks for daedalus against 3 real-world Python apps.
 # Produces: benchmarks/report.md + benchmarks/results.json
@@ -9,7 +9,7 @@
 # Prerequisites: python3 >= 3.10, rustc (musl target), zstd, curl
 # Target repos should be in repo/ (yt-dlp, whisper, glances/open-webui proxy).
 #
-# RSS is measured via /proc/$pid/status VmRSS — this is the kernel's actual
+# RSS is measured via /proc/$pid/status VmRSS - this is the kernel's actual
 # RSS value, equivalent to what /usr/bin/time -v reports as "Maximum resident
 # set size". We use it directly because /usr/bin/time -v can't measure a
 # long-running server's idle RSS (it waits for the command to finish).
@@ -28,7 +28,7 @@ WORK="/tmp/daedalus-bench"
 APPS_DIR="$WORK/apps"
 PORT_BASE=19800
 
-# daedalus command — use the Rust CLI binary.
+# daedalus command - use the Rust CLI binary.
 DAEDALUS_BIN="$REPO_ROOT/target/release/daedalus"
 daedalus() {
     "$DAEDALUS_BIN" "$@"
@@ -37,7 +37,7 @@ daedalus() {
 # Detect cargo bin (for stub build).
 CARGO_BIN="$(dirname "$(which rustc 2>/dev/null || echo /usr/bin/rustc)")"
 
-# Timeouts (seconds) — generous for heavy ML installs.
+# Timeouts (seconds) - generous for heavy ML installs.
 TIMEOUT_VENV_INSTALL=600
 TIMEOUT_COLD_START=120
 TIMEOUT_WARM_START=60
@@ -293,7 +293,7 @@ run_baseline() {
     venv_human=$(numfmt --to=iec "$venv_bytes" 2>/dev/null || echo "${venv_bytes}B")
     ok "venv size: $venv_human"
 
-    # 3) Cold start — measure time to first HTTP response
+    # 3) Cold start - measure time to first HTTP response
     kill_port "$port"; sleep 0.5
     log "Measuring cold start (port $port)..."
     local t0 t1 cold
@@ -320,13 +320,13 @@ run_baseline() {
     cold=$(printf "%.2f" "$(echo "$t1 - $t0" | bc)")
     ok "cold start: ${cold}s"
 
-    # 4) RSS at idle — read from /proc (kernel's actual RSS, not VSZ)
+    # 4) RSS at idle - read from /proc (kernel's actual RSS, not VSZ)
     sleep 2  # let server settle
     local rss
     rss=$(get_rss_kb "$bpid")
     ok "RSS at idle: ${rss} KB"
 
-    # 5) PSS (proportional set size) if available — more accurate for shared libs
+    # 5) PSS (proportional set size) if available - more accurate for shared libs
     local pss=0
     if [ -f "/proc/$bpid/smaps_rollup" ]; then
         pss=$(awk '/^Pss:/ {print $2; exit}' "/proc/$bpid/smaps_rollup" 2>/dev/null || echo "0")
@@ -383,7 +383,7 @@ run_daedalus() {
     de_human=$(numfmt --to=iec "$de_bytes" 2>/dev/null || echo "${de_bytes}B")
     ok ".de size: $de_human"
 
-    # 3) Cold start — clear cache, measure extraction + launch
+    # 3) Cold start - clear cache, measure extraction + launch
     log "Cold start (clearing cache)..."
     daedalus clean --all 2>/dev/null || true
     kill_port "$port"; sleep 1
@@ -415,7 +415,7 @@ run_daedalus() {
     rss_cold=$(get_rss_kb "$bpid")
     ok "RSS (cold): ${rss_cold} KB"
 
-    # 5) Warm start — kill, re-launch (cache hit)
+    # 5) Warm start - kill, re-launch (cache hit)
     log "Warm start (cache hit)..."
     kill "$bpid" 2>/dev/null; wait "$bpid" 2>/dev/null || true
     rm -f "$WORK/${name}-daedalus.pid"
@@ -522,7 +522,7 @@ def fmt_kb(k):
     return f"{k} KB"
 
 def pct(old, new):
-    if old is None or new is None or old == 0: return "—"
+    if old is None or new is None or old == 0: return "-"
     r = new / old
     return f"+{(r-1)*100:.0f}%" if r > 1 else f"-{(1-r)*100:.0f}%"
 
@@ -558,16 +558,16 @@ lines.append(f"zstd:    {zstd_ver}")
 lines.append("```\n")
 
 lines.append("**Apps:**\n")
-lines.append("- **yt-dlp** — light case, pure-Python CLI library, few deps")
-lines.append("- **open-webui** — proxy app (torch + transformers + numpy), heavy ML stack")
-lines.append("- **whisper** — hard case, torch + numpy + tiktoken, heaviest deps\n")
+lines.append("- **yt-dlp** - light case, pure-Python CLI library, few deps")
+lines.append("- **open-webui** - proxy app (torch + transformers + numpy), heavy ML stack")
+lines.append("- **whisper** - hard case, torch + numpy + tiktoken, heaviest deps\n")
 
 lines.append("**Methodology:**\n")
 lines.append("- RSS measured via `/proc/$pid/status` VmRSS (kernel's actual RSS, not VSZ)")
 lines.append("- Cold start = process launch to first HTTP 200 response")
 lines.append("- Warm start = subsequent launch with cache hit")
 lines.append("- Baseline = fresh venv + pip install (no daedalus)")
-lines.append("- All times are single runs (not averaged) — reproducible via this script\n")
+lines.append("- All times are single runs (not averaged) - reproducible via this script\n")
 
 for a in apps:
     bl = all_r[a].get("baseline")
@@ -602,20 +602,20 @@ for a in apps:
         f"{pct(bl.get('cold_start_time_s') if bl else None, xb.get('cold_start_time_s') if xb else None)} |")
 
     lines.append(f"| Warm start | "
-        f"— | "
+        f"- | "
         f"{fmt_s(xb.get('warm_start_time_s') if xb else None)} | "
-        f"— |")
+        f"- |")
 
     bl_rss = bl.get('rss_kb') if bl else None
     xb_rss = xb.get('rss_kb') if xb else None
-    rss_pct = pct(bl_rss, xb_rss) if bl_rss and xb_rss else "—"
+    rss_pct = pct(bl_rss, xb_rss) if bl_rss and xb_rss else "-"
     lines.append(f"| RSS at idle | "
         f"{fmt_kb(bl_rss)} | "
         f"{fmt_kb(xb_rss)} | "
         f"{rss_pct} |")
 
     if xb and xb.get("cache_size_bytes"):
-        lines.append(f"| Cache size (extracted) | — | {fmt_b(xb.get('cache_size_bytes'))} | — |")
+        lines.append(f"| Cache size (extracted) | - | {fmt_b(xb.get('cache_size_bytes'))} | - |")
 
     # Honest analysis
     if bl and xb and not bl.get("error") and not xb.get("error"):
@@ -633,7 +633,7 @@ lines.append("- **open-webui** is a proxy: we install torch+transformers+numpy d
 lines.append("  (the real Open WebUI is a large Next.js app that can't be pip-installed standalone).")
 lines.append("  This measures daedalus's overhead on the same heavy ML dependency chain.")
 lines.append("- **Cold start** includes extraction (zstd decompression + disk write) on first run.")
-lines.append("- **Warm start** is cache hit — no extraction, just launcher overhead + app boot.")
+lines.append("- **Warm start** is cache hit - no extraction, just launcher overhead + app boot.")
 lines.append("- **RSS** should be near-identical between baseline and daedalus (same Python runtime).")
 lines.append("  If daedalus RSS is significantly higher, that's a real finding worth investigating.")
 lines.append("- **Failures are reported honestly.** A hidden dependency (subprocess, dlopen)")

@@ -230,7 +230,7 @@ fn resolve_build_runtime(
         detect::Runtime::Gemma
     } else {
         detect::detect_runtime(app_dir).context(
-            "could not detect runtime — supported: python, node, deno, flutter, dart, java, ruby, dotnet, go, zig, php, perl, hugo, ollama, gemma, wasm, binary",
+            "could not detect runtime - supported: python, node, deno, flutter, dart, java, ruby, dotnet, go, zig, php, perl, hugo, ollama, gemma, wasm, binary",
         )?
     };
     if verbose {
@@ -258,12 +258,12 @@ fn publish_artifact_to_registry(
     let is_remote = registry_url.starts_with("http://") || registry_url.starts_with("https://");
 
     if is_remote {
-        // Remote HTTP registry — upload the full .daedalus binary
+        // Remote HTTP registry - upload the full .daedalus binary
         crate::commands::registry::push_remote_artifact(registry_url, artifact, token, verbose)?;
         return Ok(());
     }
 
-    // Local directory registry — extract layers via LayerRegistry
+    // Local directory registry - extract layers via LayerRegistry
     let path = expand_path(registry_url);
     std::fs::create_dir_all(&path)
         .with_context(|| format!("failed to create registry dir {}", path.display()))?;
@@ -371,7 +371,7 @@ fn pkgmgr_lines(plan: &BuildPlan) -> Vec<String> {
 
 /// Print what a build would do without touching the app directory.
 fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, output: &Path) {
-    eprintln!("Dry run — would build:");
+    eprintln!("Dry run - would build:");
     eprintln!("  App:       {}", plan.app_dir.display());
     eprintln!("  Output:    {}", output.display());
     eprintln!("  Runtime:   {}", plan.runtime_name);
@@ -395,7 +395,7 @@ fn print_dry_run(args: &BuildArgs, plan: &BuildPlan, target: Option<&str>, outpu
             Some(url) => eprintln!("  Update URL: {url}"),
             None => {
                 eprintln!(
-                    "  Update URL: (none — updates must pass a URL or set DAEDALUS_UPDATE_URL)"
+                    "  Update URL: (none - updates must pass a URL or set DAEDALUS_UPDATE_URL)"
                 );
             }
         }
@@ -492,7 +492,7 @@ fn resolve_gpu_backend(flag: Option<GpuArg>, config: Option<&str>) -> Result<Str
             Some(b) => Ok(b.as_str().into()),
             None => {
                 eprintln!(
-                    "[daedalus] warning: --gpu auto found no accelerator — building CPU-only"
+                    "[daedalus] warning: --gpu auto found no accelerator - building CPU-only"
                 );
                 Ok(String::new())
             }

@@ -11,8 +11,8 @@
 //! ```
 //!
 //! Because every pre-existing offset (`payload_offset`, `meta_offset`) is
-//! unchanged, the footer integrity hash `SHA-256(payload ‖ meta)` — and any
-//! checksum the payload itself embeds, e.g. `SquashFS` — is preserved by
+//! unchanged, the footer integrity hash `SHA-256(payload ‖ meta)` - and any
+//! checksum the payload itself embeds, e.g. `SquashFS` - is preserved by
 //! construction. A legacy runtime that reads backwards from EOF keeps decoding
 //! the upgraded file, while the v2 runtime additionally sees `FLAG_SISR` and
 //! gains delta auto-update support.
@@ -37,8 +37,8 @@ pub struct UpgradeReport {
 
 /// Converts a classic (SISR-less) `.daedalus` into a SISR-enabled one.
 ///
-/// The payload is chunked exactly as it is stored on disk — never
-/// decompressed and recompressed — so the stored bytes (and therefore any
+/// The payload is chunked exactly as it is stored on disk - never
+/// decompressed and recompressed - so the stored bytes (and therefore any
 /// payload-internal checksums) are unchanged. Also writes `<output>.daedalus.manifest`
 /// next to the binary, matching [`crate::assembly::assemble_daedalus`].
 pub fn upgrade_binary(
@@ -58,7 +58,7 @@ pub fn upgrade_binary(
     }
     if footer.format_version >= 3 || footer.flags & format::FLAG_SIGNED != 0 {
         return Err(err(
-            "signed binaries are not upgradeable — rebuild with `daedalus build --enable-sisr` instead",
+            "signed binaries are not upgradeable - rebuild with `daedalus build --enable-sisr` instead",
         ));
     }
 

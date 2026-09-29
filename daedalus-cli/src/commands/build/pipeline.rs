@@ -32,7 +32,7 @@ pub(crate) fn warn_sandbox_noops(isolation_num: u32, seccomp: bool, landlock: bo
             .collect::<Vec<_>>()
             .join(", ");
         eprintln!(
-            "[daedalus] warning: {flags} require --isolation sandbox (2) to take effect — \
+            "[daedalus] warning: {flags} require --isolation sandbox (2) to take effect - \
              ignored at isolation level {isolation_num}"
         );
     }
@@ -114,7 +114,7 @@ pub(crate) fn build_single_target(
         let cache = daedalus_core::paths::BuildCache::new(app_dir, 50);
         if let Some(cached) = cache.find(&new_app_hash, &cfg_hash, target.as_deref()) {
             if verbose {
-                eprintln!("[daedalus] cache hit — reusing cached build");
+                eprintln!("[daedalus] cache hit - reusing cached build");
             }
             std::fs::copy(cached, output).context("failed to copy cached .daedalus to output")?;
             if args.json {
@@ -127,7 +127,7 @@ pub(crate) fn build_single_target(
             return Ok(None);
         }
         if verbose {
-            eprintln!("[daedalus] cache miss — building from scratch");
+            eprintln!("[daedalus] cache miss - building from scratch");
         }
     }
 
@@ -166,7 +166,7 @@ pub(crate) fn build_single_target(
     };
 
     // ── Package managers: detect + install deps for every manifest ────
-    // Skip when reusing the rootfs — the runtime + deps are already embedded.
+    // Skip when reusing the rootfs - the runtime + deps are already embedded.
     let mut reuse_rootfs: Option<(tempfile::TempDir, PathBuf)> = None;
     if let Some(ref old_bin) = reuse_binary {
         reuse_rootfs = Some(reuse_rootfs_from_binary(old_bin, app_dir, args, verbose)?);
@@ -192,7 +192,7 @@ pub(crate) fn build_single_target(
     // ── Bundle an offline AI model (--model) into the rootfs ───────────
     // Copies the .gguf to `app/models/` and writes a `Modelfile` so the stub
     // detects the Gemma runtime and serves the weights locally (no cloud, no
-    // GPU, no network). Deliberately skipped when reusing a cached rootfs —
+    // GPU, no network). Deliberately skipped when reusing a cached rootfs -
     // the weights are already embedded and would otherwise be duplicated.
     if let (Some(model_path), false) = (&args.model, reusing_rootfs) {
         stage_offline_model(model_path, plan.model_id.as_deref(), &rootfs)?;
@@ -210,7 +210,7 @@ pub(crate) fn build_single_target(
     let flutter_binary_name = build_flutter_binary(plan, target.as_deref(), &rootfs)?;
 
     // ── Embed interpreter / N-API addons / RoadRunner into the rootfs ──
-    // Skip when reusing rootfs — interpreter already present in payload.
+    // Skip when reusing rootfs - interpreter already present in payload.
     if reuse_binary.is_none() {
         embed_interpreters(args, plan, &rootfs, target.as_deref())?;
     }
@@ -371,7 +371,7 @@ pub(crate) fn build_single_target(
     // the manifest (see `build_sisr_config`).
     //
     // Signing happens BEFORE the cache store so the cached artifact is the
-    // complete, signed binary — a cache hit must not serve an unsigned copy.
+    // complete, signed binary - a cache hit must not serve an unsigned copy.
     //
     // Signing is ON by default: without `--skip-sign`, every build carries an
     // Ed25519 signature from the self-trusted dev key (or `--key`), so
@@ -532,7 +532,7 @@ fn build_layers(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Extracted build phases (audit action #6): each function below is a verbatim
-// move of a `build_single_target` section — behavior, message order and
+// move of a `build_single_target` section - behavior, message order and
 // quirks are preserved.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -610,7 +610,7 @@ fn install_pkgmgr_deps(
 
     let status = command
         .status()
-        .context(format!("failed to run `{}` — is it installed?", prog))?;
+        .context(format!("failed to run `{}` - is it installed?", prog))?;
     if !status.success() {
         eprintln!(
             "[daedalus] warning: {} installation failed (exit code {})",
@@ -653,7 +653,7 @@ fn pkgmgr_install_command(
             node_bin_dir = Some(ensure_node(target, verbose)?);
         } else {
             eprintln!(
-                "[daedalus] skipping {} — `{}` not found on PATH",
+                "[daedalus] skipping {} - `{}` not found on PATH",
                 mgr.name(),
                 cmd[0]
             );
@@ -917,7 +917,7 @@ fn build_rust_binary(
         }
     }
     // Isolation level >= 2 pivots into the artifact rootfs, which carries no
-    // glibc loader — a dynamically linked binary fails execve with ENOENT.
+    // glibc loader - a dynamically linked binary fails execve with ENOENT.
     // Mirror Go's implicit static linking via crt-static (Linux only: other
     // platforms reject the flag and their launchers don't pivot anyway).
     let os_is_linux = match target {
@@ -942,7 +942,7 @@ fn build_rust_binary(
     }
     let status = cmd
         .status()
-        .context("failed to run `cargo build` — is Rust installed? (https://rustup.rs)")?;
+        .context("failed to run `cargo build` - is Rust installed? (https://rustup.rs)")?;
     if !status.success() {
         anyhow::bail!("`cargo build` failed with exit code {status}");
     }
@@ -1016,7 +1016,7 @@ fn build_zig_binary(
     }
     let status = cmd
         .status()
-        .context("failed to run `zig build` — is Zig installed? (https://ziglang.org)")?;
+        .context("failed to run `zig build` - is Zig installed? (https://ziglang.org)")?;
     if !status.success() {
         anyhow::bail!("`zig build` failed with exit code {status}");
     }
@@ -1076,7 +1076,7 @@ fn build_dart_binary(
         };
         if arch != host_arch || os != host_os {
             anyhow::bail!(
-                "Dart AOT compilation targets the build host only — build on the target platform directly (no --target for Dart)"
+                "Dart AOT compilation targets the build host only - build on the target platform directly (no --target for Dart)"
             );
         }
     }
@@ -1091,7 +1091,7 @@ fn build_dart_binary(
         .map(|s| s.to_string_lossy().into_owned())
         .ok_or_else(|| anyhow::anyhow!("invalid Dart entry script: {entry}"))?;
 
-    // Resolve dependencies first — `dart compile exe` needs package_config.
+    // Resolve dependencies first - `dart compile exe` needs package_config.
     let pub_status = std::process::Command::new(&dart_bin_path)
         .arg("pub")
         .arg("get")
@@ -1130,7 +1130,7 @@ fn build_dart_binary(
 /// into `rootfs/app/bundle/`. Returns the bundle-relative executable path, or
 /// `None` when the app is not Flutter or `--no-install` is set.
 ///
-/// The Flutter SDK is not auto-downloaded (a ~1GB toolchain) — the system
+/// The Flutter SDK is not auto-downloaded (a ~1GB toolchain) - the system
 /// `flutter` binary is required, mirroring how Java/.NET builds need their SDK.
 fn build_flutter_binary(
     plan: &BuildPlan,
@@ -1145,7 +1145,7 @@ fn build_flutter_binary(
 
     if !is_command_available("flutter") {
         anyhow::bail!(
-            "`flutter` not found on PATH — Flutter builds need the Flutter SDK \
+            "`flutter` not found on PATH - Flutter builds need the Flutter SDK \
              (https://docs.flutter.dev/get-started/install). The SDK is too large to auto-download."
         );
     }
@@ -1274,7 +1274,7 @@ fn zig_target_triple(target: &str) -> Result<String> {
 /// Returns the JAR file name, or `None` when the app is not Java or
 /// `--no-install` is set (Phase 8 Step 3).
 ///
-/// Java bytecode is portable — `--target` is a no-op here (jlink minimal
+/// Java bytecode is portable - `--target` is a no-op here (jlink minimal
 /// runtimes are a separate roadmap item). Wrapper scripts (`mvnw`,
 /// `gradlew`) win over system tools so projects pin their own build; they
 /// must carry the executable bit.
@@ -1342,12 +1342,12 @@ fn system_tool(name: &str, label: &str) -> Result<String> {
         })
         .unwrap_or(false);
     if !found {
-        anyhow::bail!("{label} not found — use the project wrapper ({name}w) or install {label}");
+        anyhow::bail!("{label} not found - use the project wrapper ({name}w) or install {label}");
     }
     Ok(name.to_string())
 }
 
-/// Run the package phase. Tests are skipped — packaging is the goal here,
+/// Run the package phase. Tests are skipped - packaging is the goal here,
 /// verification stays in CI. Gradle `build` covers Spring Boot's bootJar.
 fn run_java_build(tool: &JavaBuildTool, app_dir: &Path, verbose: bool) -> Result<()> {
     let (cmd, args): (&str, Vec<&str>) = match tool {
@@ -1372,7 +1372,7 @@ fn run_java_build(tool: &JavaBuildTool, app_dir: &Path, verbose: bool) -> Result
 
 /// Locate the built JAR in `target/` (Maven) or `build/libs/` (Gradle),
 /// skipping auxiliary artifacts (sources/javadoc/plain/original). When
-/// several candidates remain, the largest wins — fat jars carry deps.
+/// several candidates remain, the largest wins - fat jars carry deps.
 fn find_built_jar(app_dir: &Path) -> Option<PathBuf> {
     let mut best: Option<(u64, PathBuf)> = None;
     for rel in ["target", "build/libs"] {
@@ -1413,7 +1413,7 @@ fn is_auxiliary_jar(path: &Path) -> bool {
 /// `None` when the app is not .NET or `--no-install` is set.
 ///
 /// Self-contained publishes produce a native binary that runs without a
-/// .NET runtime on the target machine — aligned with the Go/Rust approach.
+/// .NET runtime on the target machine - aligned with the Go/Rust approach.
 /// The RID (Runtime Identifier) is synthesized from `--target` shorthands
 /// (linux-x64, linux-arm64, win-x64, macos-x64, macos-arm64) or passed
 /// through as a full RID (e.g. `linux-musl-x64`).
@@ -1495,14 +1495,14 @@ fn build_hugo_binary(
         .current_dir(app_dir)
         .env("HUGO_ENV", "production")
         .status()
-        .context("failed to run `hugo` — is hugo.toml/config.toml valid?")?;
+        .context("failed to run `hugo` - is hugo.toml/config.toml valid?")?;
     if !status.success() {
         anyhow::bail!("`hugo` build failed with exit code {status}");
     }
 
     let public_src = app_dir.join("public");
     if !public_src.is_dir() {
-        anyhow::bail!("`hugo` did not produce public/ — check your config");
+        anyhow::bail!("`hugo` did not produce public/ - check your config");
     }
 
     let public_dst = rootfs.join("app").join("public");
@@ -1595,7 +1595,7 @@ fn ensure_dotnet() -> Result<()> {
         .is_ok_and(|s| s.success());
     if !ok {
         anyhow::bail!(
-            "dotnet SDK not found on PATH — install from https://dotnet.microsoft.com/download"
+            "dotnet SDK not found on PATH - install from https://dotnet.microsoft.com/download"
         );
     }
     Ok(())
@@ -1615,7 +1615,7 @@ fn ensure_java() -> Result<()> {
         .is_ok_and(|s| s.success());
     if !ok {
         anyhow::bail!(
-            "java not found on PATH — install a JDK (https://adoptium.net) to build Java apps"
+            "java not found on PATH - install a JDK (https://adoptium.net) to build Java apps"
         );
     }
     Ok(())
@@ -1690,7 +1690,7 @@ fn go_mod_download(app_dir: &Path, verbose: bool) -> Result<()> {
         .args(["mod", "download"])
         .current_dir(app_dir)
         .status()
-        .context("failed to run `go mod download` — is Go installed?")?;
+        .context("failed to run `go mod download` - is Go installed?")?;
     if !status.success() {
         anyhow::bail!("`go mod download` failed with exit code {status}");
     }
@@ -1753,7 +1753,7 @@ fn go_build_and_strip(
     Ok(())
 }
 
-/// Strip source files from the staged app — only the compiled binary (and
+/// Strip source files from the staged app - only the compiled binary (and
 /// directories, which may hold configs) is needed. Shared by the Go and Rust
 /// build paths.
 fn strip_compiled_sources(rootfs: &Path, bin_name: &str) {
@@ -1934,7 +1934,7 @@ fn embed_interpreters(
     }
 
     // Clean up downloaded build tools (node/npm, composer.phar). Only the
-    // tool's own cache dir is removed — never a shared `/tmp` path, which
+    // tool's own cache dir is removed - never a shared `/tmp` path, which
     // another user/process may own or have symlinked (roadmap #36).
     let _ = std::fs::remove_dir_all(cache_dir().join("build-tools"));
     Ok(())
@@ -1980,7 +1980,7 @@ fn runtime_install_dir(interpreter_name: &str, target: Option<&str>) -> Option<P
 }
 
 /// Locate the install prefix of the host Python via `sys.prefix`. On Windows
-/// the Python binary ships DLLs and `Lib/` beside its prefix — they must be
+/// the Python binary ships DLLs and `Lib/` beside its prefix - they must be
 /// shipped alongside the interpreter. On Linux/macOS the host python's
 /// dependencies are resolved by `ldd` and `embed_python_config`, so no
 /// install-tree copy is needed (this returns `None`).
@@ -2047,7 +2047,7 @@ fn embed_primary_interpreter(
 /// runtime can find its Chromium/V8 snapshot and default app at exec time.
 fn embed_electron_resources(interpreter_path: &Path, rootfs: &Path, verbose: bool) {
     // Electron ships `resources/` in the same directory as the `electron`
-    // binary — both for a downloaded dist (`tools_dir/bin/resources`) and a
+    // binary - both for a downloaded dist (`tools_dir/bin/resources`) and a
     // typical host install (`/usr/lib/electron/resources`). Probe the binary's
     // directory first, then one level up as a fallback.
     let bin_dir = interpreter_path.parent().unwrap_or(interpreter_path);
@@ -2230,7 +2230,7 @@ fn compress_payload(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path) -> Result
     // Build the payload: zstd(tar) by default, or a real SquashFS image
     // when `--squashfs` was requested (v5). Before this fix the flag only
     // flipped the metadata's payload_format while the payload stayed a
-    // zstd+tar stream — the stub's squashfs extractor would fail on it.
+    // zstd+tar stream - the stub's squashfs extractor would fail on it.
     eprintln!("Creating payload...");
     let t0 = std::time::Instant::now();
     let payload = if plan.squashfs {
@@ -2291,7 +2291,7 @@ fn load_env_file(
     }
 }
 
-/// Inline `KEY=VALUE` flags (`--env`, then `--define` — later calls win).
+/// Inline `KEY=VALUE` flags (`--env`, then `--define` - later calls win).
 fn insert_kv_flags(env_map: &mut serde_json::Map<String, serde_json::Value>, entries: &[String]) {
     for entry in entries {
         if let Some((k, v)) = entry.split_once('=') {
@@ -2440,7 +2440,7 @@ fn resolve_entrypoint_argv(
         entrypoint.to_vec()
     } else if let Some(bin_name) = built_binary_name {
         // Compiled runtimes exec the binary directly; Java wraps the built
-        // JAR — the stub drops argv[0] and prepends its interpreter.
+        // JAR - the stub drops argv[0] and prepends its interpreter.
         if runtime == detect::Runtime::Java {
             vec!["java".into(), "-jar".into(), format!("/app/{bin_name}")]
         } else {
@@ -2543,7 +2543,7 @@ fn apply_wasm_features(args: &BuildArgs, bun_features: &mut BunFeatures, verbose
     if !args.wasm {
         return;
     }
-    eprintln!("[daedalus] warning: --wasm is experimental/alpha — requires wasmtime binary in rootfs or on PATH");
+    eprintln!("[daedalus] warning: --wasm is experimental/alpha - requires wasmtime binary in rootfs or on PATH");
     bun_features.wasm.enabled = true;
     if let Some(ref path) = args.wasmtime_path {
         bun_features.wasm.wasmtime_path = Some(path.display().to_string());
@@ -2590,7 +2590,7 @@ fn apply_cross_compile(args: &BuildArgs, bun_features: &mut BunFeatures, verbose
     let Some(ref cross) = args.cross_compile else {
         return;
     };
-    eprintln!("[daedalus] warning: --cross-compile is experimental/alpha — not yet implemented in the stub (hidden flag); metadata is recorded but the runtime currently ignores it");
+    eprintln!("[daedalus] warning: --cross-compile is experimental/alpha - not yet implemented in the stub (hidden flag); metadata is recorded but the runtime currently ignores it");
     let targets: Vec<String> = cross.split(',').map(|s| s.trim().to_string()).collect();
     bun_features.cross_compile_targets = targets;
     if verbose {
@@ -2705,7 +2705,7 @@ fn assemble_and_sign(
 
     if args.enable_sisr && args.key.is_none() {
         eprintln!(
-            "warning: --enable-sisr without --key produces an UNSIGNED SISR section — \
+            "warning: --enable-sisr without --key produces an UNSIGNED SISR section - \
              the stub refuses to run it at cold start unless DAEDALUS_SISR_ALLOW_UNSIGNED=1"
         );
     }
@@ -2787,7 +2787,7 @@ pub(crate) fn build_universal(args: &BuildArgs, plan: &BuildPlan, output: &Path)
             Ok(_) => {}
             Err(e) => {
                 eprintln!(
-                    "[daedalus] warning: skipping {uname_machine} ({uname_sys}) — stub not built: {e}"
+                    "[daedalus] warning: skipping {uname_machine} ({uname_sys}) - stub not built: {e}"
                 );
                 continue;
             }
@@ -2884,7 +2884,7 @@ mod tests {
         assert_eq!(cargo_bin_name(&path), Some("tool-bin".to_string()));
     }
 
-    /// Workspace virtual manifests have no `[package]` — fall back to "app"
+    /// Workspace virtual manifests have no `[package]` - fall back to "app"
     /// until workspace support lands (Phase 8 Step 5).
     #[test]
     /// cargo_bin_name_defaults_for_virtual_manifest - cargo bin name defaults for virtual manifest.
@@ -3009,7 +3009,7 @@ mod tests {
         assert_eq!(find_built_jar(dir.path()), None);
     }
 
-    /// Project wrappers pin the toolchain version — they win over any
+    /// Project wrappers pin the toolchain version - they win over any
     /// system install.
     #[test]
     /// java_build_tool_prefers_wrapper - java build tool prefers wrapper.

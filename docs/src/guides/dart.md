@@ -18,7 +18,7 @@ daedalus detects Dart applications by finding a `pubspec.yaml` without a Flutter
 3. Runs `dart pub get` to resolve dependencies
 4. AOT-compiles the entrypoint with `dart compile exe`
 5. Stages the native executable into `rootfs/app/`
-6. The `.de` runs the compiled binary directly — no Dart runtime needed on the target
+6. The `.de` runs the compiled binary directly - no Dart runtime needed on the target
 
 ## Requirements
 
@@ -69,11 +69,11 @@ daedalus build examples/hello-dart -o hello-dart.de
 
 ## Cross-Compilation
 
-Dart AOT (`dart compile exe`) only targets the build host — it cannot produce foreign-platform binaries. Passing `--target` for a different OS or architecture aborts the build with a clear error. Use a per-platform CI job or a native build per target instead.
+Dart AOT (`dart compile exe`) only targets the build host - it cannot produce foreign-platform binaries. Passing `--target` for a different OS or architecture aborts the build with a clear error. Use a per-platform CI job or a native build per target instead.
 
 ## Notes
 
-- The compiled `.de` is a fully native binary — no Dart SDK needed on the target host
+- The compiled `.de` is a fully native binary - no Dart SDK needed on the target host
 - Package dependencies are fetched at build time; the graph is resolved by `dart pub get`
 - `strip_compiled_sources` applies to the Dart output
 - Flutter apps (pubspec with `sdk: flutter`) are handled by the [`Flutter guide`](./flutter.md)

@@ -42,7 +42,7 @@ prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
 | `meta_size`      | 80     | u64   | 8    | metadata size in bytes                       |
 | `footer_magic`   | 88     | u32   | 4    | `0xBEEFCAFE` end sentinel                    |
 
-The spec is implemented in `daedalus-core/src/format.rs` — the single source of
+The spec is implemented in `daedalus-core/src/format.rs` - the single source of
 truth, shared by the launcher (stub) and the CLI. There is no separate
 `stub/src/format.rs`.
 
@@ -53,13 +53,13 @@ to execute the file. We cannot put our own bytes at the start without
 breaking `chmod +x && ./my_app.daedalus`.
 
 **Options considered:**
-1. Custom header before ELF — rejected. The kernel would refuse to execute
+1. Custom header before ELF - rejected. The kernel would refuse to execute
    the file. `binfmt_misc` could work but requires root on every target
    machine.
-2. Embed metadata inside ELF sections — rejected. The kernel loads ELF
+2. Embed metadata inside ELF sections - rejected. The kernel loads ELF
    sections into memory; our metadata would consume address space and
    confuse debuggers.
-3. Footer at end of file — chosen. Used by `makeself`, AppImage, and
+3. Footer at end of file - chosen. Used by `makeself`, AppImage, and
    self-extracting `.exe`. The launcher opens itself via `/proc/self/exe`,
    seeks from the end, reads the fixed-size footer, and finds everything
    from the stored offsets.
@@ -72,12 +72,12 @@ v2 launchers read exactly 84 bytes from the end. We cannot change the
 footer size without breaking backward compatibility.
 
 **Options considered:**
-1. Grow the footer to 92 bytes (add `sig_offset` field) — rejected. A v2
+1. Grow the footer to 92 bytes (add `sig_offset` field) - rejected. A v2
    launcher reading 84 bytes would see truncated data and likely crash or
    silently misparse.
-2. Append the signature block after the footer — rejected. The launcher
+2. Append the signature block after the footer - rejected. The launcher
    reads backwards from EOF; data after the footer is invisible to it.
-3. 8-byte prefix before the 84-byte core — chosen. The last 92 bytes are:
+3. 8-byte prefix before the 84-byte core - chosen. The last 92 bytes are:
    `[8-byte sig_offset][84-byte v2 core]`. A v2 launcher reads the last 84
    bytes and sees valid v2 data (the prefix is invisible). A v3 launcher
    reads 92 bytes and picks up `sig_offset` from the prefix. No breaking
@@ -112,7 +112,7 @@ Ed25519_sign(SHA-256(payload ‖ metadata ‖ footer_bytes), private_key)
 
 The footer must be covered because it decides whether the signature is ever
 consulted: a signature over `payload ‖ metadata` alone would let an attacker
-downgrade the file to v2, clear `FLAG_SIGNED`, and recompute the SHA-256 —
+downgrade the file to v2, clear `FLAG_SIGNED`, and recompute the SHA-256 -
 the signature would be silently skipped. The launcher also rejects
 inconsistent states (sig block without the flag, or the flag without a block)
 and v2 files carrying a leftover signature block.
@@ -146,7 +146,7 @@ The footer's `sig_offset` field points to the start of this block.
 ```
 
 - `entrypoint`: argv executed by the launcher. Paths are relative to the
-  rootfs — the launcher resolves them to real cache paths at exec time.
+  rootfs - the launcher resolves them to real cache paths at exec time.
 - `env`: additional variables. The launcher injects `LD_LIBRARY_PATH`
   separately and resolves `${ROOTFS}` tokens to the real cache path.
 - `isolation`: 0 = `LD_LIBRARY_PATH`, 1 = chroot (skipped), 2 = user
@@ -181,14 +181,14 @@ The layer table lives in the JSON metadata:
 ```
 
 `offset` is the absolute byte offset in the file. Each layer's SHA-256 (of
-the compressed blob) is a **stable cache key** — if the content doesn't
+the compressed blob) is a **stable cache key** - if the content doesn't
 change, its extraction is reusable.
 
 ### Why layers: incremental rebuild
 
 The runtime layer (interpreter + stdlib + `.so`) is independent of app code.
 Editing `app.py` doesn't change it. On rebuild, the builder reuses it from
-the build cache (`~/.cache/daedalus/build/`) — no recompression. Only the app
+the build cache (`~/.cache/daedalus/build/`) - no recompression. Only the app
 layer is rebuilt.
 
 ```bash
@@ -202,7 +202,7 @@ $ daedalus build ./my_app
 ```
 
 Two apps sharing the same runtime share the same runtime layer in the build
-cache — the second app also builds in ~1 s.
+cache - the second app also builds in ~1 s.
 
 ## Version evolution
 
@@ -224,7 +224,7 @@ $ ./old-daedalus new-format.daedalus
 
 Reserved fields (`flags`, `sig_offset`) allow extension without breaking
 compatibility. Ed25519 signatures are inserted between metadata and footer
-with a `flags` bit and a dedicated offset — v2 files remain readable.
+with a `flags` bit and a dedicated offset - v2 files remain readable.
 
 ---
 
@@ -269,10 +269,10 @@ EOF - 26        │  universal footer (26 B) │
 
 The first 64 KiB is simultaneously:
 
-1. **A valid shell script** — the kernel's `#!` handler treats `#!/bin/sh`
+1. **A valid shell script** - the kernel's `#!` handler treats `#!/bin/sh`
    at offset 0 as a directive to invoke `/bin/sh`. The shell reads and
    executes the script, which extracts the matching slice and `exec`s it.
-2. **A valid ELF/PE/Mach-O file** (when the slice is extracted alone) —
+2. **A valid ELF/PE/Mach-O file** (when the slice is extracted alone) -
    each slice is a standalone `.daedalus` binary that the kernel can load
    directly.
 
@@ -329,7 +329,7 @@ The shell script (first 64 KiB) looks like:
 
 ```sh
 #!/bin/sh
-# daedalus universal binary — auto-generated launcher
+# daedalus universal binary - auto-generated launcher
 _arch=$(uname -m)
 _os=$(uname -s 2>/dev/null || echo Linux)
 _self=$0

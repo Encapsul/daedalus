@@ -9,10 +9,10 @@ daedalus detects Flutter applications by finding `sdk: flutter` in the `dev_depe
 ## How It Works
 
 1. Detects `pubspec.yaml` with a `sdk: flutter` dependency
-2. Requires the Flutter SDK on PATH (unlike Zig and Dart, Flutter is too large to auto-download — about 1 GB)
+2. Requires the Flutter SDK on PATH (unlike Zig and Dart, Flutter is too large to auto-download - about 1 GB)
 3. Runs `flutter pub get`, then `flutter build <platform> --release`
 4. Stages the release bundle into `rootfs/app/bundle/`
-5. The `.de` runs the bundle launcher — the Flutter engine is shipped inside the bundle, so no SDK is needed on the target
+5. The `.de` runs the bundle launcher - the Flutter engine is shipped inside the bundle, so no SDK is needed on the target
 
 Bytecode finalization (`--obfuscate --split-debug-info`) is intentionally not applied: the same source tree may be shipped with tree-shaking/minification options from the daedalus CLI.
 
@@ -47,6 +47,6 @@ The daedalus stub is embedded per `--target`; packaging a Flutter app for anothe
 
 ## Notes
 
-- The desktop bundle is self-contained (engine + assets) — no Flutter SDK needed on the target host
+- The desktop bundle is self-contained (engine + assets) - no Flutter SDK needed on the target host
 - web and mobile targets (`flutter build web`, Android APK/AAB) are not packaged as self-extracting binaries
-- Flutter cannot be auto-downloaded by daedalus because of its size and platform requirements — install it once
+- Flutter cannot be auto-downloaded by daedalus because of its size and platform requirements - install it once

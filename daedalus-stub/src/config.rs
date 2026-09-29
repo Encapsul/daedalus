@@ -142,7 +142,7 @@ impl AppConfig {
             use std::os::unix::fs::MetadataExt;
             if let Ok(meta) = fs::metadata(path) {
                 if meta.mode() & 0o022 != 0 {
-                    return Some("file is group/other-writable — any co-resident user could modify the secrets it injects");
+                    return Some("file is group/other-writable - any co-resident user could modify the secrets it injects");
                 }
             }
         }

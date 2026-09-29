@@ -27,9 +27,9 @@ mod arch_consts {
 #[cfg(target_os = "linux")]
 use arch_consts::AUDIT_ARCH;
 
-/// Install a seccomp-bpf denylist (backward compatible — no capabilities).
+/// Install a seccomp-bpf denylist (backward compatible - no capabilities).
 ///
-/// Equivalent to calling `install_seccomp_with_capabilities(&[])` — denies
+/// Equivalent to calling `install_seccomp_with_capabilities(&[])` - denies
 /// the 18 always-dangerous syscalls with no capability-based additions.
 #[cfg(target_os = "linux")]
 #[allow(dead_code)]
@@ -53,7 +53,7 @@ pub fn install_seccomp_denylist() -> io::Result<()> {
 /// **Exec capability limitation**: blocking `execve` would prevent the stub
 /// from launching the entrypoint via `execvp` because the filter is installed
 /// before `execvp`. When `Capability::Exec` is absent and seccomp is active,
-/// `exec_app` must `fork()` before calling `execvp` — the child inherits the
+/// `exec_app` must `fork()` before calling `execvp` - the child inherits the
 /// execve-deny filter, its `execvp` fails with `SECCOMP_RET_KILL_PROCESS`,
 /// and the parent detects the child's exit to refuse the launch cleanly.
 #[cfg(target_os = "linux")]
@@ -83,7 +83,7 @@ pub fn install_seccomp_with_capabilities(capabilities: &[Capability]) -> io::Res
     // SAFETY: prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) installs a BPF
     // filter on the current process. The filter program is a stack-allocated
     // Vec that outlives the prctl call. prctl only reads the filter.
-    // On success the filter is permanent — blocked syscalls SIGSYS.
+    // On success the filter is permanent - blocked syscalls SIGSYS.
     let rc = unsafe {
         libc::prctl(
             libc::PR_SET_SECCOMP,
@@ -179,7 +179,7 @@ fn network_syscalls() -> &'static [u32] {
 /// Exec-family syscalls blocked when `Capability::Exec` is absent.
 ///
 /// `execve` launches a new program; `execveat` is the `at`-family variant.
-/// `clone`, `clone3`, `fork`, and `vfork` create subprocesses — without `Exec`
+/// `clone`, `clone3`, `fork`, and `vfork` create subprocesses - without `Exec`
 /// an application should not be able to spawn children at all. `posix_spawn`
 /// internally calls `execve`/`clone`, so it is covered transitively.
 #[cfg(target_os = "linux")]
@@ -279,7 +279,7 @@ fn build_seccomp_filter_for_syscalls(syscalls: &[u32]) -> Vec<libc::sock_filter>
 /// Factored out from `install_seccomp_denylist` so the program structure can be
 /// validated without installing it (see `validate_seccomp_filter`). The program
 /// is a denylist: matched dangerous syscalls return `SECCOMP_RET_KILL_PROCESS`;
-/// everything else — including arch mismatches — falls through to
+/// everything else - including arch mismatches - falls through to
 /// `SECCOMP_RET_ALLOW`.
 #[cfg(target_os = "linux")]
 #[allow(dead_code)]

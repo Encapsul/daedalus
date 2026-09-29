@@ -1,4 +1,4 @@
-//! `SISR` runtime engine — incremental, local reconstruction of a `.daedalus`.
+//! `SISR` runtime engine - incremental, local reconstruction of a `.daedalus`.
 //!
 //! The engine rebuilds the executable on disk from the current binary plus a
 //! delta manifest: unchanged chunks are copied out of the running file
@@ -35,7 +35,7 @@ pub trait ChunkFetcher {
 /// content hash (`<root>/<64-hex-hash>`).
 ///
 /// Internally delegates to `DiskObjectStore` (from `cas.rs`) so that Sisr chunk
-/// caching and the Phase 4 layer registry share one CAS on disk — eliminating
+/// caching and the Phase 4 layer registry share one CAS on disk - eliminating
 /// the ad-hoc directory layout that previously existed here.
 pub struct DirectoryChunkFetcher {
     store: crate::cas::DiskObjectStore,
@@ -110,8 +110,8 @@ impl SisrEngine {
     /// The caller is responsible for authenticating `manifest` (e.g. via a
     /// signature-checked [`RemoteManifest`]) and for passing the verified
     /// manifest signature as `manifest_sig`; this engine enforces the
-    /// cryptographic part it can: every chunk — reused from `self` or fetched
-    /// — must SHA-256 to its entry in the manifest before it is written.
+    /// cryptographic part it can: every chunk - reused from `self` or fetched
+    /// - must SHA-256 to its entry in the manifest before it is written.
     ///
     /// Returns the canonical path of the updated binary.
     ///
@@ -129,7 +129,7 @@ impl SisrEngine {
     }
 
     /// SHA-256(`payload` ‖ `meta_bytes`) of the binary that [`apply_update`]
-    /// would produce — without writing anything.
+    /// would produce - without writing anything.
     ///
     /// The launcher uses this *before* a swap to refuse re-installing a
     /// version the health gate already quarantined. Chunks are resolved with
@@ -173,7 +173,7 @@ impl SisrEngine {
     /// just verified against the trusted keys. The engine has no signing key
     /// (keys live at the build site), so the publisher pre-signs every
     /// release manifest and the update carries that signature into the
-    /// rebuilt binary's SISR extension — the same field a fresh build embeds.
+    /// rebuilt binary's SISR extension - the same field a fresh build embeds.
     /// The launcher then re-verifies it offline on every cold start, so an
     /// updated binary keeps its at-rest authenticity instead of degrading to
     /// integrity-only. Passing all-zeros yields a binary the launcher refuses
@@ -794,7 +794,7 @@ mod tests {
     }
 
     /// The pre-swap dry-run (`target_payload_sha256`) predicts the rebuilt
-    /// footer's hash exactly — on a mixed delta (reuse + fetch) — without
+    /// footer's hash exactly - on a mixed delta (reuse + fetch) - without
     /// touching the binary.
     #[test]
     /// `dry_run_hash_matches_rebuilt_footer_without_writes` - dry run hash matches rebuilt footer without writes.
@@ -908,7 +908,7 @@ mod tests {
 
     /// The publisher scenario at engine level: a REAL v1→v2 delta (rewritten
     /// tail → some chunks fetched), signed by the publisher, must produce a
-    /// binary that verifies offline against the trusted key — and only it.
+    /// binary that verifies offline against the trusted key - and only it.
     #[test]
     /// `applied_update_stays_authentic_at_rest` - applied update stays authentic at rest.
     ///

@@ -3,7 +3,7 @@
 ## Customer profile
 
 Un **développeur (solo ou petite équipe)** qui construit une **application web, serveur,
-ou CLI** et veut la **distribuer** à des utilisateurs ou collègues qui n'ont rien installé —
+ou CLI** et veut la **distribuer** à des utilisateurs ou collègues qui n'ont rien installé -
 ni Docker, ni Python, ni Node, ni quoi que ce soit. Il veut un fichier unique,
 auto-extractible, qu'il peut signer pour prouver son origine, et mettre à jour
 de manière incrémentale.
@@ -32,7 +32,7 @@ de manière incrémentale.
 ## Pourquoi maintenant?
 
 - **Multi-language apps sont la norme** : un projet moderne combine Python backend + Node frontend.
-  PyInstaller gère Python seulement, Bun gère JS/TS seulement — il faut deux outils.
+  PyInstaller gère Python seulement, Bun gère JS/TS seulement - il faut deux outils.
 - **llamafile (Mozilla-Ocho, 25k★)** : le concurrent direct, mais C++ only, pas de delta updates,
   pas de sandbox, pas de multi-runtime.
 - **Docker est trop lourd pour le laptop** : daemon, root, ressources. Une app devrait démarrer
@@ -61,7 +61,7 @@ Mono-language : PyInstaller marche pour Python, pkg pour Node. Mais une app mode
 besoin de **plusieurs langages** : un backend Python/Node, un worker Go, un binaire natif.
 
 daedalus = multi-runtime dans un seul format. Une app peut avoir un runtime Python pour l'API,
-un binaire C++ pour un moteur, et un script Node pour un worker — le tout dans un `.daedalus`.
+un binaire C++ pour un moteur, et un script Node pour un worker - le tout dans un `.daedalus`.
 
 ## AI-native deployment
 
@@ -74,7 +74,7 @@ un binaire C++ pour un moteur, et un script Node pour un worker — le tout dans
 
 ### The problem with cloud-first AI
 
-According to the ITU, an estimated 6 billion people — about three-quarters of the world's population — are using the Internet in 2025. However, 2.2 billion people remain offline, 96% of them in low- and middle-income countries. In low-income countries, only 14% of rural residents are online. 5G covers 55% of the global population, but only 4% in low-income countries.
+According to the ITU, an estimated 6 billion people - about three-quarters of the world's population - are using the Internet in 2025. However, 2.2 billion people remain offline, 96% of them in low- and middle-income countries. In low-income countries, only 14% of rural residents are online. 5G covers 55% of the global population, but only 4% in low-income countries.
 
 For AI deployment, this means:
 - **2.2 billion people** cannot access cloud-based AI services
@@ -109,10 +109,10 @@ daedalus solves this:
 ## Ce daedalus n'est PAS un nouveau format
 
 Nous ne créons pas un nouveau standard. Le format `.daedalus` est :
-- Un **ELF valide** (Linux) — `chmod +x && ./app.daedalus` fonctionne
-- Un **payload tar/zstd ou SquashFS** — décompressible avec `tar`/`unsquashfs`
-- Des **signatures Ed25519 standards** — vérifiables avec la librarie crypto standard
-- Un **rootfs POSIX** — pas de kernel features propriétaires
+- Un **ELF valide** (Linux) - `chmod +x && ./app.daedalus` fonctionne
+- Un **payload tar/zstd ou SquashFS** - décompressible avec `tar`/`unsquashfs`
+- Des **signatures Ed25519 standards** - vérifiables avec la librarie crypto standard
+- Un **rootfs POSIX** - pas de kernel features propriétaires
 
 Le format existe depuis v2 (plain) → v3 (signed) → v4 (encrypted) → v5 (squashfs),
 et lit les versions anciennes. Nous ne forkons jamais le format.
@@ -123,7 +123,7 @@ et lit les versions anciennes. Nous ne forkons jamais le format.
 - **Pas une VM** : on ne virtualise pas le kernel; l'app tourne sur le kernel host.
 - **Pas un package manager** : pas de registry centrale requise (optionnelle).
 - **Pas desktop packaging** : AppImage/Snap/Flatpak gèrent l'intégration desktop (icônes,
-  menus, X11/Wayland). daedalus cible **headless web/server apps** — "je lance le binaire,
+  menus, X11/Wayland). daedalus cible **headless web/server apps** - "je lance le binaire,
   un serveur démarre, j'ouvre mon navigateur."
 - **Pas un format inter-language bridge** : daedalus ne compile pas du Python vers du WASM.
   Chaque runtime marche dans son propre environnement (Python/venv, Node/node_modules, Go/binary).

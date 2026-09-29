@@ -13,7 +13,7 @@
 #
 # Every run records a machine profile (CPU model, RAM, disk, root device,
 # live-system indicator, tool versions) so results are comparable across
-# machines — see results/<machine>/profile.txt.
+# machines - see results/<machine>/profile.txt.
 #
 # Usage: run.sh [APP_DIR]
 #   MACHINE=label   machine name for the results dir (default: hostname)
@@ -47,7 +47,7 @@ die()  { echo "[run.sh] ERROR: $*" >&2; exit 1; }
 require_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 # Ensure a freshly built stub is used (find_stub silently prefers old
-# installed stubs otherwise — see daedalus-cli/src/commands/build.rs).
+# installed stubs otherwise - see daedalus-cli/src/commands/build.rs).
 if [ -z "${DAEDALUS_STUB_PATH:-}" ]; then
     MUSL_STUB="$REPO_ROOT/target/x86_64-unknown-linux-musl/release/daedalus-stub"
     if [ ! -f "$MUSL_STUB" ]; then
@@ -72,7 +72,7 @@ collect_profile() {
     [ -f /.dockerenv ] && env_type="docker-container"
     [ -f /run/.containerenv ] && env_type="podman-container"
     {
-        echo "# Machine profile — $MACHINE"
+        echo "# Machine profile - $MACHINE"
         echo "hostname:    $(hostname)"
         echo "kernel:      $(uname -sr)"
         echo "arch:        $(uname -m)"
@@ -130,7 +130,7 @@ spawn_and_measure() {
         sleep 1
         # RSS of the process actually listening on the port (the serving
         # process). Some packagers re-exec/spawn children (AppImage runtime,
-        # daedalus exec) — the launched PID may not be the server.
+        # daedalus exec) - the launched PID may not be the server.
         local server_pid
         server_pid=$(ss -tlnp 2>/dev/null | grep ":$port" | grep -oP 'pid=\K[0-9]+' | head -1)
         if [ -n "$server_pid" ] && [ -r "/proc/$server_pid/status" ]; then
@@ -308,7 +308,7 @@ measure_appimage() {
     rm -rf "$appdir"
     mkdir -p "$appdir"
     if [ ! -f "$WORK/hello-pkg" ]; then
-        log "appimage: skipped (pkg binary missing — run measure_pkg first)"
+        log "appimage: skipped (pkg binary missing - run measure_pkg first)"
         record appimage "artifact_bytes=n/a" "cold_ms=fail" "rss_kb=n/a" "host_deps=fuse" "note=pkg-missing"
         return 1
     fi
@@ -362,7 +362,7 @@ EOF
 # ---------------------------------------------------------------------------
 measure_flatpak() {
     if ! require_cmd flatpak-builder; then
-        log "flatpak: skipped (flatpak-builder not installed — needs a Flatpak host + OSTree runtimes)"
+        log "flatpak: skipped (flatpak-builder not installed - needs a Flatpak host + OSTree runtimes)"
         record flatpak "artifact_bytes=n/a" "cold_ms=n/a" "rss_kb=n/a" "host_deps=flatpak" "note=not-installed"
         return 1
     fi
@@ -376,9 +376,9 @@ measure_flatpak() {
 render_markdown() {
     local md="$OUT_DIR/comparison.md"
     {
-        echo "# Comparative Benchmark — daedalus vs Docker / pkg / AppImage / Flatpak"
+        echo "# Comparative Benchmark - daedalus vs Docker / pkg / AppImage / Flatpak"
         echo
-        echo "_Generated: $(date -u +%Y-%m-%dT%H:%MZ) — machine: \`$MACHINE\`_"
+        echo "_Generated: $(date -u +%Y-%m-%dT%H:%MZ) - machine: \`$MACHINE\`_"
         echo "_Reference app: \`${APP_DIR}\` (Node.js HTTP server, zero deps)_"
         echo
         echo "## Test machine"
@@ -406,11 +406,11 @@ render_markdown() {
         echo
         echo "- **Cold start** = wall time from launch to first HTTP 200."
         echo "- **Warm start** = second launch of the same artifact (extraction cache hit). Only daedalus caches; the other packagers re-launch every time."
-        echo "- **Idle RSS** = resident set of the process actually listening on the port, 1s after first response (Linux VmRSS, resolved via \`ss\`). Some packagers re-exec/spawn children (AppImage runtime, daedalus exec) — the server process is measured, not the launched PID."
+        echo "- **Idle RSS** = resident set of the process actually listening on the port, 1s after first response (Linux VmRSS, resolved via \`ss\`). Some packagers re-exec/spawn children (AppImage runtime, daedalus exec) - the server process is measured, not the launched PID."
         echo "- **On-disk footprint** = space used at run time (daedalus: extracted rootfs cache; Docker: uncompressed image; pkg/AppImage: the artifact itself)."
         echo "- **Host deps** = packages/services the target host must provide."
         echo "- Flatpak requires a Flatpak host + OSTree runtimes; not measured in this container."
-        echo "- Every run records a **machine profile** (\`results/<machine>/profile.txt\`) — comparing two machines without their profile is meaningless."
+        echo "- Every run records a **machine profile** (\`results/<machine>/profile.txt\`) - comparing two machines without their profile is meaningless."
         echo
         echo "Raw data: \`results.tsv\`. Re-run: \`bash benchmarks/comparison/run.sh\`."
         echo "Multi-machine aggregation: \`bash benchmarks/comparison/aggregate.sh\`."

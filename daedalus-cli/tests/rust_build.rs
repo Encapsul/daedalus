@@ -32,11 +32,11 @@ fn workspace_target_dir() -> PathBuf {
 }
 
 /// Locates (or builds) a runnable stub for the host. Returns `None` when no
-/// stub can be produced — the caller skips instead of failing.
+/// stub can be produced - the caller skips instead of failing.
 ///
 /// A plain `cargo build -p daedalus-stub` runs on every call: it is a fast
 /// no-op when fresh, which GUARANTEES the embedded stub matches the current
-/// sources — a stale prebuilt stub (e.g. an old musl artifact) fails with
+/// sources - a stale prebuilt stub (e.g. an old musl artifact) fails with
 /// confusing "unsupported runtime" errors at exec time.
 fn locate_stub() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("DAEDALUS_STUB_PATH") {
@@ -100,7 +100,7 @@ fn rust_app_is_detected_built_and_runs() {
             "-o",
             out.to_str().unwrap(),
         ])
-        // NOTE: no `--no-install` — it also skips the cargo build itself
+        // NOTE: no `--no-install` - it also skips the cargo build itself
         // (same semantics as the Go path), and this test must exercise it.
         .env("DAEDALUS_STUB_PATH", &stub)
         // Isolate signing state: the default dev key lands under XDG_DATA_HOME

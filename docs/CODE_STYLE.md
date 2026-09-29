@@ -1,4 +1,4 @@
-# CODE_STYLE.md — daedalus coding conventions
+# CODE_STYLE.md - daedalus coding conventions
 
 ## References
 
@@ -17,7 +17,7 @@
 ## Philosophy
 
 We follow the principles behind 42/Epitech's "Norm" and the Linux kernel
-coding style — adapted for Rust and Python, not copied from C.
+coding style - adapted for Rust and Python, not copied from C.
 
 1. **A function does ONE thing, and its name says exactly what that thing is.**
    If you can't name it precisely, it's doing too much.
@@ -77,34 +77,34 @@ clippy::expect_used = "warn"
 ```
 
 **Rationale for allows:**
-- `module_name_repetitions` — `format::Footer` is fine; `format::format_footer`
+- `module_name_repetitions` - `format::Footer` is fine; `format::format_footer`
   would be worse.
-- `must_use_candidate` — too noisy on private helper functions in a binary crate.
-- `missing_errors_doc` / `missing_panics_doc` — only applies to `pub` items in
+- `must_use_candidate` - too noisy on private helper functions in a binary crate.
+- `missing_errors_doc` / `missing_panics_doc` - only applies to `pub` items in
   library crates; this is a binary.
-- `unwrap_used` / `expect_used` — warn (not deny); the codebase already avoids
+- `unwrap_used` / `expect_used` - warn (not deny); the codebase already avoids
   them, but a targeted `expect("reason")` is acceptable in parse paths.
 
 ### Function length: ≤ 30 lines
 
 Measured as the line count from `fn` keyword to closing `}`. Rust is more
 concise than Python; functions should be short. If a function exceeds 30
-lines, it's a signal to extract a helper — not a hard ban, but a review
+lines, it's a signal to extract a helper - not a hard ban, but a review
 flag.
 
-**Current state:** `supervise_services` is 104 lines — it should be split into
+**Current state:** `supervise_services` is 104 lines - it should be split into
 `fork_services()`, `wait_for_health()`, `wait_for_children()`.
 
 ### Unsafe rules
 
-`daedalus-core/` and `daedalus-cli/` have **zero** `unsafe` — memory safety is
+`daedalus-core/` and `daedalus-cli/` have **zero** `unsafe` - memory safety is
 guaranteed by Rust's type system and borrow checker.
 
 `stub/src/main.rs` is the only crate with `unsafe`. Every `unsafe` block
 must have a `SAFETY` comment explaining **why it is sound**:
 
 ```rust
-// SAFETY: execvp(3) is safe here — prog_c is a valid CString,
+// SAFETY: execvp(3) is safe here - prog_c is a valid CString,
 // argv_ptrs is null-terminated, and we never return on success.
 // execvp searches PATH for bare command names.
 unsafe {
@@ -163,7 +163,7 @@ select = [
     "RUF",   # Ruff-specific rules
 ]
 ignore = [
-    "E501",  # line too long — Black handles wrapping; long strings are fine
+    "E501",  # line too long - Black handles wrapping; long strings are fine
 ]
 
 [tool.ruff.lint.isort]
@@ -171,13 +171,13 @@ known-first-party = ["daedalus"]
 ```
 
 **Why these categories:**
-- `E`/`W`/`F` — baseline, non-controversial.
-- `I` — consistent import ordering (Black doesn't sort imports).
-- `UP` — enforces modern Python syntax (`str | None` over `Optional[str]`).
-- `B` — catches real bugs (`mutable-argument-default`, `bare-except`).
-- `SIM` — suggests flattening (`if x: return y` over `if x: return y`).
-- `RUF` — Ruff-specific rules that catch real issues.
-- We do **not** enable `D` (pydocstyle) — docstrings are useful but
+- `E`/`W`/`F` - baseline, non-controversial.
+- `I` - consistent import ordering (Black doesn't sort imports).
+- `UP` - enforces modern Python syntax (`str | None` over `Optional[str]`).
+- `B` - catches real bugs (`mutable-argument-default`, `bare-except`).
+- `SIM` - suggests flattening (`if x: return y` over `if x: return y`).
+- `RUF` - Ruff-specific rules that catch real issues.
+- We do **not** enable `D` (pydocstyle) - docstrings are useful but
   enforcing format on a fast-moving project adds friction with no value.
 
 ### Type hints: mandatory on all functions
@@ -206,7 +206,7 @@ Measured from `def` to closing `}` (or end of body). 40 lines is roughly
 one screen at standard terminal height.
 
 **Current state:** Functions have been extracted to stay under the limit.
-`_build_manifest` was 171 lines — now split into 10+ helpers.
+`_build_manifest` was 171 lines - now split into 10+ helpers.
 
 ### Comment style
 
@@ -241,10 +241,10 @@ make preflight  # verify prerequisites
 ### CI (GitHub Actions)
 
 `.github/workflows/ci.yml` runs on every push/PR to `main`:
-1. **preflight** — verify system prerequisites
-2. **rust** — `cargo build` + `cargo clippy -p daedalus-core --all-targets -- -D warnings`
-3. **python** — `ruff check` + `black --check`
-4. **build** — full end-to-end: build → inspect → keygen → sign → verify
+1. **preflight** - verify system prerequisites
+2. **rust** - `cargo build` + `cargo clippy -p daedalus-core --all-targets -- -D warnings`
+3. **python** - `ruff check` + `black --check`
+4. **build** - full end-to-end: build → inspect → keygen → sign → verify
 
 PRs that fail CI cannot be merged.
 

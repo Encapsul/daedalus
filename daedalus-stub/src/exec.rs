@@ -139,7 +139,7 @@ pub fn setup_env(
         env.insert("DATABASE_URL".into(), url);
     }
 
-    // Framework-specific defaults (fill gaps only — .env and operator config win).
+    // Framework-specific defaults (fill gaps only - .env and operator config win).
     // Uses the effective runtime so layer-based binaries get the right defaults.
     match meta.effective_runtime() {
         "python" => {
@@ -282,7 +282,7 @@ pub fn detect_django_settings(app_dir: &Path) -> Option<String> {
                 // Use rfind to locate the VALUE's closing quote. After splitting
                 // on "DJANGO_SETTINGS_MODULE", the first quote in the remainder
                 // is often the closing quote of the key argument (e.g. `setdefault("KEY", "value")`).
-                // We want the last pair of matching quotes — that's the value.
+                // We want the last pair of matching quotes - that's the value.
                 if let Some(close) = module.rfind('"') {
                     if let Some(open) = module[..close].rfind('"') {
                         return Some(module[open + 1..close].to_string());
@@ -393,7 +393,7 @@ pub fn expand_env_arg(arg: &str, env: &BTreeMap<String, String>) -> Option<Strin
         rest = &rest[idx + 1..];
         if rest.starts_with('{') {
             let Some(end) = rest.find('}') else {
-                // Unbalanced `${` — keep the literal as-is.
+                // Unbalanced `${` - keep the literal as-is.
                 out.push_str(rest);
                 rest = "";
                 break;
@@ -406,7 +406,7 @@ pub fn expand_env_arg(arg: &str, env: &BTreeMap<String, String>) -> Option<Strin
                 .unwrap_or(rest.len());
             let name = &rest[..end];
             if name.is_empty() {
-                // Trailing `$` — keep it literal.
+                // Trailing `$` - keep it literal.
                 out.push('$');
             } else {
                 out.push_str(env.get(name)?);
@@ -646,7 +646,7 @@ fn bind_mount_gui_devices(rootfs: &Path) -> io::Result<()> {
 /// Description:
 /// NVIDIA: every `/dev/nvidia*` entry (device nodes, ctl, modeset, uvm) plus
 /// the `/dev/nvidia-caps/` controller files. ROCm: `/dev/kfd` and the
-/// `/dev/dri` render/control nodes. Sources are best-effort — missing nodes
+/// `/dev/dri` render/control nodes. Sources are best-effort - missing nodes
 /// (e.g. no NVIDIA driver this boot) are skipped so the same binary runs on
 /// GPU-less hosts. Set only when `meta.gpu` requests the backend.
 ///
@@ -753,7 +753,7 @@ fn prepare_bind_target(src: &Path, dest: &Path) -> io::Result<()> {
 /// Enters the `pivot_root` isolation and installs the requested sandboxes.
 ///
 /// Landlock rules anchor to the rootfs inode, so the `O_PATH` fd is opened
-/// BEFORE `pivot_root` replaces the mount tree — afterwards the original
+/// BEFORE `pivot_root` replaces the mount tree - afterwards the original
 /// rootfs path would no longer resolve and the rule could not be added.
 /// Landlock failures are fatal (fail-closed): the filesystem sandbox is the
 /// last line of defense of the isolation level, and running the app without
@@ -978,7 +978,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
     crate::health_gate::maybe_start_health(meta);
 
     // Sandbox flags only take effect on the pivot_root path (isolation >= 2).
-    // Warn on the non-pivot path instead of silently ignoring the request —
+    // Warn on the non-pivot path instead of silently ignoring the request -
     // metadata can be authored by any builder, not just the CLI. (macOS
     // applies its own sandbox profile for `landlock`, so this is Linux-only.)
     #[cfg(target_os = "linux")]
@@ -990,12 +990,12 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             })
             .collect::<Vec<_>>()
             .join(", ");
-        eprintln!("[daedalus] warning: {flags} requested but isolation < 2 — sandbox not applied");
+        eprintln!("[daedalus] warning: {flags} requested but isolation < 2 - sandbox not applied");
     }
 
     #[cfg(target_os = "linux")]
     if use_pivot && crate::namespace::running_in_container() {
-        eprintln!("[daedalus] warning: running inside a container — namespace isolation may be restricted by the host");
+        eprintln!("[daedalus] warning: running inside a container - namespace isolation may be restricted by the host");
     }
 
     enter_namespace_if_needed(meta.isolation)?;
@@ -1098,7 +1098,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
         // child inherits the filter, its `execvp` is blocked, and the parent
         // detects the child's exit (126) to refuse the launch cleanly.
         //
-        // When Exec is absent but seccomp is NOT active, refuse outright —
+        // When Exec is absent but seccomp is NOT active, refuse outright -
         // the application should not be launched without an exec capability.
         //
         // Legacy binaries (no layer system) always get a pass here.
@@ -1114,7 +1114,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
         if layers_active && !has_exec && !seccomp_blocks_exec {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
-                "Exec capability absent — application launch refused",
+                "Exec capability absent - application launch refused",
             ));
         }
 
@@ -1131,7 +1131,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
                 unsafe {
                     crate::libc_execvp(prog_c.as_ptr(), argv_ptrs.as_ptr());
                 }
-                eprintln!("[daedalus] execvp blocked — Exec capability absent (seccomp)");
+                eprintln!("[daedalus] execvp blocked - Exec capability absent (seccomp)");
                 unsafe {
                     libc::_exit(126);
                 }
@@ -1144,14 +1144,14 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 126 {
                 return Err(io::Error::new(
                     io::ErrorKind::PermissionDenied,
-                    "Exec capability absent — application launch refused (seccomp blocked execve)",
+                    "Exec capability absent - application launch refused (seccomp blocked execve)",
                 ));
             }
             if libc::WIFSIGNALED(status) {
                 return Err(io::Error::new(
                     io::ErrorKind::PermissionDenied,
                     format!(
-                        "Exec capability absent — child killed by signal {} (seccomp)",
+                        "Exec capability absent - child killed by signal {} (seccomp)",
                         libc::WTERMSIG(status)
                     ),
                 ));
@@ -1185,7 +1185,7 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
 /// Resolve the entrypoint program + interpreter details shared by the
 /// single-app and service-supervisor launch paths.
 /// Canonical interpreter binary name for each interpreted runtime. Compiled
-/// runtimes (`go`, `binary`) return `None` — their entrypoint is the program.
+/// runtimes (`go`, `binary`) return `None` - their entrypoint is the program.
 fn runtime_interpreter(runtime: &str) -> Option<&'static str> {
     match runtime {
         "python" => Some("python3"),
@@ -1206,13 +1206,13 @@ fn runtime_interpreter(runtime: &str) -> Option<&'static str> {
 
 /// Resolve the entrypoint program and interpreter for `meta`, validated against
 /// the supported runtime list. `None` from `Runtime::from_name` means the
-/// metadata carries a runtime the stub never heard of — fail loudly instead of
+/// metadata carries a runtime the stub never heard of - fail loudly instead of
 /// silently launching under bash (upstream fix for roadmap #40).
 ///
 /// The runtime name and argv template come from `Metadata::effective_runtime` /
 /// `Metadata::effective_entrypoint`: the layer system when `entrypoint_layer`
 /// is set, the flat fields for legacy binaries. This is the single resolution
-/// path — callers must not re-implement layer lookup.
+/// path - callers must not re-implement layer lookup.
 pub fn resolve_entrypoint(
     meta: &Metadata,
     rootfs: &Path,
@@ -1231,7 +1231,7 @@ pub fn resolve_entrypoint(
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "unsupported runtime '{}' in metadata — supported: python, deno, node, electron, flutter, dart, java, ruby, dotnet, rust, zig, go, php, perl, hugo, ollama, gemma, wasm, binary",
+                "unsupported runtime '{}' in metadata - supported: python, deno, node, electron, flutter, dart, java, ruby, dotnet, rust, zig, go, php, perl, hugo, ollama, gemma, wasm, binary",
                 runtime_str
             ),
         ));
@@ -1631,7 +1631,7 @@ pub fn wait_for_children(children: &[(String, i32)], verbose: bool) -> io::Resul
         let pid = unsafe { libc::waitpid(-1, &raw mut status, 0) };
         if pid < 0 {
             // ECHILD with services still tracked means the children were
-            // reaped elsewhere (or never spawned) — report it instead of
+            // reaped elsewhere (or never spawned) - report it instead of
             // silently "succeeding" while services are gone. Any other
             // error just stops the wait loop.
             let err = io::Error::last_os_error();
@@ -1732,7 +1732,7 @@ static mut CHILD_PIDS: [i32; MAX_CHILDREN] = [0; MAX_CHILDREN];
 ///
 /// This function registers a signal handler that reads `CHILD_PIDS` via
 /// `static mut` (safe only under the single-threaded invariant below).
-/// Callers MUST ensure the process is single-threaded at this point —
+/// Callers MUST ensure the process is single-threaded at this point -
 /// no spawned threads, no concurrent mutable access to `CHILD_PIDS`.
 #[cfg(unix)]
 /// `install_signal_handler` - install signal handler.

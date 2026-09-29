@@ -156,7 +156,7 @@ pub fn sign_bytes(original: &[u8], key_bytes: &[u8]) -> Result<Vec<u8>> {
     // the footer itself (via `pack_full`, incl. the sig_offset prefix),
     // because the footer's format_version and FLAG_SIGNED decide whether the
     // signature is ever consulted. A signature over payload‖meta alone would
-    // let an attacker downgrade the file to v2 and strip the flag — the
+    // let an attacker downgrade the file to v2 and strip the flag - the
     // signature would be silently skipped.
     let new_sig_offset = footer.meta_offset + footer.meta_size;
     footer.sig_offset = new_sig_offset;
@@ -220,12 +220,12 @@ pub fn sign_file(file: &PathBuf, key_bytes: &[u8], quiet: bool) -> Result<()> {
 ///
 /// Returns the private-key path, creating both files if they do not yet exist:
 ///
-/// - `<keys>/<fingerprint>.key` — 32-byte private key, mode 0600
-/// - `<keys>/<fingerprint>.pub` — 32-byte public key
+/// - `<keys>/<fingerprint>.key` - 32-byte private key, mode 0600
+/// - `<keys>/<fingerprint>.pub` - 32-byte public key
 ///
 /// and copies the public key into `trusted_keys_dir()` so the stub/`verify`
 /// trust anchor knows it. Generating a fresh key per machine keeps the signing
-/// key out of the binary and out of VCS — the ROADMAP's "sign by default with
+/// key out of the binary and out of VCS - the ROADMAP's "sign by default with
 /// the dev key".
 pub fn ensure_dev_key() -> Result<PathBuf> {
     ensure_dev_key_in(&default_key_dir(), &trusted_keys_dir())

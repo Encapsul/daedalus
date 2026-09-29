@@ -1,4 +1,4 @@
-//! Package manager detection — identifies which package manager an app uses.
+//! Package manager detection - identifies which package manager an app uses.
 //!
 //! Priority is speed-based: uv > poetry > pipenv > pip; pnpm > yarn > bun > npm.
 

@@ -1,4 +1,4 @@
-//! `squashfs` extraction — parse squashfs images and extract to a directory tree.
+//! `squashfs` extraction - parse squashfs images and extract to a directory tree.
 //!
 //! Used by the v5 launcher path when `payload_format == "squashfs"`.
 //! Each layer is an independent squashfs image. Layers are extracted sequentially
@@ -136,7 +136,7 @@ fn extract_squashfs_blob(
             | InnerNode::BlockDevice(_)
             | InnerNode::NamedPipe
             | InnerNode::Socket => {
-                // Skip device nodes, pipes, and sockets — not meaningful in
+                // Skip device nodes, pipes, and sockets - not meaningful in
                 // userspace extraction.
             }
         }

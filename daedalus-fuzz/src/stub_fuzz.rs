@@ -72,7 +72,7 @@ impl FuzzTarget for StubFuzzTarget {
     }
     fn execute(&self, input: &[u8]) -> Result<()> {
         let _scenario: ExtractionScenario = serde_json::from_slice(input)?;
-        // Execution would run stub — skip in fuzzing
+        // Execution would run stub - skip in fuzzing
         Ok(())
     }
 }

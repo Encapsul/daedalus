@@ -105,7 +105,7 @@ fn seccomp_without_flag_works() {
     assert!(stdout.contains("hello"));
 }
 
-/// Phase 5b: Exec capability enforcement — a `RuntimeLayer` WITHOUT `exec`
+/// Phase 5b: Exec capability enforcement - a `RuntimeLayer` WITHOUT `exec`
 /// capability must refuse the launch ("Exec capability absent").
 fn build_layered_daedalus(work: &Path, stub: &Path, capabilities: &[&str]) -> PathBuf {
     let out = work.join("layered.daedalus");
@@ -179,7 +179,7 @@ fn exec_capability_present_allows_check() {
 
     let output = Command::new(&daedalus_path).output().expect("run daedalus");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    // Should NOT say "Exec capability absent" — it got past the check.
+    // Should NOT say "Exec capability absent" - it got past the check.
     assert!(
         !stderr.contains("Exec capability absent"),
         "Exec capability present should pass capability check, got: {}",

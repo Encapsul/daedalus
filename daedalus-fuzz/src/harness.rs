@@ -1,4 +1,4 @@
-//! daedalus-fuzz — simplified high-throughput fuzzer for daedalus.
+//! daedalus-fuzz - simplified high-throughput fuzzer for daedalus.
 
 #![forbid(unsafe_code)]
 

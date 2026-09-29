@@ -1,4 +1,4 @@
-# Homebrew formula for daedalus — installs the prebuilt release binary.
+# Homebrew formula for daedalus - installs the prebuilt release binary.
 #
 # To publish, fill the four sha256 values below from a GitHub release, then
 # add this file to a Homebrew tap:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-standards.sh — enforce "1 topic = 1 file = 1 truth" (anti-XKCD 927)
+# check-standards.sh - enforce "1 topic = 1 file = 1 truth" (anti-XKCD 927)
 # Run locally before committing, and in CI on every PR.
 set -euo pipefail
 

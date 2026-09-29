@@ -5,7 +5,7 @@
 - Linux x86_64
 - Rust with musl target: `rustup target add x86_64-unknown-linux-musl`
 - `zstd` (available on most distributions)
-- C compiler (`gcc` or `musl-tools`) — required by `backhand` (squashfs)
+- C compiler (`gcc` or `musl-tools`) - required by `backhand` (squashfs)
 
 Verify all prerequisites in one command:
 

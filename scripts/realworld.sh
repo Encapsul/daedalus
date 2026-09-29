@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# realworld.sh — clone real-world apps per language and test daedalus build
+# realworld.sh - clone real-world apps per language and test daedalus build
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

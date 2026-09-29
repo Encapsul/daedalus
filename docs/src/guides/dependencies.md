@@ -1,6 +1,6 @@
 # Dependency Detection
 
-This is where the builder's complexity lives — detecting what the app needs
+This is where the builder's complexity lives - detecting what the app needs
 and bundling exactly the right files.
 
 ## Detection pipeline
@@ -56,7 +56,7 @@ For dynamic binaries, the builder reads ELF64 program headers directly
 your binary ─ELF→ libc.so.6, libssl.so.3, ..., ld-linux-x86-64.so.2
 ```
 
-No `ldd` required on the host machine — works with any Rust toolchain,
+No `ldd` required on the host machine - works with any Rust toolchain,
 ideal for cross-compilation and self-hosting.
 
 ## What static analysis does NOT see

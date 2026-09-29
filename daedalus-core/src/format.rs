@@ -1,4 +1,4 @@
-//! `.daedalus` format parser — see docs/src/reference/format.md.
+//! `.daedalus` format parser - see docs/src/reference/format.md.
 //!
 //! Shared between the launcher (stub) and the build tool.
 //! Footer versions: v1-v5. See format docs for layout details.
@@ -174,7 +174,7 @@ impl Footer {
 
     /// Full on-disk footer representation (v3+): the 8-byte `sig_offset`
     /// prefix followed by the 84-byte core, byte-identical to what a signed
-    /// file stores at EOF. Used as the signature digest input — the footer
+    /// file stores at EOF. Used as the signature digest input - the footer
     /// decides whether the signature is consulted at all (version + flags),
     /// so a signature over payload‖meta alone would let an attacker downgrade
     /// the file to v2 and have it skipped.

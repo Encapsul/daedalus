@@ -1,4 +1,4 @@
-//! Runtime detection — identifies which runtime an app directory uses.
+//! Runtime detection - identifies which runtime an app directory uses.
 //!
 //! Detection order matches the Python registry:
 //! Python > Deno > Node > Electron > Flutter > Dart > Java > Ruby > .NET > Rust > Zig > Go > PHP > Perl > Hugo > Wasm > Binary
@@ -330,7 +330,7 @@ fn detect_dotnet(dir: &Path) -> bool {
 /// Return: true or false
 fn detect_rust(dir: &Path) -> bool {
     // Cargo.toml is the authoritative indicator. A Cargo.toml next to a
-    // package.json (e.g. Tauri) stays Node by priority — the JS toolchain
+    // package.json (e.g. Tauri) stays Node by priority - the JS toolchain
     // owns the root manifest there.
     dir.join("Cargo.toml").is_file()
 }
@@ -369,7 +369,7 @@ fn detect_dart(dir: &Path) -> bool {
 /// Return: true or false
 fn detect_flutter(dir: &Path) -> bool {
     // The Flutter tool generators write `flutter: { sdk: flutter }` under
-    // `dependencies:` — the "sdk: flutter" line is the unambiguous marker
+    // `dependencies:` - the "sdk: flutter" line is the unambiguous marker
     // (a bare `flutter:` also appears as a top-level asset section).
     std::fs::read_to_string(dir.join("pubspec.yaml"))
         .is_ok_and(|c| c.lines().any(|l| l.contains("sdk: flutter")))
@@ -742,7 +742,7 @@ fn gemma_model_id(dir: &Path) -> Option<String> {
 ///
 /// Mirrors [`detect_ollama`] but narrows to Gemma so the bundle is built with
 /// the `gemma` runtime and the stub can launch the exact model id offline, no
-/// cloud and no GPU required — the edge use case the project targets.
+/// cloud and no GPU required - the edge use case the project targets.
 fn detect_gemma(dir: &Path) -> bool {
     if std::env::var("DAEDALUS_GEMMA")
         .ok()
@@ -845,7 +845,7 @@ fn is_native_binary(path: &Path) -> bool {
 /// Resolve the entrypoint argv for a detected runtime.
 ///
 /// Returns `None` if the entry file cannot be determined.
-/// Interpreter names are bare (e.g. `python3`, `node`) — the stub uses
+/// Interpreter names are bare (e.g. `python3`, `node`) - the stub uses
 /// `execvp` which resolves them via PATH. App paths use `/app/` prefix.
 ///
 /// NOTE: intentionally >100 lines because this is the central dispatch for
@@ -1267,7 +1267,7 @@ pub fn find_dotnet_self_contained(app_dir: &Path) -> Option<String> {
 /// Handles: Laravel (artisan), WordPress/OpenEMR (root index.php),
 /// `CakePHP` (webroot/), Yii (web/), Slim (public/), `FrankenPHP`, and generic fallbacks.
 fn resolve_php_entrypoint(app_dir: &Path) -> Option<Vec<String>> {
-    // 0. Laravel Octane with RoadRunner — rr binary replaces php -S
+    // 0. Laravel Octane with RoadRunner - rr binary replaces php -S
     if app_dir.join("rr.yaml").is_file() || app_dir.join(".rr.yaml").is_file() {
         return Some(vec!["rr".into(), "/app".into()]);
     }
@@ -1507,7 +1507,7 @@ fn find_node_entry_in_subpackage(sub_dir: &Path, rel: &Path) -> Option<String> {
         }
     }
 
-    // Check "scripts.start" — rewrite command with sub-package prefix
+    // Check "scripts.start" - rewrite command with sub-package prefix
     if let Some(cmd) = pkg
         .get("scripts")
         .and_then(|s| s.get("start"))
@@ -1686,7 +1686,7 @@ mod tests {
         assert_eq!(detect_runtime(dir.path()), Some(Runtime::Zig));
     }
 
-    /// A pre-built ELF in the Zig source root resolves to `/app/<name>` —
+    /// A pre-built ELF in the Zig source root resolves to `/app/<name>` -
     /// same contract as Go/Rust/Binary when a binary is checked into the repo.
     #[test]
     /// `zig_entrypoint_finds_built_binary` - zig entrypoint finds built binary.
@@ -2450,7 +2450,7 @@ start = "uvicorn main:app"
     ///
     /// Return: nothing
     fn java_entrypoint_emits_port_placeholder() {
-        // The `$PORT` placeholder must stay unexpanded at build time — the stub
+        // The `$PORT` placeholder must stay unexpanded at build time - the stub
         // substitutes the run-time PORT value when the app launches.
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("app.jar"), b"\x50\x4b\x03\x04").unwrap();

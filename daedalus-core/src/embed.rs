@@ -173,7 +173,7 @@ pub fn embed_interpreter_from_path(
 pub fn find_interpreter_host(name: &str) -> Option<PathBuf> {
     // Cross-compilation: the target runtime is staged as `<name>.exe` in a
     // tools dir prepended to PATH (e.g. `node.exe` for a win-x64 build), so
-    // try the suffixed form first — it wins over any host interpreter and is
+    // try the suffixed form first - it wins over any host interpreter and is
     // a no-op miss on POSIX hosts that have no `.exe` binaries on PATH.
     //
     // Iterate `PATH` directly instead of shelling out to `which`, which does
@@ -235,7 +235,7 @@ pub(crate) fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
                 continue;
             };
 
-            // Skip the dynamic linker (ld-linux, ld-musl) — it's not a library dep
+            // Skip the dynamic linker (ld-linux, ld-musl) - it's not a library dep
             let fname = path_str.rsplit('/').next().unwrap_or(path_str);
             if fname.starts_with("ld-linux") || fname.starts_with("ld-musl") {
                 continue;
@@ -826,7 +826,7 @@ fn detect_linux_distro() -> &'static str {
     // Try to detect from /etc/os-release
     if let Ok(content) = fs::read_to_string("/etc/os-release") {
         let content_lower = content.to_lowercase();
-        // Check for Ubuntu first — Ubuntu's /etc/os-release contains
+        // Check for Ubuntu first - Ubuntu's /etc/os-release contains
         // `ID_LIKE=debian`, so a naive `contains("debian")` check would
         // misidentify Ubuntu as Debian.
         if content_lower.contains("ubuntu") {

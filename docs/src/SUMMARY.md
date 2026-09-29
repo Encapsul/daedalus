@@ -20,7 +20,7 @@
 # Spec
 
 - [Delta Manifest Format](./spec/delta-manifest-format.md)
-- [`.daedalus` Format v2 — SISR extension](./spec/daedalus-format-v2.md)
+- [`.daedalus` Format v2 - SISR extension](./spec/daedalus-format-v2.md)
 
 # Technical Reference
 

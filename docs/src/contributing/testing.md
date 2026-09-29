@@ -21,12 +21,12 @@ cargo test --workspace
 mdbook build docs/
 ```
 
-## Layer 1 — unit tests
+## Layer 1 - unit tests
 
 `#[cfg(test)] mod tests` inside each module of `daedalus-core`. Covers the chunker,
 Merkle roots, tar/zstd round-trips, footer codec, and parser edge cases.
 
-## Layer 2 — property-based tests (proptest)
+## Layer 2 - property-based tests (proptest)
 
 `#[cfg(test)] mod proptests` in `daedalus-core/src/manifest.rs`,
 `daedalus-core/src/sisr_header.rs`, and `daedalus-core/src/format.rs`. Each test runs
@@ -45,24 +45,24 @@ toolchains.
 cargo test -p daedalus-core --lib
 ```
 
-## Layer 3 — SISR engine fault injection
+## Layer 3 - SISR engine fault injection
 
 `daedalus-core/src/sisr/network_test.rs` drives the real engine through a
 `ChunkFetcher` wrapper that injects network faults:
 
-- latency (`thread::sleep`) — result unchanged;
-- abrupt connection drops (`io::ErrorKind::ConnectionReset`) — update fails,
+- latency (`thread::sleep`) - result unchanged;
+- abrupt connection drops (`io::ErrorKind::ConnectionReset`) - update fails,
   binary untouched;
-- corrupted packets — fails SHA-256 verification;
-- truncated packets — fails the length check;
-- slow throughput — still reconstructs correctly;
+- corrupted packets - fails SHA-256 verification;
+- truncated packets - fails the length check;
+- slow throughput - still reconstructs correctly;
 - fetched-byte accounting.
 
 ```bash
 cargo test -p daedalus-core --lib sisr::network_test
 ```
 
-## Layer 4 — end-to-end (stub integration)
+## Layer 4 - end-to-end (stub integration)
 
 `stub/tests/e2e_sisr/` launches the real `daedalus-stub` binary
 (`CARGO_BIN_EXE_daedalus-stub`) against a standard-library TCP mock HTTP server.
@@ -78,9 +78,9 @@ cargo test -p daedalus-stub --test e2e_sisr_main
 with ≤ 2% overhead on modified bytes, the new payload actually runs, and the
 mission-6 local staging path still applies).
 
-`update_failures.rs` covers every refusal path — untrusted signature, corrupt
+`update_failures.rs` covers every refusal path - untrusted signature, corrupt
 manifest, missing chunk (404), truncated chunk, corrupted chunk bytes, and
-Merkle-root mismatch — and asserts the previous binary stays intact with no
+Merkle-root mismatch - and asserts the previous binary stays intact with no
 residual `.bak`.
 
 The health-gate rollback E2E lives separately:

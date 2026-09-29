@@ -34,8 +34,8 @@ layers and their hashes, sizes, and compression formats.
 Layers can be pushed to and pulled from a daedalus registry. The registry
 stores:
 
-- `<hash>.layer` — the raw compressed bytes
-- `<hash>.json` — metadata (kind, size, compression)
+- `<hash>.layer` - the raw compressed bytes
+- `<hash>.json` - metadata (kind, size, compression)
 
 See [Registry HTTP API](./registry-api.md) for the wire format.
 

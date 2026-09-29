@@ -17,7 +17,7 @@ Google's open-weights model, running locally via [Ollama](https://ollama.ai) or
 3. Package the app with `daedalus build . -o app.daedalus`
 4. The `.daedalus` binary embeds Ollama + the Gemma model
 5. On first run, Ollama starts and serves the analyzer on `http://127.0.0.1:PORT`
-6. The app performs offline code analysis — no internet, no cloud, no cost
+6. The app performs offline code analysis - no internet, no cloud, no cost
 
 ```bash
 # Build the app with Ollama embedded
@@ -75,7 +75,7 @@ daedalus build ./my-ollama-app -o llm.daedalus --gpu rocm
 ```
 
 - `--gpu auto` probes the host: `/dev/kfd` → ROCm, `/proc/driver/nvidia/gpus`
-  → NVIDIA. If nothing is found it warns and builds a CPU-only binary — the
+  → NVIDIA. If nothing is found it warns and builds a CPU-only binary - the
   same binary still runs on GPU-less machines.
 - `--gpu none` (the default) builds a CPU-only binary.
 - The backend is embedded in the metadata (`daedalus inspect` shows `GPU:`).
@@ -87,7 +87,7 @@ At runtime the launcher:
   `HIP_VISIBLE_DEVICES=0`/`ROCR_VISIBLE_DEVICES=0`), which it never
   overwrites if you exported them yourself
 - **in the sandbox**: bind-mounts the GPU device nodes over regular-file
-  overlays into the rootfs — NVIDIA `/dev/nvidia*` + `/dev/nvidia-caps/*`,
+  overlays into the rootfs - NVIDIA `/dev/nvidia*` + `/dev/nvidia-caps/*`,
   ROCm `/dev/kfd` + `/dev/dri/renderD*`. Missing nodes are skipped, so the
   binary degrades to CPU gracefully.
 

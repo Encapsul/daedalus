@@ -1,4 +1,4 @@
-//! daedalus-fuzz — high-throughput structure-aware fuzzer for the daedalus ecosystem.
+//! daedalus-fuzz - high-throughput structure-aware fuzzer for the daedalus ecosystem.
 //!
 //! Targets:
 //! - .de binary format (footer, metadata, payload extraction)

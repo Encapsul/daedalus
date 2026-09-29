@@ -7,7 +7,7 @@
 //!
 //! Seatbelt profiles are textual rules evaluated by the kernel. The profile
 //! below is intentionally permissive (allowing network, standard IPC, etc.)
-//! because daedalus is a general-purpose packager — it just constrains filesystem
+//! because daedalus is a general-purpose packager - it just constrains filesystem
 //! access to the extracted rootfs and the daedalus cache directory.
 
 #![cfg(target_os = "macos")]

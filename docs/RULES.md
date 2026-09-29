@@ -24,7 +24,7 @@ Based on [ANSSI Secure Rust Guidelines](https://anssi-fr.github.io/rust-guide). 
 ## Code Style
 
 - Edition 2021, `cargo fmt` is authoritative
-- Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` — tiny binaries
+- Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` - tiny binaries
 - Clippy pedantic with many allows (see `daedalus-core/Cargo.toml [lints.clippy]`)
 - Prefer `Result::ok()` over `|e| e.ok()`
 - Prefer `r"..."` over `r#"..."#` when no `#` in string

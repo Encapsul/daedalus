@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 ///
 /// Until `commit` succeeds the destination is never touched. If the writer is
 /// dropped uncommitted (error return, early `?`, process death), the
-/// temporary is removed — a stale `.tmp` can only survive a hard kill, and is
+/// temporary is removed - a stale `.tmp` can only survive a hard kill, and is
 /// never mistaken for the binary.
 ///
 /// [`commit`]: Self::commit
@@ -49,10 +49,10 @@ impl AtomicWriter {
 
     /// Flushes, fsyncs, then atomically renames over `dst`.
     ///
-    /// On POSIX this is `rename(2)` — atomic even if `dst` exists. On Windows
+    /// On POSIX this is `rename(2)` - atomic even if `dst` exists. On Windows
     /// `std::fs::rename` maps to `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`
     /// (a locked destination requires the trampoline fallback, out of scope
-    /// here — the launcher is Linux-only).
+    /// here - the launcher is Linux-only).
     pub fn commit(mut self, dst: &Path) -> io::Result<()> {
         self.file.flush()?;
         self.file.sync_all()?;

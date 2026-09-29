@@ -12,7 +12,7 @@ use crate::Metadata;
 /// Resolves the update channel base URL:
 /// `--daedalus-update=<URL>` argument > `$DAEDALUS_UPDATE_URL` > embedded `meta.update_url`.
 ///
-/// Only the `=` form is accepted as a CLI override — the next positional argv
+/// Only the `=` form is accepted as a CLI override - the next positional argv
 /// is never guessed as the URL, so the app's first argument can't be swallowed.
 pub fn resolve_update_url(args: &[OsString], idx: usize, meta: &Metadata) -> io::Result<String> {
     if let Some(arg) = args.get(idx) {
@@ -30,7 +30,7 @@ pub fn resolve_update_url(args: &[OsString], idx: usize, meta: &Metadata) -> io:
     }
     Err(io::Error::new(
         io::ErrorKind::InvalidData,
-        "no update URL — pass --daedalus-update=<URL>, set $DAEDALUS_UPDATE_URL, \
+        "no update URL - pass --daedalus-update=<URL>, set $DAEDALUS_UPDATE_URL, \
          or rebuild with daedalus build --update-url",
     ))
 }
@@ -137,7 +137,7 @@ mod tests {
     ///
     /// Return: nothing
     fn resolve_update_url_does_not_swallow_app_positional_arg() {
-        // `--daedalus-update serve` must NOT treat `serve` as the URL — the next
+        // `--daedalus-update serve` must NOT treat `serve` as the URL - the next
         // positional argv belongs to the app and is never consumed.
         let args = vec![OsString::from("--daedalus-update"), OsString::from("serve")];
         let meta = Metadata {

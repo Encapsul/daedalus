@@ -41,7 +41,7 @@ pub(crate) fn is_command_available(name: &str) -> bool {
 /// Resolve an interpreter's binary path inside a downloaded tool `bin` dir.
 ///
 /// Tool dists name their executable `<name>.exe` on Windows and `<name>`
-/// elsewhere. Which applies depends on the target OS — a cross build to a
+/// elsewhere. Which applies depends on the target OS - a cross build to a
 /// Windows target or a build running on a Windows host both want the `.exe`.
 pub(crate) fn interpreter_bin(bin_dir: &Path, name: &str, target: Option<&str>) -> PathBuf {
     let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows")
@@ -245,7 +245,7 @@ fn ensure_node_download(
 
     if !node_bin.exists() {
         anyhow::bail!(
-            "downloaded tarball missing node binary — install manually: https://nodejs.org"
+            "downloaded tarball missing node binary - install manually: https://nodejs.org"
         );
     }
 
@@ -265,7 +265,7 @@ fn ensure_node_download(
 
 /// Locate the python executable inside a downloaded python-build-standalone
 /// dist. The linux/darwin layout nests it at `bin/python3` while the Windows
-/// layout keeps `python.exe`/`python3.exe` directly in the top level — search
+/// layout keeps `python.exe`/`python3.exe` directly in the top level - search
 /// both rather than hardcoding one shape.
 fn find_python_in(tools_dir: &Path) -> Option<PathBuf> {
     let candidates = [
@@ -641,7 +641,7 @@ pub(crate) fn check_php_platform_reqs(app_dir: &Path, verbose: bool) -> Result<(
         eprintln!("  Run: sudo apt install php-{}", missing.join(" php-"));
         eprintln!("  or: composer install --ignore-platform-reqs (will be used as fallback)");
         if verbose {
-            eprintln!("  Proceeding with --ignore-platform-reqs — runtime may fail if extensions are needed.");
+            eprintln!("  Proceeding with --ignore-platform-reqs - runtime may fail if extensions are needed.");
         }
     } else if verbose {
         eprintln!(
@@ -653,7 +653,7 @@ pub(crate) fn check_php_platform_reqs(app_dir: &Path, verbose: bool) -> Result<(
     Ok(())
 }
 
-/// Simple PHP version constraint check — handles `^8.2`, `>=8.0`, `8.1`, `8.*`,
+/// Simple PHP version constraint check - handles `^8.2`, `>=8.0`, `8.1`, `8.*`,
 /// `~8.1.0`, and `8.1 || 8.2` patterns. Returns true if the version satisfies.
 fn version_satisfies(version: &str, constraint: &str) -> bool {
     let version_parts: Vec<u32> = version
@@ -847,7 +847,7 @@ pub(crate) fn ensure_composer(app_dir: &Path, verbose: bool) -> Result<(String, 
                 .context("failed to download composer.phar")?;
             if !status.success() {
                 anyhow::bail!(
-                    "composer not found and failed to download composer.phar — \
+                    "composer not found and failed to download composer.phar - \
                      install composer: https://getcomposer.org/download"
                 );
             }
@@ -862,7 +862,7 @@ pub(crate) fn ensure_composer(app_dir: &Path, verbose: bool) -> Result<(String, 
     }
 
     anyhow::bail!(
-        "composer not found — install it: https://getcomposer.org/download \
+        "composer not found - install it: https://getcomposer.org/download \
          or install php + composer"
     )
 }
@@ -1007,7 +1007,7 @@ fn ensure_go_download(
 
     if !go_bin.exists() {
         anyhow::bail!(
-            "downloaded tarball missing go binary — install manually: https://go.dev/dl/"
+            "downloaded tarball missing go binary - install manually: https://go.dev/dl/"
         );
     }
 
@@ -1101,7 +1101,7 @@ pub(crate) fn ensure_deno(target: Option<&str>, verbose: bool) -> Result<PathBuf
 
     if !deno_bin.exists() {
         anyhow::bail!(
-            "downloaded deno archive missing deno binary — install manually: https://deno.land"
+            "downloaded deno archive missing deno binary - install manually: https://deno.land"
         );
     }
 
@@ -1262,7 +1262,7 @@ pub(crate) fn ensure_hugo(target: Option<&str>, verbose: bool) -> Result<PathBuf
 
     if !hugo_bin.exists() {
         anyhow::bail!(
-            "downloaded hugo archive missing hugo binary — install manually: https://gohugo.io/installation/"
+            "downloaded hugo archive missing hugo binary - install manually: https://gohugo.io/installation/"
         );
     }
 
@@ -1402,7 +1402,7 @@ pub(crate) fn ensure_wasmtime(target: Option<&str>, verbose: bool) -> Result<Pat
 
     if !wasmtime_bin.exists() {
         anyhow::bail!(
-            "downloaded wasmtime archive missing wasmtime binary — install manually: https://wasmtime.dev"
+            "downloaded wasmtime archive missing wasmtime binary - install manually: https://wasmtime.dev"
         );
     }
 
@@ -1606,7 +1606,7 @@ fn ensure_rustup_download(verbose: bool) -> Result<PathBuf> {
         Some(path) => path,
         None => {
             anyhow::bail!(
-                "cargo not found on PATH and auto-download failed — \
+                "cargo not found on PATH and auto-download failed - \
                  install Rust manually: https://rustup.rs"
             );
         }
@@ -1633,20 +1633,20 @@ fn ensure_rustup_download(verbose: bool) -> Result<PathBuf> {
         .status()
         .with_context(|| {
             format!(
-                "failed to run `{}` (rustup-init) — install Rust manually: https://rustup.rs",
+                "failed to run `{}` (rustup-init) - install Rust manually: https://rustup.rs",
                 rustup_init.display()
             )
         })?;
     if !status.success() {
         anyhow::bail!(
-            "rustup-init failed with exit code {} — install Rust manually: https://rustup.rs",
+            "rustup-init failed with exit code {} - install Rust manually: https://rustup.rs",
             status.code().unwrap_or(-1)
         );
     }
 
     if !cargo.exists() {
         anyhow::bail!(
-            "rustup-init finished but cargo is missing at {} — install Rust \
+            "rustup-init finished but cargo is missing at {} - install Rust \
              manually: https://rustup.rs",
             cargo.display()
         );
@@ -1786,7 +1786,7 @@ pub(crate) fn ensure_electron(
 
     if !electron_bin.exists() {
         anyhow::bail!(
-            "downloaded electron archive missing electron binary — install manually: https://www.electronjs.org/docs/latest/tutorial/installation"
+            "downloaded electron archive missing electron binary - install manually: https://www.electronjs.org/docs/latest/tutorial/installation"
         );
     }
 
@@ -1874,7 +1874,7 @@ fn ensure_electron_download(
         .with_context(|| format!("failed to download Electron from {url}"))?;
     if !response.status().is_success() {
         anyhow::bail!(
-            "failed to download Electron binary (HTTP {}) — set ELECTRON_URL to a custom mirror",
+            "failed to download Electron binary (HTTP {}) - set ELECTRON_URL to a custom mirror",
             response.status()
         );
     }
@@ -2101,7 +2101,7 @@ fn ensure_zig_download(tools_dir: PathBuf, verbose: bool) -> Result<PathBuf> {
     let zig_bin = zig_bin_path(&tools_dir);
     if !zig_bin.exists() {
         anyhow::bail!(
-            "downloaded Zig archive missing zig binary — install manually: https://ziglang.org/download/"
+            "downloaded Zig archive missing zig binary - install manually: https://ziglang.org/download/"
         );
     }
 
@@ -2262,7 +2262,7 @@ fn ensure_dart_download(tools_dir: PathBuf, verbose: bool) -> Result<PathBuf> {
     }
     let bytes = bytes.ok_or_else(|| {
         anyhow::anyhow!(
-            "Dart SDK {version} not found on dart-archive — install manually: https://dart.dev/get-dart"
+            "Dart SDK {version} not found on dart-archive - install manually: https://dart.dev/get-dart"
         )
     })?;
     extract_dart_zip(std::io::Cursor::new(bytes), &tools_dir)?;
@@ -2270,7 +2270,7 @@ fn ensure_dart_download(tools_dir: PathBuf, verbose: bool) -> Result<PathBuf> {
     let dart_bin = tools_dir.join("bin").join(host_bin_name("dart"));
     if !dart_bin.exists() {
         anyhow::bail!(
-            "downloaded Dart SDK missing dart binary — install manually: https://dart.dev/get-dart"
+            "downloaded Dart SDK missing dart binary - install manually: https://dart.dev/get-dart"
         );
     }
 
@@ -2315,7 +2315,7 @@ fn extract_dart_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Pat
         {
             continue;
         }
-        // The Dart SDK zip wraps all content under `dart-sdk/` — strip that prefix
+        // The Dart SDK zip wraps all content under `dart-sdk/` - strip that prefix
         // so the SDK root lands directly in `tools_dir`.
         let stripped: PathBuf = name.components().skip(1).collect();
         if stripped.components().count() == 0 {

@@ -1,4 +1,4 @@
-"""daedalus — package any app into a single self-extracting binary."""
+"""daedalus - package any app into a single self-extracting binary."""
 
 from .launcher import VERSION, main
 

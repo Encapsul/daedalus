@@ -1,10 +1,10 @@
 //! Content-addressable layer registry.
 //!
-//! Provides `LayerRegistry` — a thin wrapper over `ObjectStore` that stores
+//! Provides `LayerRegistry` - a thin wrapper over `ObjectStore` that stores
 //! serialized layers (and artifact manifests) keyed by their SHA-256 content
 //! hash. This is the storage backend for Phase 4 (remote layer sharing).
 //!
-//! STATUS: 2026-08-21 — `DiskObjectStore` wired into `DirectoryChunkFetcher` for
+//! STATUS: 2026-08-21 - `DiskObjectStore` wired into `DirectoryChunkFetcher` for
 //! unified CAS under the Sisr chunk cache; local-layer push/pull/list implemented;
 //! remote HTTP registry client added in `daedalus-cli/registry/`.
 
@@ -273,7 +273,7 @@ impl LayerRegistry {
                 let backup = path.with_extension("json.corrupt");
                 let _ = std::fs::rename(&path, &backup);
                 eprintln!(
-                    "[daedalus] artifact index corrupt at {} — moved to {} ({}); rebuilding empty",
+                    "[daedalus] artifact index corrupt at {} - moved to {} ({}); rebuilding empty",
                     path.display(),
                     backup.display(),
                     e

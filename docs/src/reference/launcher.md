@@ -18,7 +18,7 @@ construction, with no runtime or GC.
 
 **musl**: `glibc` is dynamically linked and its versions vary between distros
 (`GLIBC_2.35 not found`...). A static musl binary has **zero** dynamic
-dependencies — it runs on any Linux kernel ≥ 3.8. This is exactly what `daedalus`
+dependencies - it runs on any Linux kernel ≥ 3.8. This is exactly what `daedalus`
 must guarantee for its own launcher.
 
 ```bash
@@ -53,7 +53,7 @@ file.
 
 The `zstd` crate binds the C library `libzstd`, requiring a C compiler for
 the musl target. `ruzstd` is a **100% Rust** zstd decompressor: no C
-toolchain, trivial static musl build. The launcher only **decompresses** —
+toolchain, trivial static musl build. The launcher only **decompresses** -
 that's exactly `ruzstd`'s scope. **Compression** (more CPU-intensive) stays
 on the builder side via the `zstd` CLI.
 
@@ -83,12 +83,12 @@ same logic as `LD_LIBRARY_PATH`:
 Bundled entries go **before** the existing `PATH`. This is intentional: if
 the builder packages `ffmpeg 6.1` into the rootfs but the host has
 `ffmpeg 4.4`, the app uses the bundled version. The same priority logic
-applies to `LD_LIBRARY_PATH` — rootfs libs come first.
+applies to `LD_LIBRARY_PATH` - rootfs libs come first.
 
 ## CWD handling after pivot_root
 
 When isolation level 2 is active, after `pivot_root + umount2`, the process's
-current working directory still points to the old root — which was just
+current working directory still points to the old root - which was just
 detached. The launcher calls `set_current_dir("/")` just before `execve()`
 so the app process starts in the new root, ensuring correct resolution of
 relative paths and symlinks.
@@ -98,12 +98,12 @@ relative paths and symlinks.
 If two instances of the same `.daedalus` start simultaneously on a cold cache,
 an exclusive `flock()` (on `~/.cache/daedalus/{hash}.lock`) guarantees only one
 performs the extraction; the other waits and then finds the cache ready.
-Extraction is already atomic via `rename()` — `flock` simply avoids duplicated
+Extraction is already atomic via `rename()` - `flock` simply avoids duplicated
 work.
 
 ## What the launcher does at runtime (annotated)
 
-Excerpt from `main.rs` — the sequence is deliberately linear and readable:
+Excerpt from `main.rs` - the sequence is deliberately linear and readable:
 
 ```rust
 // 1. Locate ourselves reliably (not argv[0], which is caller-controlled).

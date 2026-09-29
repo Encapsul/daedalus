@@ -1,4 +1,4 @@
-# PROJECT.md — daedalus project reference
+# PROJECT.md - daedalus project reference
 
 ## Project
 
@@ -35,7 +35,7 @@ cargo test --workspace
 
 Layout: `[stub][payload][metadata][footer]`
 - Footer magic: `0xBEEF_CAFE`, format magic: `DAE\x01`
-- Integrity hash: `SHA-256(payload || meta_bytes)` — computed at build, verified at runtime
+- Integrity hash: `SHA-256(payload || meta_bytes)` - computed at build, verified at runtime
 - Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs)
 
 ### Stub launcher (`stub/src/main.rs`)
@@ -55,8 +55,8 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 ## Code style (high-signal)
 
 - Edition 2021, `cargo fmt` is authoritative. `max_width = 100` in `stub/rustfmt.toml`.
-- Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` — tiny binaries.
-- Clippy pedantic subset — do NOT add new `#[allow]` without a comment. See `daedalus-core/Cargo.toml [lints.clippy]`.
+- Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` - tiny binaries.
+- Clippy pedantic subset - do NOT add new `#[allow]` without a comment. See `daedalus-core/Cargo.toml [lints.clippy]`.
 - Rust functions: ≤ 30 lines. Python functions: ≤ 40 lines.
 - Functions with >7 params: use a config struct.
 - Prefer `Result::ok()` over `|e| e.ok()`. Prefer `if let Some(v)` over `match` with `None => {}`.
@@ -90,7 +90,7 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 - Panic in library code or leak memory.
 
 **Ask first:**
-- Modifying `stub/src/main.rs` — security-critical launcher.
+- Modifying `stub/src/main.rs` - security-critical launcher.
 - Changing encryption/signing logic in `encrypt.rs`.
 - Adding new `unsafe` blocks or FFI bindings.
 
@@ -99,7 +99,7 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 - Unit tests: `#[cfg(test)] mod tests` in each module.
 - Integration tests: `daedalus-cli/tests/` use `assert_cmd`.
 - `cargo test --workspace` for all Rust tests.
-- `daedalus-cli` depends on `reqwest` (blocking, `rustls-tls` feature) — no OpenSSL dependency.
+- `daedalus-cli` depends on `reqwest` (blocking, `rustls-tls` feature) - no OpenSSL dependency.
 
 ## Git conventions
 
@@ -110,7 +110,7 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 ## Current state
 
 - **Format**: v5 (SquashFS support)
-- **Status**: Phase 1/2/3 COMPLETE — full Rust CLI, no Python dependency for builds
+- **Status**: Phase 1/2/3 COMPLETE - full Rust CLI, no Python dependency for builds
 - **Build**: `cargo build --release` (or `make stub` for development)
 - **CLI**: Rust CLI (`daedalus` binary). The legacy Rust CLI is the only CLI. Python CLI removed in v0.4.0.
 - **Health check**: `daedalus doctor` or `make preflight`
@@ -118,10 +118,10 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 - **Release**: glow-style GitHub releases with per-platform archives. Tag `v*` triggers `.github/workflows/release.yml`.
 - **Runtimes**: Python, Node.js, Deno, Java, Ruby, .NET/C#, Go, PHP, Perl, Hugo, Binary (11 total)
 - **Framework support**: Next.js, Nuxt, Astro, Remix, SvelteKit, Express, Fastify, Hono, Django, FastAPI, Flask, Laravel, Symfony (auto-detected)
-- **Rust core**: `daedalus-core` crate — format, compress, detect, pkgmgr, tar, assembly, sign, verify, scan, PyO3 bindings
-- **Rust CLI**: `daedalus-cli` crate — 15 commands (build, run, inspect, scan, sign, verify, keygen, trust, doctor, env, clean, selftest, upgrade, completion, man)
+- **Rust core**: `daedalus-core` crate - format, compress, detect, pkgmgr, tar, assembly, sign, verify, scan, PyO3 bindings
+- **Rust CLI**: `daedalus-cli` crate - 15 commands (build, run, inspect, scan, sign, verify, keygen, trust, doctor, env, clean, selftest, upgrade, completion, man)
 - **Tests**: 358 Rust (331 daedalus-core + 23 daedalus-cli + 4 daedalus-stub) (0 failures)
-- **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), GitHub signing key id=1064819. Note: Codespaces `gh-gpgsign` proxy currently returns 403 (GPG signing not enabled) — recent commits are unsigned until the environment permits it.
+- **Signing**: SSH Ed25519 (`~/.ssh/git_signing_key`), GitHub signing key id=1064819. Note: Codespaces `gh-gpgsign` proxy currently returns 403 (GPG signing not enabled) - recent commits are unsigned until the environment permits it.
 
 ## Release workflow
 
@@ -197,9 +197,9 @@ Expected build time after optimization:
 **Rust crates**: pyo3 "0.29", sha2 "0.10", serde/serde_json "1", ruzstd "0.7", zstd "0.13", tar "0.4", ed25519-dalek "2", aes-gcm "0.10", hkdf "0.12", reqwest "0.12" (rustls-tls).
 
 **Security advisories**:
-- pyo3 < 0.29.0: 3 CVEs (HIGH/MEDIUM/LOW) — FIXED (upgraded to 0.29)
-- tar < 0.4.45: RUSTSEC-2026-0067/0068 — we have 0.4.46, safe
-- sha2 < 0.9.8: old CVE — we have 0.10.9, safe
+- pyo3 < 0.29.0: 3 CVEs (HIGH/MEDIUM/LOW) - FIXED (upgraded to 0.29)
+- tar < 0.4.45: RUSTSEC-2026-0067/0068 - we have 0.4.46, safe
+- sha2 < 0.9.8: old CVE - we have 0.10.9, safe
 
 ## Signing policy (MANDATORY)
 
@@ -227,18 +227,18 @@ GitHub key: id=1064819, title="Signing Key", type=signing
 
 ## External references
 
-- [clig.dev](https://clig.dev) — CLI design conventions
-- [POSIX.1-2017 Ch.12](https://pubs.opengroup.org/onlinepubs/9799919797/) — Shell & Utilities
-- [ANSSI-Rust](https://anssi-fr.github.io/rust-guide/) — Rust security guidelines
-- [Google Doc Style](https://developers.google.com/style) — Documentation style
-- [12-Factor CLI](https://medium.com/@jdxcode/12-factor-cli-apps-dd3c227a0e46) — CLI best practices
+- [clig.dev](https://clig.dev) - CLI design conventions
+- [POSIX.1-2017 Ch.12](https://pubs.opengroup.org/onlinepubs/9799919797/) - Shell & Utilities
+- [ANSSI-Rust](https://anssi-fr.github.io/rust-guide/) - Rust security guidelines
+- [Google Doc Style](https://developers.google.com/style) - Documentation style
+- [12-Factor CLI](https://medium.com/@jdxcode/12-factor-cli-apps-dd3c227a0e46) - CLI best practices
 
 ## Other instruction files
 
-- `CLAUDE.md` — Claude Code specific guidance (agents/commands/skills pattern).
-- `CODE_STYLE.md` — detailed style rules with rationale.
-- `RULES.md` — ANSSI-Rust rules (also in `.cursor/rules/` format).
-- `ROADMAP.md` — complete roadmap of features to implement and limitations to address.
-- `SECURITY.md` — security policy and best practices.
-- `CONTRIBUTING.md` — contribution guidelines.
-- `.opencode/` — agents, skills, and commands for OpenCode sessions.
+- `CLAUDE.md` - Claude Code specific guidance (agents/commands/skills pattern).
+- `CODE_STYLE.md` - detailed style rules with rationale.
+- `RULES.md` - ANSSI-Rust rules (also in `.cursor/rules/` format).
+- `ROADMAP.md` - complete roadmap of features to implement and limitations to address.
+- `SECURITY.md` - security policy and best practices.
+- `CONTRIBUTING.md` - contribution guidelines.
+- `.opencode/` - agents, skills, and commands for OpenCode sessions.

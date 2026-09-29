@@ -17,7 +17,7 @@ pub struct ChunkDescriptor {
     pub offset: usize,
     /// Length of the chunk in bytes.
     pub length: usize,
-    /// SHA-256 of the chunk bytes — the content address.
+    /// SHA-256 of the chunk bytes - the content address.
     pub hash: [u8; 32],
 }
 
@@ -82,7 +82,7 @@ impl Default for FastCDC {
     ///
     /// Return: the `Self`
     fn default() -> Self {
-        // 2 KiB / 8 KiB / 32 KiB — valid by construction (min > 0, ordered).
+        // 2 KiB / 8 KiB / 32 KiB - valid by construction (min > 0, ordered).
         Self {
             min: Self::DEFAULT_AVG_SIZE / 4,
             avg: Self::DEFAULT_AVG_SIZE,
@@ -166,7 +166,7 @@ static GEAR: LazyLock<[u64; 256]> = LazyLock::new(|| {
 mod tests {
     use super::*;
 
-    /// Deterministic pseudo-random buffer (xorshift) — reproducible across runs.
+    /// Deterministic pseudo-random buffer (xorshift) - reproducible across runs.
     fn random_buf(len: usize, seed: u64) -> Vec<u8> {
         let mut state = seed;
         (0..len)

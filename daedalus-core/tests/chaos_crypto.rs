@@ -2,7 +2,7 @@
 //! Chaos-monkey properties for the AES-256-GCM payload encryption path.
 //!
 //! Corrupted input must fail CLOSED: every bit-flip, truncation, or key
-//! mismatch yields `Err` — never a panic, never unauthenticated plaintext.
+//! mismatch yields `Err` - never a panic, never unauthenticated plaintext.
 //! (GCM forgery probability is 2^-128, so requiring Err across these cases
 //! is deterministic in practice.)
 

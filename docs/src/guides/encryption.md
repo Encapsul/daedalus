@@ -14,7 +14,7 @@ This generates a random encryption key, derives the AES-256-GCM key via HKDF,
 and encrypts the payload. The key material is written to a file alongside the
 binary:
 
-- `my-app.daedalus.key` — the raw 32-byte encryption key
+- `my-app.daedalus.key` - the raw 32-byte encryption key
 
 Store this key securely. It is required to run the binary.
 

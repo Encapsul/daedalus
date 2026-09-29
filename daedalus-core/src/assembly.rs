@@ -1,4 +1,4 @@
-//! .daedalus binary assembly — writes the final executable.
+//! .daedalus binary assembly - writes the final executable.
 //!
 //! Classic layout: [stub][payload][metadata][footer]. With the `SISR` stage
 //! enabled the layout becomes
@@ -262,7 +262,7 @@ pub struct ServiceSpec {
 }
 
 /// Kind of packaged artifact, recorded in the metadata as `template`.
-/// Pure discovery metadata for tooling and host apps — it documents the
+/// Pure discovery metadata for tooling and host apps - it documents the
 /// intended lifecycle of a `.de` (or one of its services) but never changes
 /// the binary layout or the stub's execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
@@ -527,7 +527,7 @@ fn io_err(msg: &str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
 }
 
-/// SHA-256(payload || `meta_bytes`) — the integrity hash.
+/// SHA-256(payload || `meta_bytes`) - the integrity hash.
 fn sha2_hash(payload: &[u8], meta: &[u8]) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();

@@ -1,4 +1,4 @@
-"""App web d'exemple — serveur HTTP stdlib, zéro dépendance externe.
+"""App web d'exemple - serveur HTTP stdlib, zéro dépendance externe.
 
 Démontre le cas d'usage cible de daedalus : un serveur web headless qui démarre
 avec ./hello-web.de et sert sur localhost.
@@ -19,7 +19,7 @@ class Handler(BaseHTTPRequestHandler):
             "max-width:40rem;margin:4rem auto'>"
             "<h1>Hello from daedalus 🚀</h1>"
             f"<p>Ce serveur tourne depuis un seul fichier exécutable.</p>"
-            f"<p>Python {sys.version.split()[0]} — PID {os.getpid()}</p>"
+            f"<p>Python {sys.version.split()[0]} - PID {os.getpid()}</p>"
             "</body></html>"
         ).encode()
         self.send_response(200)

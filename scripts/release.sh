@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/release.sh — create a release tag and push to trigger CI.
+# scripts/release.sh - create a release tag and push to trigger CI.
 #
 # Usage:
 #   ./scripts/release.sh 0.1.0        # release v0.1.0

@@ -14,7 +14,7 @@ RESULTS_DIR="$SCRIPT_DIR/results"
 OUT_MD="$SCRIPT_DIR/comparison.md"
 OUT_MACHINES="$SCRIPT_DIR/machines.md"
 
-[ -d "$RESULTS_DIR" ] || { echo "no results yet — run run.sh first" >&2; exit 1; }
+[ -d "$RESULTS_DIR" ] || { echo "no results yet - run run.sh first" >&2; exit 1; }
 
 DIRS=()
 for d in "$RESULTS_DIR"/*/; do
@@ -29,7 +29,7 @@ get() { # get <k=v lines> <key>
 }
 
 {
-    echo "# Comparative Benchmark — daedalus vs Docker / pkg / AppImage / Flatpak"
+    echo "# Comparative Benchmark - daedalus vs Docker / pkg / AppImage / Flatpak"
     echo
     echo "_Aggregated: $(date -u +%Y-%m-%dT%H:%MZ)_"
     echo
@@ -73,7 +73,7 @@ get() { # get <k=v lines> <key>
 } > "$OUT_MD"
 
 {
-    echo "# Test machines — profiles"
+    echo "# Test machines - profiles"
     echo
     for d in "${DIRS[@]}"; do
         echo "## $(basename "$d")"

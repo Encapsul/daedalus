@@ -52,7 +52,7 @@ impl Default for HealthCheckPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HealthState {
-    /// Update applied, not yet health-validated — must run supervised.
+    /// Update applied, not yet health-validated - must run supervised.
     Pending,
     /// The health gate passed; the version is trusted.
     Healthy,

@@ -19,12 +19,12 @@ use zstd::Decoder;
 /// The blunt "reject any absolute or `..` target" rule rejects legitimate
 /// in-root relative links (the Java JRE is exposed to the PATH as
 /// `usr/bin/java -> ../lib/jvm/java/bin/java`, both inside the rootfs). Bare
-/// `..` targets and absolute targets are still rejected — the target is
+/// `..` targets and absolute targets are still rejected - the target is
 /// lexically resolved against `base` (the link's directory for symlinks,
 /// POSIX convention relative to the link location; the extraction root for
 /// hardlinks, tar convention relative to the archive root) and must stay
 /// inside `root`. Mirrors the payload builder's `guarded_symlink_target`
-/// (daedalus-core/src/tar.rs) — the stub enforces the same contract.
+/// (daedalus-core/src/tar.rs) - the stub enforces the same contract.
 fn link_target_escapes(root: &Path, base: &Path, target: &Path) -> bool {
     if target.is_absolute() {
         return true;
@@ -66,11 +66,11 @@ const DEFAULT_MAX_FILES: usize = 50_000;
 /// Decompression-bomb limits for `extract_atomic`. Both are configurable at
 /// runtime via env vars so operators can tighten (or relax) them per workload
 /// without rebuilding the stub:
-/// - `DAEDALUS_MAX_EXTRACT_SIZE`  — total decompressed bytes (default 1 GiB)
-/// - `DAEDALUS_MAX_EXTRACT_FILES` — entry/file count (default 50,000)
+/// - `DAEDALUS_MAX_EXTRACT_SIZE`  - total decompressed bytes (default 1 GiB)
+/// - `DAEDALUS_MAX_EXTRACT_FILES` - entry/file count (default 50,000)
 ///
 /// The env vars are read once per extraction and only from the launcher's own
-/// process environment — they are NOT parsed from the (untrusted) payload, so
+/// process environment - they are NOT parsed from the (untrusted) payload, so
 /// an attacker cannot weaken the limits by smuggling values into the daedalus.
 struct ExtractLimits {
     max_bytes: u64,
@@ -139,7 +139,7 @@ pub fn cache_root_trustworthy(cache_root: &Path) -> bool {
     meta.mode() & 0o022 == 0
 }
 
-/// Non-Unix platforms have no permission model to inspect — trust the cache.
+/// Non-Unix platforms have no permission model to inspect - trust the cache.
 #[cfg(not(unix))]
 /// `cache_root_trustworthy` - trust the cache on non-Unix platforms.
 /// @_cache_root: cache root
@@ -572,7 +572,7 @@ pub fn atomic_extract(
         Ok(()) => Ok(()),
         Err(e) => {
             // A valid .ready marker means a concurrent/successful extraction
-            // already completed — surface the error but don't block the run.
+            // already completed - surface the error but don't block the run.
             // The marker only legitimizes the cache when the directory is
             // owned by us with sane perms; a foreign cache is wiped instead.
             if marker.exists() && cache_root_trustworthy(cache_root) {

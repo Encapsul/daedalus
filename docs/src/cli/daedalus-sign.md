@@ -14,7 +14,7 @@ daedalus sign [OPTIONS] <FILE>
 3. Signs the hash with the provided Ed25519 key.
 4. Writes a new file with the signature block inserted.
 
-The signature covers the payload and metadata only — not the launcher stub.
+The signature covers the payload and metadata only - not the launcher stub.
 
 ## Options
 

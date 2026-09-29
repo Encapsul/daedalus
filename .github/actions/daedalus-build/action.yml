@@ -120,7 +120,7 @@ runs:
           exit 1
         fi
 
-        # Extract — tarball contains daedalus-{platform}/ directory
+        # Extract - tarball contains daedalus-{platform}/ directory
         tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
 
         # Find the daedalus binary inside the extracted directory

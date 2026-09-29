@@ -117,14 +117,14 @@ jobs:
 | `app-path` | Path to the app directory | `.` |
 | `runtime` | Force runtime (python, node, deno, go, ruby, java, php, perl, hugo, binary) | auto-detect |
 | `target` | Target architecture (x86_64, aarch64) | `x86_64` |
-| `key` | Ed25519 signing key content | — |
+| `key` | Ed25519 signing key content | - |
 | `sign` | Sign the binary | `false` |
 | `encrypt` | Encrypt the payload (requires key) | `false` |
-| `include` | Extra files/dirs to include (newline-separated) | — |
+| `include` | Extra files/dirs to include (newline-separated) | - |
 | `output` | Output binary path | `app.daedalus` |
 | `daedalus-version` | daedalus version to install | `latest` |
 | `daedalus-repo` | GitHub repo to download daedalus from | `Encapsul/daedalus` |
-| `build-args` | Extra arguments to pass to daedalus build | — |
+| `build-args` | Extra arguments to pass to daedalus build | - |
 
 ## Outputs
 

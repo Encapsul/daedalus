@@ -78,6 +78,6 @@ ASPNETCORE_URLS="http://0.0.0.0:9000" ./my-app.de
 
 - Only .NET 8+ is tested. Earlier versions may work but are not guaranteed.
 - .NET class libraries (`<OutputType>Library</OutputType>`) cannot be packaged
-  directly — they need an executable entry point.
+  directly - they need an executable entry point.
 - Blazor Server apps work. Blazor WebAssembly does not (requires browser).
 - F# projects (`*.fsproj`) are not yet supported but should work once detected.

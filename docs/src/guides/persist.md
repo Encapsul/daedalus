@@ -43,7 +43,7 @@ app.
 # Build with persistence
 daedalus build ./my-app -o my-app.daedalus --persist
 
-# Run — data persists across updates
+# Run - data persists across updates
 ./my-app.daedalus
 ```
 

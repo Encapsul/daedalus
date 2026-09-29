@@ -4,7 +4,7 @@
 //! reading re-verify the hash, so bit rot or tampering surfaces as an error
 //! instead of silently corrupting a reconstruction.
 //!
-//! STATUS: 2026-08-21 — wired into `registry.rs` (`LayerRegistry`) and
+//! STATUS: 2026-08-21 - wired into `registry.rs` (`LayerRegistry`) and
 //! `engine.rs` (`DirectoryChunkFetcher` uses `DiskObjectStore` internally).
 //! Tests keep it rot-free; production use goes through the `LayerRegistry` API.
 
@@ -33,7 +33,7 @@ pub trait ObjectStore {
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
-/// In-memory object store — a mock/standalone store for tests and tools.
+/// In-memory object store - a mock/standalone store for tests and tools.
 #[derive(Default)]
 pub struct MemoryStore {
     objects: HashMap<[u8; 32], Vec<u8>>,

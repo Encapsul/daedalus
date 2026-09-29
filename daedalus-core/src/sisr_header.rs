@@ -1,4 +1,4 @@
-//! `SISR` footer extension — the fixed access block that locates and binds
+//! `SISR` footer extension - the fixed access block that locates and binds
 //! the embedded delta manifest.
 //!
 //! The extension is placed immediately *before* the standard footer, so

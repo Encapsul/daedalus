@@ -21,7 +21,7 @@ pub fn head_end(bytes: &[u8]) -> Option<usize> {
 /// Parse a `Content-Length` declaration from a request head.
 ///
 /// Returns `None` when absent, unparseable, or ambiguous (two different
-/// lengths declared), per RFC 7230 §3.3.2 — a duplicated header is a
+/// lengths declared), per RFC 7230 §3.3.2 - a duplicated header is a
 /// smuggling vector, so ambiguity must be rejected rather than guessed.
 /// Obs-fold whitespace before the colon (`Content-Length : 5`) is tolerated.
 pub fn content_length(head: &str) -> Option<usize> {
@@ -66,9 +66,9 @@ pub fn split_path_query(path: &str) -> (&str, &str) {
 
 /// Parse `application/x-www-form-urlencoded`-style query parameters.
 ///
-/// Pairs with an empty key (`?=value`, `?=x&name=y`) are dropped — a
+/// Pairs with an empty key (`?=value`, `?=x&name=y`) are dropped - a
 /// nameless parameter is never meaningful to a handler and its presence
-/// breaks canonical re-encoding. Values are NOT percent-decoded — callers
+/// breaks canonical re-encoding. Values are NOT percent-decoded - callers
 /// validate them against a safe charset and reject anything ambiguous.
 pub fn parse_query_params(query: &str) -> Vec<(String, String)> {
     query
@@ -86,7 +86,7 @@ pub fn parse_query_params(query: &str) -> Vec<(String, String)> {
 ///
 /// The tag defaults to `latest`. Names and tags are restricted to
 /// `[A-Za-z0-9._-]` so that an alias pushed over HTTP can always be fetched
-/// back through `/artifact/<name>:<tag>` with a deterministic split — a
+/// back through `/artifact/<name>:<tag>` with a deterministic split - a
 /// colon inside the name would make the round trip asymmetric.
 pub fn split_name_tag(spec: &str) -> io::Result<(&str, &str)> {
     let (name, tag) = match spec.rsplit_once(':') {
@@ -97,7 +97,7 @@ pub fn split_name_tag(spec: &str) -> io::Result<(&str, &str)> {
         if part.is_empty() || !safe_alias_chars(part) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("invalid name:tag '{spec}' — use letters, digits, '_', '-', '.' only"),
+                format!("invalid name:tag '{spec}' - use letters, digits, '_', '-', '.' only"),
             ));
         }
     }

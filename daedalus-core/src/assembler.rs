@@ -1,4 +1,4 @@
-//! Binary stitching — reassembles a complete executable from a base and
+//! Binary stitching - reassembles a complete executable from a base and
 //! payload blocks.
 //!
 //! The `.daedalus` layout is `[stub][payload][metadata][footer]`. SISR
@@ -11,7 +11,7 @@ use std::io::{self, Write};
 
 /// The payload of a `.daedalus` lies between the launcher stub and the metadata.
 /// A stitcher that only appends blocks would place them after the footer,
-/// breaking the format — so the trait leaves the exact splice point to the
+/// breaking the format - so the trait leaves the exact splice point to the
 /// implementation.
 pub trait BinaryAssembler {
     /// Writes a complete executable to `output`: the base executable with the

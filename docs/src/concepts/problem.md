@@ -9,8 +9,8 @@ An app depends on a set of things installed on the developer's machine:
 - **packages** (`node_modules`, pip packages, gems...);
 - **configuration files** and assets.
 
-When you give this app to someone else — a colleague, a production server,
-a client — **it breaks**. Node is not installed, or it's the wrong version,
+When you give this app to someone else - a colleague, a production server,
+a client - **it breaks**. Node is not installed, or it's the wrong version,
 or a system library is missing, or the paths are different.
 
 This is the classic *"it works on my machine"* problem.

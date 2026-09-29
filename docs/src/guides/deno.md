@@ -31,9 +31,9 @@ The builder:
 
 The builder reads `deno.json` in this order:
 
-1. `tasks.start` — production start command
-2. `tasks.dev` — development command
-3. `tasks.default` — default task
+1. `tasks.start` - production start command
+2. `tasks.dev` - development command
+3. `tasks.default` - default task
 
 If no tasks are defined, it falls back to common entry files:
 `main.ts`, `mod.ts`, `index.ts`.
@@ -44,7 +44,7 @@ If Deno is not on your PATH, `daedalus` automatically downloads a prebuilt Deno
 binary from GitHub Releases and caches it at `~/.cache/daedalus/cross/deno/`.
 
 ```bash
-# No deno on PATH — daedalus downloads it automatically
+# No deno on PATH - daedalus downloads it automatically
 daedalus build ./my-deno-app -o my-deno-app.de
 ```
 

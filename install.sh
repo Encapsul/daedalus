@@ -1,5 +1,5 @@
 #!/bin/sh
-# daedalus installer — single-command install from GitHub Releases.
+# daedalus installer - single-command install from GitHub Releases.
 #
 #   curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/install.sh | sh
 #

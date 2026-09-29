@@ -3,7 +3,7 @@
 A `.de` built with `--enable-sisr` can update itself **in place** from a
 signed delta: it downloads only the chunks that changed, verifies every byte,
 and atomically swaps in the new binary. No toolchain, no `daedalus` CLI, no
-extraction on the target machine — the update runs inside the binary itself.
+extraction on the target machine - the update runs inside the binary itself.
 
 ```
 DEV MACHINE                        TARGET MACHINE
@@ -50,7 +50,7 @@ https://updates.example.com/my_app/
     …
 ```
 
-Any HTTP server works (nginx, S3, a static CDN). HTTPS is recommended — the
+Any HTTP server works (nginx, S3, a static CDN). HTTPS is recommended - the
 launcher uses TLS, though the trust anchor is the manifest signature and the
 content hashes, not the transport.
 
@@ -103,7 +103,7 @@ Nothing is trusted from the network:
    `~/.de/trusted-keys/` (same keys the binary signature uses) **before**
    a single byte is written.
 2. The Merkle root must match the manifest's own chunk table.
-3. Every chunk — reused or downloaded — must SHA-256 to its manifest entry;
+3. Every chunk - reused or downloaded - must SHA-256 to its manifest entry;
    wrong length or hash is rejected on the spot.
 4. The swap is atomic: any failure (bad signature, missing chunk, power loss)
    leaves the previous binary intact and runnable.
@@ -125,13 +125,13 @@ Nothing is trusted from the network:
 | Release fails `DAEDALUS_HEALTH_MAX_ATTEMPTS` times | quarantined, installs refused |
 | Re-install of a quarantined release | refused before any write |
 
-The running binary is always the last **valid** version — there is no
+The running binary is always the last **valid** version - there is no
 "half-updated" state, and a broken release cannot wedge a target machine.
 
 ## More
 
-- [Incremental Updates (SISR)](./incremental-updates.md) — the full workflow
+- [Incremental Updates (SISR)](./incremental-updates.md) - the full workflow
   for publishers.
-- [Runtime Launcher](../architecture/runtime-launcher.md) — what the launcher
+- [Runtime Launcher](../architecture/runtime-launcher.md) - what the launcher
   does step by step.
-- [`daedalus build`](../cli/daedalus-build.md) — the builder flags.
+- [`daedalus build`](../cli/daedalus-build.md) - the builder flags.

@@ -5,7 +5,7 @@
 //! A binary is read from stdin once and served as a seekable `Cursor`, or an
 //! artifact is written to stdout via a seekable temp file (assembly and the
 //! integrity hash both need random access, so a raw stdout pipe is not enough
-//! — bytes are staged in a temp file inside the cache dir, then streamed out).
+//! - bytes are staged in a temp file inside the cache dir, then streamed out).
 //!
 //! Reading stdin is capped so a hostile upstream pipe cannot OOM the process.
 

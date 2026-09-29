@@ -147,7 +147,7 @@ impl FuzzTarget for RegistryFuzzTarget {
                     std::fs::write(td.path().join("artifacts.json"), &torn)?;
                     ensure!(
                         reg.list_artifacts().is_ok(),
-                        "a corrupt index must not error — it must heal"
+                        "a corrupt index must not error - it must heal"
                     );
                 }
                 // Publishing garbage aliases must be rejected outright.

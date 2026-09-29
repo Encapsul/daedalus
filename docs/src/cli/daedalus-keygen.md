@@ -8,8 +8,8 @@ daedalus keygen [OPTIONS]
 
 Creates two files in the key directory:
 
-- `<fingerprint>.key` — 32-byte private key (mode `0600` on Unix)
-- `<fingerprint>.pub` — public key
+- `<fingerprint>.key` - 32-byte private key (mode `0600` on Unix)
+- `<fingerprint>.pub` - public key
 
 The fingerprint is the hex-encoded SHA-256 of the public key.
 

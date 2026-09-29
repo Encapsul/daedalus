@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 //! Cross-version migration tests: legacy (v1, SISR-less) binaries must run on
 //! the current v2 launcher unchanged, and `upgrade_binary` must promote them
-//! to SISR-enabled binaries that gain delta auto-update — without touching a
+//! to SISR-enabled binaries that gain delta auto-update - without touching a
 //! single payload byte.
 
 #[path = "e2e_sisr/mod.rs"]

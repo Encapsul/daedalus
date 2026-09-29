@@ -24,8 +24,8 @@ pub fn format_size(bytes: u64) -> String {
 ///
 /// Return: the `PathBuf`
 pub fn cache_dir() -> PathBuf {
-    // An explicit XDG_CACHE_HOME overrides the platform default everywhere —
-    // including Windows (for MSYS2/Git-Bash setups and test isolation) — so
+    // An explicit XDG_CACHE_HOME overrides the platform default everywhere -
+    // including Windows (for MSYS2/Git-Bash setups and test isolation) - so
     // "clean"/"build" behave consistently across platforms when it is set.
     if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
         return PathBuf::from(xdg).join("daedalus");
@@ -53,7 +53,7 @@ pub fn cache_dir() -> PathBuf {
 /// the output bytes, so they must be part of the key or a cache hit serves
 /// a stale/wrong artifact).  Repeated builds of the same source with the
 /// same options skip dependency installation, interpreter embedding, and
-/// tar creation — the cached binary is copied to the output path instead.
+/// tar creation - the cached binary is copied to the output path instead.
 ///
 /// Cache layout:
 /// ```text
@@ -254,8 +254,8 @@ pub fn default_key_dir() -> PathBuf {
 /// Mirrors `daedalus-stub`'s `trusted_keys_dir()` exactly so that
 /// `daedalus trust` / `daedalus verify` write to and read from the *same* location
 /// the launcher checks. Honors `$DAEDALUS_TRUSTED_DIR`; otherwise defaults to
-/// `~/.daedalus/trusted-keys/` (home-relative). The home-relative default — not
-/// `XDG_DATA_HOME` — is intentional: the stub resolves trust anchors without
+/// `~/.daedalus/trusted-keys/` (home-relative). The home-relative default - not
+/// `XDG_DATA_HOME` - is intentional: the stub resolves trust anchors without
 /// consulting environment variables that could be spoofed in sandboxed or
 /// elevated (`sudo`/setuid) contexts.
 pub fn trusted_keys_dir() -> PathBuf {
@@ -275,8 +275,8 @@ pub fn trusted_keys_dir() -> PathBuf {
 /// `get(hash)` and `put(hash, bytes)`.
 ///
 /// Backends:
-/// - `HttpRemoteCache` — GET/PUT against a configurable base URL (in `daedalus-cli`)
-/// - `FsRemoteCache` — local directory mirror (useful for testing/proxying)
+/// - `HttpRemoteCache` - GET/PUT against a configurable base URL (in `daedalus-cli`)
+/// - `FsRemoteCache` - local directory mirror (useful for testing/proxying)
 ///
 /// URLs encode the hash directly: `{base}/{hash}`. No JSON metadata is needed
 /// on the wire because the hash is the content address.

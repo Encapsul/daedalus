@@ -1,13 +1,13 @@
 # SISR: Self-Incremental Sovereign Reconstruction
 
-> Status: **Conceptual specification** (Phase 1 — no code, no format change).
+> Status: **Conceptual specification** (Phase 1 - no code, no format change).
 > Defines the trust model, invariants, and conceptual ABI for a runtime that
 > can rebuild a `.daedalus` **by itself**, from verified deltas, without any host
 > dependency.
 
 SISR ("Self-Incremental Sovereign Reconstruction") turns a `.daedalus` from a
 static container into an autonomous, modular system: the binary can receive a
-signed delta, verify it, and re-assemble a new version of itself locally —
+signed delta, verify it, and re-assemble a new version of itself locally -
 without the `daedalus` CLI, without a compiler, and without any system runtime.
 
 The purpose of this document is to fix the **absolute invariants**, the
@@ -21,7 +21,7 @@ implementation must satisfy, not the implementation.
 
 Today a `.daedalus` is immutable: shipping a fix means rebuilding on a dev machine
 and redistributing the whole file. SISR addresses the deployment side of that
-loop — the **self-healing runtime** — so a target machine can update itself
+loop - the **self-healing runtime** - so a target machine can update itself
 from signed deltas and recover from local corruption without the build
 toolchain ever being present.
 
@@ -50,8 +50,8 @@ A `.daedalus` that reconstructs itself must never require, on the target machine
 - any system runtime (node, python, docker),
 - any packaging tool (tar, squashfs-tools, zstd).
 
-**Consequence.** All reconstruction machinery — delta decoding, Merkle/CDC
-verification, block assembly, block-to-filesystem materialization — must be
+**Consequence.** All reconstruction machinery - delta decoding, Merkle/CDC
+verification, block assembly, block-to-filesystem materialization - must be
 embedded in the binary itself, compiled statically (musl, as the launcher
 already is) and usable through the same `/proc/self/exe` self-location pattern.
 
@@ -94,15 +94,15 @@ cleanly separable:
 +-----------------------------------------------------------------+
 ```
 
-1. **Entrypoint Launcher** — the existing stub. Reads footer, verifies
+1. **Entrypoint Launcher** - the existing stub. Reads footer, verifies
    integrity/signature, extracts, execs. Unchanged behavior for normal runs.
-2. **Embedded SISR Engine** — dormant code path that can rebuild the binary
+2. **Embedded SISR Engine** - dormant code path that can rebuild the binary
    from signed blocks. Never runs during a default launch.
-3. **Payload** — the SquashFS application content. SISR reconstructs the
+3. **Payload** - the SquashFS application content. SISR reconstructs the
    *payload* (and, when needed, the launcher) as a new assembled `.daedalus`.
 
 The trust model requires that a `.daedalus` may only apply a delta or a manifest
-**signed by the same Ed25519 public key** that signed the original binary —
+**signed by the same Ed25519 public key** that signed the original binary -
 or by a valid **delegated key** present in the original header (see
 [Trust policy](#5-trust-model)).
 
@@ -241,12 +241,12 @@ The engine maintains a content-addressed local cache:
 
 A cache block is keyed by its content hash, so **injecting a malicious block**
 simply produces a different key and is rejected before assembly. The cache is
-advisory — never authoritative — and is always re-validated against the signed
+advisory - never authoritative - and is always re-validated against the signed
 manifest.
 
 ## 7. The `SisrRebuilder` contract
 
-The conceptual interface that the SISR engine implements — the contract that
+The conceptual interface that the SISR engine implements - the contract that
 any implementation must satisfy:
 
 ```
@@ -305,7 +305,7 @@ Key properties of the contract:
 8. ── ATOMIC COMMIT ──                      ← rename/swap, interrupt-safe
 ```
 
-Any failure at any step **aborts the entire chain** — the previous binary is
+Any failure at any step **aborts the entire chain** - the previous binary is
 untouched and still the running one.
 
 ## 10. Testing (conceptual)
@@ -320,7 +320,7 @@ These are the acceptance properties, not yet concrete tests:
   (`SIGKILL`, power-loss simulation); the previous binary must remain
   functional.
 - **Responsibility-separation tests**: default launch (no update trigger) must
-  behave exactly like today's static container — no SISR code path executes.
+  behave exactly like today's static container - no SISR code path executes.
 - **Anti-rollback tests**: a signed manifest with a stale index is always
   rejected, even with a valid signature.
 - **Cache-injection tests**: tampering with any block in the local cache is
@@ -328,7 +328,7 @@ These are the acceptance properties, not yet concrete tests:
 
 ## 11. Performance
 
-No CPU/memory/disk impact at this stage — this is a conceptual definition. The
+No CPU/memory/disk impact at this stage - this is a conceptual definition. The
 engine is dormant during normal launches (invariant I-2); the performance
 budget for reconstruction is not specified here and will be defined when the
 implementation design is produced.
@@ -337,9 +337,9 @@ implementation design is produced.
 
 ## References
 
-- [Security model](../security.md) — in particular the new section
+- [Security model](../security.md) - in particular the new section
   [Chain of Trust for Local Rebuilding](../security.md#1b-chain-of-trust-for-local-rebuilding)
-- [`.daedalus` format](../reference/format.md) — the format this engine will
+- [`.daedalus` format](../reference/format.md) - the format this engine will
   eventually reconstruct
-- [The Launcher (stub)](../reference/launcher.md) — the existing bootstrap
+- [The Launcher (stub)](../reference/launcher.md) - the existing bootstrap
   responsibility

@@ -1,7 +1,7 @@
 # Packaging a Native Binary
 
 `daedalus` can package a pre-compiled ELF binary into a self-extracting executable.
-No runtime embedding is needed — just the binary and its shared libraries.
+No runtime embedding is needed - just the binary and its shared libraries.
 
 ## Detection
 
@@ -49,7 +49,7 @@ daedalus inspect my-binary.de
 
 ## Cross-compilation
 
-Native binaries cannot be cross-compiled by `daedalus` — the binary must already be
+Native binaries cannot be cross-compiled by `daedalus` - the binary must already be
 built for the target architecture. Use `daedalus build --target aarch64` only for
 interpreted runtimes (Python, etc.) where the interpreter can be downloaded for
 the target arch.
@@ -57,7 +57,7 @@ the target arch.
 ## Known limitations
 
 - Only ELF binaries are supported (no PE/Windows, no Mach-O/macOS).
-- Statically linked binaries (no `.so` dependencies) work perfectly — the
+- Statically linked binaries (no `.so` dependencies) work perfectly - the
   smallest possible `.de`.
 - Binaries with unusual loader paths (`/lib/ld-linux.so.2`) may need the
   loader embedded in the rootfs.

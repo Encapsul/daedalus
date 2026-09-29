@@ -2,7 +2,7 @@
 name = "daedalux-core"
 version = "0.7.1"
 edition = "2021"
-description = "daedalus core library — format, compression, runtime detection, package manager detection"
+description = "daedalus core library - format, compression, runtime detection, package manager detection"
 license = "MIT"
 repository = "https://github.com/Encapsul/daedalus"
 keywords = ["packaging", "self-extracting", "appimage", "bundler", "single-binary"]

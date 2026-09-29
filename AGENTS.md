@@ -28,7 +28,7 @@ cargo audit                                # dependency vulnerabilities (run in 
 This directory has been removed. The Rust CLI (`daedalus-cli`) is now the only CLI.
 
 ```bash
-# No Python CLI to lint/test — removed
+# No Python CLI to lint/test - removed
 ```
 
 ### Verification loop (MANDATORY before finishing any change)
@@ -45,7 +45,7 @@ cargo test --workspace
 
 Layout: `[stub][payload][metadata][footer]`
 - Footer magic: `0xBEEF_CAFE`, format magic: `DAE\x01`
-- Integrity hash: `SHA-256(payload || meta_bytes)` — computed at build, verified at runtime
+- Integrity hash: `SHA-256(payload || meta_bytes)` - computed at build, verified at runtime
 - Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs)
 
 ### Stub launcher (`stub/src/main.rs`)
@@ -65,8 +65,8 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 ## Code style (high-signal)
 
 - Edition 2021, `cargo fmt` is authoritative. `max_width = 100` in `stub/rustfmt.toml`.
-- Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` — tiny binaries.
-- Clippy pedantic subset — do NOT add new `#[allow]` without a comment. See `daedalus-core/Cargo.toml [lints.clippy]`.
+- Release profile: `opt-level = "z"`, LTO, strip, `panic = "abort"` - tiny binaries.
+- Clippy pedantic subset - do NOT add new `#[allow]` without a comment. See `daedalus-core/Cargo.toml [lints.clippy]`.
 - Rust functions: ≤ 30 lines. Python functions: ≤ 40 lines.
 - Functions with >7 params: use a config struct.
 - Prefer `Result::ok()` over `|e| e.ok()`. Prefer `if let Some(v)` over `match` with `None => {}`.
@@ -100,7 +100,7 @@ Entrypoint resolution in `detect.rs:resolve_entrypoint()`:
 - Panic in library code or leak memory.
 
 **Ask first:**
-- Modifying `stub/src/main.rs` — security-critical launcher.
+- Modifying `stub/src/main.rs` - security-critical launcher.
 - Changing encryption/signing logic in `encrypt.rs`.
 - Adding new `unsafe` blocks or FFI bindings.
 
@@ -122,14 +122,14 @@ operator and the agent.
 - After fixing PATH / toolchain / installed-dependency issues, ALWAYS re-verify
   final success and capture the proof in the session: the successful command
   output (or exit code) that shows the fix worked. A "it should work now" is not
-  done — a green result is done.
+  done - a green result is done.
 
 ## Testing
 
 - Unit tests: `#[cfg(test)] mod tests` in each module.
 - Integration tests: `daedalus-cli/tests/` use `assert_cmd`.
 - `cargo test --workspace` for all Rust tests.
-- `daedalus-cli` depends on `reqwest` (blocking, `rustls-tls` feature) — no OpenSSL dependency.
+- `daedalus-cli` depends on `reqwest` (blocking, `rustls-tls` feature) - no OpenSSL dependency.
 
 ## Git conventions
 
@@ -139,8 +139,8 @@ operator and the agent.
 
 ## Other instruction files
 
-- `CLAUDE.md` — Claude Code specific guidance (agents/commands/skills pattern).
-- `CODE_STYLE.md` — detailed style rules with rationale.
-- `RULES.md` — ANSSI-Rust rules (also in `.cursor/rules/` format).
-- `HANDOFF.md` — project status, known build constraints, performance data.
-- `.opencode/` — agents, skills, and commands for OpenCode sessions.
+- `CLAUDE.md` - Claude Code specific guidance (agents/commands/skills pattern).
+- `CODE_STYLE.md` - detailed style rules with rationale.
+- `RULES.md` - ANSSI-Rust rules (also in `.cursor/rules/` format).
+- `HANDOFF.md` - project status, known build constraints, performance data.
+- `.opencode/` - agents, skills, and commands for OpenCode sessions.

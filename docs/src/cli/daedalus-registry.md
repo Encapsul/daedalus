@@ -45,8 +45,8 @@ daedalus registry pull <layer-hash> --local /tmp/registry
 
 Layers are addressed by their `SHA-256` hash. The registry stores:
 
-- `<hash>.layer` — the raw compressed layer bytes
-- `<hash>.json` — metadata (size, kind, compression)
+- `<hash>.layer` - the raw compressed layer bytes
+- `<hash>.json` - metadata (size, kind, compression)
 
 ## Exit codes
 

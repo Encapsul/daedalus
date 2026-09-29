@@ -1,9 +1,9 @@
-# Test machines — profiles
+# Test machines - profiles
 
 ## codespaces-ba69ea
 
 ```
-# Machine profile — codespaces-ba69ea
+# Machine profile - codespaces-ba69ea
 hostname:    codespaces-ba69ea
 kernel:      Linux 6.8.0-1052-azure
 arch:        x86_64

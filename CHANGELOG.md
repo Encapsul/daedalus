@@ -9,37 +9,37 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ## [0.7.1] - 2026-09-28
 
 ### Added
-- **PyPI**: `pip install daedalus` (`packaging/pip/`) — a stdlib-only launcher that downloads the matching release binary on first run (SHA-256 verified against `checksums.txt`), caches it under `~/.cache/daedalus/pip/`, and execs it. 9 unit tests; verified end-to-end (venv install → build → run).
-- **Homebrew tap**: `Encapsul/homebrew-daedalus` — `brew install Encapsul/homebrew-daedalus/daedalus` installs the signed release binaries (`daedalus` + `daedalus-stub` + `daedalus-crypto`), sha256-pinned per platform, verified end-to-end on macOS amd64.
+- **PyPI**: `pip install daedalus` (`packaging/pip/`) - a stdlib-only launcher that downloads the matching release binary on first run (SHA-256 verified against `checksums.txt`), caches it under `~/.cache/daedalus/pip/`, and execs it. 9 unit tests; verified end-to-end (venv install → build → run).
+- **Homebrew tap**: `Encapsul/homebrew-daedalus` - `brew install Encapsul/homebrew-daedalus/daedalus` installs the signed release binaries (`daedalus` + `daedalus-stub` + `daedalus-crypto`), sha256-pinned per platform, verified end-to-end on macOS amd64.
 - **`cargo install daedalux`**: daedalus is published to crates.io (`daedalux` CLI + `daedalux-core` library). `cargo install daedalux` installs the `daedalus` binary; on first `build` the matching `daedalus-stub` is downloaded from the GitHub release (SHA-256 verified against `checksums.txt`) and cached under `~/.cache/daedalus/stubs/<version>/<arch>/`.
 - Shared GitHub release asset helpers in `daedalus-cli/src/release.rs` (`release_tags`, `asset_name`, `download_release_asset`) so the stub fallback and upgrade path agree with the release pipeline naming and checksum format.
-- **Run straight from the registry**: `daedalus run http://host:port/artifact/app:v2` (or `registry://host:…`) downloads a published `.de`, verifies its footer, caches it under `~/.cache/daedalus/downloads` keyed by URL hash, marks it executable, and runs it — re-runs reuse the cache. npx-style app distribution.
+- **Run straight from the registry**: `daedalus run http://host:port/artifact/app:v2` (or `registry://host:…`) downloads a published `.de`, verifies its footer, caches it under `~/.cache/daedalus/downloads` keyed by URL hash, marks it executable, and runs it - re-runs reuse the cache. npx-style app distribution.
 - **Runnable artifact registry**: the registry now stores the full `.de` binary under a `name:tag` alias, not just layers.
   - `registry push FILE --name name[:tag] [--local DIR | --registry URL]` publishes a runnable binary; `registry pull --name name[:tag] -o out.de` fetches it (local and remote). Untagged names default to `:latest`.
   - `serve start` gains `GET /artifacts`, `GET /artifact/<name>:<tag>` (binary download), and `POST /artifact?name=&tag=` (binary store), plus full `Content-Length` request parsing for multi-MB bodies.
   - `build --publish <URL>` publishes the finished binary as `<file-stem>:latest`; local `--publish <DIR>` still stores the layered manifest.
 - `LayerRegistry::{publish_artifact_binary, artifact_binary, list_artifacts}` + `StoredArtifact` in `daedalus-core::registry`, backed by an atomic `artifacts.json` index over the CAS
 - **Lazy-loading priority extraction**: `daedalus build --lazy-load` now fast-starts by extracting only the entrypoint (plus an explicit `--lazy-priority file,dir,...` list or `[build] lazy_priority`) before launching, then fills the rest of the app tree in the background. Priority specs may be app-relative (`main.py`) or payload-relative (`app/main.py`); directories expand recursively (skipping `__pycache__`/`.git`), capped at 2048 files. Dry-run reports `Lazy:` on/off and the priority count. Namespaced builds (isolation ≥ 2) extract synchronously so the user-namespace `unshare` stays single-threaded.
-- `daedalus-core::lazy::expand_priority_paths` — build-time expansion of `--lazy-priority` specs into payload-relative paths with tar-exclusion parity
+- `daedalus-core::lazy::expand_priority_paths` - build-time expansion of `--lazy-priority` specs into payload-relative paths with tar-exclusion parity
 - Constrained-host auto-disable: `--lazy-load` without an explicit priority list turns itself off on small hosts (< 4 cores or < 3 GiB RAM, via `daedalus-core::system_info::is_constrained_host`)
 - `daedalus inspect` reports the `lazy_priority` metadata (`Lazy priority:` line)
-- **GPU passthrough for accelerated inference**: `daedalus build --gpu auto|nvidia|rocm|none` (or `[build] gpu` in `.daedalus.toml`) records the compute backend in the binary metadata. When `nvidia` or `rocm` is set, the launcher bind-mounts the GPU device nodes (NVIDIA `/dev/nvidia*` + caps, ROCm `/dev/kfd` + `/dev/dri` render nodes) into the sandbox via a regular-file overlay and pins the matching visibility vars (`CUDA_VISIBLE_DEVICES`, `NVIDIA_VISIBLE_DEVICES`, `HIP_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`) — Ollama/llama.cpp offload works headless, inside the sandbox.
+- **GPU passthrough for accelerated inference**: `daedalus build --gpu auto|nvidia|rocm|none` (or `[build] gpu` in `.daedalus.toml`) records the compute backend in the binary metadata. When `nvidia` or `rocm` is set, the launcher bind-mounts the GPU device nodes (NVIDIA `/dev/nvidia*` + caps, ROCm `/dev/kfd` + `/dev/dri` render nodes) into the sandbox via a regular-file overlay and pins the matching visibility vars (`CUDA_VISIBLE_DEVICES`, `NVIDIA_VISIBLE_DEVICES`, `HIP_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`) - Ollama/llama.cpp offload works headless, inside the sandbox.
 - `daedalus-core::gpu` detection probe (`--gpu auto`): `/dev/kfd` → ROCm, `/proc/driver/nvidia/gpus` → NVIDIA; CPU fallback is safe (missing nodes are skipped)
 - `daedalus inspect` shows the embedded `GPU:` backend; dry-run reports the resolved backend
 - **Multi-service builds**: `--entrypoint name=cmd,arg,...` now serializes named services into the binary metadata and the stub supervisor runs them. `--service-port NAME=PORT` and `--service-timeout NAME=SECONDS` configure the readiness probe (`ready_port`/`ready_timeout`) each service is gated on before the app is considered up.
 - `daedalus inspect` now lists multi-service definitions (`Services:` section, `service.<name>` lines in `--plain` mode)
-- `ServiceSpec` in `daedalus-core::assembly` serializing `{name, cmd, env, ready_port, ready_timeout}` — the schema the stub supervisor deserializes
+- `ServiceSpec` in `daedalus-core::assembly` serializing `{name, cmd, env, ready_port, ready_timeout}` - the schema the stub supervisor deserializes
 
 ### Changed
 - System config detection module `daedalus-core/src/system_info.rs` (`SystemConfig`, `detect()`, `compute_universal_slices()`) for resource-adaptive builds
 
 ### Fixed
 - **`daedalus upgrade` matched the wrong release asset**: it built `daedalus-{version}-{platform}.tar.gz` and fetched `{url}.sha256`, but releases use `daedalus_{version}_{os}_{arch}.tar.gz` with a single `checksums.txt`, and the archive has no `bin/` subdirectory (binaries sit at the archive root). The command now derives the asset from `release_tags`, parses `checksums.txt`, and copies the binaries from the extracted top level. This also fixes the `platform` reference in `--json` output (undefined after the refactor).
-- `registry push` remote was broken: it POSTed the raw binary to the layer `/push` endpoint, which the server tried to JSON-parse as a layer (400). Remote pushes now target the correct endpoint — full binaries go to `/artifact`, layers to `/push` as JSON.
+- `registry push` remote was broken: it POSTed the raw binary to the layer `/push` endpoint, which the server tried to JSON-parse as a layer (400). Remote pushes now target the correct endpoint - full binaries go to `/artifact`, layers to `/push` as JSON.
 - `registry push` rejected `.de` files (extension check still required `.daedalus` after the 0.6.0 rename); both extensions are accepted now
 - **`--lazy-load` runtime failure**: priority files used absolute `/app/...` paths that never matched the tar's payload-relative entries (and wrongly listed the host PATH interpreter as a payload file), so every lazy build errored with `priority files not found in payload: /app/python3`. Priorities are now payload-relative and the interpreter is never one.
-- Stub lazy extraction skipped non-priority tar entries without draining them, misaligning the stream and breaking extraction with `Invalid argument (os error 22)` whenever a non-priority entry was followed by more data — entries are now drained before skipping
-- Stub multi-service supervisor on Unix now execs via `execvp` (PATH search) instead of `execve`, so bare interpreter names like `python3` resolve at runtime — multi-service binaries can actually launch their services
+- Stub lazy extraction skipped non-priority tar entries without draining them, misaligning the stream and breaking extraction with `Invalid argument (os error 22)` whenever a non-priority entry was followed by more data - entries are now drained before skipping
+- Stub multi-service supervisor on Unix now execs via `execvp` (PATH search) instead of `execve`, so bare interpreter names like `python3` resolve at runtime - multi-service binaries can actually launch their services
 - `find_in_bin_paths`/`is_executable_path` made cross-platform (were Windows-only), so the Unix supervisor shares the same interpreter-resolution fallback as the Windows and single-service paths
 - Removed unused `libc_execve` FFI declaration and `env_to_cstrings` helper
 - `daedalus-core/src/lib.rs`: restored `pub mod paths;` (was accidentally replaced when adding `system_info`)
@@ -164,10 +164,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Standardized release asset naming (glow-style):
   `daedalus_<version>_<os>_<arch>.<ext>` with `checksums.txt`
 - Launcher hardened: all remaining `unwrap()`/`expect()` calls in the stub
-  converted to `Result` handling — the launcher never panics on malicious input
+  converted to `Result` handling - the launcher never panics on malicious input
 
 ### Fixed
-- Ubuntu detection in `detect_linux_distro()` — Ubuntu's `/etc/os-release` contains
+- Ubuntu detection in `detect_linux_distro()` - Ubuntu's `/etc/os-release` contains
   `ID_LIKE=debian`, which caused downloading the wrong PHP build
 - Missing shared libraries for downloaded PHP binaries at runtime
 - Dead code: removed unused `download_php_extension()` (replaced by binary download)
@@ -207,27 +207,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ## [0.3.0] - 2026-07-23
 
 ### Added
-- **Full Rust CLI** — zero Python dependency at runtime
-  - `daedalus build` — package any app into self-extracting ELF
-  - `daedalus inspect` — read metadata from .daedalus
-  - `daedalus scan` — find .daedalus files recursively
-  - `daedalus sign` / `daedalus verify` — Ed25519 signing & verification
-  - `daedalus keygen` — generate signing keypairs
-  - `daedalus trust` — manage trusted public keys
-  - `daedalus doctor` — system health checks (`--strict` for CI)
-  - `daedalus env` — show environment & build config
-  - `daedalus clean` — remove cache
-  - `daedalus completion <shell>` — shell completions (bash, zsh, fish, elvish, powershell)
-  - `daedalus man [dir]` — generate man pages
-- **`.daedalus.toml` config file** — defaults for all build flags
-- **Shell completions** — `daedalus completion bash/zsh/fish > file`
-- **Man pages** — `daedalus man /usr/local/share/man/man1/` (pre-generated in release tarballs)
+- **Full Rust CLI** - zero Python dependency at runtime
+  - `daedalus build` - package any app into self-extracting ELF
+  - `daedalus inspect` - read metadata from .daedalus
+  - `daedalus scan` - find .daedalus files recursively
+  - `daedalus sign` / `daedalus verify` - Ed25519 signing & verification
+  - `daedalus keygen` - generate signing keypairs
+  - `daedalus trust` - manage trusted public keys
+  - `daedalus doctor` - system health checks (`--strict` for CI)
+  - `daedalus env` - show environment & build config
+  - `daedalus clean` - remove cache
+  - `daedalus completion <shell>` - shell completions (bash, zsh, fish, elvish, powershell)
+  - `daedalus man [dir]` - generate man pages
+- **`.daedalus.toml` config file** - defaults for all build flags
+- **Shell completions** - `daedalus completion bash/zsh/fish > file`
+- **Man pages** - `daedalus man /usr/local/share/man/man1/` (pre-generated in release tarballs)
   - Full Unix man(7) sections: EXIT STATUS, ENVIRONMENT, FILES, SEE ALSO, AUTHORS, HISTORY, BUGS
-- **`--env KEY=VALUE`** — repeatable flag to bake environment variables into the binary
-- **`--env-file`** — load KEY=VALUE pairs from a file (now actually works)
+- **`--env KEY=VALUE`** - repeatable flag to bake environment variables into the binary
+- **`--env-file`** - load KEY=VALUE pairs from a file (now actually works)
 - **10 integration tests** for Rust CLI
-- **100% Rust core** — format, compression, detection, signing, assembly, tar, pkgmgr
-- **Benchmark script** — `benchmarks/run-bench.sh` for measuring build performance
+- **100% Rust core** - format, compression, detection, signing, assembly, tar, pkgmgr
+- **Benchmark script** - `benchmarks/run-bench.sh` for measuring build performance
 
 ### Changed
 - Bumped version from 0.2.9 → 0.3.0
@@ -239,15 +239,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Node.js entrypoint detection: checks package.json "main", "scripts.start", then fallback list
 
 ### Fixed
-- **Sign command wrote corrupt V3 footer** — footer was written at the same offset as sig_block, overwriting it; now writes [sig_offset:u64le][core:84] after sig_block with proper set_len
-- **Sign command opened file read-only** — changed `File::open` to `OpenOptions::new().read(true).write(true)`
-- **Verify panicked on sig_size mismatch** — now validates sig_size==64 and uses fixed slice
-- **`--env-file` resolved but never loaded** — the path was resolved but the file was never read; now parses KEY=VALUE lines
-- **SHA-256 integrity check** — stub now always verifies `SHA-256(payload || meta_bytes)`, matching what the builder computes
-- **Long tar paths** — removed manual `set_path()` on GNU header (100-byte limit) for npm deep deps
-- **Entrypoint resolution** — generated argv is now runtime-aware (Python: `["python3", "/app/app.py"]`, Node: `["node", "/app/index.js"]`)
+- **Sign command wrote corrupt V3 footer** - footer was written at the same offset as sig_block, overwriting it; now writes [sig_offset:u64le][core:84] after sig_block with proper set_len
+- **Sign command opened file read-only** - changed `File::open` to `OpenOptions::new().read(true).write(true)`
+- **Verify panicked on sig_size mismatch** - now validates sig_size==64 and uses fixed slice
+- **`--env-file` resolved but never loaded** - the path was resolved but the file was never read; now parses KEY=VALUE lines
+- **SHA-256 integrity check** - stub now always verifies `SHA-256(payload || meta_bytes)`, matching what the builder computes
+- **Long tar paths** - removed manual `set_path()` on GNU header (100-byte limit) for npm deep deps
+- **Entrypoint resolution** - generated argv is now runtime-aware (Python: `["python3", "/app/app.py"]`, Node: `["node", "/app/index.js"]`)
 - **`cwd=/app`** set in metadata so stub `chdir`s before exec
-- **`node_modules` included with `--no-install`** — copy filter respects the flag
+- **`node_modules` included with `--no-install`** - copy filter respects the flag
 - find_binary now searches workspace-level `target/` directory
 - Python CLI `--version` reads from pyproject.toml (was hardcoded "0.1.0")
 - Version centralization: single source of truth in pyproject.toml

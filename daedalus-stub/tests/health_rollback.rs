@@ -56,7 +56,7 @@ fn payload(body: &str) -> Vec<u8> {
     zstd::encode_all(Cursor::new(rootfs_tar(body)), 3).unwrap()
 }
 
-/// The content hash (`SHA-256(payload ‖ meta)`) of a version — its footer id.
+/// The content hash (`SHA-256(payload ‖ meta)`) of a version - its footer id.
 fn payload_sha(body: &str) -> String {
     let mut h = Sha256::new();
     h.update(payload(body));

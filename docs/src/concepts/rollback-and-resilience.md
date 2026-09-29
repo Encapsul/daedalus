@@ -17,7 +17,7 @@ startup check and an automatic, atomic rollback.
 > the health check is quarantined and will not be re-installed.
 
 This keeps the invariant *"the running binary is always the last valid
-version"* — "valid" now includes *verified to start*.
+version"* - "valid" now includes *verified to start*.
 
 ## Flow
 
@@ -71,11 +71,11 @@ Per-version records live in `~/.cache/daedalus/health/<version>.json`
 Rules:
 
 - `begin` records an install as `pending` **without resetting the failure
-  counter** — repeated installs of the same broken version accumulate.
+  counter** - repeated installs of the same broken version accumulate.
 - `confirm` marks the version healthy (exit 0 or survived the startup window).
 - `record_failure` increments `attempts`; the version is quarantined once
   `attempts >= DAEDALUS_HEALTH_MAX_ATTEMPTS`.
-- a quarantined version is **never re-armed** by `begin` — it stays
+- a quarantined version is **never re-armed** by `begin` - it stays
   quarantined until manually cleared by deleting its record.
 
 ## Policy knobs (environment)
@@ -92,7 +92,7 @@ Rules:
 | Update applies, new version exits 0 | confirmed healthy, `.bak` discarded, binary kept |
 | Update applies, new version crashes / non-zero | recorded; `.bak` restored atomically; previous version runs |
 | Same version fails repeatedly | quarantined; log printed |
-| Re-install of a quarantined version | refused **before** the snapshot — no swap |
+| Re-install of a quarantined version | refused **before** the snapshot - no swap |
 | Backup missing during rollback (deleted externally) | rollback error; new version stays |
 
 The quarantine pre-check runs before the engine does any I/O, so a refused
@@ -100,6 +100,6 @@ install is cheap and leaves the running binary untouched.
 
 ## Related
 
-- [Runtime Launcher](./runtime-launcher.md) — the launcher flow this gate slots into.
-- [SISR: Self-Incremental Sovereign Reconstruction](./sisr-spec.md) — trust model.
-- [Incremental Updates (SISR)](../guides/incremental-updates.md) — publisher workflow.
+- [Runtime Launcher](./runtime-launcher.md) - the launcher flow this gate slots into.
+- [SISR: Self-Incremental Sovereign Reconstruction](./sisr-spec.md) - trust model.
+- [Incremental Updates (SISR)](../guides/incremental-updates.md) - publisher workflow.

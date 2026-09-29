@@ -11,7 +11,7 @@ ways to migrate them.
 ## Backward compatibility guarantee
 
 **A v1 `.daedalus` is read, extracted, and executed by the v2 runtime exactly as
-before — no modification, no warning.** SISR is additive: the launcher gates
+before - no modification, no warning.** SISR is additive: the launcher gates
 on a single flag in the footer, never on the file predating it.
 
 ```
@@ -48,7 +48,7 @@ after:  [stub][payload][metadata][manifest][SisrFooterExt][footer]
 ```
 
 - The stub, payload, and metadata segments are copied **byte-for-byte**. The
-  payload is chunked exactly as stored — never decompressed and recompressed.
+  payload is chunked exactly as stored - never decompressed and recompressed.
 - The footer integrity hash `SHA-256(payload ‖ metadata)` and any checksum the
   payload embeds (e.g. SquashFS) are therefore preserved by construction.
 - `payload_offset`, `meta_offset`, `payload_csize`, `meta_size` are unchanged,
@@ -59,11 +59,11 @@ after:  [stub][payload][metadata][manifest][SisrFooterExt][footer]
 
 `upgrade-binary` refuses to touch a file that already has SISR, and refuses
 **signed** binaries (their signature block sits exactly where the manifest
-must be inserted — rebuild those with `daedalus build --enable-sisr`).
+must be inserted - rebuild those with `daedalus build --enable-sisr`).
 
 ## Migration paths
 
-### Option A — full rebuild (recommended for new releases)
+### Option A - full rebuild (recommended for new releases)
 
 ```bash
 daedalus build ./app --enable-sisr \
@@ -74,7 +74,7 @@ daedalus build ./app --enable-sisr \
 Best when you can regenerate the app image: you get the current launcher, a
 signed manifest, and an embedded update URL in one step.
 
-### Option B — promote an existing v1 binary
+### Option B - promote an existing v1 binary
 
 ```bash
 daedalus upgrade-binary ./app-old.daedalus ./app-new.daedalus \

@@ -111,7 +111,7 @@ impl FuzzTarget for DetectFuzzTarget {
     }
     fn execute(&self, input: &[u8]) -> Result<()> {
         // Malformed JSON is not a scenario; building the scaffold may fail on
-        // fuzzed names (ENAMETOOLONG) — neither is a bug. Only an entrypoint
+        // fuzzed names (ENAMETOOLONG) - neither is a bug. Only an entrypoint
         // that escapes the app rootfs is an `Err`.
         let Ok(scenario) = serde_json::from_slice::<DetectScenario>(input) else {
             return Ok(());

@@ -28,7 +28,7 @@ fn daedalus() -> Command {
 }
 
 /// Build a zstd-tar payload containing `app/app` (so swap can find its layer)
-/// and a `.daedalus` footer over it. The stub bytes are arbitrary — only the
+/// and a `.daedalus` footer over it. The stub bytes are arbitrary - only the
 /// footer + hash matter for inspect/sign/verify; swap reassembles from the
 /// embedded stub bytes without executing them.
 fn make_de(dir: &Path, name: &str) -> PathBuf {
@@ -216,7 +216,7 @@ fn build_streams_artifact_to_stdout() {
 
     // Stream `build -o -` output to a file and confirm it is a valid .de.
     // `build` writes status messages to stderr, so stdout carries only the
-    // artifact — safe to pipe with std::process::Command.
+    // artifact - safe to pipe with std::process::Command.
     let bin = assert_cmd::cargo::cargo_bin("daedalus");
     let iso = tmpdir_owned();
     let mut child = std::process::Command::new(bin)
@@ -280,7 +280,7 @@ fn compile_native_binary(dir: PathBuf) -> Option<PathBuf> {
 #[cfg(unix)]
 #[test]
 fn build_to_dash_respects_multi_target_rejection() {
-    // Multi-target with `-o -` cannot work — two artifacts cannot share one
+    // Multi-target with `-o -` cannot work - two artifacts cannot share one
     // pipe. This must fail with a clear error, not write a file named `-`.
     let Some(stub) = locate_stub() else {
         eprintln!("skipping: no daedalus-stub available");

@@ -1,6 +1,6 @@
 //! End-to-end tests for default signing: `daedalus build` signs every artifact
 //! with a self-generated, self-trusted dev key, so `daedalus verify` authenticates
-//! the result out of the box — unless `--skip-sign` is given.
+//! the result out of the box - unless `--skip-sign` is given.
 //!
 //! All tests isolate their key/trust state via `XDG_DATA_HOME` (keys land in
 //! `$XDG_DATA_HOME/daedalus/keys`) and `DAEDALUS_TRUSTED_DIR` (trust anchor) so
@@ -8,7 +8,7 @@
 //! `~/.daedalus/trusted-keys`.
 //!
 //! Unix-only: it drives `cc`-built ELF executables (runtime-Binary detection
-//! needs ELF) and executes assembled artifacts at rest — both unix-specific.
+//! needs ELF) and executes assembled artifacts at rest - both unix-specific.
 
 #![cfg(unix)]
 
@@ -89,7 +89,7 @@ fn run_artifact(bin: &Path, home: &Path, trust_dir: &Path) -> std::process::Outp
         .expect("failed to run the assembled artifact")
 }
 
-/// A valid unsigned `.de` with a fake stub (never executed — verify only reads
+/// A valid unsigned `.de` with a fake stub (never executed - verify only reads
 /// the footer), for signing without a full build.
 fn fake_de(dir: &Path, name: &str) -> PathBuf {
     let payload = daedalus_core::compress::compress(b"not-a-real-layer").unwrap();

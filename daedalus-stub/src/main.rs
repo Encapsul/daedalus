@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 //! daedalus launcher stub.
 //!
-//! Embedded at the head of every .daedalus file — this is the ELF the kernel runs.
+//! Embedded at the head of every .daedalus file - this is the ELF the kernel runs.
 //! Flow: open /proc/self/exe → read footer → verify integrity (sig → SHA-256) →
 //! extract rootfs to ~/.cache/daedalus/{sha256}/ (atomic) → exec the app.
 //!
@@ -84,7 +84,7 @@ const LD_PATHS: &[&str] = &[
 
 /// Absolute forms of `LD_PATHS`, used after `pivot_root` where the process
 /// root is the rootfs. `execvp` and the dynamic loader resolve relative PATH
-/// / `LD_LIBRARY_PATH` entries against the current directory — with `cwd`
+/// / `LD_LIBRARY_PATH` entries against the current directory - with `cwd`
 /// set to `/app` that misses `/usr/bin`, so pivot mode must use `/`-prefixed
 /// entries (they resolve inside the new root).
 #[cfg(all(unix, target_arch = "x86_64"))]
@@ -673,7 +673,7 @@ fn run() -> io::Result<()> {
     let (mut exe, mut footer, mut meta_bytes, mut meta) = read_from(&self_exe()?)?;
 
     // Reject crafted metadata with an unknown runtime before doing any
-    // extraction/update work (roadmap #40 — unknown runtime used to silently
+    // extraction/update work (roadmap #40 - unknown runtime used to silently
     // map to bash). Validation goes through `effective_runtime()` so a binary
     // whose entrypoint lives in a layer is checked against THAT layer's
     // runtime, not the legacy flat field.
@@ -682,7 +682,7 @@ fn run() -> io::Result<()> {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "unsupported runtime '{runtime}' in metadata — supported: python, deno, node, electron, java, ruby, dotnet, rust, go, php, perl, hugo, ollama, gemma, wasm, binary",
+                "unsupported runtime '{runtime}' in metadata - supported: python, deno, node, electron, java, ruby, dotnet, rust, go, php, perl, hugo, ollama, gemma, wasm, binary",
             ),
         ));
     }
@@ -693,7 +693,7 @@ fn run() -> io::Result<()> {
     // forwarded.
     handle_runtime_flags(&meta)?;
 
-    // Canonical on-disk path — the file the update engine swaps in place.
+    // Canonical on-disk path - the file the update engine swaps in place.
     // Kept separate from the running image path because the kernel can pin
     // the pre-swap inode of the running image after a rename.
     let mut bin_path = self_exe()?;
@@ -746,10 +746,10 @@ fn run() -> io::Result<()> {
             return exec::exec_app(&meta, &rootfs, &app_config);
         }
 
-        // Source changed since last extraction — fall through to cold path
+        // Source changed since last extraction - fall through to cold path
         // which will re-verify SHA-256 + signature and rebuild the cache.
         if verbose {
-            eprintln!("[daedalus] source changed since cache — re-verifying");
+            eprintln!("[daedalus] source changed since cache - re-verifying");
         }
     }
 
@@ -766,7 +766,7 @@ fn run() -> io::Result<()> {
 
     let (payload, meta_bytes) = if let Some(ref enc) = meta.encryption {
         let key = decrypt_key.as_ref().ok_or_else(|| {
-            err("payload is encrypted — pass --decrypt-key <32-byte-hex-keyfile> to decrypt")
+            err("payload is encrypted - pass --decrypt-key <32-byte-hex-keyfile> to decrypt")
         })?;
         let key_bytes =
             hex::decode(key).map_err(|e| err(format!("invalid decrypt key hex: {e}")))?;
@@ -802,7 +802,7 @@ fn run() -> io::Result<()> {
     };
 
     // Verify Ed25519 signature. Enforce a consistent signature state first:
-    // a sig block must exist iff FLAG_SIGNED is set — a flag without a block
+    // a sig block must exist iff FLAG_SIGNED is set - a flag without a block
     // (or a block without the flag) is a tampered file. The signature covers
     // the footer itself, so rewriting format_version/flags to skip it breaks
     // the signature; a v2 file that still carries the leftover sig block from
@@ -831,7 +831,7 @@ fn run() -> io::Result<()> {
     // table must bind every byte of the payload. Updates keep this property
     // because the engine carries over the remote manifest's verified
     // signature. `DAEDALUS_SISR_ALLOW_UNSIGNED` is the explicit escape hatch for
-    // legacy unsigned builds — fail closed otherwise.
+    // legacy unsigned builds - fail closed otherwise.
     if footer.has_sisr() && std::env::var_os("DAEDALUS_SISR_ALLOW_UNSIGNED").is_none() {
         let (ext, sisr_manifest) = daedalus_core::sisr_header::read_sisr(&mut exe)?
             .ok_or_else(|| err("SISR flag set but section unreadable"))?;
@@ -958,7 +958,7 @@ fn read_from(path: &Path) -> io::Result<(File, Footer, Vec<u8>, Metadata)> {
 
     let meta_len = footer.meta_size as usize;
     if meta_len == 0 {
-        return Err(err("metadata region is empty — not a valid .de file"));
+        return Err(err("metadata region is empty - not a valid .de file"));
     }
     if meta_len > format::MAX_META_SIZE {
         return Err(err(format!(
@@ -1026,7 +1026,7 @@ fn self_exe() -> io::Result<PathBuf> {
 /// Payload-relative tar paths that must land on disk before the app starts:
 /// the entrypoint script(s) referenced by the resolved argv (e.g.
 /// `app/app.py`) plus any build-time `lazy_priority` entries. The runtime
-/// interpreter is intentionally NOT a priority file — it is resolved from the
+/// interpreter is intentionally NOT a priority file - it is resolved from the
 /// host's PATH, so no path inside the payload ever matches it.
 ///
 /// The tar stores entries relative to the rootfs root (never absolute), and
@@ -1040,7 +1040,7 @@ fn priority_files(meta: &Metadata) -> Vec<PathBuf> {
     for arg in meta.effective_entrypoint() {
         // Absolute argv entries reference the packaged app; the payload path
         // is the tar-relative form (drop the leading `/`). Interpreter
-        // arguments (`python3`, `node`) have no slash and are skipped — they
+        // arguments (`python3`, `node`) have no slash and are skipped - they
         // resolve from the host's PATH, not from the payload. Taking the last
         // whitespace token also covers the legacy single-string form
         // `"python3 /app/app.py"`.
@@ -1070,7 +1070,7 @@ fn priority_files(meta: &Metadata) -> Vec<PathBuf> {
 /// Order matters for security: the manifest is authenticated (Ed25519 against
 /// the trusted keys, then the Merkle root against its own chunk table) before
 /// the engine writes a single byte. Every chunk the engine fetches is
-/// additionally hash-verified, and the swap is atomic — any failure leaves the
+/// additionally hash-verified, and the swap is atomic - any failure leaves the
 /// running binary intact.
 fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
     let Some(manifest_path) = std::env::var_os("DAEDALUS_SISR_MANIFEST") else {
@@ -1143,7 +1143,7 @@ fn health_policy() -> HealthCheckPolicy {
 }
 
 /// Refuses to apply an update whose *target* version was already quarantined
-/// by the health gate — the anti-rollback-loop check. The target hash is
+/// by the health gate - the anti-rollback-loop check. The target hash is
 /// expensive (a full dry-run pass), so it is only computed when the store
 /// already contains a quarantined version; otherwise this is a no-op.
 fn refuse_quarantined_target(
@@ -1675,7 +1675,7 @@ fn env_timeout_ms(name: &str, default_ms: u64) -> u64 {
 /// `DAEDALUS_HTTP_MAX_RESPONSE` sets the max response body in bytes (default 64 MiB).
 ///
 /// Only caller-verified content is consumed (signed manifest, hash-checked
-/// chunks), so the transport is a convenience — never a trust anchor.
+/// chunks), so the transport is a convenience - never a trust anchor.
 /// `http_get_bytes` - perform an HTTP GET and return the response body.
 /// @url: URL
 ///
@@ -1893,7 +1893,7 @@ fn pivot_root_into(rootfs: &Path) -> io::Result<()> {
 
     let old_root_c = cstr(b"/.old_root")?;
     // SAFETY: pivot_root(2) (syscall 155 on x86_64) switches the root mount.
-    // umount2(MNT_DETACH) lazily detaches the old root — files remain accessible
+    // umount2(MNT_DETACH) lazily detaches the old root - files remain accessible
     // to existing file descriptors but are unreachable from the namespace.
     unsafe {
         let rc = libc::syscall(
@@ -2343,7 +2343,7 @@ mod tests {
     #[test]
     /// `read_from_rejects_oversized_metadata` - read_from rejects oversized metadata.
     ///
-    /// Description: DoS guard — fuzzer could craft a huge `meta_size` to force
+    /// Description: DoS guard - fuzzer could craft a huge `meta_size` to force
     /// a large allocation. The stub must reject before reading.
     ///
     /// Return: nothing
@@ -2363,7 +2363,7 @@ mod tests {
     #[test]
     /// `read_from_accepts_valid_metadata` - read_from accepts valid metadata.
     ///
-    /// Description: Sanity check — a well-formed .de file must still load.
+    /// Description: Sanity check - a well-formed .de file must still load.
     ///
     /// Return: nothing
     fn read_from_accepts_valid_metadata() {

@@ -25,7 +25,7 @@ pub struct ScanArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    /// Dry run — show what would be done without doing it
+    /// Dry run - show what would be done without doing it
     #[arg(long)]
     pub dry_run: bool,
 
@@ -304,7 +304,7 @@ fn inspect_file(path: &Path) -> Option<serde_json::Value> {
         "author": meta.get("author").and_then(|v| v.as_str()).unwrap_or(""),
         // Default to isolation level 0 (none) for legacy/missing field, matching the
         // stub's `#[serde(default)] u8` = u8::default()=0. Must NOT fabricate a
-        // sandbox level — scan must agree with how the stub actually executes.
+        // sandbox level - scan must agree with how the stub actually executes.
         "isolation": meta.get("isolation").and_then(|v| v.as_u64()).unwrap_or(0),
         "created": created,
         "signed": footer.is_signed(),

@@ -4,7 +4,7 @@
 > `stub/src/main.rs`). Describes how the launcher rebuilds the running binary
 > from a signed delta manifest before extracting and executing it. Since
 > mission 8 the launcher also supervises the first run of a freshly updated
-> version and rolls back automatically if it crashes — see
+> version and rolls back automatically if it crashes - see
 > [Rollback & Resilience](../concepts/rollback-and-resilience.md).
 
 The launcher flow in `stub/src/main.rs` is deliberately linear: locate self
@@ -18,7 +18,7 @@ Two trigger paths exist:
 - **Local staging** (mission 6): `$DAEDALUS_SISR_MANIFEST` points at a signed
   manifest whose chunks are staged in `<manifest-dir>/chunks/`. The launcher
   stays network-free; this path is unchanged.
-- **Remote update** (mission 7): `./app.daedalus --daedalus-update [URL]` — the
+- **Remote update** (mission 7): `./app.daedalus --daedalus-update [URL]` - the
   launcher intercepts the flag before the app sees it, downloads the manifest
   and the changed chunks over HTTPS, applies the delta, prints reuse/fetch
   statistics, and exits. The URL resolution order is
@@ -27,8 +27,8 @@ Two trigger paths exist:
   version info and exits.
 
 ```
-./app.daedalus  (DAEDALUS_SISR_MANIFEST=/updates/app.daedalus.manifest   — local staging)
-            (./app.daedalus --daedalus-update                        — remote update)
+./app.daedalus  (DAEDALUS_SISR_MANIFEST=/updates/app.daedalus.manifest   - local staging)
+            (./app.daedalus --daedalus-update                        - remote update)
    │
    1. open /proc/self/exe → footer → metadata
    2. update requested?
@@ -40,14 +40,14 @@ Two trigger paths exist:
       verify Merkle root against the chunk table
    5. SisrEngine::apply_update(/proc/self/exe, manifest, fetcher)
         - reuse unchanged chunks from the current binary
-        - fetch the rest — local: <manifest-dir>/chunks/<hex-hash>
+        - fetch the rest - local: <manifest-dir>/chunks/<hex-hash>
                           remote: GET {base}/chunks/<hex-hash> (HTTPS)
         - SHA-256-verify every chunk before writing
         - write to .tmp, fsync, rename → atomic swap
        failure at any point ⇒ binary untouched, launcher exits with error
     6. re-open the *canonical real path* returned by the engine (not
        /proc/self/exe, which can still resolve to the pinned pre-update inode)
-       and re-read footer + metadata — now the new version
+       and re-read footer + metadata - now the new version
     7. health gate (mission 8): snapshot `./app.daedalus.bak` taken before the
        swap; the new version is supervised for its startup window
          - healthy  ⇒ confirmed, `.bak` discarded
@@ -62,12 +62,12 @@ app, so those flags never reach the host application.
 
 ## Trigger and chunk location
 
-- `$DAEDALUS_SISR_MANIFEST` — path to a signed [remote manifest]
+- `$DAEDALUS_SISR_MANIFEST` - path to a signed [remote manifest]
   (`RemoteManifest::from_bytes`); when unset the launcher is stock.
   Chunk files are read from the `chunks/` directory **next to the manifest**
   (`<manifest-dir>/chunks/<64-hex-sha256>`), served by
   [`DirectoryChunkFetcher`].
-- `--daedalus-update [URL]` — fetches `<URL>/manifest` and `<URL>/chunks/<hex>`
+- `--daedalus-update [URL]` - fetches `<URL>/manifest` and `<URL>/chunks/<hex>`
   over HTTPS via [`HttpChunkFetcher`], resolving the base URL from the
   positional argument, then `$DAEDALUS_UPDATE_URL`, then the embedded
   `update_url`. The transport is never a trust anchor: the manifest is
@@ -80,14 +80,14 @@ app, so those flags never reach the host application.
 
 The manifest is **authenticated before a single byte is written**:
 
-1. `RemoteManifest::verify_any(trusted_keys)` — the Ed25519 signature over
+1. `RemoteManifest::verify_any(trusted_keys)` - the Ed25519 signature over
    `merkle_root ‖ manifest_bytes` must verify against at least one key in the
    trusted-keys directory (same directory the embedded binary signature uses,
    see `load_trusted_keys`).
-2. `RemoteManifest::verify_merkle()` — the stated Merkle root must match the
+2. `RemoteManifest::verify_merkle()` - the stated Merkle root must match the
    chunk table, so a signer error cannot smuggle a mismatched root.
-3. Per-chunk, inside the engine: every byte written — whether **reused** from
-   the current binary or **fetched** — must SHA-256 to its `ChunkEntry.hash`.
+3. Per-chunk, inside the engine: every byte written - whether **reused** from
+   the current binary or **fetched** - must SHA-256 to its `ChunkEntry.hash`.
    A fetched chunk of the wrong length or hash is rejected on the spot.
 4. At rest, on every cold start: the rebuilt binary embeds the manifest
    signature from step 1 in its `SisrFooterExt`; the launcher re-verifies it
@@ -106,13 +106,13 @@ Only then does the engine assemble and atomically swap.
 - an error or an interruption **before** commit leaves the original binary
   byte-for-byte intact (the temp file is removed on drop);
 - the engine opens and hashes from the canonical path, and the swap is a
-  single atomic rename — there is no "half-updated" state;
+  single atomic rename - there is no "half-updated" state;
 - the source file's mode is copied onto the temp file before the rename, so a
   replaced binary keeps its executable bit (`File::create` alone would yield
   `0o644`);
 - after the swap the launcher re-opens the **canonical real path** returned by
-  the engine — `/proc/self/exe` can keep resolving to the pinned pre-update
-  inode — and continues with the new footer and payload.
+  the engine - `/proc/self/exe` can keep resolving to the pinned pre-update
+  inode - and continues with the new footer and payload.
 
 ## Post-update health gate
 
@@ -127,8 +127,8 @@ version for its startup window (`DAEDALUS_HEALTH_TIMEOUT_MS`, default 10 s):
   `attempts >= DAEDALUS_HEALTH_MAX_ATTEMPTS` (default 3) the version is
   **quarantined** and the snapshot is restored, after which the previous
   version runs;
-- a quarantined target is refused at the top of the update path — **before**
-  any snapshot or engine I/O — so a broken release cannot be re-installed in
+- a quarantined target is refused at the top of the update path - **before**
+  any snapshot or engine I/O - so a broken release cannot be re-installed in
   a loop.
 
 Health records are JSON files in `~/.cache/daedalus/health/`, keyed by the target
@@ -148,7 +148,7 @@ state machine.
 | `SisrFooterExt.signature` | carries over the remote manifest's Ed25519 signature (verified in step 1), so the rebuilt binary stays authentic at rest |
 
 A pre-SISR (legacy) binary is handled too: there is no embedded chunk index, so
-the engine falls back to fetching every chunk — correct, just not incremental.
+the engine falls back to fetching every chunk - correct, just not incremental.
 
 ## Failure table
 
@@ -170,13 +170,13 @@ the engine falls back to fetching every chunk — correct, just not incremental.
 
 ## Related
 
-- [Builder Pipeline](./builder-pipeline.md) — where the manifest and chunks are
+- [Builder Pipeline](./builder-pipeline.md) - where the manifest and chunks are
   produced and signed.
-- [SISR: Self-Incremental Sovereign Reconstruction](./sisr-spec.md) — trust
+- [SISR: Self-Incremental Sovereign Reconstruction](./sisr-spec.md) - trust
   model and invariants.
-- [`.daedalus` Format v2 — SISR extension](../spec/daedalus-format-v2.md) — byte layout
+- [`.daedalus` Format v2 - SISR extension](../spec/daedalus-format-v2.md) - byte layout
   of the remote manifest and the footer extension.
-- [Incremental Updates (SISR)](../guides/incremental-updates.md) — the
+- [Incremental Updates (SISR)](../guides/incremental-updates.md) - the
   end-to-end workflow the launcher completes.
 
 [remote manifest]: ../spec/daedalus-format-v2.md

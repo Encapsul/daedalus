@@ -1,4 +1,4 @@
-//! daedalus-fuzz — high-throughput structure-aware fuzzer for daedalus.
+//! daedalus-fuzz - high-throughput structure-aware fuzzer for daedalus.
 
 use clap::Parser;
 use daedalus_fuzz::{FuzzConfig, FuzzHarness, MutationStrategy, TargetRegistry};

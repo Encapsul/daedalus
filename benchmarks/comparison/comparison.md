@@ -1,4 +1,4 @@
-# Comparative Benchmark — daedalus vs Docker / pkg / AppImage / Flatpak
+# Comparative Benchmark - daedalus vs Docker / pkg / AppImage / Flatpak
 
 _Aggregated: 2026-08-07T12:11Z_
 

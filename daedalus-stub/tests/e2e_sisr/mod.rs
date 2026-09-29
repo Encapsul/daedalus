@@ -91,7 +91,7 @@ pub fn payload(body: &str, shared: &[u8]) -> Vec<u8> {
     zstd::encode_all(Cursor::new(rootfs_tar(body, shared)), 3).unwrap()
 }
 
-/// The footer content hash (`SHA-256(payload ‖ meta)`) — the version id.
+/// The footer content hash (`SHA-256(payload ‖ meta)`) - the version id.
 pub fn payload_sha(body: &str, shared: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(payload(body, shared));
@@ -120,7 +120,7 @@ pub fn build_daedalus(work: &Path, stub: &Path, body: &str, shared: &[u8]) {
     assemble(work, stub, body, shared, &config);
 }
 
-/// Same as [`build_daedalus`] but with an unsigned SISR section (no key) —
+/// Same as [`build_daedalus`] but with an unsigned SISR section (no key) -
 /// what `--enable-sisr` without `--key` produces.
 pub fn build_daedalus_unsigned(work: &Path, stub: &Path, body: &str, shared: &[u8]) {
     let config = SisrBuildConfig {

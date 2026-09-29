@@ -1,4 +1,4 @@
-# daedalus installer for Windows PowerShell — from GitHub Releases, no admin.
+# daedalus installer for Windows PowerShell - from GitHub Releases, no admin.
 #
 #   powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/Encapsul/daedalus/main/install.ps1 | iex"
 #

@@ -7,7 +7,7 @@ the presence of a `Gemfile` or a single `.rb` file.
 
 | File | Strategy |
 |------|----------|
-| `Gemfile` | Bundler — uses `vendor/bundle/` or `.bundle/config` for gem paths |
+| `Gemfile` | Bundler - uses `vendor/bundle/` or `.bundle/config` for gem paths |
 | Single `*.rb` | Embeds Ruby interpreter, no dependency resolution |
 
 ## Prerequisites

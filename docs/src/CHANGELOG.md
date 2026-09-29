@@ -6,41 +6,41 @@ All notable changes to daedalus are documented here.
 
 ### Added
 
-- **Zig runtime** — detects `build.zig`/`build.zig.zon`, auto-downloads the
+- **Zig runtime** - detects `build.zig`/`build.zig.zon`, auto-downloads the
   stable Zig toolchain from ziglang.org, runs `zig build -Doptimize=ReleaseFast
   -Dtarget=<triple>` and stages the native binary. Cross-compilation supported
   via daedalus `--target` (translated to Zig triples, e.g.
   `x86_64-unknown-linux-gnu` → `x86_64-linux-gnu`).
 
-- **Dart runtime** — detects `pubspec.yaml` (non-Flutter), auto-downloads the
+- **Dart runtime** - detects `pubspec.yaml` (non-Flutter), auto-downloads the
   Dart SDK from dart-archive, runs `dart pub get` + `dart compile exe` (AOT
   compilation). Host-only: cross-compilation is refused with a clear error since
   the AOT compiler only targets the build host.
 
-- **Flutter runtime** — detects `pubspec.yaml` with `sdk: flutter`, runs
+- **Flutter runtime** - detects `pubspec.yaml` with `sdk: flutter`, runs
   `flutter build <platform> --release` and bundles the desktop release into
   `rootfs/app/bundle/`. Requires the Flutter SDK on PATH (SDK too large to
   auto-download).
 
 - Hub catalog entries for Zig, Dart, and Flutter.
 
-## [1.0.0] — 2026-08-03 — SISR
+## [1.0.0] - 2026-08-03 - SISR
 
 First major release integrating SISR (Self-Incremental Sovereign
 Reconstruction) end to end.
 
 ### Added
 
-- **SISR delta self-updates** — binaries embed a content-addressed chunk
+- **SISR delta self-updates** - binaries embed a content-addressed chunk
   manifest; `./app --daedalus-update <url>` fetches only the changed chunks from
   the update channel and rebuilds the binary in place.
-- **`daedalus upgrade-binary`** — promote a legacy (v1, SISR-less) `.daedalus` to the
+- **`daedalus upgrade-binary`** - promote a legacy (v1, SISR-less) `.daedalus` to the
   v2 format by injecting the delta manifest and `SISR` header, preserving
   every payload byte and the integrity hash.
-- **Post-update health gate + automatic rollback** — a newly updated binary
+- **Post-update health gate + automatic rollback** - a newly updated binary
   runs under supervision; a failed health check restores the previous version
   from a snapshot, and quarantined targets are refused.
-- **Migration guide** — see [`migration/v1-to-v2.md`](./migration/v1-to-v2.md).
+- **Migration guide** - see [`migration/v1-to-v2.md`](./migration/v1-to-v2.md).
 
 ### Compatibility
 
@@ -58,7 +58,7 @@ Reconstruction) end to end.
 - Cross-version tests prove legacy binaries load on the v2 runtime and that
   upgraded binaries gain auto-update.
 
-## [0.3.0] — 2026-07-XX — Pre-SISR
+## [0.3.0] - 2026-07-XX - Pre-SISR
 
 Last release before the SISR integration. Classic `[stub][payload][metadata]
 [footer]` binaries only; no delta updates.

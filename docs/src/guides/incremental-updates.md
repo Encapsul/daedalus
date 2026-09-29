@@ -2,10 +2,10 @@
 
 > **Advanced, opt-in.** This guide covers the SISR extension: making a `.de`
 > able to update itself from signed deltas. If you don't need self-updates,
-> ignore this page — a plain `daedalus build` already gives you a static,
+> ignore this page - a plain `daedalus build` already gives you a static,
 > self-contained binary.
 >
-> Status: **implemented** — `daedalus build --enable-sisr` produces an updatable
+> Status: **implemented** - `daedalus build --enable-sisr` produces an updatable
 > binary and its signed manifest, and `./app.de --daedalus-update` applies the
 > delta on the target (see [User-updates](./user-updates.md) for the
 > end-to-end workflow).
@@ -40,16 +40,16 @@ build + sign v1.1                     │  fetch manifest (HTTPS)
 
 Three things are produced per release: the `.de` itself (for fresh
 installs), the **manifest**, and the **chunks** it references. Both the
-manifest and every chunk are verifiable without any tool — the verification
+manifest and every chunk are verifiable without any tool - the verification
 runs inside the binary.
 
 ## 1. Build an updatable binary
 
 ```bash
-# Static container — no SISR
+# Static container - no SISR
 daedalus build ./my_app -o my_app.de
 
-# Updatable binary — enables SISR and embeds the update channel
+# Updatable binary - enables SISR and embeds the update channel
 daedalus build ./my_app -o my_app.de \
     --enable-sisr \
     --key $XDG_DATA_HOME/daedalus/keys/<fingerprint>.key \
@@ -58,7 +58,7 @@ daedalus build ./my_app -o my_app.de \
 
 The two build the same payload. `--enable-sisr` additionally content-chunks
 the payload, embeds the initial trust policy (your signing key) and the update
-channel into the binary, and writes `<output>.manifest` — the signed delta
+channel into the binary, and writes `<output>.manifest` - the signed delta
 manifest that gets published.
 
 ## 2. Sign the release
@@ -99,7 +99,7 @@ beside it.
 
 ```bash
 # Check for and apply an update (URL from --update-url, $DAEDALUS_UPDATE_URL,
-# or an explicit argument — in that order)
+# or an explicit argument - in that order)
 ./my_app.de --daedalus-update
 
 # Point at a different channel explicitly
@@ -109,7 +109,7 @@ beside it.
 ./my_app.de --daedalus-version
 ```
 
-What happens under the hood — and what cannot be skipped:
+What happens under the hood - and what cannot be skipped:
 
 1. the binary fetches its manifest from the remote channel (HTTPS),
 2. it verifies the Ed25519 signature **before** doing anything else,
@@ -117,7 +117,7 @@ What happens under the hood — and what cannot be skipped:
 4. it verifies the Merkle root of the fetched chunk table,
 5. it downloads only the chunks it does not already have and verifies each
    (SHA-256 + length),
-6. it rebuilds the binary and commits atomically — an interruption leaves the
+6. it rebuilds the binary and commits atomically - an interruption leaves the
    previous binary intact.
 
 ## 5. Verification of a standalone `.de`
@@ -146,11 +146,11 @@ In every case the running binary is the last valid version. There is no
 
 ## Trade-offs
 
-- **Payload grows** — the SISR engine is embedded in the binary (a few
+- **Payload grows** - the SISR engine is embedded in the binary (a few
   hundred KB, statically linked).
-- **A trust anchor is fixed at build time** — to rotate the signing key you
+- **A trust anchor is fixed at build time** - to rotate the signing key you
   must rebuild and redistribute once.
-- **Updates need a reachable manifest** — self-update requires network access
+- **Updates need a reachable manifest** - self-update requires network access
   to the update channel.
 
 None of this applies to a classic `.de`; it stays a zero-dependency static
@@ -158,8 +158,8 @@ container.
 
 ## References
 
-- [SISR overview](../concepts/sisr-overview.md) — classic vs SISR at a glance.
-- [Delta manifest format](../spec/delta-manifest-format.md) — what the engine
+- [SISR overview](../concepts/sisr-overview.md) - classic vs SISR at a glance.
+- [Delta manifest format](../spec/delta-manifest-format.md) - what the engine
   fetches and verifies.
-- [SISR conceptual specification](../architecture/sisr-spec.md) — the
+- [SISR conceptual specification](../architecture/sisr-spec.md) - the
   invariants and trust model.

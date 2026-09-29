@@ -122,7 +122,7 @@ impl UniversalManifest {
 /// time, so no binary parsing is needed at runtime.
 pub fn make_launcher(slices: &[ArchSlice]) -> io::Result<Vec<u8>> {
     let mut script = String::from(
-        "#!/bin/sh\n# daedalus universal binary — auto-generated launcher\n\
+        "#!/bin/sh\n# daedalus universal binary - auto-generated launcher\n\
          _arch=$(uname -m)\n_os=$(uname -s 2>/dev/null || echo Linux)\n\
          _self=$0\n_off=_sz=\n",
     );

@@ -58,7 +58,7 @@ fn untrusted_signature_is_refused() {
     assert_refused(&e, &stderr, "signature verification failed");
 }
 
-/// An unsigned remote manifest (all-zeros signature — what a build without
+/// An unsigned remote manifest (all-zeros signature - what a build without
 /// `--key` produces) must be refused before any write: the update channel
 /// cannot introduce a binary that would fail at-rest verification.
 #[test]
@@ -146,7 +146,7 @@ fn merkle_root_mismatch_is_refused() {
 }
 
 /// An unsigned SISR binary (built without `--key`) must be refused at cold
-/// start — at-rest authenticity is mandatory unless explicitly waived.
+/// start - at-rest authenticity is mandatory unless explicitly waived.
 #[test]
 fn unsigned_sisr_binary_is_refused_at_cold_start() {
     let tmp = tempfile::tempdir().unwrap();

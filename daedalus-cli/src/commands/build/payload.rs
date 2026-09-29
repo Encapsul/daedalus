@@ -123,7 +123,7 @@ pub(crate) fn include_points_to_env(app_dir: &Path, includes: &[PathBuf]) -> boo
 pub(crate) fn create_squashfs_payload(rootfs: &Path, verbose: bool) -> Result<Vec<u8>> {
     if !is_command_available("mksquashfs") {
         anyhow::bail!(
-            "mksquashfs not found on PATH — install squashfs-tools to build \
+            "mksquashfs not found on PATH - install squashfs-tools to build \
              --squashfs binaries"
         );
     }

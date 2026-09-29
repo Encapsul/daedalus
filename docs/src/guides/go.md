@@ -11,7 +11,7 @@ daedalus detects Go applications by looking for `go.mod` in the project root.
 1. Detects `go.mod` in the project directory
 2. Builds the Go binary using `go build`
 3. Packages the static binary into the .de format
-4. No interpreter needed at runtime — pure native execution
+4. No interpreter needed at runtime - pure native execution
 
 ## Requirements
 

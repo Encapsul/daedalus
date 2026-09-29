@@ -8,15 +8,15 @@ This file provides guidance when working with the daedalus codebase.
 
 daedalus compiles any web, server, or CLI application into a single self-contained
 executable. The binary format (`[stub][payload][metadata][footer]`) is a universal
-executable artifact — capable of transporting an application, a microservice, or a
+executable artifact - capable of transporting an application, a microservice, or a
 plugin as a single portable unit. Supported runtimes: Python, Node.js, Deno, Java,
 Ruby, .NET/C#, Go, PHP, Perl, Hugo, Binary.
 
 ## Architecture
 
-- `daedalus-core/` — Core library (format, detect, compress, encrypt, integrity, verify, assembly, tar, SISR)
-- `daedalus-cli/` — Rust CLI tool (clap-based, all commands)
-- `daedalus-stub/` — Self-extracting launcher (Linux ELF, macOS Mach-O, Windows PE)
+- `daedalus-core/` - Core library (format, detect, compress, encrypt, integrity, verify, assembly, tar, SISR)
+- `daedalus-cli/` - Rust CLI tool (clap-based, all commands)
+- `daedalus-stub/` - Self-extracting launcher (Linux ELF, macOS Mach-O, Windows PE)
 
 ## Build Commands
 
@@ -54,7 +54,7 @@ operator and the agent.
 - **Close the loop after environment fixes.** After PATH / toolchain /
   installed-dependency fixes, ALWAYS re-verify final success and keep the proof
   (command output or exit code) in the session. "It should work now" is not done
-  — a green result is done.
+  - a green result is done.
 
 ## Security Rules
 
@@ -67,8 +67,8 @@ operator and the agent.
 ## Linting & Formatting
 
 ### Rust
-- `cargo fmt --check` — formatting
-- `cargo clippy --all-targets -- -D warnings` — linting
+- `cargo fmt --check` - formatting
+- `cargo clippy --all-targets -- -D warnings` - linting
 - Edition 2021, `opt-level = "z"`, LTO, strip, `panic = "abort"`
 
 ### CI (GitHub Actions)
@@ -94,8 +94,8 @@ Machine specs affect results:
 
 ## External References
 
-- [clig.dev](https://clig.dev) — CLI design conventions
-- [POSIX.1-2017 Ch.12](https://pubs.opengroup.org/onlinepubs/9799919797/) — Shell & Utilities
-- [ANSSI-Rust](https://anssi-fr.github.io/rust-guide/) — Rust security guidelines
-- [Google Doc Style](https://developers.google.com/style) — Documentation style
-- [12-Factor CLI](https://medium.com/@jdxcode/12-factor-cli-apps-dd3c227a0e46) — CLI best practices
+- [clig.dev](https://clig.dev) - CLI design conventions
+- [POSIX.1-2017 Ch.12](https://pubs.opengroup.org/onlinepubs/9799919797/) - Shell & Utilities
+- [ANSSI-Rust](https://anssi-fr.github.io/rust-guide/) - Rust security guidelines
+- [Google Doc Style](https://developers.google.com/style) - Documentation style
+- [12-Factor CLI](https://medium.com/@jdxcode/12-factor-cli-apps-dd3c227a0e46) - CLI best practices

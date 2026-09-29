@@ -83,7 +83,7 @@ impl Drop for MockHttpServer {
 
 /// Serves one HTTP/1.1 GET request: reads the request head, looks up the path,
 /// and replies with the body (or 404). `Connection: close` keeps the protocol
-/// simple — the client reconnects per request.
+/// simple - the client reconnects per request.
 fn serve(stream: &mut TcpStream, routes: &Arc<Mutex<HashMap<String, Vec<u8>>>>) {
     // macOS (unlike Linux) accepts with the listener's nonblocking flag set,
     // so the read below can spuriously EAGAIN and the request is dropped.

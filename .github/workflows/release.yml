@@ -20,7 +20,7 @@ name: Release
 #   - Linux: musl/gnu matrix. amd64 + arm64 musl are the release-critical
 #     pair; the other architectures are marked `experimental` so a failure
 #     never blocks the release (fail-open expansion, not a gate). The stub
-#     (seccomp/landlock) builds only on x86_64/aarch64/i686/armv7/arm — other
+#     (seccomp/landlock) builds only on x86_64/aarch64/i686/armv7/arm - other
 #     targets are CLI-only (see ROADMAP.md).
 #   - macOS amd64/arm64: CLI + stub (stub has a macos_sandbox Seatbelt port).
 #   - Windows amd64: CLI + stub (stub has a win.rs FFI layer).
@@ -75,7 +75,7 @@ jobs:
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
 
-      - name: Build stub (Linux only — uses /proc/self/exe, namespaces, seccomp)
+      - name: Build stub (Linux only - uses /proc/self/exe, namespaces, seccomp)
         if: matrix.stub
         run: cargo zigbuild --release --target ${{ matrix.target }} -p daedalus-stub
 
@@ -213,7 +213,7 @@ jobs:
 
   # ── Windows amd64 ───────────────────────────────────────────────────
   # Cross-compiled on ubuntu via cargo-zigbuild (zig provides the mingw C
-  # toolchain; no mingw-w64 install needed). Verified green — daedalus-core and
+  # toolchain; no mingw-w64 install needed). Verified green - daedalus-core and
   # daedalus-cli are Windows-portable and the stub has a win.rs FFI layer.
   windows-amd64:
     name: windows amd64
@@ -310,7 +310,7 @@ jobs:
           TAG="$GITHUB_REF_NAME"
           NOTES_FILE="${{ steps.notes.outputs.notes_file }}"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG already exists — uploading assets"
+            echo "Release $TAG already exists - uploading assets"
             gh release upload "$TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \

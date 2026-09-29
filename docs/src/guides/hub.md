@@ -1,4 +1,4 @@
-# The hub — one template per popular runtime
+# The hub - one template per popular runtime
 
 A community catalog of daedalus-packaged apps. The rule is deliberately
 tight: **one canonical app per runtime**, not a platform. A dev hits the
@@ -48,15 +48,15 @@ hub/build.sh            # all buildable apps
 hub/build.sh my-app     # a single app
 ```
 
-Output lands in `hub/dist/` (gitignored — artifacts are meant to be shipped
+Output lands in `hub/dist/` (gitignored - artifacts are meant to be shipped
 through `release.yml`/the registry, not committed).
 
 ## Verified apps in the catalog
 
-- **hello-web** — Python stdlib HTTP, zero deps.
-- **hello-node** — Node stdlib HTTP.
-- **bottle-web** — Python Bottle with vendored `site-packages` (no pip/network).
-- **clinic-agent** — offline Gemma AI for rural clinics (see
+- **hello-web** - Python stdlib HTTP, zero deps.
+- **hello-node** - Node stdlib HTTP.
+- **bottle-web** - Python Bottle with vendored `site-packages` (no pip/network).
+- **clinic-agent** - offline Gemma AI for rural clinics (see
   [The 60-second demo](./demo-60s.md)).
 
 Recipe-only rows cover Express, FastAPI, Spring Boot, Rails, Laravel and Go

@@ -60,13 +60,13 @@ pub(crate) fn report_sisr_bandwidth(
     let delta = new_total.saturating_sub(reused);
     if delta == 0 {
         eprintln!(
-            "  SISR: no changes — 0 B delta vs {:.1} MB full (100% bandwidth saved)",
+            "  SISR: no changes - 0 B delta vs {:.1} MB full (100% bandwidth saved)",
             new_total as f64 / (1024.0 * 1024.0)
         );
     } else {
         let pct = 100.0 - (delta as f64 / new_total as f64) * 100.0;
         eprintln!(
-            "  SISR delta: {:.1} MB vs {:.1} MB full — {:.1}% bandwidth saved",
+            "  SISR delta: {:.1} MB vs {:.1} MB full - {:.1}% bandwidth saved",
             delta as f64 / (1024.0 * 1024.0),
             new_total as f64 / (1024.0 * 1024.0),
             pct

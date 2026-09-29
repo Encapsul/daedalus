@@ -1,4 +1,4 @@
-//! Binary delta manifest — the `SISR` chunk index embedded in a `.daedalus`.
+//! Binary delta manifest - the `SISR` chunk index embedded in a `.daedalus`.
 //!
 //! Layout is little-endian with no padding:
 //!
@@ -26,7 +26,7 @@ pub const ENTRY_SIZE: usize = 36;
 /// One content-addressed chunk of the reconstructed payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChunkEntry {
-    /// `SHA-256` of the chunk bytes — the content address.
+    /// `SHA-256` of the chunk bytes - the content address.
     pub hash: [u8; 32],
     /// Byte length of the chunk.
     pub length: u32,

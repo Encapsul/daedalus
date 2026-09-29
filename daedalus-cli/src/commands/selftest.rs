@@ -179,8 +179,8 @@ fn detect_mode(meta: &serde_json::Value) -> String {
 /// wait_and_observe - monitor a child process through crash and liveness windows.
 ///
 /// Description:
-/// Phase 1 (0-2s): crash detection — exits early with code 1 if the child
-/// exits non-zero. Phase 2 (2s–timeout): liveness window — returns 0 if the
+/// Phase 1 (0-2s): crash detection - exits early with code 1 if the child
+/// exits non-zero. Phase 2 (2s–timeout): liveness window - returns 0 if the
 /// child survives, or probes the HTTP endpoint if provided.
 ///
 /// Return: nothing
@@ -222,7 +222,7 @@ fn wait_and_observe(
         std::thread::sleep(Duration::from_millis(100));
     }
 
-    // Process is alive — probe if requested
+    // Process is alive - probe if requested
     if let Some(probe_url) = probe {
         return do_probe(child, probe_url, verbose);
     }

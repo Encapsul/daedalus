@@ -51,7 +51,7 @@ pub struct UpgradeBinaryArgs {
 pub fn run(args: UpgradeBinaryArgs) -> Result<()> {
     if args.output.exists() && !args.force {
         anyhow::bail!(
-            "output {} already exists — pass --force to overwrite",
+            "output {} already exists - pass --force to overwrite",
             args.output.display()
         );
     }

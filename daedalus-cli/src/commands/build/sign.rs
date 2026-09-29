@@ -25,7 +25,7 @@ pub(crate) fn sign_macos_binary(path: &Path, verbose: bool) -> Result<()> {
             .args(["--sign", &identity, "--force", "--timestamp"])
             .arg(path)
             .output()
-            .context("failed to run codesign — is it installed?")?;
+            .context("failed to run codesign - is it installed?")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

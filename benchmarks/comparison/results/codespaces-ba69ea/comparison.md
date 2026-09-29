@@ -1,12 +1,12 @@
-# Comparative Benchmark — daedalus vs Docker / pkg / AppImage / Flatpak
+# Comparative Benchmark - daedalus vs Docker / pkg / AppImage / Flatpak
 
-_Generated: 2026-08-07T12:06Z — machine: `codespaces-ba69ea`_
+_Generated: 2026-08-07T12:06Z - machine: `codespaces-ba69ea`_
 _Reference app: `/workspaces/daedalus/benchmarks/comparison/apps/hello-node` (Node.js HTTP server, zero deps)_
 
 ## Test machine
 
 ```
-# Machine profile — codespaces-ba69ea
+# Machine profile - codespaces-ba69ea
 hostname:    codespaces-ba69ea
 kernel:      Linux 6.8.0-1052-azure
 arch:        x86_64
@@ -41,11 +41,11 @@ pkg:         @yao-pkg/pkg@latest node24-linux-x64
 
 - **Cold start** = wall time from launch to first HTTP 200.
 - **Warm start** = second launch of the same artifact (extraction cache hit). Only daedalus caches; the other packagers re-launch every time.
-- **Idle RSS** = resident set of the process actually listening on the port, 1s after first response (Linux VmRSS, resolved via `ss`). Some packagers re-exec/spawn children (AppImage runtime, daedalus exec) — the server process is measured, not the launched PID.
+- **Idle RSS** = resident set of the process actually listening on the port, 1s after first response (Linux VmRSS, resolved via `ss`). Some packagers re-exec/spawn children (AppImage runtime, daedalus exec) - the server process is measured, not the launched PID.
 - **On-disk footprint** = space used at run time (daedalus: extracted rootfs cache; Docker: uncompressed image; pkg/AppImage: the artifact itself).
 - **Host deps** = packages/services the target host must provide.
 - Flatpak requires a Flatpak host + OSTree runtimes; not measured in this container.
-- Every run records a **machine profile** (`results/<machine>/profile.txt`) — comparing two machines without their profile is meaningless.
+- Every run records a **machine profile** (`results/<machine>/profile.txt`) - comparing two machines without their profile is meaningless.
 
 Raw data: `results.tsv`. Re-run: `bash benchmarks/comparison/run.sh`.
 Multi-machine aggregation: `bash benchmarks/comparison/aggregate.sh`.

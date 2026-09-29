@@ -1,4 +1,4 @@
-# Cross-packager benchmark — daedalus vs Docker / pkg / AppImage / Flatpak
+# Cross-packager benchmark - daedalus vs Docker / pkg / AppImage / Flatpak
 
 Compares daedalus against other packagers on the **same reference app** and the
 **same machine**, answering the "just use Docker" HN criticism with
@@ -34,20 +34,20 @@ Each run writes into `results/<machine>/`:
 
 ## Metrics
 
-- **Artifact** — size of the single distributable file/image.
-- **On-disk footprint** — runtime space (daedalus: extracted rootfs cache; Docker:
+- **Artifact** - size of the single distributable file/image.
+- **On-disk footprint** - runtime space (daedalus: extracted rootfs cache; Docker:
   uncompressed image; pkg/AppImage: the artifact itself).
-- **Cold start** — launch → first HTTP 200 (daedalus includes extraction).
-- **Warm start** — second launch, extraction cache (daedalus only; the others
+- **Cold start** - launch → first HTTP 200 (daedalus includes extraction).
+- **Warm start** - second launch, extraction cache (daedalus only; the others
   re-launch every time).
-- **Idle RSS** — resident set of the process listening on the port, 1s after the
-  first response (via `ss` + VmRSS — the launched PID may not be the server:
+- **Idle RSS** - resident set of the process listening on the port, 1s after the
+  first response (via `ss` + VmRSS - the launched PID may not be the server:
   AppImage re-execs a child, daedalus execs).
-- **Host deps** — packages/services required on the target machine.
+- **Host deps** - packages/services required on the target machine.
 
 ## Reference app
 
-`apps/hello-node/` — zero-dependency Node.js HTTP server, 312 bytes of code.
+`apps/hello-node/` - zero-dependency Node.js HTTP server, 312 bytes of code.
 Chosen so that **all** packagers can embed it (Node is the common denominator
 for Docker/pkg/AppImage/daedalus). All use **Node 24** (latest LTS): daedalus embeds
 the builder's node (v24.14.0), Docker `node:24-slim`, pkg
@@ -60,7 +60,7 @@ To compare another app: `bash run.sh <path-to-app>`.
 - **Flatpak** is not measured in this container (requires a Flatpak host +
   OSTree runtimes, long builds).
 - **AppImage** runs here with `--appimage-extract-and-run` (no FUSE in the
-  container) — on a machine with FUSE, cold start would be closer to the mount
+  container) - on a machine with FUSE, cold start would be closer to the mount
   time.
-- Single-run measurements (no N-run average) — reproducible via the script,
+- Single-run measurements (no N-run average) - reproducible via the script,
   re-run on the target machine.

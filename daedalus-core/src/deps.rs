@@ -5,7 +5,7 @@
 //! link analysis: an app may shell out to `ffmpeg` or dlopen `libfoo.so`, and
 //! neither is discoverable from its declared manifest. This module is a
 //! heuristic scanner (pattern matching, no model, zero external runtime deps)
-//! that deliberately favors recall over precision — a false positive is cheap
+//! that deliberately favors recall over precision - a false positive is cheap
 //! (a packager eyeballs the list), a missed dependency breaks the deployed
 //! binary.
 //!

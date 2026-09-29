@@ -3,7 +3,7 @@
 //! The plain Java path (`daedalus_core::embed::embed_java_config`) copies the
 //! host JRE's whole `lib/` (~200 MB). When the toolchain is JDK 9+, this module
 //! instead asks `jdeps` which JDK modules the app's JARs reference, slices a
-//! minimal runtime image with `jlink`, and embeds that — the launcher binary in
+//! minimal runtime image with `jlink`, and embeds that - the launcher binary in
 //! the image reads `lib/modules` exactly like a full runtime.
 //!
 //! Opt-outs: `--full-jre` restores the old full-JRE copy; `--jlink-modules`
@@ -20,7 +20,7 @@ use std::process::Command;
 use super::args::BuildArgs;
 
 /// Modules frameworks load reflectively (Spring Boot fat jars, JNDI/XML config)
-/// that `jdeps` cannot see statically. Kept conservative — the user can widen
+/// that `jdeps` cannot see statically. Kept conservative - the user can widen
 /// the closure with `--jlink-modules`.
 const FAT_JAR_EXTRA_MODULES: &[&str] = &[
     "java.logging",
@@ -34,7 +34,7 @@ const FAT_JAR_EXTRA_MODULES: &[&str] = &[
 ///
 /// Returns `true` when a minimal image was installed (the caller must then skip
 /// the full-JRE embed). A `false` result means the caller falls back to the full
-/// JRE — except when `--jlink-modules` was pinned, in which case a failure is an
+/// JRE - except when `--jlink-modules` was pinned, in which case a failure is an
 /// error, because the user explicitly asked for this image.
 pub fn embed_minimal_jre(args: &BuildArgs, rootfs: &Path, verbose: bool) -> Result<bool> {
     if args.full_jre {
@@ -188,7 +188,7 @@ fn parse_module_csv(csv: &str) -> Vec<String> {
 }
 
 /// A Spring Boot (`BOOT-INF/lib`) or WAR (`WEB-INF/lib`) layout carries nested
-/// jars `jdeps` cannot see on the outer jar — the closure needs the boosters.
+/// jars `jdeps` cannot see on the outer jar - the closure needs the boosters.
 fn is_fat_jar(jar: &Path) -> bool {
     let Ok(file) = std::fs::File::open(jar) else {
         return false;
@@ -205,7 +205,7 @@ fn is_fat_jar(jar: &Path) -> bool {
 }
 
 /// Run `jlink` to slice a runtime image for `modules`, using the shared options
-/// (strip debug symboles, no man pages/headers, level-2 zip compression — the
+/// (strip debug symboles, no man pages/headers, level-2 zip compression - the
 /// `zip-N` syntax only exists on JDK 19+, `2` works on every JDK 9+).
 fn build_image(jlink: &Path, modules: &[String], out: &Path) -> Result<()> {
     if out.exists() {
@@ -310,11 +310,11 @@ pub fn fixup_jre_launcher(rootfs: &Path) -> Result<()> {
 /// the rootfs. The JVM loads `libjvm.so` via dlopen, so its deps are needed
 /// too. The image's own `lib/*.so` are flattened into /usr/lib: once the
 /// launcher reaches the PATH via the `/usr/bin/java` symlink, `$ORIGIN` is
-/// `/usr/bin`, so its RUNPATH (`$ORIGIN/../lib`) misses the image lib dir —
+/// `/usr/bin`, so its RUNPATH (`$ORIGIN/../lib`) misses the image lib dir -
 /// but the stub's `LD_LIBRARY_PATH` includes /usr/lib.
 ///
 /// Linux-only: it embeds ELF/glibc system libs into a bare pivot_root tree.
-/// On macOS there is nothing to embed — the launcher finds libjvm relative to
+/// On macOS there is nothing to embed - the launcher finds libjvm relative to
 /// its real path (`java.home`) inside the image and system dylibs resolve from
 /// the dyld shared cache (and `ldd` does not even exist there).
 #[cfg(target_os = "linux")]
@@ -359,7 +359,7 @@ fn embed_image_deps(image: &Path, rootfs: &Path) -> Result<()> {
 /// Copy every absolute path `ldd` reports for `binary` into the rootfs under
 /// the loader's search dirs. Host distros may name lib dirs by ABI triple
 /// (`/lib/x86_64-linux-gnu`) which is NOT in the pivot-root
-/// `LD_LIBRARY_PATH` — only `/usr/lib/x86_64-linux-gnu` is. The dynamic
+/// `LD_LIBRARY_PATH` - only `/usr/lib/x86_64-linux-gnu` is. The dynamic
 /// loader (`ld-linux`) keeps its absolute interp path.
 #[cfg(target_os = "linux")]
 fn copy_ldd_deps(binary: &Path, rootfs: &Path) -> Result<()> {

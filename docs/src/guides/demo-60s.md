@@ -2,18 +2,18 @@
 
 > **daedalus makes an app consumable in one gesture: `./app.de`. The user sees the artifact, not the packaging. No install, no expertise.**
 
-A live demo, start to finish, in under one minute. The star is an **offline AI agent** (Gemma, air-gapped, no GPU, no cloud) — the hardest thing to deploy in our industry, delivered as one file.
+A live demo, start to finish, in under one minute. The star is an **offline AI agent** (Gemma, air-gapped, no GPU, no cloud) - the hardest thing to deploy in our industry, delivered as one file.
 
 ## The script
 
 ```bash
-# 1. Install daedalus — one command, ~10 s
+# 1. Install daedalus - one command, ~10 s
 curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/install.sh | sh
 
-# 2. Package the app — ~6 s
+# 2. Package the app - ~6 s
 daedalus build ./examples/offline-health-agri -o clinic-agent.de
 
-# 3. Run it — it's just the file
+# 3. Run it - it's just the file
 ./clinic-agent.de diagnose
 ```
 
@@ -33,11 +33,11 @@ Stop there. On screen (worst case):
   is integrity-checked with SHA-256 before anything runs, and the "app" part
   can be signed with Ed25519 (`daedalus sign`, default-on dev key).
 - **It runs offline.** `diagnose` / `crop` use the standard library only and
-  degrade gracefully when Ollama is absent — exactly the rural-clinic and
+  degrade gracefully when Ollama is absent - exactly the rural-clinic and
   agricultural-cooperative use case the example targets.
 - **Updates don't reship the file.** `daedalus` content-defined chunking only
   transmits changed model chunks (measured ~90% bandwidth saved on a model
-  update) — see [SISR](./incremental-updates.md).
+  update) - see [SISR](./incremental-updates.md).
 - **It runs on a bare machine.** No Python, no `pip install`, no GPU, no codecs.
 
 ## One-liner canned summary

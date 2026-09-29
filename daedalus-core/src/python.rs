@@ -1,4 +1,4 @@
-//! PyO3 bindings — exposes format, compress, detect, pkgmgr to Python.
+//! PyO3 bindings - exposes format, compress, detect, pkgmgr to Python.
 
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;

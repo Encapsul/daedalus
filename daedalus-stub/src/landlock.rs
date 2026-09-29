@@ -1,6 +1,6 @@
 //! Landlock LSM sandboxing for filesystem access control.
 //!
-//! Implements Landlock (Linux 5.13+ — ABI v1) using raw syscalls, with an
+//! Implements Landlock (Linux 5.13+ - ABI v1) using raw syscalls, with an
 //! ABI bump for `REFER` (v2, 5.19) and `TRUNCATE` (v3, 6.2). Restricts
 //! filesystem access after `pivot_root`: full R/W on rootfs, read-only
 //! everywhere else by default. With capabilities:
@@ -67,7 +67,7 @@ const HANDLED_FS_V1: u64 =
 const READ_ONLY: u64 = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR;
 
 // Landlock uses the generic syscall numbers (444/445/446) on every
-// architecture — x86_64, aarch64, 32-bit x86 and 32-bit ARM.
+// architecture - x86_64, aarch64, 32-bit x86 and 32-bit ARM.
 #[cfg(target_arch = "x86_64")]
 mod sys {
     pub const LANDLOCK_CREATE_RULESET: libc::c_long = 444;
@@ -116,7 +116,7 @@ struct landlock_path_beneath_attr {
 /// `O_PATH` handle to the extracted rootfs, opened *before* `pivot_root`.
 ///
 /// Landlock rules are anchored to the inode a ruleset's `parent_fd` points
-/// at, and the fd outlives the `pivot_root` mount-tree swap — so the rules
+/// at, and the fd outlives the `pivot_root` mount-tree swap - so the rules
 /// keep referring to the rootfs even though its original path no longer
 /// resolves inside the new namespace.
 pub struct RootfsGuard {
@@ -199,7 +199,7 @@ pub fn sandbox_with_capabilities(
 /// the rootfs rule uses the pre-opened fd from [`RootfsGuard`] instead of the
 /// (now unresolvable) pre-pivot path.
 ///
-/// Fail-closed: any error returns `Err` — the caller must not run the app
+/// Fail-closed: any error returns `Err` - the caller must not run the app
 /// without the requested filesystem sandbox.
 #[allow(dead_code)]
 /// `sandbox` - sandbox.

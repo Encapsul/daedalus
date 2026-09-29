@@ -25,7 +25,7 @@ legacy decoder understands.
 
 `assemble_daedalus_with_sisr` takes a [`SisrBuildConfig`]
 (`enabled`, `chunk_target_size`, optional `signing_key`). With `enabled`
-false the bytes written are **strictly identical** to the classic path — this
+false the bytes written are **strictly identical** to the classic path - this
 is enforced by a test. With `enabled` true the layout becomes:
 
 ```
@@ -55,7 +55,7 @@ by the insertion; only `flags` and the new blocks change.
   emits the exact bytes of `assemble_daedalus`.
 - **Reader/writer symmetry.** The extension is located by the reader at
   `file_len − footer_size − 110` (immediately before the footer) and the
-  manifest via `chunk_table_offset` — the writer places the manifest between
+  manifest via `chunk_table_offset` - the writer places the manifest between
   the metadata and the extension, satisfying the `table_end ≤ ext_start`
   bound.
 - **No runtime coupling.** The launcher is untouched; the classic and SISR
@@ -75,15 +75,15 @@ SHA-NI, machine under load): 100 MiB payload, 64 KiB target chunks ⇒ **5.3 s**
 full SHA-256 pass, so the stage roughly adds a second pass plus the scan; on
 CPUs with SHA-NI the `compress`-featured `sha2` (runtime-dispatched) collapses
 this to well under the < 5 % build-overhead budget. On the current CPU the
-extra pass is the cost of content addressing — run the probe with
+extra pass is the cost of content addressing - run the probe with
 `cargo test -p daedalus-core --release perf_sisr -- --ignored --nocapture`.
 
 ## Related
 
-- [SISR: Self-Incremental Sovereign Reconstruction](./sisr-spec.md) — the
+- [SISR: Self-Incremental Sovereign Reconstruction](./sisr-spec.md) - the
   trust model the stage serves.
-- [`.daedalus` Format v2 — SISR extension](../spec/daedalus-format-v2.md) — exact byte
+- [`.daedalus` Format v2 - SISR extension](../spec/daedalus-format-v2.md) - exact byte
   layout of the manifest and footer extension.
-- [The Builder](../reference/builder.md) — CLI flow that feeds this packager.
-- [Incremental Updates (SISR)](../guides/incremental-updates.md) — consuming
+- [The Builder](../reference/builder.md) - CLI flow that feeds this packager.
+- [Incremental Updates (SISR)](../guides/incremental-updates.md) - consuming
   the remote manifest for delta reconstruction.

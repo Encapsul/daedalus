@@ -22,7 +22,7 @@ pub struct InspectArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    /// Dry run — show what would be done without doing it
+    /// Dry run - show what would be done without doing it
     #[arg(long)]
     pub dry_run: bool,
 

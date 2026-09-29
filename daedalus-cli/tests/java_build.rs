@@ -52,11 +52,11 @@ fn workspace_target_dir() -> PathBuf {
 }
 
 /// Locates (or builds) a runnable stub for the host. Returns `None` when no
-/// stub can be produced — the caller skips instead of failing.
+/// stub can be produced - the caller skips instead of failing.
 ///
 /// A plain `cargo build -p daedalus-stub` runs on every call: it is a fast
 /// no-op when fresh, which GUARANTEES the embedded stub matches the current
-/// sources — a stale prebuilt stub fails with confusing errors at exec time.
+/// sources - a stale prebuilt stub fails with confusing errors at exec time.
 fn locate_stub() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("DAEDALUS_STUB_PATH") {
         let p = PathBuf::from(path);
@@ -132,7 +132,7 @@ fn java_app_is_detected_built_and_runs() {
             // took, so the test can prove jlink (not full JRE) was used.
             "--verbose",
         ])
-        // NOTE: no `--no-install` — it also skips the gradle build itself,
+        // NOTE: no `--no-install` - it also skips the gradle build itself,
         // and this test must exercise it.
         .env("DAEDALUS_STUB_PATH", &stub)
         // Isolate signing state: default dev key under XDG_DATA_HOME, self-trusted

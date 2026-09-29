@@ -5,7 +5,7 @@
 > applies to SquashFS images. It is the contract for a future format
 > evolution, not a change to the current `.daedalus` format.
 
-An incremental update is driven by a **manifest** — a small, signed document
+An incremental update is driven by a **manifest** - a small, signed document
 that answers three questions:
 
 1. *What* is this update, and for *which* binary?
@@ -29,7 +29,7 @@ ManifestHeader {
 `version` is the manifest schema version. The launcher rejects manifests with
 a schema it does not understand (same rule as `.daedalus` format versions).
 
-### 1.2 Signed body — the trust boundary
+### 1.2 Signed body - the trust boundary
 
 The whole update decision lives in the **signed body**. Nothing outside it is
 trusted:
@@ -60,7 +60,7 @@ Guarantees:
 - **Exact outcome.** `target_sha256` lets the engine verify the rebuilt
   binary byte-for-byte before committing it.
 
-### 1.3 Block entry — one content-addressed chunk
+### 1.3 Block entry - one content-addressed chunk
 
 ```
 BlockEntry {
@@ -73,7 +73,7 @@ BlockEntry {
 ```
 
 Blocks are **content-addressed** (`content_sha256`). This is what makes the
-local cache safe: a block is reused from the cache only if its hash matches —
+local cache safe: a block is reused from the cache only if its hash matches -
 a tampered block has a different hash, hence a different key, hence is never
 used.
 
@@ -84,7 +84,7 @@ engine updates it by reconstructing the image block by block. Two facts shape
 the design:
 
 1. **SquashFS is a single, usually compressed, file.** You cannot
-   "patch a file in place" inside a compressed image — a one-byte change
+   "patch a file in place" inside a compressed image - a one-byte change
    ripples through the compression window.
 2. **Most of the image is unchanged between versions.** Only the app code
    layer changes; the runtime layer is identical.
@@ -104,7 +104,7 @@ v1.1 image  chunk0  chunk1  chunk5  chunk3  chunk4        (chunk2 → chunk5)
 ```
 
 CDC boundaries are derived from the content itself (e.g. rolling hash hitting
-a target entropy), not from fixed offsets — so an edit in the middle of the
+a target entropy), not from fixed offsets - so an edit in the middle of the
 app keeps most chunk boundaries stable and most chunks reusable.
 
 ### Why per-block SHA-256 is not enough (and how it is completed)
@@ -123,7 +123,7 @@ target image bytes
 Each leaf corresponds to a `BlockEntry.content_sha256`; internal nodes are
 hashes of child hashes; the root is the signed `target_sha256`. Reconstructing
 the image and recomputing the root proves, in one step, that **every block is
-present, in the right order, and untouched** — including blocks that were
+present, in the right order, and untouched** - including blocks that were
 reused from the local cache rather than downloaded.
 
 ### The non-negotiable verification order
@@ -173,7 +173,7 @@ untouched.
 ```
 
 Note that the manifest references the **target** layout. Blocks that are
-identical to the current binary (same content hash) are reused locally — the
+identical to the current binary (same content hash) are reused locally - the
 engine only fetches the `source_uri` of blocks it does not already have in its
 content-addressed cache.
 
@@ -189,7 +189,7 @@ construction:
   reconstruct/<target_hash>/  ← staged candidate assembly (never live)
 ```
 
-- The cache is **advisory, never authoritative** — every block is re-verified
+- The cache is **advisory, never authoritative** - every block is re-verified
   against the signed manifest at assembly time.
 - `applied.index` is what makes replay impossible across runs: it records the
   highest monotonic index and is itself integrity-protected.
@@ -206,19 +206,19 @@ This manifest is an **update artifact**, not a new `.daedalus` layout:
 | Versioning | format version in footer | schema version in header + monotonic index |
 
 The manifest's `target_sha256` is exactly the hash the rebuilt `.daedalus`'s
-footer must contain. SISR reconstructs a **valid, standard `.daedalus`** — the
+footer must contain. SISR reconstructs a **valid, standard `.daedalus`** - the
 result is indistinguishable from one produced by `daedalus build`.
 
 > This page describes the *external update artifact* (JSON). The `.daedalus`
-> file additionally embeds a compact **binary** chunk index — the same block
-> list serialized as `DeltaManifest` — so the runtime can verify the embedded
+> file additionally embeds a compact **binary** chunk index - the same block
+> list serialized as `DeltaManifest` - so the runtime can verify the embedded
 > content before it is ever assembled. See
-> [`.daedalus` Format v2 — SISR extension](./daedalus-format-v2.md).
+> [`.daedalus` Format v2 - SISR extension](./daedalus-format-v2.md).
 
 ## References
 
-- [SISR overview](../concepts/sisr-overview.md) — the two daedalus models and the
+- [SISR overview](../concepts/sisr-overview.md) - the two daedalus models and the
   full reconstruction flow.
-- [SISR conceptual specification](../architecture/sisr-spec.md) — invariants
+- [SISR conceptual specification](../architecture/sisr-spec.md) - invariants
   and trust model (this spec derives from it).
 - [Chain of Trust for Local Rebuilding](../security.md#1b-chain-of-trust-for-local-rebuilding)

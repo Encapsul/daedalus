@@ -1,4 +1,4 @@
-//! `SISR` build stage — chunk the payload, build the Merkle tree, sign, and
+//! `SISR` build stage - chunk the payload, build the Merkle tree, sign, and
 //! package the embedded section and the remote manifest.
 //!
 //! Pure computation over the payload bytes: no filesystem writes here. The
@@ -56,7 +56,7 @@ pub struct RemoteManifest {
 }
 
 impl SisrBuildConfig {
-    /// A disabled `SISR` config — the packager produces a classic `.daedalus`.
+    /// A disabled `SISR` config - the packager produces a classic `.daedalus`.
     pub fn disabled() -> Self {
         Self {
             enabled: false,
@@ -216,7 +216,7 @@ pub fn verify(
 /// The whole chain runs offline: an Ed25519 signature from a trusted key
 /// covers `merkle_root ‖ manifest_bytes`, the Merkle root commits to the
 /// chunk table, and every chunk region of `payload` must hash to its
-/// manifest entry — binding the bytes that will actually run to the signed
+/// manifest entry - binding the bytes that will actually run to the signed
 /// table. Fails closed on an all-zeros signature (unsigned build), a Merkle
 /// mismatch, an untrusted signature, a chunk table that does not tile
 /// `payload` exactly, or any content mismatch.
@@ -685,7 +685,7 @@ mod tests {
     /// model pairs (`.gguf` v1 + v2) from `DAEDALUS_SISR_MODEL_V1/V2` when set;
     /// otherwise simulates a ~200 MiB model so the number is reachable offline
     /// and in CI. Output is the honest counter-check to a naive "90% saved"
-    /// claim — paste the printed line into the demo/README.
+    /// claim - paste the printed line into the demo/README.
     #[test]
     #[ignore = "manual bandwidth measurement"]
     fn gemma_weight_delta_bandwidth() {
@@ -729,7 +729,7 @@ mod tests {
             .count();
         let changed = new_art.manifest.chunks.len().saturating_sub(reused_count);
         println!(
-            "SISR gemma update ({label}): delta {:.1} MiB vs {:.1} MiB full — {:.1}% bandwidth saved ({changed} changed chunks, {reused_count} reused)",
+            "SISR gemma update ({label}): delta {:.1} MiB vs {:.1} MiB full - {:.1}% bandwidth saved ({changed} changed chunks, {reused_count} reused)",
             mib(delta),
             mib(new_total),
             pct,

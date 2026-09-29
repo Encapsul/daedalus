@@ -1,14 +1,14 @@
 # The Builder
 
 The builder analyzes an application and produces the `.daedalus`. It's written in
-**Rust** as part of `daedalus-core` — zero Python dependency at runtime.
+**Rust** as part of `daedalus-core` - zero Python dependency at runtime.
 
 - **Code**: `daedalus-core/src/` (assembly, compress, detect, pkgmgr, tar, etc.)
 - **CLI**: `daedalus-cli/src/commands/build.rs` orchestrates the build pipeline
 
 ## The three steps
 
-### 1. Analysis — `detect.rs` + `pkgmgr.rs`
+### 1. Analysis - `detect.rs` + `pkgmgr.rs`
 
 - **`detect.rs`** detects the runtime and resolves the entrypoint:
   - `app.py` / `main.py` / `server.py` → **python**;
@@ -16,14 +16,14 @@ The builder analyzes an application and produces the `.daedalus`. It's written i
   - a single ELF executable → **native binary**.
   - Returns a `RuntimePlan`: interpreter to embed, entrypoint (relative to
     rootfs), `cwd`, `env`, extra directories (e.g. Python stdlib).
-- **ELF analysis** is built into `detect.rs` — reads ELF64 program headers
+- **ELF analysis** is built into `detect.rs` - reads ELF64 program headers
   directly (without calling `ldd`):
   reads `PT_DYNAMIC` headers, extracts `DT_NEEDED`, `DT_RUNPATH`, `PT_INTERP`,
   and resolves transitive dependencies in standard system search paths
   (`/lib`, `/usr/lib`, `/lib64`, etc.). Includes the dynamic loader
   `ld-linux`.
 
-### 2. Rootfs construction — `_build_runtime_layer()`
+### 2. Rootfs construction - `_build_runtime_layer()`
 
 Assembles a mini-filesystem containing **exactly** what's needed:
 
@@ -45,7 +45,7 @@ For **cross-compilation** (`--target aarch64`), a vendored Python from
 `python-build-standalone` is downloaded and `.so` resolution is skipped (no
 host libs to resolve for a different arch).
 
-### 3. Layer splitting + compression — `build()`
+### 3. Layer splitting + compression - `build()`
 
 The builder constructs **two layers** (v2 format):
 
@@ -59,7 +59,7 @@ Each layer is compressed with either `zstd -19` (default) or `mksquashfs`
 
 **Build cache** (`~/.cache/daedalus/build/{hash}.zst`): the runtime layer is
 looked up by its tar hash. If an identical blob already exists, it's
-**reused without recompression** — this is what makes rebuilds (and builds
+**reused without recompression** - this is what makes rebuilds (and builds
 of apps sharing the same runtime) near-instant.
 
 Final assembly, then `chmod +x`:

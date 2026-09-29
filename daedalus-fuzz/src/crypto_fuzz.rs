@@ -68,7 +68,7 @@ impl FuzzTarget for CryptoFuzzTarget {
             return Ok(());
         }
         let payload = &input[36..36 + payload_len];
-        // Try to encrypt then decrypt — should roundtrip
+        // Try to encrypt then decrypt - should roundtrip
         let (ciphertext, meta) = daedalus_core::encrypt::encrypt_payload(payload, &key)
             .map_err(|e| anyhow::anyhow!("encrypt failed: {}", e))?;
         let _decrypted =

@@ -1,4 +1,4 @@
-# `.daedalus` Format v2 — SISR extension
+# `.daedalus` Format v2 - SISR extension
 
 > Status: **implemented** (`daedalus-core` `sisr_header` + `manifest` modules).
 > Specifies the `.daedalus` layout enriched with the `SISR` header and the
@@ -109,7 +109,7 @@ over-allocation:
 
 Fixed overhead: **110 bytes** for the extension. The manifest adds
 `20 + 36n` bytes for `n` chunks. A 100-chunk app therefore adds ~3.7 KiB of
-`SISR` header metadata — under the 4 KiB budget. The extension carries the
+`SISR` header metadata - under the 4 KiB budget. The extension carries the
 Merkle root and signature so the runtime can pre-check integrity without
 parsing the manifest.
 

@@ -59,7 +59,7 @@ The builder:
 
 - copies site-packages to `/app/site-packages` in the rootfs;
 - declares `PYTHONPATH=${ROOTFS}/app/site-packages` (the `${ROOTFS}` token is
-  resolved by the launcher at runtime — see [Launcher](../reference/launcher.md));
+  resolved by the launcher at runtime - see [Launcher](../reference/launcher.md));
 - runs the ELF analyzer on `.so` files from C extensions (numpy, pillow...) to
   embed their system dependencies.
 
@@ -85,4 +85,4 @@ daedalus build ./my_app -o my_app.de
 ## Current limitations
 
 - **Cross-distro portability**: see [Isolation](../reference/isolation.md)
-  — fully guaranteed at level 2 (user namespaces + pivot_root).
+  - fully guaranteed at level 2 (user namespaces + pivot_root).

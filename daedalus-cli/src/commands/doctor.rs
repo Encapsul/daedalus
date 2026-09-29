@@ -197,7 +197,7 @@ pub fn run(args: DoctorArgs) -> Result<()> {
             if all_ok {
                 eprintln!("All checks passed");
             } else if args.strict {
-                anyhow::bail!("Some checks failed — install missing dependencies");
+                anyhow::bail!("Some checks failed - install missing dependencies");
             } else {
                 eprintln!("Some checks failed (non-fatal, use --strict to enforce)");
             }

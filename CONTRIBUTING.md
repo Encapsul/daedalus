@@ -1,7 +1,7 @@
 # Contributing to daedalus
 
 Thanks for your interest! daedalus is a young project and contributions are
-welcome — whether it's code, docs, bug reports, or design discussion.
+welcome - whether it's code, docs, bug reports, or design discussion.
 
 ## Quick links
 
@@ -55,13 +55,13 @@ main          ← stable, tagged releases only
        └── ...
 ```
 
-- **`main`** — production-ready. Only `dev` merges into `main` via PR.
+- **`main`** - production-ready. Only `dev` merges into `main` via PR.
   Every push to `main` triggers a release if tagged `v*`.
-- **`dev`** — active development. All feature branches merge here.
+- **`dev`** - active development. All feature branches merge here.
   CI runs on every push. This is the default branch for PRs.
-- **`feat/*`** — feature branches. One feature per branch.
+- **`feat/*`** - feature branches. One feature per branch.
   Branch off `dev`, PR back into `dev`.
-- **`fix/*`** — bug fix branches. Same flow as `feat/*`.
+- **`fix/*`** - bug fix branches. Same flow as `feat/*`.
 
 ### Workflow
 
@@ -95,13 +95,13 @@ Bad: `fix stuff` or `updated code`
 
 ### Python (`cli/`)
 
-- Target **Python ≥ 3.10** (stdlib only for MVP — no Click, Rich, etc.)
+- Target **Python ≥ 3.10** (stdlib only for MVP - no Click, Rich, etc.)
 - Type hints required on all public functions
 - `from __future__ import annotations` at the top
 - Docstrings in English, triple-quoted, with brief description
 - Keep functions focused and small
 - Progress/status output goes to **stderr** (`file=sys.stderr`), never stdout
-- Use `_color.py` helpers (red, green, yellow, bold) for terminal output — respects `--no-color` / `NO_COLOR`
+- Use `_color.py` helpers (red, green, yellow, bold) for terminal output - respects `--no-color` / `NO_COLOR`
 - Non-TTY stderr: suppress verbose progress (use `verbose` parameter)
 - Interactive prompts: always offer `--force` / `-f` to skip (for CI/scripting)
 - Machine-readable output: offer `--json` flag where applicable (inspect, doctor)
@@ -109,7 +109,7 @@ Bad: `fix stuff` or `updated code`
 
 ### Rust (`daedalus-core/`, `daedalus-cli/`, `stub/`)
 
-- **No `unsafe` in `daedalus-core`** — all unsafe is confined to `stub/src/main.rs`
+- **No `unsafe` in `daedalus-core`** - all unsafe is confined to `stub/src/main.rs`
 - `stub/` unsafe requires a `SAFETY` comment explaining soundness
 - Pure Rust dependencies only (no C toolchain required)
 - Comments in English, doc comments (`///`) on public items
@@ -128,7 +128,7 @@ Bad: `fix stuff` or `updated code`
 3. At least one review from a maintainer.
 4. New features should include a demo example or test where practical.
 5. PRs that change the `.de` format must update `daedalus-core/src/format.rs`.
-6. Squash or rebase — no merge commits on `dev`.
+6. Squash or rebase - no merge commits on `dev`.
 
 ### Release process
 

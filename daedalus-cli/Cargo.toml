@@ -2,7 +2,7 @@
 name = "daedalux"
 version = "0.7.1"
 edition = "2021"
-description = "daedalus CLI — package any app into a single self-extracting binary"
+description = "daedalus CLI - package any app into a single self-extracting binary"
 license = "MIT"
 repository = "https://github.com/Encapsul/daedalus"
 keywords = ["packaging", "self-extracting", "appimage", "bundler", "single-binary"]

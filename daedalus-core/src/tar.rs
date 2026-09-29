@@ -34,7 +34,7 @@ pub fn create_deterministic_tar(root: &Path) -> io::Result<Vec<u8>> {
 
 /// Create a deterministic tar + compress (zstd level 3, streaming).
 ///
-/// Streams tar entries directly to the zstd encoder — never buffers the
+/// Streams tar entries directly to the zstd encoder - never buffers the
 /// full uncompressed tar in memory. Single-threaded zstd keeps the output
 /// byte-identical across machines so the payload hash is reproducible.
 pub fn create_tar_zstd(root: &Path) -> io::Result<Vec<u8>> {
@@ -73,7 +73,7 @@ pub fn create_tar_streaming<W: io::Write>(root: &Path, writer: W) -> io::Result<
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
 
-/// Extract a .tar.gz archive into a directory. Pure Rust — no external
+/// Extract a .tar.gz archive into a directory. Pure Rust - no external
 /// `tar` process required.
 pub fn extract_tar_gz<R: io::Read>(reader: R, dest: &Path) -> io::Result<()> {
     let decoder = GzDecoder::new(reader);

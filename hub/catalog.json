@@ -31,7 +31,7 @@
       "name": "bottle-web",
       "runtime": "python",
       "template": "application",
-      "description": "Python Bottle app with a vendored site-packages directory — shows dependency embedding with zero pip/network.",
+      "description": "Python Bottle app with a vendored site-packages directory - shows dependency embedding with zero pip/network.",
       "source": "examples/bottle-web",
       "build": ["daedalus", "build", "./examples/bottle-web", "-o", "hub/dist/bottle-web.de"],
       "run": "./bottle-web.de",
@@ -102,7 +102,7 @@
       "name": "Laravel API",
       "runtime": "php",
       "template": "service",
-      "description": "PHP Laravel service — detected by composer.json.",
+      "description": "PHP Laravel service - detected by composer.json.",
       "recipe": {
         "layout": ["composer.json (laravel/framework)", "artisan", "app/**"],
         "build": ["daedalus", "build", "./laravel-api", "-o", "laravel-api.de", "--template", "service"]

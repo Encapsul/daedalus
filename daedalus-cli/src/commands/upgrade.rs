@@ -122,7 +122,7 @@ pub fn run(args: UpgradeArgs) -> Result<()> {
     }
     download_file(&url, &tarball).context("download failed")?;
 
-    // Verify checksum — mismatch aborts before anything is extracted or copied.
+    // Verify checksum - mismatch aborts before anything is extracted or copied.
     let got = sha256_file(&tarball)?;
     if expected != got {
         anyhow::bail!("checksum mismatch: expected {expected}, got {got}");
@@ -386,8 +386,8 @@ fn find_daedalus_binary() -> Result<PathBuf> {
 /// Whether a path is actually writable, probed rather than inferred.
 ///
 /// The POSIX readonly bit is only advisory and does not reflect real
-/// writability (e.g. vfat, root-owned dirs). For directories — or files that
-/// do not exist yet — a temp file is created and removed in the directory; a
+/// writability (e.g. vfat, root-owned dirs). For directories - or files that
+/// do not exist yet - a temp file is created and removed in the directory; a
 /// file that already exists is opened for writing.
 fn is_writable(path: &Path) -> bool {
     if path.exists() && !path.is_dir() {

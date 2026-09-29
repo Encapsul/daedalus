@@ -116,7 +116,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     let meta =
         daedalus_core::format::read_at(&mut source, footer.meta_offset, footer.meta_size as usize)?;
 
-    // SHA-256(payload || meta || footer) — the footer is hashed so a downgrade
+    // SHA-256(payload || meta || footer) - the footer is hashed so a downgrade
     // of format_version/FLAG_SIGNED invalidates the signature instead of
     // being silently skipped.
     let mut hasher = Sha256::new();
@@ -129,7 +129,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     let keys = load_trusted_keys(&trusted_dir)?;
     if keys.is_empty() {
         anyhow::bail!(
-            "no trusted keys in {} — add keys with: daedalus trust <pubkey_file>",
+            "no trusted keys in {} - add keys with: daedalus trust <pubkey_file>",
             trusted_dir.display()
         );
     }
@@ -140,7 +140,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 
     for (key_path, vk) in &keys {
         // `verify_strict` (not `verify`) rejects small-order public keys and
-        // signatures (ZIP-215 weak-key/signature malleability) — see
+        // signatures (ZIP-215 weak-key/signature malleability) - see
         // daedalus-stub/src/crypto.rs for the same hardening on the launcher.
         if vk.verify_strict(&hash, &sig).is_ok() {
             verified = true;

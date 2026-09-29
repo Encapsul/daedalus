@@ -4,7 +4,7 @@
 //! tools, the stub exposes them over stdin/stdout JSON-RPC 2.0 instead of
 //! exec'ing the app. This lets a model/agent drive the packaged tools.
 //!
-//! Transport: newline-delimited JSON — one JSON-RPC message per line on both
+//! Transport: newline-delimited JSON - one JSON-RPC message per line on both
 //! stdin (requests) and stdout (responses). This is a simplification of the
 //! official MCP stdio framing (Content-Length headers, as in LSP); it keeps
 //! the launcher tiny and is sufficient for the documented stdin/stdout

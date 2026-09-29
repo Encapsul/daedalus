@@ -49,7 +49,7 @@ pub fn run(args: &DashboardArgs) -> Result<()> {
     let rows = load_benchmarks(&args.csv)?;
     if rows.is_empty() {
         anyhow::bail!(
-            "no benchmark data found — run `python3 examples/benchmark/plot_results.py` first \
+            "no benchmark data found - run `python3 examples/benchmark/plot_results.py` first \
              or pass --csv path"
         );
     }
@@ -418,7 +418,7 @@ where
 fn format_chunks_bar(reused: u64, fetched: u64) -> String {
     let total = reused + fetched;
     if total == 0 {
-        return "— (0)".to_string();
+        return "- (0)".to_string();
     }
     let bar_width = 8;
     #[allow(clippy::cast_sign_loss)] // value is clamped via .max(0.0) above

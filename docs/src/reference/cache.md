@@ -15,7 +15,7 @@ and reuses.
 The cache key is the **SHA-256 of the compressed payload**. Two `.daedalus` with
 identical content share the same cache; changing a single byte produces a new
 key. (`.lock` for concurrent access and `last_used` for LRU cleanup are
-planned — see [Roadmap](../roadmap.md).)
+planned - see [Roadmap](../roadmap.md).)
 
 ## Atomic extraction (anti-TOCTOU)
 
@@ -61,7 +61,7 @@ daedalus build app --lazy-load --lazy-priority app.py,models/,config.json
   (`app/main.py`); directories expand recursively (skipping `.git` /
   `__pycache__`), capped at 2048 files.
 - The entrypoint script is always a priority; the interpreter (`python3`,
-  `node`, ...) is never one — it resolves from the host PATH.
+  `node`, ...) is never one - it resolves from the host PATH.
 - `[build] lazy_priority = ["main.py"]` in `.daedalus.toml` works too; CLI
   flags win over config.
 - On hosts with fewer than 4 cores or less than 3 GiB RAM, `--lazy-load`
@@ -89,8 +89,8 @@ reused). See [`.daedalus` Format](./format.md#layers-v2).
 
 In v2, the key is not the payload hash but the **SHA-256 of the concatenation
 of all layer hashes**. As long as the layers are identical, the extracted
-entry is reused. (Per-layer reuse — extracting the runtime layer once and
-overlaying app layers via overlayfs — will come with isolation level 2;
+entry is reused. (Per-layer reuse - extracting the runtime layer once and
+overlaying app layers via overlayfs - will come with isolation level 2;
 today an app layer change re-extracts everything on the target side, but the
 build-time gain is already achieved.)
 

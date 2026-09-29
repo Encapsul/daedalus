@@ -37,25 +37,25 @@ Phase 2/3, not the current MVP state.
 
 The diagram flows top to bottom:
 
-1. **CLI** (`daedalus ./my_app`) — four commands: *Build · Run · Inspect ·
+1. **CLI** (`daedalus ./my_app`) - four commands: *Build · Run · Inspect ·
    Clean*. This is the user surface.
 
-2. **Builder** — two sub-components:
+2. **Builder** - two sub-components:
    - **Analyzer**: Rust ELF parser (DT_NEEDED, DT_RUNPATH, transitive
      resolution), runtime detection, and hidden dependency detection
-     (subprocess, `dlopen`) — see the *AI* annotation on the right.
+     (subprocess, `dlopen`) - see the *AI* annotation on the right.
    - **Packager**: builds the rootfs, compresses with zstd, assembles the
      final `.daedalus`.
    - The **AI** annotation (top right) marks the intended role of AI:
      *analyze source code, detect subprocess and dlopen calls invisible to
-     static analysis*. This is the project's differentiator — see
+     static analysis*. This is the project's differentiator - see
      [Dependency detection](../guides/dependencies.md).
 
-3. **`.daedalus` Format** — the central layer: *ELF Launcher · zstd Payload ·
+3. **`.daedalus` Format** - the central layer: *ELF Launcher · zstd Payload ·
    JSON Metadata · Magic + SHA-256*. This is the file format described in
    [reference](../reference/format.md).
 
-4. **Runtime** — two sub-components:
+4. **Runtime** - two sub-components:
    - **Cache**: `~/.cache/daedalus/{sha256}/`, single extraction, `flock()` for
      concurrent access, LRU cleanup.
    - **Executor**: *Linux user namespaces · pivot_root (isolation) · seccomp
@@ -108,7 +108,7 @@ file.
 ## Self-reconstruction (SISR, opt-in)
 
 The architecture above is the **static** model. An **optional** extension adds
-a third responsibility inside the binary — the embedded SISR engine — which
+a third responsibility inside the binary - the embedded SISR engine - which
 lets the binary update itself from signed deltas, with no toolchain on the
 target machine. Both models ship in the same file shape and behave identically
 on a default launch; SISR only engages on an explicit update.

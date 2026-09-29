@@ -21,7 +21,7 @@ pub(crate) fn parse_isolation(value: &str) -> Result<u32> {
 
 /// Parse a `--target` value into `(arch, os)`.
 ///
-/// Accepts legacy short forms (`aarch64`, `x86_64` — defaulting to Linux),
+/// Accepts legacy short forms (`aarch64`, `x86_64` - defaulting to Linux),
 /// OS shorthands (`win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`), and
 /// full Rust triples (`aarch64-apple-darwin`, `x86_64-unknown-linux-musl`).
 pub(crate) fn parse_target(target: &str) -> (String, String) {
@@ -345,11 +345,11 @@ pub(crate) fn output_paths(args: &BuildArgs, targets: &[Option<String>]) -> Vec<
 /// Canonical fingerprint of every build option that changes the output
 /// artifact. The build cache keys on this *alongside* the app-source hash,
 /// so two builds of the same app with different flags never share a cache
-/// entry — previously a `--squashfs` build could be served from a zstd
+/// entry - previously a `--squashfs` build could be served from a zstd
 /// entry, or a signed build from an unsigned one.
 //
-// Intentionally long: it serializes every cache-relevant flag — including the
-// recently added MCP tool hash — into one canonical string. Splitting it would
+// Intentionally long: it serializes every cache-relevant flag - including the
+// recently added MCP tool hash - into one canonical string. Splitting it would
 // invite a flag being accidentally omitted from the key, silently corrupting
 // the cache. The threshold is far below the actual feature count.
 #[allow(clippy::too_many_lines)]
@@ -478,7 +478,7 @@ pub(crate) fn config_fingerprint(args: &BuildArgs, plan: &BuildPlan) -> String {
         canonical.push(format!("key={content}"));
     } else {
         // Default: signed with the auto-generated dev key. Because the dev key
-        // is stable per machine, the fingerprint need not change per machine —
+        // is stable per machine, the fingerprint need not change per machine -
         // only signal that the output is signed (as opposed to `--skip-sign`).
         canonical.push("sign=on(default-key)".to_string());
     }
@@ -544,7 +544,7 @@ pub struct BuildArgs {
     #[arg(long)]
     pub seccomp: bool,
 
-    /// GUI app — bind-mount X11/Wayland/GPU before `pivot_root`
+    /// GUI app - bind-mount X11/Wayland/GPU before `pivot_root`
     #[arg(long)]
     pub gui: bool,
 
@@ -639,16 +639,16 @@ pub struct BuildArgs {
     pub license: Option<String>,
 
     /// Artifact kind recorded in the metadata (`application`, `service`,
-    /// `plugin`). Discovery metadata for tooling/host apps — it does not
+    /// `plugin`). Discovery metadata for tooling/host apps - it does not
     /// change the binary layout. Defaults to `application`.
     #[arg(long, value_enum)]
     pub template: Option<TemplateArg>,
 
-    /// Dry run — show what would be built without building
+    /// Dry run - show what would be built without building
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Incremental rebuild — reuse unchanged layers from existing .daedalus
+    /// Incremental rebuild - reuse unchanged layers from existing .daedalus
     #[arg(long)]
     pub update: bool,
 
@@ -687,7 +687,7 @@ pub struct BuildArgs {
     #[arg(long)]
     pub redetect: bool,
 
-    /// Quiet output — suppress all non-error messages
+    /// Quiet output - suppress all non-error messages
     #[arg(short, long)]
     pub quiet: bool,
 
