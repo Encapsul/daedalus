@@ -5,6 +5,7 @@ avec ./hello-web.de et sert sur localhost.
 """
 
 import os
+import socketserver
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -32,8 +33,17 @@ class Handler(BaseHTTPRequestHandler):
         pass  # silencieux
 
 
+class Server(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind() calls socket.getfqdn(), a reverse-DNS lookup
+        # that can block for tens of seconds on some hosts (macOS CI runners)
+        # before the socket starts listening. We bind a literal IP: skip it.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
 def main():
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    server = Server(("127.0.0.1", PORT), Handler)
     print(f"Server listening on http://127.0.0.1:{PORT}", flush=True)
     try:
         server.serve_forever()
