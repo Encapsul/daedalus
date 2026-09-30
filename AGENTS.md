@@ -6,10 +6,11 @@ daedalus packages any app into a single self-extracting ELF binary. Rust workspa
 
 ## Critical gotchas
 
-- **vfat filesystem**: repo lives on vfat (no exec bit). Cargo target dir is `/tmp/daedalus-stub-target` (set in `.cargo/config.toml`). Build artifacts cannot live in the repo tree.
+- **vfat filesystem**: repo lives on vfat (no exec bit). Build artifacts are slow and bloated there. The target dir is NOT set by a `.cargo/config.toml` (there is none, and `.gitignore` excludes it): `scripts/build.sh` exports `CARGO_TARGET_DIR=/tmp/daedalus-stub-target`, while the Makefile defaults to `$(CURDIR)/target`. Set `CARGO_TARGET_DIR` yourself if you build outside both.
 - **PATH**: tools installed in `~/.local/bin`. Prefix with `export PATH="$HOME/.local/bin:$PATH"` when running pip-installed tools.
 - **musl target**: stub builds with `--target $(uname -m)-unknown-linux-musl` for static linking. Requires `rustup target add` and a C compiler (musl-tools on Ubuntu).
-- **CI runs clippy per-crate**, not workspace-wide: `cargo clippy -p daedalux-core --all-targets -- -D warnings`, then same for `daedalus-stub`, then `daedalux`.
+- **Toolchain is pinned** to `1.99.0` in `rust-toolchain.toml`, with `rustfmt` and `clippy` declared there. Bump the file and fix any new lints in the same commit; never rely on the runner's `stable`. `dtolnay/rust-toolchain@stable` provisions the `stable` entry only, so targets must be added with `rustup target add` to land on the pinned toolchain.
+- **CI runs clippy per-crate**, not workspace-wide: `cargo clippy -p daedalux-core --all-targets -- -D warnings`, then same for `daedalus-stub`, then `daedalux`. The `-p` names are the publishable crate names (`daedalux-core`, `daedalux`); the binaries are `daedalus` and `daedalus-stub`.
 
 ## Commands
 
