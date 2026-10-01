@@ -108,6 +108,16 @@ jobs:
         with:
           targets: x86_64-unknown-linux-musl
       - run: cargo fmt --check
+      - name: Verify the toolchain pin is the one being linted
+        run: |
+          pinned=$(sed -ne 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
+          actual=$(rustc --version | grep -oE '1\.[0-9]+\.[0-9]+')
+          if [ "$pinned" != "$actual" ]; then
+            echo "::error::rust-toolchain.toml pins $pinned but the runner compiled with $actual."
+            echo "::error::Bump rust-toolchain.toml and the new lints together, never the runner alone."
+            exit 1
+          fi
+          echo "toolchain pin $actual matches the runner"
       - name: Lint per-crate (core)
         run: cargo clippy -p daedalux-core --all-targets -- -D warnings
       - name: Lint per-crate (stub)

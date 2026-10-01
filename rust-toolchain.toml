@@ -1,0 +1,5 @@
+# Pinned to a specific stable release. Bump deliberately, never track `stable`
+# in CI: an unpinned `dtolnay/rust-toolchain@stable` let Rust 1.99.0 break
+# `clippy-fmt` and `windows-check` on 2026-09-28 with no change to this repo.
+[toolchain]
+channel = "1.99.0"
