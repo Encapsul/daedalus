@@ -65,8 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - name: Install zig (musl cross C compiler)
         uses: mlugg/setup-zig@v2
@@ -116,8 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
+      - run: rustup target add x86_64-apple-darwin
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
@@ -167,8 +165,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
+      - run: rustup target add aarch64-apple-darwin
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
@@ -223,8 +220,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-gnu
+      - run: rustup target add x86_64-pc-windows-gnu
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
@@ -333,8 +329,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-musl
+      - run: rustup target add aarch64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-user-static

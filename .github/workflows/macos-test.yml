@@ -18,8 +18,7 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -130,8 +129,7 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
 
       - name: Install zig + cargo-zigbuild
         uses: mlugg/setup-zig@v2

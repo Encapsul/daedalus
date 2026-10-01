@@ -1,5 +1,16 @@
 # Pinned to a specific stable release. Bump deliberately, never track `stable`
 # in CI: an unpinned `dtolnay/rust-toolchain@stable` let Rust 1.99.0 break
 # `clippy-fmt` and `windows-check` on 2026-09-28 with no change to this repo.
+#
+# components is required, not cosmetic. rustup treats `stable` and `1.99.0` as
+# two separate toolchains, so the workflow install and the pinned toolchain do
+# not share a component or target installation. Without rustfmt and clippy
+# declared here, the pin auto-installs a bare minimal toolchain and every
+# fmt/clippy job fails on a missing binary rather than on a real lint.
+#
+# targets are intentionally absent: each job needs a different one, and listing
+# them here would force every contributor to install all of them. The workflows
+# pass targets to the install step instead.
 [toolchain]
 channel = "1.99.0"
+components = ["rustfmt", "clippy"]

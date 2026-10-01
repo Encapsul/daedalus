@@ -19,9 +19,9 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-musl
 
+      # Targets must be installed explicitly: the action above provisions the
+      # `stable` rustup entry, but rust-toolchain.toml pins a different one.
       - name: Install musl target
         run: rustup target add x86_64-unknown-linux-musl
 
@@ -83,8 +83,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
+      # The install step above provisions the `stable` entry, which is not the
+      # toolchain rust-toolchain.toml pins. Install the target for the pin.
+      - run: rustup target add x86_64-pc-windows-msvc
 
       - name: Clippy core+cli for Windows (-D warnings)
         run: |
@@ -105,8 +106,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-musl
+      - run: rustup target add x86_64-unknown-linux-musl
       - run: cargo fmt --check
       - name: Verify the toolchain pin is the one being linted
         run: |
@@ -168,8 +168,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - name: Install target for the pinned toolchain
+        run: rustup target add ${{ matrix.target }}
 
       - name: Install zig + cargo-zigbuild
         uses: mlugg/setup-zig@v2
