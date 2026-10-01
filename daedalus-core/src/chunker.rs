@@ -197,7 +197,7 @@ mod tests {
     fn chunks_cover_buffer_exactly() {
         let data = random_buf(100_000, 42);
         let chunks = chunker().chunk(&data);
-        assert!(!chunks.is_empty());
+        assert_ne!(chunks.len(), 0);
         let mut pos = 0;
         for chunk in &chunks {
             assert_eq!(chunk.offset, pos);
@@ -289,7 +289,7 @@ mod tests {
     ///
     /// Return: nothing
     fn empty_input_yields_no_chunks() {
-        assert!(chunker().chunk(&[]).is_empty());
+        assert_eq!(chunker().chunk(&[]).len(), 0);
     }
 
     #[test]

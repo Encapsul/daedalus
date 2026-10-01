@@ -267,7 +267,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         fs::write(dir.path().join("requirements.txt"), "flask\n").unwrap();
         let h = hash_lock_file(dir.path());
-        assert!(!h.is_empty());
+        assert_ne!(h, "");
     }
 
     #[test]

@@ -547,10 +547,8 @@ mod tests {
             resolve_gpu_backend(Some(GpuArg::Rocm), None).unwrap(),
             "rocm"
         );
-        assert!(resolve_gpu_backend(Some(GpuArg::None), None)
-            .unwrap()
-            .is_empty());
-        assert!(resolve_gpu_backend(None, None).unwrap().is_empty());
+        assert_eq!(resolve_gpu_backend(Some(GpuArg::None), None).unwrap(), "");
+        assert_eq!(resolve_gpu_backend(None, None).unwrap(), "");
     }
 
     #[test]
@@ -561,7 +559,7 @@ mod tests {
     /// Return: nothing
     fn gpu_backend_config_parses_known_values() {
         assert_eq!(resolve_gpu_backend(None, Some("rocm")).unwrap(), "rocm");
-        assert!(resolve_gpu_backend(None, Some("none")).unwrap().is_empty());
+        assert_eq!(resolve_gpu_backend(None, Some("none")).unwrap(), "");
         assert_eq!(parse_gpu_arg("ROCm").unwrap(), GpuArg::Rocm);
         assert_eq!(parse_gpu_arg("Auto").unwrap(), GpuArg::Auto);
     }

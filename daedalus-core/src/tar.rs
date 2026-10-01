@@ -260,7 +260,7 @@ mod tests {
     fn create_tar_from_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let tar = create_deterministic_tar(tmp.path()).unwrap();
-        assert!(!tar.is_empty());
+        assert_ne!(tar.len(), 0);
     }
 
     #[test]

@@ -345,7 +345,7 @@ mod tests {
             capabilities: vec![Capability::ReadFile, Capability::Network],
         });
         let hash = reg.push_layer(&layer).unwrap();
-        assert!(!hash.is_empty());
+        assert_ne!(hash, "");
         assert_eq!(hash.len(), 64);
 
         let exists = reg.layer_exists(&hash).unwrap();
@@ -423,7 +423,7 @@ mod tests {
             data: serde_json::json!({ "port": 8080 }),
         });
         let (manifest_hash, refs) = reg.build_and_publish("app", &[runtime, model]).unwrap();
-        assert!(!manifest_hash.is_empty());
+        assert_ne!(manifest_hash, "");
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[0].name, "python3");
         assert_eq!(refs[1].name, "app-config");

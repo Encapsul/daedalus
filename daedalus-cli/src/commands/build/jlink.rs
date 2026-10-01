@@ -406,7 +406,7 @@ mod tests {
             parse_module_csv("java.base, java.logging,"),
             vec!["java.base", "java.logging"]
         );
-        assert!(parse_module_csv("").is_empty());
+        assert_eq!(parse_module_csv("").len(), 0);
     }
 
     #[test]

@@ -249,7 +249,7 @@ mod tests {
             "#!/bin/sh\n# git clone...\nffmpeg -i in.mp4\n",
         );
         let deps = scan_hidden_deps(tmp.path(), Runtime::Binary);
-        assert!(!deps.executables.is_empty());
+        assert_ne!(deps.executables.len(), 0);
         assert!(deps.executables.iter().any(|e| e == "ffmpeg"));
     }
 

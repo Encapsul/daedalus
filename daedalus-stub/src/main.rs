@@ -2300,7 +2300,7 @@ mod tests {
         assert!(tmp.path().join(".daedalus-layers.json").is_file());
         let loaded = load_layer_manifest(tmp.path()).unwrap();
         assert_eq!(loaded.version, 1);
-        assert!(loaded.layers.is_empty());
+        assert_eq!(loaded.layers.len(), 0);
     }
 
     #[test]

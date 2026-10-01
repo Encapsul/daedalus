@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn test_detect_returns_config() {
         let config = detect();
-        assert!(!config.architecture.is_empty());
+        assert_ne!(config.architecture, "");
         assert!(config.cpu_cores > 0);
         assert!(config.total_memory > 0);
     }

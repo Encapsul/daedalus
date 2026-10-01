@@ -237,7 +237,7 @@ fn build_streams_artifact_to_stdout() {
         .spawn()
         .unwrap();
     let mut out_bytes = Vec::new();
-    std::io::Read::read_to_end(&mut child.stdout.as_mut().unwrap(), &mut out_bytes).unwrap();
+    std::io::Read::read_to_end(&mut *child.stdout.as_mut().unwrap(), &mut out_bytes).unwrap();
     let status = child.wait().unwrap();
     assert!(status.success(), "build -o - should succeed");
 
