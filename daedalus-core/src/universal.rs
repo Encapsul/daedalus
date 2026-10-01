@@ -65,12 +65,20 @@ impl UniversalFooter {
                 "universal footer too short",
             ));
         }
+        // Slice reads are infallible for fixed-width fields once the length
+        // check above passes, but `expect` keeps this honest if SIZE and the
+        // field widths ever drift apart.
+        let magic = u32::from_le_bytes(read_u32(buf, 0)?);
+        let num_slices = u32::from_le_bytes(read_u32(buf, 4)?);
+        let manifest_offset = u64::from_le_bytes(read_u64(buf, 8)?);
+        let manifest_size = u32::from_le_bytes(read_u32(buf, 16)?);
+        let reserved = u32::from_le_bytes(read_u32(buf, 20)?);
         Ok(UniversalFooter {
-            magic: u32::from_le_bytes(buf[0..4].try_into().unwrap()),
-            num_slices: u32::from_le_bytes(buf[4..8].try_into().unwrap()),
-            manifest_offset: u64::from_le_bytes(buf[8..16].try_into().unwrap()),
-            manifest_size: u32::from_le_bytes(buf[16..20].try_into().unwrap()),
-            reserved: u32::from_le_bytes(buf[20..24].try_into().unwrap()),
+            magic,
+            num_slices,
+            manifest_offset,
+            manifest_size,
+            reserved,
         })
     }
 }
@@ -287,6 +295,28 @@ pub fn hex_sha256(data: &[u8]) -> String {
 /// Return: the `std::io::Error`
 fn io_err(kind: io::ErrorKind, msg: &str) -> io::Error {
     io::Error::new(kind, msg)
+}
+
+/// Read a little-endian `u32` at `off`, returning an error rather than
+/// panicking when the buffer is short. Keeps footer parsing total.
+fn read_u32(buf: &[u8], off: usize) -> io::Result<[u8; 4]> {
+    let end = off
+        .checked_add(4)
+        .ok_or_else(|| io_err(io::ErrorKind::InvalidData, "offset overflow"))?;
+    buf.get(off..end)
+        .and_then(|s| s.try_into().ok())
+        .ok_or_else(|| io_err(io::ErrorKind::InvalidData, "footer truncated"))
+}
+
+/// Read a little-endian `u64` at `off`, returning an error rather than
+/// panicking when the buffer is short.
+fn read_u64(buf: &[u8], off: usize) -> io::Result<[u8; 8]> {
+    let end = off
+        .checked_add(8)
+        .ok_or_else(|| io_err(io::ErrorKind::InvalidData, "offset overflow"))?;
+    buf.get(off..end)
+        .and_then(|s| s.try_into().ok())
+        .ok_or_else(|| io_err(io::ErrorKind::InvalidData, "footer truncated"))
 }
 
 #[cfg(test)]

@@ -1128,16 +1128,27 @@ pub fn exec_app(meta: &Metadata, rootfs: &Path, app_config: &AppConfig) -> io::R
             }
             if pid == 0 {
                 // Child: execvp will fail (execve denied by seccomp).
+                // SAFETY: `prog_c` is a NUL-terminated CString owned by the
+                // caller and outlives this call; `argv_ptrs` points at `argc`
+                // initialised pointers that are live for the call. Between
+                // fork and exec only async-signal-safe work is done here.
                 unsafe {
                     crate::libc_execvp(prog_c.as_ptr(), argv_ptrs.as_ptr());
                 }
                 eprintln!("[daedalus] execvp blocked - Exec capability absent (seccomp)");
+                // SAFETY: `_exit` is async-signal-safe and takes an int, so it
+                // is the correct way to leave the forked child without running
+                // atexit handlers or flushing the parent's stdio buffers.
                 unsafe {
                     libc::_exit(126);
                 }
             }
             // Parent: wait for child and inspect exit status.
             let mut status: libc::c_int = 0;
+            // SAFETY: `pid` was returned by the fork above and is a live child
+            // of this process, so waitpid cannot reap an unrelated process.
+            // `status` is a valid, aligned, initialised c_int. EINTR is not
+            // retried, which is acceptable: the child is about to _exit.
             unsafe {
                 libc::waitpid(pid, &raw mut status, 0);
             }

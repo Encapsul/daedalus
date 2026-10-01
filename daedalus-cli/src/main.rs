@@ -21,7 +21,7 @@ use std::process::ExitCode;
     name = "daedalus",
     version,
     about = "Package any app into a single self-extracting binary",
-    long_about = "daedalus compiles any web, server, or CLI application into a\nsingle self-extracting ELF executable.\n\nSupported runtimes: Python, Node.js, Deno, Java, Ruby, .NET/C#,\nGo, PHP, Perl, Binary, Hugo.\n\nExamples:\n  daedalus build ./myapp -o myapp.de\n  daedalus run myapp.de\n  daedalus inspect myapp.de\n  daedalus keygen\n  daedalus sign myapp.de --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.de\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish",
+    long_about = "daedalus compiles any web, server, or CLI application into a\nsingle self-extracting binary. Artifacts target Linux, macOS and Windows.\n\nSupported runtimes: Python, Deno, Node.js, Electron, Flutter, Dart, Java,\nRuby, .NET/C#, Rust, Zig, Go, PHP, Perl, Lua, Hugo, Ollama, Gemma, Wasm,\nBinary.\n\nExamples:\n  daedalus build ./myapp -o myapp.de\n  daedalus run myapp.de\n  daedalus inspect myapp.de\n  daedalus keygen\n  daedalus sign myapp.de --key ~/.daedalus/keys/*.key\n  daedalus verify myapp.de\n  daedalus doctor\n  daedalus scan .\n  daedalus dashboard\n  daedalus completion bash >> ~/.bashrc\n  daedalus completion zsh >> ~/.zshrc\n  daedalus completion fish > ~/.config/fish/completions/daedalus.fish",
     after_help = "Documentation: https://github.com/Encapsul/daedalus/blob/main/README.md\nIssues: https://github.com/Encapsul/daedalus/issues"
 )]
 #[allow(clippy::struct_excessive_bools)]
@@ -73,6 +73,9 @@ enum Commands {
 
     /// Sign a .de file
     Sign(commands::sign::SignArgs),
+
+    /// Create or verify a signed SBOM attestation for a .de file
+    Attest(commands::attest::AttestArgs),
 
     /// Verify a .de file's signature
     Verify(commands::verify::VerifyArgs),
@@ -199,6 +202,7 @@ fn main() -> ExitCode {
             }
             commands::sign::run(args)
         }
+        Commands::Attest(args) => commands::attest::run(args),
         Commands::Verify(mut args) => {
             if cli.quiet {
                 args.quiet = true;

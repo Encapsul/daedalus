@@ -320,6 +320,9 @@ fn restrict_self(ruleset_fd: i32) -> io::Result<()> {
     // succeeds, no further Landlock restrictions can be added by this process.
     let rc =
         unsafe { libc::syscall(sys::LANDLOCK_RESTRICT_SELF, i64::from(ruleset_fd), 0i64) as i32 };
+    // SAFETY: `ruleset_fd` is owned by this function and is not used after the
+    // close. `close` only fails on an already-closed descriptor, which cannot
+    // happen here because the descriptor is opened and consumed exactly once.
     unsafe { libc::close(ruleset_fd) };
 
     if rc < 0 {

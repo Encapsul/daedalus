@@ -45,6 +45,7 @@ pub fn enter_userns() -> io::Result<()> {
     // SAFETY: getuid(2) and getgid(2) are always safe, returning the
     // caller's UID/GID.
     let uid = unsafe { libc::getuid() };
+    // SAFETY: getgid(2) is always safe, returning the caller's GID.
     let gid = unsafe { libc::getgid() };
 
     // SAFETY: unshare(2) with CLONE_NEWUSER|CLONE_NEWNS creates a new user

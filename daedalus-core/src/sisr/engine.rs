@@ -50,6 +50,11 @@ impl DirectoryChunkFetcher {
     ///
     /// Return: the `Self`
     pub fn new(root: &Path) -> Self {
+        // The CAS root is created by the caller before any chunk is fetched;
+        // a failure here means the cache directory is not writable, which is
+        // a setup error surfaced by `doctor`, not a runtime condition to
+        // recover from inside the engine.
+        #[allow(clippy::expect_used)]
         let store = crate::cas::DiskObjectStore::new(root)
             .expect("cas dir creation should not fail for a writable temp dir");
         Self {

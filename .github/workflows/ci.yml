@@ -114,6 +114,8 @@ jobs:
         run: cargo clippy -p daedalus-stub --all-targets -- -D warnings
       - name: Lint per-crate (cli)
         run: cargo clippy -p daedalux --all-targets -- -D warnings
+      - name: ANSSI-Rust mechanical checks
+        run: ./scripts/check-anssi.sh
 
   cargo-audit:
     runs-on: ubuntu-latest

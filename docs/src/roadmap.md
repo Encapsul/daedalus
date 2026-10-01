@@ -53,7 +53,7 @@ ni Node, ni quoi que ce soit.
 - [x] Minimal seccomp filter (18 syscalls bloqués, arch-aware x86_64/aarch64)
 - [x] Payload encryption AES-256-GCM (v4)
 - [x] SquashFS extraction (v5 format, `--squashfs`)
-- [x] 14 runtimes supportés : Python, Node.js, Deno, Java, Ruby, .NET, Go, PHP, Perl, Hugo, Wasm, Electron, Rust, Binary
+- [x] 20 runtimes supportés : Python, Deno, Node.js, Electron, Flutter, Dart, Java, Ruby, .NET, Rust, Zig, Go, PHP, Perl, Lua, Hugo, Ollama, Gemma, Wasm, Binary
 - [x] Framework auto-detection (FastAPI, Flask, Django, Next.js, Express, etc.)
 
 ## Phase 2 - Delta updates ✅

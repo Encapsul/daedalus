@@ -1210,7 +1210,7 @@ fn build_flutter_binary(
             .join("Build")
             .join("Products")
             .join("Release"),
-        _ => unreachable!(),
+        other => anyhow::bail!("unsupported Flutter build platform: {other}"),
     };
     if !bundle_src.is_dir() {
         anyhow::bail!(

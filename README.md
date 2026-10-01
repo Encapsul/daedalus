@@ -5,7 +5,7 @@
 [![Version](https://img.shields.io/badge/version-0.7.1-green.svg)](https://github.com/Encapsul/daedalus/releases)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)]()
-[![Runtimes](https://img.shields.io/badge/runtimes-11-purple.svg)](#supported-runtimes)
+[![Runtimes](https://img.shields.io/badge/runtimes-20-purple.svg)](#supported-runtimes)
 
 ## What it is
 
@@ -49,20 +49,30 @@ ship the CLI, stub, and crypto tools together.
 
 ## Supported runtimes
 
+20 runtimes, in detection-priority order. This table mirrors
+`Runtime` in [`daedalus-core/src/detect.rs`](daedalus-core/src/detect.rs) - keep the two
+in sync.
+
 | Runtime | Detection | Frameworks |
 |---------|-----------|------------|
 | Python | `requirements.txt`, `pyproject.toml`, `Pipfile` | Django, FastAPI, Flask, Streamlit |
-| Node.js | `package.json` | Next.js, Express, NestJS, Fastify, Hono |
 | Deno | `deno.json`, `deno.jsonc` | Fresh |
+| Node.js | `package.json` | Next.js, Express, NestJS, Fastify, Hono |
 | Electron | `package.json` with `electron` dep | Generic Electron app |
+| Flutter | `pubspec.yaml` with `flutter` SDK dep | Release bundle from `lib/main.dart` |
+| Dart | `pubspec.yaml` without the `flutter` SDK dep | AOT-compiled `bin/main.dart` |
 | Java | `pom.xml`, `build.gradle` | Spring Boot |
 | Ruby | `Gemfile`, `_config.yml` | Rails, Sinatra, Jekyll |
 | .NET/C# | `*.csproj` | ASP.NET |
+| Rust | `Cargo.toml` | Static binary |
+| Zig | `build.zig`, `build.zig.zon` | `zig build` -> static binary |
 | Go | `go.mod` | Static binary |
 | PHP | `composer.json` | Laravel, Symfony, WordPress |
 | Perl | `Makefile.PL`, `cpanfile` | Mojolicious |
+| Lua | `*.lua`, `lua` in package.json | OpenResty, Neovim plugins |
 | Hugo | `hugo.toml`, `config.toml` | Static sites |
-| Rust | `Cargo.toml` | Static binary |
+| Ollama | `Modelfile`, `models/*.gguf`, `ollama` in `package.json`, or `DAEDALUS_OLLAMA=1` | `ollama serve`, local model API |
+| Gemma | `Modelfile` with a Gemma `FROM` | `ollama run <model-id>`, fully offline |
 | Wasm | `*.wasm` | WASI (wasmtime) |
 | Binary | ELF/PE executable | Any native binary |
 
@@ -120,7 +130,7 @@ Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs).
 
 | Flag | Commands | Description |
 |------|----------|-------------|
-| `--target` | build | Cross-compile target (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win-x64`, `win-arm64`) |
+| `--target` | build | Cross-compile target. CI-verified (stub built + smoke-tested): `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win-x64`. `win-arm64` is accepted but not built by CI. Any Rust triple is parsed; the short forms are conveniences. |
 | `--sign --key <file>` | build | Sign the binary with Ed25519 |
 | `--encrypt <keyfile>` | build | Encrypt payload with AES-256-GCM |
 | `--enable-sisr --update-url <url>` | build | Enable delta updates |
@@ -185,7 +195,7 @@ env_file = ".env"
 ## Security
 
 - **Ed25519 signing**: binaries can be signed and verified against trusted keys
-  (keys enforce the Ed25519 bit, CVE-2023-48022)
+  (keys enforce the Ed25519 bit; strict verification per ZIP-215)
 - **SHA-256 integrity**: footer hash verifies payload tampering at runtime, and every
   download (stub, upgrade, brew/PyPI/install.sh) is verified against `checksums.txt`
 - **AES-256-GCM encryption**: optional payload encryption with external key (`--encrypt` / `--decrypt-key`)
@@ -193,6 +203,33 @@ env_file = ".env"
 - **Ephemeral `selftest`**: run an untrusted `.de` in a throwaway sandbox first
 - **Delta updates (SISR)**: the stub verifies an embedded Ed25519 signature at cold start
 - **SBOM**: `daedalus inspect --sbom` lists exactly what a `.de` contains
+- **Signed SBOM attestations**: `daedalus attest app.de` writes an in-toto statement
+  whose Ed25519 signature covers *both* the SBOM and the SHA-256 of the whole file.
+  `daedalus attest app.de --verify` re-checks it offline against the local trust store
+
+### Attestation threat model
+
+What `daedalus attest` actually guarantees, and what it does not:
+
+- **Covers the SBOM.** The signature is computed over a canonical envelope of
+  `(file digest, SBOM)`, so changing a version string in the SBOM invalidates the
+  signature. An attacker cannot substitute a false inventory.
+- **Covers the whole file, stub included.** The digest is over every byte of the
+  `.de`, not just payload and metadata, so a substituted launcher is detected.
+  (`daedalus sign` signs `payload || metadata || footer` only; the attestation is
+  deliberately broader.)
+- **Strict verification.** `verify_strict` rejects small-order keys and non-canonical
+  signatures per ZIP-215.
+- **Offline.** Verification needs only a trusted public key. No CA, no network, no
+  transparency log, no clock.
+- **Not a timestamp or a transparency guarantee.** An attestation says who signed
+  *what bytes*; it does not prove the key was not compromised, nor that no other
+  valid signature exists for different bytes. There is no revocation list. If you
+  need key lifecycle, manage keys outside the tool.
+
+Tests that enforce the above: `signature_covers_sbom_so_tampering_breaks_verification`,
+`file_digest_covers_the_stub_region`, `strict_verification_rejects_small_order_key_zip215`
+in `daedalus-cli/src/commands/attest.rs`.
 
 Trust model: distributes through the same channels auditors already trust
 (crates.io, Homebrew, PyPI) rather than piping random binaries, and ships the

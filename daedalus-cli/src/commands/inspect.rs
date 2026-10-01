@@ -311,7 +311,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
 /// Description:
 ///
 /// Return: nothing
-fn generate_sbom(
+pub(crate) fn generate_sbom(
     _file: &str,
     meta: &serde_json::Value,
     arch: &str,

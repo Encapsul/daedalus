@@ -177,7 +177,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 /// attempts to parse each as an Ed25519 VerifyingKey.
 ///
 /// Return: Result containing Result<Vec<(PathBuf, VerifyingKey)>>
-fn load_trusted_keys(dir: &PathBuf) -> Result<Vec<(PathBuf, VerifyingKey)>> {
+pub(crate) fn load_trusted_keys(dir: &PathBuf) -> Result<Vec<(PathBuf, VerifyingKey)>> {
     let mut keys = Vec::new();
     if !dir.exists() {
         return Ok(keys);
