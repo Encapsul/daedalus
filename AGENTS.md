@@ -140,8 +140,9 @@ operator and the agent.
 
 ## Other instruction files
 
-- `CLAUDE.md` - Claude Code specific guidance (agents/commands/skills pattern).
+- `CLAUDE.md` - a one-line `@AGENTS.md` pointer, so Claude Code reads the same
+  file instead of a divergent copy. Same pattern as rust-lang/rust and ruff.
 - `CODE_STYLE.md` - detailed style rules with rationale.
 - `RULES.md` - ANSSI-Rust rules (also in `.cursor/rules/` format).
-- `HANDOFF.md` - project status, known build constraints, performance data.
+- `ROADMAP.md` - feature status and the list of planned runtimes.
 - `.opencode/` - agents, skills, and commands for OpenCode sessions.

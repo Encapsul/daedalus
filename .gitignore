@@ -70,5 +70,6 @@ examples/*/node_modules/
 examples/*/package-lock.json
 # gstack/opencode skills (managed externally)
 .opencode/
+tui.json
 yc
 ROADMAP_IDEAS.md

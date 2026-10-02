@@ -5,10 +5,10 @@ Single source of truth for daedalus planning. `docs/ROADMAP.md` points here;
 
 ## Current status
 
-Cross-platform CI is the open item: Linux CI is green; macOS native (all steps
-incl. smoke) and cargo-audit are green since `60625dd`. Remaining: the two
-Windows jobs (`windows-check` core test, `smoke-test-windows`) - pre-existing
-failures blocked on CI log access (read-only token). Product-wise: adoption
+Cross-platform CI is green: Linux, macOS native (all steps incl. smoke),
+Windows (`windows-check` and `smoke-test-windows`), the four cross-builds
+and cargo-audit all pass. The previously blocking Windows failures were the
+Rust 1.99 lint drift, fixed in `b21fa84`. Product-wise: adoption
 is underway - 60 s demo guide (measured 6.2 s build / 1.5 s run), one-command
 installers (`install.sh`, `install.ps1`, Homebrew formula), `hub/catalog.json`
 (6 verified apps + 7 recipes); runtimes are production-grade on Linux, macOS
@@ -22,8 +22,6 @@ installers (`install.sh`, `install.ps1`, Homebrew formula), `hub/catalog.json`
 - Java (Spring Boot, Maven, Gradle)
 - Ruby (Rails, Jekyll, Sinatra)
 - PHP (Laravel, FrankenPHP, RoadRunner, WordPress)
-- Perl (Mojolicious, single-file `Mojo::` apps)
-- Electron (cross-arch/OS binary embed, `resources/` bundled)
 - Go (static binary, cross-compile)
 - Rust (cargo build, auto-download toolchain; auto-downloads `rustup-init` + installs stable into `~/.cache` when no system cargo/rustup)
 - .NET/C# (self-contained, cross-RID)
