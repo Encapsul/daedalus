@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a focused improvement
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New runtime detectors without a CI smoke are out of scope right now.
+        See [CONTRIBUTING.md](../../CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who hits this, and what they do today instead.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Smallest change that would help. Link related issues if any.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require a new runtime detector without a CI smoke
+          required: true
+        - label: I am willing to help implement or test
+          required: false

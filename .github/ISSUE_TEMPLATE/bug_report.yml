@@ -1,0 +1,52 @@
+name: Bug report
+description: Something does not work the way the docs or CI say it should
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. If this is a security issue, stop and open a
+        [private advisory](https://github.com/Encapsul/daedalus/security/advisories/new).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Exact commands. Prefer a public example under `examples/`.
+      placeholder: |
+        daedalus build ./examples/hello-web -o hello-web.de
+        ./hello-web.de
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: daedalus version
+      placeholder: "daedalus --version"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Where you ran it
+      options:
+        - Linux x86_64
+        - Linux aarch64
+        - macOS (CLI only)
+        - Windows (CLI only)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste stderr / inspect output. Redact secrets.
+      render: text

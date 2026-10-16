@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Encapsul/daedalus/security/advisories/new
+    about: Do not file public issues for security problems. Use a private advisory.
+  - name: Discussions
+    url: https://github.com/Encapsul/daedalus/discussions
+    about: Questions and design talk that are not bugs or feature requests.
