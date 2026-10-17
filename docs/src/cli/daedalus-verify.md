@@ -26,16 +26,23 @@ Verification steps:
 
 Default location: `~/.daedalus/trusted-keys/`.
 
-All `.pub` files in this directory are tried against the signature. Verification
-succeeds if at least one trusted key matches.
+A build machine already has its dev key there, so `daedalus verify` on that
+machine succeeds without an extra step. That check does not travel with the
+file. On any other machine the trust directory starts empty and verify fails
+until you install the publisher's public key.
 
 ```bash
-# Add a trusted key
-cp /path/to/key.pub ~/.daedalus/trusted-keys/
+# Publisher
+daedalus keygen --key-dir ./keys
+daedalus build ./examples/hello-web -o hello-web.daedalus --key ./keys/<fingerprint>.key
 
-# Verify
-daedalus verify my-app.daedalus
+# Recipient, after receiving hello-web.daedalus and the .pub only
+daedalus trust ./keys/<fingerprint>.pub
+daedalus verify hello-web.daedalus
 ```
+
+All `.pub` files in the trust directory are tried. Verification succeeds if
+one of them matches. `--trusted-dir` points somewhere else.
 
 ## Exit codes
 

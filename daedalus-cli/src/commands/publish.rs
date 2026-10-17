@@ -47,9 +47,10 @@ const DEFAULT_REGISTRY_PLACEHOLDER: &str = "https://daedalus.example.com";
 pub fn run(args: PublishArgs) -> Result<()> {
     let file = args.file.canonicalize().context("failed to find file")?;
 
-    if file.extension().is_none_or(|e| e != "daedalus") {
+    let ext = file.extension().and_then(|e| e.to_str());
+    if !matches!(ext, Some("daedalus" | "de")) {
         anyhow::bail!(
-            "{} is not a .daedalus file (expected .daedalus extension)",
+            "{} is not a packaged artifact (expected .daedalus or .de)",
             file.display()
         );
     }

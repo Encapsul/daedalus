@@ -1,13 +1,26 @@
 # Cross-packager benchmark - daedalus vs Docker / pkg / AppImage / Flatpak
 
-Compares daedalus against other packagers on the **same reference app** and the
-**same machine**, answering the "just use Docker" HN criticism with
-reproducible numbers.
+One recorded pass lives in
+[`results/codespaces-ba69ea/results.tsv`](results/codespaces-ba69ea/results.tsv).
+Same app (`apps/hello-node`, 312 bytes, Node 24), one run, no average.
+Quote these numbers. They are not a win on cold start.
 
-## Aggregated results
+| Packager | Artifact | On disk | Build | Cold start | Warm start |
+|----------|----------|---------|-------|------------|------------|
+| AppImage | 24.4 MiB | 24.4 MiB | 4.9 s | 29 ms | n/a |
+| pkg | 70.2 MiB | 70.2 MiB | 1.9 s | 109 ms | n/a |
+| daedalus | 44.0 MiB | 122.6 MiB | 1.7 s | 2142 ms | 96 ms |
+| Docker | 76.7 MiB | 76.7 MiB | 16.7 s | 6147 ms | n/a |
+| Flatpak | not measured | | | | |
 
-See [`comparison.md`](comparison.md) (machine × packager table) and
-[`machines.md`](machines.md) (full profiles).
+daedalus is faster to build than Docker on this pass and faster on the second
+launch. AppImage and pkg win the first launch and the on-disk size. The
+daedalus footprint includes the extracted rootfs under `~/.cache`. Docker
+needs a daemon. This app is the one every packager can build, so it is the
+weakest case for daedalus. A comparison that would matter is an app pkg and
+AppImage cannot package. That run does not exist yet.
+
+Host profile for the pass: `results/codespaces-ba69ea/profile.txt`.
 
 ## How it works
 

@@ -5,34 +5,26 @@ tools for agents.
 
 ## Gemma via Ollama (on-device AI)
 
-daedalus can package applications that use [Gemma](https://github.com/google/gemma),
-Google's open-weights model, running locally via [Ollama](https://ollama.ai) or
-[llama.cpp](https://github.com/ggerganov/llama.cpp).
+daedalus detects a Gemma or Ollama layout and will pack the files that are
+actually in the project. It does not download a model for you, and the example
+in this repo does not contain one.
 
-**Use case: Offline code analysis assistant**
+`examples/offline-health-agri` is a standard-library script plus a `Modelfile`
+(`FROM gemma:2b`). `diagnose` and `crop` print hardcoded notes, then POST to
+`localhost:11434` if Ollama is already up. If it is not, they print the prompt.
 
-1. Write a Python/Node app that uses the `daedalus-core` hidden-dependencies
-   analyzer to scan source code for subprocess/dlopen calls
-2. The analyzer runs Gemma (via Ollama) locally for LLM-powered classification
-3. Package the app with `daedalus build . -o app.daedalus`
-4. The `.daedalus` binary embeds Ollama + the Gemma model
-5. On first run, Ollama starts and serves the analyzer on `http://127.0.0.1:PORT`
-6. The app performs offline code analysis - no internet, no cloud, no cost
+To ship weights, put a real `.gguf` under `models/` (or install the Ollama
+binary into the rootfs at build time) and build that directory. The resulting
+ELF is as large as those bytes. There is no 17 MB Gemma artifact.
 
 ```bash
-# Build the app with Ollama embedded
-daedalus build ./my-code-assistant -o code-assistant.daedalus
-
-# First run: Ollama auto-starts, Gemma model loads
-./code-assistant.daedalus
-
-# Then analyze any codebase offline
-code-assistant.daedalus scan /path/to/codebase
+daedalus build ./examples/offline-health-agri -o clinic-agent.daedalus
+./clinic-agent.daedalus diagnose
 ```
 
 ## Ollama
 
-Package an Ollama-based AI app:
+Package an app that already contains an Ollama binary and model files:
 
 ```bash
 daedalus build ./my-ollama-app -o my-ollama-app.daedalus
@@ -41,10 +33,13 @@ daedalus build ./my-ollama-app -o my-ollama-app.daedalus
 daedalus detects:
 
 - `ollama` in `package.json` scripts or dependencies
-- `Modelfile` or `models/` directory
+- `Modelfile` or `models/*.gguf`
 
-The binary embeds the Ollama binary and model files. At runtime, it starts the
-Ollama server and serves the app on the configured port.
+Those files are copied into the payload when they are present on disk. The
+builder does not fetch Ollama or a model on its own. At runtime the entrypoint
+is whatever the app declared (`ollama serve` when that is the detected
+runtime). GPU passthrough below only matters if that binary is actually in
+the rootfs.
 
 ## MCP tools for agents
 

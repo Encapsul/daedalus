@@ -83,10 +83,9 @@ jump straight to a language guide: [Python](./guides/python.md),
 
 ## Project status
 
-Phase 2 is complete; Phase 3 is in progress. The full pipeline runs
-end-to-end: `build` → `.daedalus` → execution with self-extraction, caching,
-Ed25519 signatures, SquashFS support, and multi-arch builds
-(`x86_64` / `aarch64`). See the [Roadmap](./roadmap.md) for what's next.
+Version 0.7.1. CI builds `examples/hello-web`, runs the ELF, and curls it.
+Other runtimes are detected. See the [Roadmap](./roadmap.md). SquashFS is
+extracted, not mounted. Cold start still pays for that extract.
 
 ## Optional extension: SISR (self-updates)
 

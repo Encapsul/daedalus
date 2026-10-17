@@ -19,11 +19,11 @@ discriminatory behavior will not be tolerated.
 
 ## What we need help with
 
-### Phase 3 (current)
-- SquashFS + mmap direct read (kernel mount, no extraction)
+### Current engineering focus
+- SquashFS mount with no extraction (this is what would move cold start)
 - LRU cache eviction
-- Cold/warm start < 100 ms
-- Distribution / discovery (lightweight registry)
+- A non-hello app in the CI smoke
+- Splitting `daedalus-stub/src/main.rs` (about 2 400 lines, the security boundary)
 
 ### Always welcome
 - Documentation improvements

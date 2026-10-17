@@ -4,42 +4,66 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.7.1-green.svg)](https://github.com/Encapsul/daedalus/releases)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg)]()
-[![Runtimes](https://img.shields.io/badge/runtimes-20-purple.svg)](#supported-runtimes)
+[![Platform](https://img.shields.io/badge/artifact-linux%20ELF-lightgrey.svg)]()
+[![Runtimes](https://img.shields.io/badge/runtimes%20detected-20-purple.svg)](#supported-runtimes)
 
 ## What it is
 
-daedalus packages any web, server, or CLI app into a **single self-extracting
-binary** - interpreter, dependencies, and app in one file, no runtime to install
-on the target machine. Anything that runs on a Linux box can be shipped as one ELF.
+daedalus packages an app into one self-extracting Linux ELF. The file carries
+a launcher, the app, and a runtime when the build embedded one. On Linux you
+run that file. The CI smoke that proves this is `examples/hello-web`: a Python
+standard-library HTTP server, built and curled on every Linux run.
 
-The flagship use case is **on-device AI**: package Ollama (or Llama.cpp) plus a
-local model plus your app into one `.de` file that runs fully offline - no cloud,
-no GPU, no runtime cost. See [AI and edge runtimes](docs/src/guides/ai-edge.md).
+The CLI itself builds on Linux, macOS, and Windows. The artifact does not.
+Running it on macOS or Windows takes WSL or a Linux VM.
 
-Deployment features that plain archives don't give you: SHA-256-verified cold
-start, optional Ed25519 signing and trust anchors, sandboxed runs, and **SISR
-delta updates** - reconstruct and roll back layers over 960kbps links, so field
-deployments (clinics, farms, fleets) update without a full re-download.
+On every launch the stub reads the footer, checks SHA-256, extracts into
+`~/.cache/daedalus/<hash>/`, then execs the entrypoint. That extract is why
+the first start is slower than AppImage or pkg. One measured pass of a 312-byte
+Node server (`benchmarks/comparison/results/codespaces-ba69ea`, Node 24):
 
----
+| Packager | Artifact | On disk after launch | Cold start |
+|----------|----------|----------------------|------------|
+| AppImage | 24.4 MiB | 24.4 MiB | 29 ms |
+| pkg | 70.2 MiB | 70.2 MiB | 109 ms |
+| daedalus | 44.0 MiB | 122.6 MiB | 2.1 s |
+| Docker | 76.7 MiB | 76.7 MiB | 6.1 s |
 
-**Note**: the produced `.de` file is a Linux ELF binary. It runs natively on Linux, and can be run on macOS/Windows via WSL or a Linux VM. Building on Windows/macOS works (the CLI is cross-platform), but the output requires a Linux runtime to execute.
+daedalus warm start on that pass was 96 ms. Docker needs a daemon. Mounting a
+SquashFS without extracting is not implemented. Details and how to reproduce:
+[benchmarks/comparison](benchmarks/comparison/README.md).
+
+Signing is on by default with a dev key generated on the build machine and
+trusted there. `daedalus verify` on that same machine succeeds because of
+that auto-trust. Another machine trusts the file only after `daedalus trust`
+of the public key. Optional AES-256-GCM keeps its decryption key in the file
+metadata so the stub can decrypt. The Ed25519 private key is not in the file.
+
+SISR can ship a delta instead of the whole file. The "~90% smaller" number in
+older notes is a synthetic 200 MiB blob with 10% of its bytes flipped. A bench
+on a real pair of model weights exists and is marked `--ignored`.
+
+Names: the command is `daedalus`. The crates.io and PyPI packages are
+`daedalux` because `daedalus` was already taken. `daedalus build` writes
+`app.de` unless `-o` says otherwise. `scan`, `publish`, and `registry` accept
+`.de` and `.daedalus`.
 
 ## Quick start
 
 ```bash
-# Install - any one of these
-cargo install daedalux                                            # crates.io
-brew install encapsul/daedalus/daedalus                          # Homebrew tap
-pip install daedalux                                             # PyPI
-curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash   # install script (Linux/macOS)
+# Install - any one of these. The shell installer checks sha256 and refuses
+# to continue if checksums.txt has no matching line.
+cargo install daedalux
+brew install encapsul/daedalus/daedalus
+pip install daedalux
+curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/install.sh | sh
 
-# Build a Python app with Gemma embedded
-cd your-app && daedalus build . -o myapp.daedalus
+# Package the app the CI actually smokes. Default output name is app.de.
+# The build copies python3 from this machine into the file.
+daedalus build ./examples/hello-web -o hello-web.de
 
-# Run - Ollama auto-starts, Gemma model loads locally
-./myapp.daedalus
+# Run it on Linux. The CI smoke does this on the same runner that has Python.
+./hello-web.de
 ```
 
 `cargo install daedalux` ships only the CLI; on first `daedalus build` it downloads
@@ -49,32 +73,40 @@ ship the CLI, stub, and crypto tools together.
 
 ## Supported runtimes
 
-20 runtimes, in detection-priority order. This table mirrors
-`Runtime` in [`daedalus-core/src/detect.rs`](daedalus-core/src/detect.rs) - keep the two
-in sync.
+Detection order matches `Runtime` in
+[`daedalus-core/src/detect.rs`](daedalus-core/src/detect.rs). Keep the two in
+sync. "Detected" means the builder recognizes the project. It does not mean a
+framework listed in the third column has a passing end-to-end test in CI.
 
-| Runtime | Detection | Frameworks |
-|---------|-----------|------------|
-| Python | `requirements.txt`, `pyproject.toml`, `Pipfile` | Django, FastAPI, Flask, Streamlit |
-| Deno | `deno.json`, `deno.jsonc` | Fresh |
-| Node.js | `package.json` | Next.js, Express, NestJS, Fastify, Hono |
-| Electron | `package.json` with `electron` dep | Generic Electron app |
-| Flutter | `pubspec.yaml` with `flutter` SDK dep | Release bundle from `lib/main.dart` |
-| Dart | `pubspec.yaml` without the `flutter` SDK dep | AOT-compiled `bin/main.dart` |
-| Java | `pom.xml`, `build.gradle` | Spring Boot |
-| Ruby | `Gemfile`, `_config.yml` | Rails, Sinatra, Jekyll |
-| .NET/C# | `*.csproj` | ASP.NET |
-| Rust | `Cargo.toml` | Static binary |
-| Zig | `build.zig`, `build.zig.zon` | `zig build` -> static binary |
-| Go | `go.mod` | Static binary |
-| PHP | `composer.json` | Laravel, Symfony, WordPress |
-| Perl | `Makefile.PL`, `cpanfile` | Mojolicious |
-| Lua | `*.lua`, `lua` in package.json | OpenResty, Neovim plugins |
-| Hugo | `hugo.toml`, `config.toml` | Static sites |
-| Ollama | `Modelfile`, `models/*.gguf`, `ollama` in `package.json`, or `DAEDALUS_OLLAMA=1` | `ollama serve`, local model API |
-| Gemma | `Modelfile` with a Gemma `FROM` | `ollama run <model-id>`, fully offline |
-| Wasm | `*.wasm` | WASI (wasmtime) |
-| Binary | ELF/PE executable | Any native binary |
+Evidence, as of this tree:
+
+- **CI smoke** (build, run, HTTP 200): Python standard library, `examples/hello-web`, on the Linux workflow. The macOS and Windows workflows build the same example.
+- **Workspace e2e, when the toolchain exists**: Rust (`daedalus-cli/tests/rust_build.rs`, cargo is on the CI image). Java/Gradle (`java_build.rs`) skips unless `java` and Gradle ≥ 7 are installed. CI does not install them.
+- **Source in `examples/`, not the CI smoke**: `hello-node`, `bottle-web`, `bottle-web-pip`, `hello-zig`, `hello-dart`, `hello-lua`.
+- **Scaffold**: `examples/offline-health-agri` is a standard-library script plus a `Modelfile`. It does not contain model weights. If Ollama is already running it queries `localhost:11434`. Otherwise it prints the prompt it would have sent.
+
+| Runtime | Detection | What the code looks for | Evidence |
+|---------|-----------|-------------------------|----------|
+| Python | `requirements.txt`, `pyproject.toml`, `Pipfile` | Django, FastAPI, Flask, Streamlit markers | CI smoke is stdlib HTTP only |
+| Deno | `deno.json`, `deno.jsonc` | Fresh | Detection |
+| Node.js | `package.json` | Next.js, Express, NestJS, Fastify, Hono | Example + one comparison bench |
+| Electron | `package.json` with `electron` dep | Generic Electron app | Detection |
+| Flutter | `pubspec.yaml` with `flutter` SDK dep | Release bundle from `lib/main.dart` | Needs the Flutter SDK on PATH. No SDK download |
+| Dart | `pubspec.yaml` without the `flutter` SDK dep | AOT-compiled `bin/main.dart` | Example in repo |
+| Java | `pom.xml`, `build.gradle` | Spring Boot | e2e test, skipped without java+gradle |
+| Ruby | `Gemfile`, `_config.yml` | Rails, Sinatra, Jekyll | Detection |
+| .NET/C# | `*.csproj` | ASP.NET | Detection |
+| Rust | `Cargo.toml` | Static binary | Workspace e2e |
+| Zig | `build.zig`, `build.zig.zon` | `zig build` -> static binary | Example in repo |
+| Go | `go.mod` | Static binary | Detection |
+| PHP | `composer.json` | Laravel, Symfony, WordPress | Detection |
+| Perl | `Makefile.PL`, `cpanfile` | Mojolicious layout only | Detection |
+| Lua | `*.lua`, `lua` in package.json | OpenResty, Neovim plugins | Example in repo |
+| Hugo | `hugo.toml`, `config.toml` | Static sites | Detection |
+| Ollama | `Modelfile`, `models/*.gguf`, `ollama` in `package.json`, or `DAEDALUS_OLLAMA=1` | `ollama serve` | Detection. Weights are whatever is in the project |
+| Gemma | `Modelfile` with a Gemma `FROM`, or `models/gemma*.gguf` | `ollama run <model-id>` | Detection. The in-repo example has no weights |
+| Wasm | `*.wasm` | WASI (wasmtime) | Detection |
+| Binary | ELF/PE executable | Any native binary | Detection |
 
 ## Binary format
 
@@ -194,18 +226,45 @@ env_file = ".env"
 
 ## Security
 
-- **Ed25519 signing**: binaries can be signed and verified against trusted keys
-  (keys enforce the Ed25519 bit; strict verification per ZIP-215)
-- **SHA-256 integrity**: footer hash verifies payload tampering at runtime, and every
-  download (stub, upgrade, brew/PyPI/install.sh) is verified against `checksums.txt`
-- **AES-256-GCM encryption**: optional payload encryption with external key (`--encrypt` / `--decrypt-key`)
-- **Namespace isolation**: user/mount namespaces + optional seccomp on Linux; App Sandbox on macOS; process isolation on Windows
-- **Ephemeral `selftest`**: run an untrusted `.de` in a throwaway sandbox first
-- **Delta updates (SISR)**: the stub verifies an embedded Ed25519 signature at cold start
-- **SBOM**: `daedalus inspect --sbom` lists exactly what a `.de` contains
-- **Signed SBOM attestations**: `daedalus attest app.de` writes an in-toto statement
-  whose Ed25519 signature covers *both* the SBOM and the SHA-256 of the whole file.
-  `daedalus attest app.de --verify` re-checks it offline against the local trust store
+Give another machine the public key. Verification on the build machine is not
+that proof: the default dev key is written into that machine's trust store
+during `daedalus build`.
+
+```bash
+daedalus keygen --key-dir ./keys
+daedalus build ./examples/hello-web -o hello-web.de --key ./keys/<id>.key
+# on the other machine, with only the .pub file:
+daedalus trust ./keys/<id>.pub
+daedalus verify hello-web.de
+```
+
+`daedalus verify` with an empty trust directory fails. That is the check you
+want before you hand the file to someone else.
+
+- **Ed25519**: strict verification (`verify_strict`, ZIP-215). Signing is on
+  by default. `--skip-sign` opts out. `--key` selects the key.
+- **SHA-256**: the stub checks the payload hash before extraction. Release
+  downloads (stub, upgrade, Homebrew, PyPI, `install.sh`) are checked against
+  `checksums.txt`. `scripts/install.sh` is the older installer. It now refuses
+  to install when that check cannot run. Prefer the root `install.sh`.
+- **AES-256-GCM**: optional (`--encrypt`). The decryption material is in the
+  file metadata, because the stub has to decrypt. It stops a casual `tar` of
+  the payload. It does not hide the app from whoever can run the file.
+- **Isolation**: on Linux, user and mount namespaces plus `pivot_root` when
+  the kernel allows it. seccomp is a denylist of 18 syscalls (`ptrace`, `bpf`,
+  `userfaultfd`, `mount`, module loading, `reboot`, …). Networking, file I/O,
+  and `exec` stay available unless capabilities say otherwise. This is not an
+  application sandbox. If seccomp cannot be installed, the launcher warns and
+  continues. macOS has an App Sandbox profile path. Windows has process
+  isolation. See [docs/src/security.md](docs/src/security.md).
+- **`selftest`**: runs the file from a temporary directory so you can see it
+  start before you keep it.
+- **SISR**: a delta is applied only when its Ed25519 signature checks.
+- **SBOM**: `daedalus inspect --sbom` lists the recorded contents.
+- **Attestations**: `daedalus attest app.de` signs an in-toto statement
+  over the SBOM and the SHA-256 of the whole file, stub included.
+  `daedalus attest app.de --verify` checks that statement against the
+  local trust store.
 
 ### Attestation threat model
 

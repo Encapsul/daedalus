@@ -1,5 +1,10 @@
 # Comparative Benchmark - daedalus vs Docker / pkg / AppImage / Flatpak
 
+On this single pass, AppImage and pkg beat daedalus on cold start and on-disk
+size. daedalus beats Docker on build time and has a 96 ms warm start. Do not
+read the table as "faster than the alternatives." Methodology:
+[README](README.md).
+
 _Aggregated: 2026-08-07T12:11Z_
 
 > Each row is one (machine, packager) measurement. Full methodology and

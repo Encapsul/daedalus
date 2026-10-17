@@ -23,10 +23,12 @@ daedalus's angle is not "make a single binary" (already solved language by langu
 1. **language-agnostic**: one tool, same UX, regardless of the runtime;
 2. **web/server headless**: a niche that AppImage/Snap/Flatpak don't address;
 3. **smart dependency detection**: detects package managers (pip, npm, pnpm, etc.) and install commands from the app directory - see [Dependency detection](./guides/dependencies.md);
-4. **single-file distribution**: any multi-language stack packaged into one self-extracting binary, with 95% smaller updates via SISR delta compression.
+4. **single-file distribution**: one ELF for the app you built. SISR can send a
+   delta. The only size ratio checked into this repo is a synthetic 200 MiB
+   buffer (89.7% fewer bytes after a 10% perturbation), not a production update.
 
 ## The question to always answer
 
 > *"Why not AppImage / Docker / pkg?"*
 
-One-sentence answer: **AppImage is for desktop, Docker is heavy and needs a daemon, pkg/PyInstaller are mono-language - daedalus is for headless web servers, language-agnostic, in a single self-executing file.**
+One-sentence answer: **AppImage and pkg are faster and smaller on a hello-node (29 ms and 109 ms versus 2.1 s for daedalus, one measured pass). Docker needs a daemon. daedalus is the ELF for a headless app whose runtime you want copied in at build time, with a signature a second machine can check.**

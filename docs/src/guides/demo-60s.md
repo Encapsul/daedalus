@@ -1,68 +1,58 @@
 # The 60-second demo
 
-> **daedalus makes an app consumable in one gesture: `./app.de`. The user sees the artifact, not the packaging. No install, no expertise.**
-
-A live demo, start to finish, in under one minute. The star is an **offline AI agent** (Gemma, air-gapped, no GPU, no cloud) - the hardest thing to deploy in our industry, delivered as one file.
+daedalus makes one Linux ELF you can run. The demo that matches the CI smoke
+is a Python standard-library HTTP server. It does not embed a model.
 
 ## The script
 
 ```bash
-# 1. Install daedalus - one command, ~10 s
+# Install. The script checks sha256 against checksums.txt and stops if it cannot.
 curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/install.sh | sh
 
-# 2. Package the app - ~6 s
-daedalus build ./examples/offline-health-agri -o clinic-agent.de
+# Package the app CI builds on every Linux run
+daedalus build ./examples/hello-web -o hello-web.daedalus
 
-# 3. Run it - it's just the file
-./clinic-agent.de diagnose
+# Run it
+./hello-web.daedalus
 ```
 
-Stop there. On screen (worst case):
+On another terminal:
 
-| Step | Wall clock |
-|------|-----------|
-| `install.sh` | ~8 s |
-| `daedalus build` → 16.9 MB artifact | ~6.2 s |
-| cold first run (`diagnose`) | ~1.5 s |
-| warm run (`crop`) | ~0.15 s |
+```bash
+curl -s http://127.0.0.1:8080
+```
 
-## What just happened (the talk track)
+Stop there. Wall-clock for this example depends on the machine. Do not quote
+the old "6.2 s / 16.9 MB / Gemma" line. That artifact did not contain a model.
 
-- **`clinic-agent.de` is self-extracting.** The stub launcher carries the app,
-  the Python stdlib, and the Gemma model recipe in one executable. The payload
-  is integrity-checked with SHA-256 before anything runs, and the "app" part
-  can be signed with Ed25519 (`daedalus sign`, default-on dev key).
-- **It runs offline.** `diagnose` / `crop` use the standard library only and
-  degrade gracefully when Ollama is absent - exactly the rural-clinic and
-  agricultural-cooperative use case the example targets.
-- **Updates don't reship the file.** `daedalus` content-defined chunking only
-  transmits changed model chunks (measured ~90% bandwidth saved on a model
-  update) - see [SISR](./incremental-updates.md).
-- **It runs on a bare machine.** No Python, no `pip install`, no GPU, no codecs.
+## What the file actually is
 
-## One-liner canned summary
+- A Linux ELF. macOS and Windows need WSL or a Linux VM to run it.
+- The stub checks SHA-256 before it extracts into `~/.cache/daedalus/<hash>/`.
+- The first launch pays for that extract. On one measured hello-node
+  (312 bytes of JavaScript, Node 24, machine `codespaces-ba69ea`): artifact
+  44 MiB, 122.6 MiB on disk after extract, 2.1 s to the first HTTP 200.
+  AppImage on the same pass was 29 ms and 24.4 MiB. pkg was 109 ms. Docker
+  was 6.1 s and needs a daemon. Warm start for daedalus was 96 ms.
+  See [the comparison](../../../benchmarks/comparison/README.md).
+- `daedalus verify hello-web.daedalus` on the build machine succeeds because
+  the default dev key is trusted there. Another machine needs `daedalus trust`
+  of the `.pub` file first.
 
-> "I took an offline AI assistant that normally needs an internet connection,
-> a GPU, and a five-page setup guide, and shipped it as a single 17 MB file
-> you can put on a USB stick. That file also updates itself in ~1/10th of the
-> download size. And trust is built in: it verifies its own payload before
-> starting, and `daedalus verify clinic-agent.de` proves who signed it."
+## The clinic example is a scaffold
+
+`examples/offline-health-agri` is a standard-library script and a `Modelfile`.
+There are no model weights in the tree. `diagnose` prints hardcoded checks,
+then asks Ollama on `localhost:11434` if something is already listening.
+If nothing is, it prints the prompt and exits. It is not a packaged Gemma.
+
+SISR delta size on a real weight pair is an ignored test
+(`gemma_weight_delta_bandwidth`). The 89.7% figure is a synthetic 200 MiB
+file with 10% of its bytes changed.
 
 ## Replay
 
 ```bash
-# swap the app, keep daedalus
-daedalus build ./examples/hello-web -o hello-web.de
-./hello-web.de &        # python stdlib HTTP, no deps
-curl -s http://127.0.0.1:8080 | grep Hello
-
-daedalus inspect clinic-agent.de   # show layers + integrity
-daedalus scan examples/offline-health-agri   # show detected runtime
+daedalus inspect hello-web.daedalus
+daedalus scan examples/hello-web
 ```
-
-## When the room is quiet
-
-The whole point of packaging as a single self-verifying artifact is
-**adoption**: the user executes one file. That is the difference between "let
-me install Python, create a venv, pip install..." and a movie playing for the
-person who just double-clicked it. See [Positioning](../concepts/positioning.md).

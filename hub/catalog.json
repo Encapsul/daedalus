@@ -43,7 +43,7 @@
       "name": "clinic-agent",
       "runtime": "python",
       "template": "application",
-      "description": "Offline AI for rural clinics / agricultural cooperatives. Gemma via local Ollama with a pure-stdlib offline fallback. Flagship demo.",
+      "description": "Python stdlib scaffold plus a Modelfile. No model weights. Prints hardcoded notes, then queries localhost Ollama if one is already running. Not the flagship demo.",
       "source": "examples/offline-health-agri",
       "build": ["daedalus", "build", "./examples/offline-health-agri", "-o", "hub/dist/clinic-agent.de"],
       "run": ["./clinic-agent.de", "diagnose"],

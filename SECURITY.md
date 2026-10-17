@@ -8,14 +8,13 @@
 
 ## Reporting a Vulnerability
 
-**daedalus is currently in Phase 3.** Security is a first-class design
-concern, not an afterthought.
+daedalus is at 0.7.1. Report vulnerabilities in private.
 
 If you discover a vulnerability:
 
 1. **Do not** open a public GitHub issue.
 2. Email the maintainer directly or open a
-   [confidential advisory](https://github.com/tedsig42/daedalus/security/advisories).
+   [confidential advisory](https://github.com/Encapsul/daedalus/security/advisories).
 
 You should receive a response within 48 hours. If you don't, please follow up.
 
@@ -30,8 +29,8 @@ You should receive a response within 48 hours. If you don't, please follow up.
 | Default signing         | ✅         | Auto-generated dev key + self-trust; `--skip-sign` opts out |
 | Strict Ed25519 verify   | ✅         | `verify_strict` (rejects small-order keys/sigs) |
 | User namespaces         | ✅         | `pivot_root` isolation without root          |
-| Seccomp filter          | ✅         | Denylist blocks ~14 dangerous syscalls       |
-| AES-256-GCM encryption  | ✅         | Optional payload encryption (v4 format)      |
+| Seccomp filter          | ✅         | Denylist of 18 syscalls. Not an app sandbox. Warns and continues if it cannot install |
+| AES-256-GCM encryption  | ✅         | Optional. Decryption key is in file metadata so the stub can decrypt |
 
 See [docs/src/security.md](docs/src/security.md) for the full threat model.
 
@@ -52,16 +51,19 @@ Audit checks that passed with no action needed:
 ## Design principle
 
 **Nothing touches disk before integrity is verified.** The launcher reads the
-footer, validates SHA-256, and only then extracts the payload. Signatures are
-verified before SHA-256 - so no data is ever processed from an untrusted
-source. Signing is **on by default**: every `daedalus build` is signed with a
-self-generated, self-trusted dev key, so `daedalus verify foo.de` authenticates
-an artifact out of the box. Pass `--skip-sign` (or `--key <path>` for a
-specific key) to opt out or override.
+footer, validates SHA-256, and only then extracts the payload. When a
+signature block is present, signature verification runs before that hash
+check.
+
+Signing is **on by default** with a dev key created on the build machine and
+added to that machine's trust store. `daedalus verify` there succeeds because
+of that auto-trust. A recipient authenticates the file only after
+`daedalus trust` of the matching `.pub`. Pass `--skip-sign`, or `--key` for a
+specific key.
 
 ## Scope
 
-All code under `daedalus-core/`, `daedalus-cli/`, `stub/`, and the `.daedalus` format
-specification in `docs/src/reference/format.md` is in scope. The example
+All code under `daedalus-core/`, `daedalus-cli/`, `daedalus-stub/`, and the
+format specification in `docs/src/reference/format.md` is in scope. The example
 apps in `examples/` are for demonstration only and not considered
-security-critical. The legacy Python CLI in `cli/` is deprecated.
+security-critical.

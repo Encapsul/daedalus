@@ -8,51 +8,46 @@ Single source of truth for daedalus planning. `docs/ROADMAP.md` points here;
 Cross-platform CI is green: Linux, macOS native (all steps incl. smoke),
 Windows (`windows-check` and `smoke-test-windows`), the four cross-builds
 and cargo-audit all pass. The previously blocking Windows failures were the
-Rust 1.99 lint drift, fixed in `b21fa84`. Product-wise: adoption
-is underway - 60 s demo guide (measured 6.2 s build / 1.5 s run), one-command
-installers (`install.sh`, `install.ps1`, Homebrew formula), `hub/catalog.json`
-(6 verified apps + 7 recipes); runtimes are production-grade on Linux, macOS
-(Java jlink embed) and single-binary (Zig, Dart);
+Rust 1.99 lint drift, fixed in `b21fa84`. The smoke app is
+`examples/hello-web` (Python stdlib). The offline-clinic tree is a scaffold
+with no model weights. Do not add runtimes or commands until that smoke is
+boring and one non-hello app is in CI.
 
 ## Runtimes
 
-### Complete / production-ready
-- Python (Django, FastAPI, Flask, Streamlit)
-- Node.js (Next.js, Express, NestJS, Bun, Fastify, Hono)
-- Java (Spring Boot, Maven, Gradle)
+### Detection is implemented
+
+These runtimes have a detector and a build path in tree. That is not a CI
+end-to-end of the framework named in parentheses. CI smokes Python stdlib
+(`examples/hello-web`) only. Rust has a workspace e2e when cargo can build a
+stub. Java/Gradle e2e skips unless those tools are installed.
+
+- Python (Django, FastAPI, Flask, Streamlit markers — CI smoke is stdlib HTTP)
+- Node.js (Next.js, Express, NestJS, Bun, Fastify, Hono) — example in repo, not CI
+- Java (Spring Boot, Maven, Gradle) — e2e skips without java + Gradle ≥ 7
 - Ruby (Rails, Jekyll, Sinatra)
 - PHP (Laravel, FrankenPHP, RoadRunner, WordPress)
 - Go (static binary, cross-compile)
-- Rust (cargo build, auto-download toolchain; auto-downloads `rustup-init` + installs stable into `~/.cache` when no system cargo/rustup)
+- Rust (cargo build) — workspace e2e
 - .NET/C# (self-contained, cross-RID)
 - Binary (ELF/PE staging)
 - Deno (toolchain download + deno cache)
 - Hugo (binary embed + hugo build step)
 - Wasm (wasmtime embed)
-- Ollama (detection + `ollama serve` entrypoint)
-- Gemma (offline `.gguf` bundling via `--model`, `ollama run <model>`, no cloud/GPU)
-- Zig (build.zig/build.zig.zon detection, `zig build -Doptimize=ReleaseFast -Dtarget`, toolchain auto-download from ziglang manifest, AOT native)
-- Dart (pubspec.yaml detection, `dart compile exe` AOT, toolchain auto-download from dart-archive; host-only - cross AOT refused with clear error)
-- Flutter (pubspec with `sdk: flutter` detection, `flutter build <platform> --release`, desktop bundle; requires the Flutter SDK on PATH)
-- Perl (Mojolicious-specific detection: script/ + lib/ layout, `Mojo::` imports)
-- Electron (cross-OS/arch binary embed, OS-aware `is_cross`, `resources/` embedded beside binary)
-- Lua (main.lua/init.lua detection, host `lua` interpreter embed + shared-lib deps, direct script exec)
+- Ollama (detection + `ollama serve` entrypoint). Weights only if present on disk
+- Gemma (detection from a Gemma `Modelfile` or `models/gemma*.gguf`). The
+  in-repo example ships neither a GGUF nor Ollama
+- Zig (example in repo)
+- Dart (example in repo; host-only AOT)
+- Flutter (requires the Flutter SDK on PATH; no SDK download)
+- Perl (Mojolicious-specific detection)
+- Electron (cross-OS/arch binary embed)
+- Lua (example in repo)
 
-### Missing - planned
+### Frozen
 
-| Runtime | Rationale |
-|---------|-----------|
-| Swift | iOS/macOS apps, trending via SwiftUI |
-| Kotlin | Android/JVM backend, growing |
-| OCaml/Elm | Functional web, niche but real |
-| R | Data science, Shiny apps |
-| Elixir | Phoenix framework, real-time |
-| Crystal | Ruby-like, compiled |
-| Nim | Python-like, compiled |
-| D | Systems programming |
-| V | Trending, simple syntax |
-| MoonBit | New, WASM-targeted |
-| Gleam | Typed BEAM, growing |
+No new runtime until a non-hello app is in the CI smoke. Swift, Kotlin, OCaml,
+Elm, R, Elixir, and the rest of that list are out of scope until then.
 
 ## CLI features
 
@@ -100,22 +95,22 @@ installers (`install.sh`, `install.ps1`, Homebrew formula), `hub/catalog.json`
 | Windows process isolation | Done |
 | Ed25519 bit validation (CVE-2023-48022) | Done |
 | SISR publisher signature | Done |
-| Capability-based sandboxing (seccomp + Landlock) | Done |
+| Capability-based syscall filter (seccomp denylist + optional Landlock) | Done. Denylist of ~18 syscalls, not an app profile |
 | At-rest authenticity (SISR manifest + Ed25519 checked at cold start) | Done |
 
 ## Product & adoption
 
-North star: make any app **consumable in one gesture** (`./app.de`) - no install, no
-expertise. Packaging is the decisive adoption factor (VLC lesson: the user sees the movie,
-not the codecs).
+North star: one Linux ELF a machine without the runtime can execute
+(`./app.daedalus`). The filename alias `.de` is accepted by scan, publish,
+and registry.
 
 | Lever | Action | Status |
 |-------|--------|--------|
-| Demo / time-to-first-value | 60 s homepage demo (Streamlit or Ollama + model): `daedalus build` → an artifact that runs on a bare machine. Key message: "it's just the file." | Done (measured: 6.2 s build / 1.5 s first run for the offline clinic-agent; guide in `docs/src/guides/demo-60s.md`) |
-| Trust (#1) | `--sign` on by default with the dev key, `daedalus verify foo.de` in one gesture, dated "security" page + audit. Signing is the headline feature, not an option (a self-extracting binary smells like malware otherwise). | Default signing done (auto dev key + self-trust, `--skip-sign` to opt out); dated audit 2026-09-09 in SECURITY.md (strict Ed25519 verify); website security page remaining |
-| Niche wedge | Target distribution of agents / AI-apps to non-technical users (Ollama/Gemma use cases). A niche of 1000 frustrated devs > 100k curious. | Not started |
-| Ecosystem / network effect | `daedalus hub` - community catalog of reusable packaged apps (builds on `daedalus registry`). Start with ONE template per popular runtime, not a platform. | Started (`hub/catalog.json`: 6 verified apps + 7 recipes - one per runtime; `hub/build.sh`; guide in `docs/src/guides/hub.md`) |
-| Zero-friction install | `brew` / `cargo install` / `pip` / `curl` install, static signed binary every release. Install < 10 s, no compile flag needed. | `install.sh` (Linux/macOS) + `install.ps1` (Windows) shipped (checksum-verified, no sudo); crates.io live (`cargo install daedalux`, stub auto-downloads on first build); brew tap live (`Encapsul/homebrew-daedalus`, verified end-to-end on macOS amd64); PyPI live (`pip install daedalux`, checksum-verified launcher, verified end-to-end) - all four channels live |
+| Demo / time-to-first-value | 60 s homepage demo: `daedalus build examples/hello-web` → an ELF that serves HTTP. The clinic tree is a scaffold, not the demo. | Done for hello-web. Clinic numbers (6.2 s / 16.9 MB / Gemma) withdrawn |
+| Trust (#1) | `daedalus trust <pubkey>` then `daedalus verify` on a second machine. Default dev-key auto-trust only proves the file to the builder. | Default signing done. Recipient flow documented in the README. Public security page is `docs/src/security.md` |
+| Niche wedge | Agents / local models for non-technical users. | Not started. No weights in the repo. Do not pitch it |
+| Ecosystem / network effect | `hub/catalog.json`: examples that build, plus recipes that do not. | Started. Four-plus in-repo apps build. Recipes are not verified runs |
+| Zero-friction install | `brew` / `cargo install daedalux` / `pip install daedalux` / root `install.sh` (sha256 required, no sudo). | Four channels. `scripts/install.sh` is the older copy and now also refuses a missing checksum |
 | Trap to avoid | No expert-oriented docs or format benchmarks as the lead feature - adoption comes from the first task unlocked. | - |
 
 Execution order: demo (1) → default signing (2) → minimal hub with ~10 packaged apps

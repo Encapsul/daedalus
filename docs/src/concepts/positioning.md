@@ -12,11 +12,11 @@ de manière incrémentale.
 
 | | Docker | PyInstaller/pkg | llamafile | **daedalus** |
 |---|---|---|---|---|
-| Runtime | Container daemon | Mono-language | C++ only | **Multi-runtime** |
-| Delta updates | Layer cache (partial) | None | None | **SISR content-defined** |
-| Sandbox | Namespace | None | None | **seccomp + Landlock** |
-| Portable format | Image OCI | Executable | Single file | **Single .daedalus file** |
-| Self-contained | Needs daemon | Runtime bundled | All-in-one binary | **Stub + rootfs + app** |
+| Runtime | Container daemon | Mono-language | C++ only | Plusieurs runtimes détectés. CI smoke : Python stdlib |
+| Delta updates | Layer cache (partial) | None | None | SISR dans le code. Chiffre public = blob synthétique |
+| Isolation | Namespace | None | None | User namespaces + denylist seccomp (18 syscalls) |
+| Portable format | Image OCI | Executable | Single file | ELF Linux (`.daedalus`, alias `.de`) |
+| Self-contained | Needs daemon | Runtime bundled | All-in-one binary | Stub + rootfs extrait dans `~/.cache` |
 
 ### Qui a ce problème aujourd'hui?
 
@@ -45,9 +45,11 @@ de manière incrémentale.
 llamafile = un binaire C++ qui package un modèle + runtime llama.cpp. C'est fait pour tourner
 un modèle, pas pour packager une application complète avec serveur web + API + runtime.
 
-daedalus = packager **n'importe quel runtime** (Python, Node, Go, Binary) + code + config
-dans un format unifié, avec **delta updates Sisir** (llamafile télécharge le fichier entier à
-chaque mise à jour) et **sandbox seccomp+Landlock** (llamafile n'a pas d'isolation).
+daedalus = packager plusieurs runtimes détectés (Python, Node, Go, binaire) dans un ELF Linux.
+Les mises à jour SISR existent dans le code. Le chiffre « ~90 % » publié plus tôt est une
+mesure synthétique (200 Mio, 10 % d'octets changés), pas une paire de poids réelle.
+L'isolation Linux est un denylist seccomp d'une vingtaine de syscalls plus des user
+namespaces quand le noyau les autorise. Ce n'est pas un profil d'application.
 
 ### Against Docker
 Docker est fait pour l'orchestration, pas pour la distribution locale. Besoin d'un daemon,
@@ -67,10 +69,10 @@ un binaire C++ pour un moteur, et un script Node pour un worker - le tout dans u
 
 | | Cloud API | llamafile | **daedalus** |
 |---|---|---|---|
-| Runtime | Remote API | C++ only | **Multi-runtime** |
-| Model updates | Full redownload | Full redownload | **SISR delta** |
-| Offline capable | No | Yes | **Yes + sandbox** |
-| Data sovereignty | No | Partial | **Full: key never in binary** |
+| Runtime | Remote API | C++ only | Runtimes détectés, artefact ELF Linux |
+| Model updates | Full redownload | Full redownload | SISR si les poids sont dans l'artefact |
+| Offline capable | No | Yes, model in the file | Seulement si le build a embarqué les poids |
+| Data sovereignty | No | Model runs locally | Clé privée Ed25519 hors du fichier. Clé AES optionnelle dedans |
 
 ### The problem with cloud-first AI
 
@@ -92,12 +94,22 @@ But shipping a local AI app is hard:
 - The binary must be signed and verified for security
 - Multiple runtimes (Python backend, Node frontend, Ollama model) must work together
 
-daedalus solves this:
-- **Multi-runtime**: Python, Node.js, Go, Rust, and more in one `.de`
-- **Ollama integration**: package Ollama + any GGUF model (Gemma, Llama, Mistral) with your app
-- **SISR delta updates**: update the model over 960kbps links, LoRa, or intermittent 4G
-- **Security**: Ed25519 signing, AES-256-GCM encryption, key never in binary
-- **Sandbox**: Landlock + seccomp + user namespaces for kernel-level isolation
+Shipping a local model is still the open wedge. The in-repo clinic example does
+not do it: `examples/offline-health-agri` has a `Modelfile` and no weights.
+`diagnose` prints hardcoded text, then calls Ollama on localhost if one is
+already running. A `.daedalus` contains a GGUF only when that file was in the
+project at build time.
+
+What the tool can do once the weights are actually in the tree:
+
+- Detect Ollama or Gemma layouts (`Modelfile`, `models/*.gguf`)
+- Carry those bytes in the payload, same as any other file
+- Apply a signed SISR delta later. Measure it with
+  `DAEDALUS_SISR_MODEL_V1` / `DAEDALUS_SISR_MODEL_V2` and the ignored test
+  `gemma_weight_delta_bandwidth`. Do not quote the synthetic 89.7% figure as
+  a model result
+
+The ITU and edge-AI market figures above are not daedalus usage.
 
 ### Sources
 
@@ -130,11 +142,12 @@ et lit les versions anciennes. Nous ne forkons jamais le format.
 
 ## The most promising use case
 
-Distributing **multi-runtime web applications** : packager un serveur FastAPI (Python) +
-un bundler Node (frontend) + un binaire Go (worker), dans un seul fichier qui démarre
-avec `./app.daedalus` et qui se met à jour via Sisir delta updates (15MB au lieu de 80MB).
+Distribuer une appli dont le runtime n'est pas sur la machine cible, comme un
+ELF Linux. Le cas multi-runtime (FastAPI + Node + un binaire Go dans un seul
+fichier) est le différenciateur vis-à-vis de pkg et PyInstaller. Il n'a pas
+encore de smoke CI. Le seul smoke CI est `examples/hello-web`.
 
-Aujourd'hui ce cas a pas de solution clean :
-- Docker : trop lourd, daemon requis, pas fait pour laptop
-- AppImage : pas fait pour serveur headless
-- PyInstaller/pkg : mono-language, ne gère pas multi-runtime
+Le delta « 15 Mo au lieu de 80 Mo » n'est pas une mesure de ce dépôt. La seule
+mesure SISR publiée ici est synthétique (200 Mio, 10 % d'octets changés,
+89,7 %). Docker reste plus simple dès qu'il y a plusieurs processus à
+orchestrer. AppImage et pkg gagnent le cold start sur un hello-node.

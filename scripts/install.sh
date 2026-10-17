@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# install.sh - install or upgrade daedalus
+# Older installer. Prefer the repository-root install.sh, which installs to
+# ~/.local/bin without sudo. This copy refuses to install unless checksums.txt
+# is present and matches the archive.
 # Usage: curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/scripts/install.sh | bash
 set -euo pipefail
 
@@ -38,16 +40,14 @@ verify_checksum() {
   local file="$1" checksum_file="$2"
 
   if [ ! -f "$checksum_file" ]; then
-    warn "no checksum file found, skipping verification"
-    return 0
+    err "checksums.txt missing - refusing to install an unverified archive"
   fi
 
   local expected got
   expected="$(grep "$(basename "$file")" "$checksum_file" 2>/dev/null | awk '{print $1}')"
 
   if [ -z "$expected" ]; then
-    warn "checksum for $(basename "$file") not found in checksums.txt, skipping"
-    return 0
+    err "checksum for $(basename "$file") not found in checksums.txt"
   fi
 
   if command -v sha256sum &>/dev/null; then
@@ -55,8 +55,7 @@ verify_checksum() {
   elif command -v shasum &>/dev/null; then
     got="$(shasum -a 256 "$file" | awk '{print $1}')"
   else
-    warn "no sha256sum or shasum found, skipping verification"
-    return 0
+    err "sha256sum or shasum is required to verify the download"
   fi
 
   if [ "$expected" != "$got" ]; then
@@ -130,9 +129,11 @@ main() {
   # Download checksums.txt
   local checksum_url="${GITHUB}/releases/download/${tag}/checksums.txt"
   if command -v curl &>/dev/null; then
-    curl -fsSL "$checksum_url" -o "${tmpdir}/checksums.txt" 2>/dev/null || true
+    curl -fsSL "$checksum_url" -o "${tmpdir}/checksums.txt" \
+      || err "failed to download checksums.txt"
   else
-    wget -q "$checksum_url" -O "${tmpdir}/checksums.txt" 2>/dev/null || true
+    wget -q "$checksum_url" -O "${tmpdir}/checksums.txt" \
+      || err "failed to download checksums.txt"
   fi
 
   # Verify checksum

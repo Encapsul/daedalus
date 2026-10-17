@@ -8,15 +8,19 @@ Status: SHA-256 integrity, atomic extraction, Ed25519 signatures (strict verific
 
 **Attack:** Anyone can produce a `.daedalus`, and the user cannot verify its origin or whether it was modified.
 
-**Defense:** Every `.daedalus` is signed **by default**. A self-generated, self-trusted dev key signs each build (see `daedalus build --skip-sign` to opt out, `--key` to override), and the launcher verifies the signature before extracting anything. Invalid signatures result in execution refusal.
+**Defense:** Every build is signed by default with a dev key that this machine
+also trusts (`--skip-sign` opts out, `--key` picks another key). The launcher
+checks that signature before extraction when a signature block is present.
+`daedalus verify` on the build machine succeeds because the dev key is already
+in `~/.daedalus/trusted-keys/`. That does not tell a second machine who signed
+the file. Copy the `.pub` and run `daedalus trust` there first.
 
 ```bash
-# Build (signed by default with the auto-generated, self-trusted dev key)
-$ daedalus build my_app/ -o my_app.daedalus
-
-# Verify before running
+$ daedalus keygen --key-dir ./keys
+$ daedalus build my_app/ -o my_app.daedalus --key ./keys/<fingerprint>.key
+# other machine:
+$ daedalus trust ./keys/<fingerprint>.pub
 $ daedalus verify my_app.daedalus
-[daedalus] OK: signature verified
 ```
 
 **Why Ed25519 over RSA:**
@@ -161,12 +165,17 @@ See [Isolation](./reference/isolation.md) for the full comparison.
 
 **Attack:** Even inside user namespaces + pivot_root, an attacker could use dangerous syscalls to escalate: load kernel modules (`init_module`), remount filesystems (`mount`), reboot the host (`reboot`), or trace other processes (`ptrace`).
 
-**Defense:** A seccomp-bpf denylist is installed after pivot_root. It blocks ~14 syscalls that have no legitimate use in a packaged web/server app. All other syscalls (networking, file I/O, memory, process creation) are allowed.
+**Defense:** A seccomp-bpf denylist is installed after pivot_root. It always
+blocks 18 syscalls (17 everywhere, plus `kexec_file_load` on x86_64). Network
+and exec families are added only when the artifact did not declare those
+capabilities. Everything else, including ordinary file I/O, stays allowed.
+This is not an application sandbox.
 
 ```
-Blocked: ptrace, mount, umount2, pivot_root, reboot, kexec_load,
-         kexec_file_load, init_module, finit_module, delete_module,
-         swapon, swapoff, sethostname, setdomainname, acct, nfsservctl
+Always blocked: ptrace, bpf, userfaultfd, mount, umount2, pivot_root, reboot,
+         kexec_load, kexec_file_load (x86_64), init_module, finit_module,
+         delete_module, swapon, swapoff, sethostname, setdomainname, acct,
+         nfsservctl
 ```
 
 **Why denylist, not allowlist:** Python and Node.js use ~150+ distinct syscalls. Maintaining an allowlist that covers every runtime version and platform would break apps unpredictably. A denylist of the clearly dangerous syscalls is sufficient - namespace isolation handles the rest.

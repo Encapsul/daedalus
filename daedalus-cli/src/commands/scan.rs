@@ -214,16 +214,14 @@ fn find_daedalus_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-/// is_daedalus_file - check whether a file is a valid .daedalus binary.
-/// @path: file or directory path
+/// True when the filename is `.daedalus` or `.de` and the file is larger than a footer.
 ///
-/// Description:
-/// True when the extension is "daedalus" and the file is larger than the footer size.
-///
-/// Return: true or false
+/// The extension is only a scan hint. `inspect` still rejects bytes that are
+/// not a daedalus footer.
 fn is_daedalus_file(path: &Path) -> bool {
-    path.extension().map_or(false, |ext| ext == "daedalus")
-        && std::fs::metadata(path).map_or(false, |m| m.len() > 84)
+    let ext = path.extension().and_then(|ext| ext.to_str());
+    matches!(ext, Some("daedalus" | "de"))
+        && std::fs::metadata(path).is_ok_and(|meta| meta.len() > 84)
 }
 
 /// inspect_file - read metadata from a .daedalus file.
@@ -369,4 +367,26 @@ fn write_json_output(json_str: &str, output: Option<&Path>) -> Result<()> {
         println!("{json_str}");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_daedalus_file;
+
+    #[test]
+    fn scan_accepts_both_artifact_extensions() {
+        let dir = std::env::temp_dir().join(format!("daedalus-scan-ext-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let daedalus = dir.join("app.daedalus");
+        let de = dir.join("app.de");
+        let text = dir.join("notes.txt");
+        let bytes = vec![0u8; 85];
+        std::fs::write(&daedalus, &bytes).unwrap();
+        std::fs::write(&de, &bytes).unwrap();
+        std::fs::write(&text, &bytes).unwrap();
+        assert!(is_daedalus_file(&daedalus));
+        assert!(is_daedalus_file(&de));
+        assert!(!is_daedalus_file(&text));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

@@ -56,8 +56,8 @@ through `release.yml`/the registry, not committed).
 - **hello-web** - Python stdlib HTTP, zero deps.
 - **hello-node** - Node stdlib HTTP.
 - **bottle-web** - Python Bottle with vendored `site-packages` (no pip/network).
-- **clinic-agent** - offline Gemma AI for rural clinics (see
-  [The 60-second demo](./demo-60s.md)).
+- **clinic-agent** — Python stdlib scaffold and a `Modelfile`. No model weights.
+  Not the 60-second demo. See [demo-60s](./demo-60s.md) for `hello-web`.
 
 Recipe-only rows cover Express, FastAPI, Spring Boot, Rails, Laravel and Go
 (Gin) with the exact layout + build command to reproduce one file per
