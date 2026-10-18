@@ -520,7 +520,9 @@ fn extract_node_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Pat
         let mut entry = archive
             .by_index(i)
             .with_context(|| format!("failed to read zip entry {i}"))?;
-        let name = std::path::Path::new(entry.name());
+        // zip 9+: `name()` validates encoding and returns Result.
+        let name_cow = entry.name().context("invalid zip entry name")?;
+        let name = std::path::Path::new(name_cow.as_ref());
         // Zip-slip guard: reject absolute paths and any traversal component.
         if name.is_absolute()
             || name.components().any(|c| {
@@ -1031,7 +1033,9 @@ fn extract_go_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Path)
         let mut entry = archive
             .by_index(i)
             .with_context(|| format!("failed to read zip entry {i}"))?;
-        let name = std::path::Path::new(entry.name());
+        // zip 9+: `name()` validates encoding and returns Result.
+        let name_cow = entry.name().context("invalid zip entry name")?;
+        let name = std::path::Path::new(name_cow.as_ref());
         if name.is_absolute()
             || name.components().any(|c| {
                 matches!(
@@ -1201,7 +1205,9 @@ fn extract_deno_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Pat
         let mut entry = archive
             .by_index(i)
             .with_context(|| format!("failed to read zip entry {i}"))?;
-        let name = std::path::Path::new(entry.name());
+        // zip 9+: `name()` validates encoding and returns Result.
+        let name_cow = entry.name().context("invalid zip entry name")?;
+        let name = std::path::Path::new(name_cow.as_ref());
         if name.is_absolute()
             || name.components().any(|c| {
                 matches!(
@@ -1923,7 +1929,9 @@ fn extract_electron_zip<R: std::io::Read + std::io::Seek>(
         let mut entry = archive
             .by_index(i)
             .with_context(|| format!("failed to read zip entry {i}"))?;
-        let name = std::path::Path::new(entry.name());
+        // zip 9+: `name()` validates encoding and returns Result.
+        let name_cow = entry.name().context("invalid zip entry name")?;
+        let name = std::path::Path::new(name_cow.as_ref());
         if name.is_absolute()
             || name.components().any(|c| {
                 matches!(
@@ -2135,7 +2143,9 @@ fn extract_zig_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Path
     let mut archive = zip::ZipArchive::new(reader).context("failed to read Zig zip")?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).context("failed to read zip entry")?;
-        let name = std::path::Path::new(entry.name());
+        // zip 9+: `name()` validates encoding and returns Result.
+        let name_cow = entry.name().context("invalid zip entry name")?;
+        let name = std::path::Path::new(name_cow.as_ref());
         if name.is_absolute()
             || name
                 .components()
@@ -2307,7 +2317,9 @@ fn extract_dart_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Pat
     let mut archive = zip::ZipArchive::new(reader).context("failed to read Dart zip")?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).context("failed to read zip entry")?;
-        let name = std::path::Path::new(entry.name());
+        // zip 9+: `name()` validates encoding and returns Result.
+        let name_cow = entry.name().context("invalid zip entry name")?;
+        let name = std::path::Path::new(name_cow.as_ref());
         if name.is_absolute()
             || name
                 .components()

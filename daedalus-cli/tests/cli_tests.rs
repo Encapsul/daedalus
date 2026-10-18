@@ -14,7 +14,7 @@ fn test_help_output() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("daedalus compiles"));
+        .stdout(predicate::str::contains("daedalus packages"));
 }
 
 #[test]
