@@ -9,6 +9,7 @@ daedalus build ./examples/field-kit -o field-kit.de
 ./field-kit.de domains
 ./field-kit.de handoff
 ./field-kit.de inventory
+./field-kit.de update    # SISR / air-gap card
 ```
 
 See [Adjacent uses](../../docs/src/concepts/adjacent-uses.md).

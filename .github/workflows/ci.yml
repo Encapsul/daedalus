@@ -95,6 +95,7 @@ jobs:
           /tmp/field-kit.de domains | grep -q usb-courier
           /tmp/field-kit.de handoff | grep -q "daedalus verify"
           /tmp/field-kit.de inventory | grep -q "FIELD KIT: INVENTORY"
+          /tmp/field-kit.de update | grep -q SISR
 
       - name: Shell chaos monkey (field-kit + bottle-web)
         timeout-minutes: 10

@@ -154,6 +154,7 @@ fn field_kit_adjacent_modes_run_offline() {
         ("inventory", &["FIELD KIT: INVENTORY", "stdlib only"][..]),
         ("classroom", &["CLASSROOM"][..]),
         ("incident", &["INCIDENT", "private key OFF the USB"][..]),
+        ("update", &["SISR", "apply chunks offline"][..]),
     ] {
         let run = Command::new(&out)
             .arg(mode)

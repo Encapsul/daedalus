@@ -29,6 +29,6 @@ contain.
 ## Demo in-repo
 
 `examples/field-kit` is a stdlib CLI with modes `handoff`, `inventory`,
-`classroom`, `incident`, and `domains`. CI and the chaos suite assert on
-those modes. For a vendored third-party dependency path, use
-`examples/bottle-web`.
+`classroom`, `incident`, `update` (SISR / air-gap card), and `domains`.
+CI and the chaos suite assert on those modes. For a vendored third-party
+dependency path, use `examples/bottle-web`.

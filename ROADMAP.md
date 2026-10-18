@@ -48,8 +48,9 @@ Java/Gradle e2e skips unless those tools are installed.
 
 ### Frozen
 
-No new runtime until a non-hello app is in the CI smoke. Swift, Kotlin, OCaml,
-Elm, R, Elixir, and the rest of that list are out of scope until then.
+Linux CI now smokes `hello-web`, `bottle-web` (vendored deps), and `field-kit`
+(adjacent modes). Still no new runtime until those stay green for a full week.
+Swift, Kotlin, OCaml, Elm, R, Elixir remain out of scope.
 
 ## CLI features
 

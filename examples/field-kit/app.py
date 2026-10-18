@@ -9,6 +9,7 @@ Modes:
   inventory   Offline asset / SBOM-style inventory of the process environment
   classroom   Lab machine bootstrap card (one file per student machine)
   incident    Air-gapped incident-response helper card
+  update      Air-gap SISR / delta update card (chunks on removable media)
   domains     List the adjacent domains this kit is meant to illustrate
 """
 
@@ -77,6 +78,20 @@ def incident() -> int:
     return 0
 
 
+def update() -> int:
+    """Air-gap delta path: SISR chunks ride the USB, not a registry pull."""
+    print("=== FIELD KIT: UPDATE (SISR / air-gap) ===")
+    print("1. Publisher: daedalus build . -o kit.de --key ./keys/<id>.key")
+    print("2. Publisher: produce SISR chunks against the previous kit.de")
+    print("3. Put chunks + kit.pub on the USB (private key stays offline)")
+    print("4. Recipient: daedalus trust kit.pub && daedalus verify kit.de")
+    print("5. Recipient: apply chunks offline; refuse unsigned / foreign keys")
+    print("Note: synthetic SISR fixtures in CI are not a substitute for a")
+    print("real chunk chain against a prior production artifact.")
+    print(f"generated_at={_now()}")
+    return 0
+
+
 def domains() -> int:
     print("=== FIELD KIT: ADJACENT DOMAINS ===")
     for line in (
@@ -97,19 +112,22 @@ MODES = {
     "inventory": inventory,
     "classroom": classroom,
     "incident": incident,
+    "update": update,
     "domains": domains,
 }
+
+_USAGE = "usage: field-kit <handoff|inventory|classroom|incident|update|domains>"
 
 
 def main(argv: list[str]) -> int:
     if len(argv) < 2 or argv[1] in {"-h", "--help", "help"}:
-        print("usage: field-kit <handoff|inventory|classroom|incident|domains>")
+        print(_USAGE)
         return 2
     mode = argv[1]
     fn = MODES.get(mode)
     if fn is None:
         print(f"unknown mode: {mode}", file=sys.stderr)
-        print("usage: field-kit <handoff|inventory|classroom|incident|domains>")
+        print(_USAGE)
         return 2
     return fn()
 
