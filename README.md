@@ -80,9 +80,9 @@ framework listed in the third column has a passing end-to-end test in CI.
 
 Evidence, as of this tree:
 
-- **CI smoke** (build, run, HTTP 200): Python standard library, `examples/hello-web`, on the Linux workflow. The macOS and Windows workflows build the same example.
-- **Workspace e2e, when the toolchain exists**: Rust (`daedalus-cli/tests/rust_build.rs`, cargo is on the CI image). Java/Gradle (`java_build.rs`) skips unless `java` and Gradle ≥ 7 are installed. CI does not install them.
-- **Source in `examples/`, not the CI smoke**: `hello-node`, `bottle-web`, `bottle-web-pip`, `hello-zig`, `hello-dart`, `hello-lua`.
+- **CI smoke** (Linux): `examples/hello-web` (stdlib HTTP), `examples/bottle-web` (vendored `site-packages`, HTTP), `examples/field-kit` (adjacent-domain modes on stdout). macOS/Windows smoke `hello-web`.
+- **Workspace e2e, when the toolchain exists**: Rust (`daedalus-cli/tests/rust_build.rs`, cargo is on the CI image). Java/Gradle (`java_build.rs`) skips unless `java` and Gradle ≥ 7 are installed. CI does not install them. Trust/courier chaos lives in `daedalus-cli/tests/chaos_trust.rs`.
+- **Source in `examples/`, not the CI smoke**: `hello-node`, `bottle-web-pip`, `hello-zig`, `hello-dart`, `hello-lua`.
 - **Scaffold**: `examples/offline-health-agri` is a standard-library script plus a `Modelfile`. It does not contain model weights. If Ollama is already running it queries `localhost:11434`. Otherwise it prints the prompt it would have sent.
 
 | Runtime | Detection | What the code looks for | Evidence |

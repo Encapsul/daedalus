@@ -10,17 +10,19 @@ Windows (`windows-check` and `smoke-test-windows`), the four cross-builds
 and cargo-audit all pass. The previously blocking Windows failures were the
 Rust 1.99 lint drift, fixed in `b21fa84`. The smoke app is
 `examples/hello-web` (Python stdlib). The offline-clinic tree is a scaffold
-with no model weights. Do not add runtimes or commands until that smoke is
-boring and one non-hello app is in CI.
+with no model weights. Linux CI now also smokes `examples/bottle-web` (vendored deps) and
+`examples/field-kit` (adjacent-domain modes). Do not add runtimes or
+commands until those smokes stay boring.
 
 ## Runtimes
 
 ### Detection is implemented
 
 These runtimes have a detector and a build path in tree. That is not a CI
-end-to-end of the framework named in parentheses. CI smokes Python stdlib
-(`examples/hello-web`) only. Rust has a workspace e2e when cargo can build a
-stub. Java/Gradle e2e skips unless those tools are installed.
+end-to-end of the framework named in parentheses. Linux CI smokes Python
+stdlib (`hello-web`), vendored deps (`bottle-web`), and adjacent modes
+(`field-kit`). Rust has a workspace e2e when cargo can build a stub.
+Java/Gradle e2e skips unless those tools are installed.
 
 - Python (Django, FastAPI, Flask, Streamlit markers — CI smoke is stdlib HTTP)
 - Node.js (Next.js, Express, NestJS, Bun, Fastify, Hono) — example in repo, not CI

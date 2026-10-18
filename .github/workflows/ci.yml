@@ -70,6 +70,32 @@ jobs:
           curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "smoke test passed" || { echo "smoke test failed"; kill $PID; exit 1; }
           kill $PID || true
 
+      - name: Smoke vendored deps (bottle-web)
+        timeout-minutes: 10
+        run: |
+          /tmp/daedalus-stub-target/release/daedalus build examples/bottle-web --isolation none -o /tmp/bottle-web.de
+          PORT=8081 /tmp/bottle-web.de &
+          PID=$!
+          sleep 8
+          curl -sf http://127.0.0.1:8081 | grep -qi "bottle" && echo "bottle smoke passed" || { echo "bottle smoke failed"; kill $PID; exit 1; }
+          kill $PID || true
+
+      - name: Smoke field-kit adjacent modes
+        timeout-minutes: 10
+        run: |
+          /tmp/daedalus-stub-target/release/daedalus build examples/field-kit --isolation none -o /tmp/field-kit.de
+          /tmp/field-kit.de domains | grep -q usb-courier
+          /tmp/field-kit.de handoff | grep -q "daedalus verify"
+          /tmp/field-kit.de inventory | grep -q "FIELD KIT: INVENTORY"
+
+      - name: Shell chaos monkey (field-kit + bottle-web)
+        timeout-minutes: 10
+        run: |
+          export PATH="/tmp/daedalus-stub-target/release:$PATH"
+          chmod +x tests/chaos-monkey.sh
+          tests/chaos-monkey.sh /tmp/field-kit.de
+          tests/chaos-monkey.sh /tmp/bottle-web.de
+
   windows-check:
     # Forward-looking guard: compiled+lint+test the embed/deps crates for the
     # Windows target. Without this, unix-only helpers (e.g. the ELF loader

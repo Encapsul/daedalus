@@ -204,6 +204,113 @@ fn quiet_suppresses_output_on_success() {
 }
 
 #[test]
+fn chaos_trust_help_mentions_pubkey() {
+    daedalus()
+        .args(["trust", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("public").or(predicate::str::contains("pubkey")));
+}
+
+#[test]
+fn chaos_verify_help_mentions_trusted() {
+    daedalus()
+        .args(["verify", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("trusted"));
+}
+
+#[test]
+fn chaos_scan_empty_dir_fails_cleanly() {
+    let td = TempDir::new().unwrap();
+    daedalus()
+        .arg("scan")
+        .arg(td.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("No .daedalus").or(predicate::str::contains("Error")));
+}
+
+#[test]
+fn chaos_trust_rejects_wrong_key_length() {
+    let td = TempDir::new().unwrap();
+    let bad = td.path().join("bad.pub");
+    fs::write(&bad, [0u8; 16]).unwrap();
+    let trust_dir = td.path().join("trusted");
+    daedalus()
+        .args([
+            "trust",
+            bad.to_str().unwrap(),
+            "--trusted-dir",
+            trust_dir.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("32 bytes"));
+}
+
+#[test]
+fn chaos_trust_dry_run_does_not_write() {
+    let td = TempDir::new().unwrap();
+    let good = td.path().join("good.pub");
+    fs::write(&good, [0x41u8; 32]).unwrap();
+    let trust_dir = td.path().join("trusted");
+    fs::create_dir_all(&trust_dir).unwrap();
+    daedalus()
+        .args([
+            "trust",
+            good.to_str().unwrap(),
+            "--trusted-dir",
+            trust_dir.to_str().unwrap(),
+            "--dry-run",
+        ])
+        .assert()
+        .success();
+    assert!(
+        fs::read_dir(&trust_dir).unwrap().next().is_none(),
+        "dry-run must not materialize a .pub in the trust dir"
+    );
+}
+
+#[test]
+fn chaos_verify_unsigned_assembled_file_reports_not_signed() {
+    use daedalus_core::assembly::{assemble_daedalus, AssemblyInput};
+
+    let td = TempDir::new().unwrap();
+    let meta = serde_json::json!({
+        "name": "unsigned-chaos",
+        "runtime": "binary",
+        "entrypoint": ["/app/app"],
+    });
+    let meta_bytes = serde_json::to_vec(&meta).unwrap();
+    let payload = daedalus_core::compress::compress(b"layer").unwrap();
+    let out = td.path().join("unsigned.de");
+    assemble_daedalus(
+        &out,
+        &AssemblyInput {
+            stub_bytes: b"FAKE-STUB",
+            payload: &payload,
+            meta_bytes: &meta_bytes,
+            squashfs: false,
+            target_arch: None,
+            sisr: None,
+            encryption: None,
+        },
+    )
+    .unwrap();
+
+    let empty_trust = td.path().join("empty");
+    fs::create_dir_all(&empty_trust).unwrap();
+    daedalus()
+        .args(["verify", out.to_str().unwrap()])
+        .env("DAEDALUS_TRUSTED_DIR", &empty_trust)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("not signed"));
+}
+
+#[test]
 fn no_color_disables_ansi_codes() {
     let td = TempDir::new().unwrap();
     let file = td.path().join("app.de");

@@ -6,6 +6,7 @@
 
 - [The Problem](./concepts/problem.md)
 - [Positioning](./concepts/positioning.md)
+- [Adjacent uses](./concepts/adjacent-uses.md)
 - [Architecture](./concepts/architecture.md)
 - [SISR Overview](./concepts/sisr-overview.md)
 - [Rollback & Resilience](./concepts/rollback-and-resilience.md)

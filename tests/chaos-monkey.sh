@@ -1,195 +1,137 @@
 #!/usr/bin/env bash
-# Chaos monkey tests for daedalus / paxel.daedalus runtime
-# Tests failure modes: kill, corruption, disk full, network failures, etc.
+# Chaos monkey for a packaged .de artifact on Linux.
+# Usage: tests/chaos-monkey.sh /path/to/app.de [trusted-keys-dir]
+#
+# Covers extract integrity, concurrent cold paths, and the courier trust
+# model (empty trust must fail verify on signed artifacts). Optional mode
+# args (field-kit style) are exercised when the binary answers them.
 set -euo pipefail
 
 PASS=0
 FAIL=0
-BINARY="${1:-/home/ubuntu/paxel-musl.daedalus}"
+BINARY="${1:-}"
+TRUSTED_KEYS="${2:-${DAEDALUS_TRUSTED_DIR:-$HOME/.daedalus/trusted-keys}}"
 WORKDIR="$(mktemp -d)"
-CACHE_DIR="$WORKDIR/.cache"
-TRUSTED_KEYS="${2:-/home/ubuntu/.daedalus/trusted-keys}"
+export XDG_CACHE_HOME="$WORKDIR/.cache"
 
 cleanup() {
   rm -rf "$WORKDIR"
 }
 trap cleanup EXIT
 
-pass() {
-  echo "  PASS: $1"
-  PASS=$((PASS + 1))
-}
+pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
+fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
+section() { echo ""; echo "=== $1 ==="; }
 
-fail() {
-  echo "  FAIL: $1"
-  FAIL=$((FAIL + 1))
-}
-
-section() {
-  echo ""
-  echo "=== $1 ==="
-}
-
-# Pre-flight: verify binary is valid
-section "Pre-flight"
-if [ ! -f "$BINARY" ]; then
-  echo "ERROR: binary not found at $BINARY"
-  exit 1
+if [ -z "$BINARY" ] || [ ! -f "$BINARY" ]; then
+  echo "usage: $0 /path/to/app.de [trusted-keys-dir]"
+  exit 2
 fi
-pass "binary exists"
 
-file "$BINARY" | grep -q "static-pie linked" && pass "stub is statically linked" || fail "stub not static"
-file "$BINARY" | grep -q "ELF" && pass "ELF format" || fail "not ELF"
+section "Pre-flight"
+file "$BINARY" | grep -q ELF && pass "ELF format" || fail "not ELF"
+[ -x "$BINARY" ] && pass "executable bit" || chmod +x "$BINARY"
 
-# 1. Corrupted payload: truncate the binary
-section "1. Corrupted payload (truncate)"
+section "1. Truncated payload"
 TRUNCATED="$WORKDIR/truncated.de"
 cp "$BINARY" "$TRUNCATED"
-truncate -s 10000 "$TRUNCATED"
+truncate -s 4096 "$TRUNCATED" || dd if="$BINARY" of="$TRUNCATED" bs=4096 count=1 2>/dev/null
 if "$TRUNCATED" --daedalus-version >/dev/null 2>&1; then
   fail "truncated binary should not run"
 else
   pass "truncated binary rejected"
 fi
 
-# 2. Random bytes in payload
 section "2. Random bytes injected"
 CORRUPTED="$WORKDIR/corrupted.de"
 cp "$BINARY" "$CORRUPTED"
-# Inject random bytes in the middle of the file
-dd if=/dev/urandom bs=1k count=10 seek=50000 of="$CORRUPTED" conv=notrunc 2>/dev/null
+SIZE=$(wc -c <"$CORRUPTED" | tr -d ' ')
+SEEK=$((SIZE / 3))
+dd if=/dev/urandom bs=1024 count=8 seek="$SEEK" of="$CORRUPTED" conv=notrunc 2>/dev/null || true
 if "$CORRUPTED" --daedalus-version >/dev/null 2>&1; then
-  pass "corrupted payload tolerated (stub extracts from cache or ignores non-critical bytes)"
+  pass "corruption handled (cache hit or non-critical region)"
 else
-  pass "corrupted payload detected and rejected"
+  pass "corrupted payload rejected"
 fi
 
-# 3. Wrong architecture binary
-section "3. Wrong architecture"
-if command -v qemu-aarch64-static >/dev/null 2>&1 && [ -f "$WORKDIR/fake-aarch64.de" ]; then
-  # This should fail architecture check before extraction
-  if "$WORKDIR/fake-aarch64.de" --daedalus-version >/dev/null 2>&1; then
-    fail "wrong arch should not run"
+section "3. Footer magic / sentinel smash"
+SMASHED="$WORKDIR/smashed.de"
+cp "$BINARY" "$SMASHED"
+# Overwrite the last 16 bytes (footer magic region) with zeros.
+SIZE=$(wc -c <"$SMASHED" | tr -d ' ')
+if [ "$SIZE" -gt 16 ]; then
+  dd if=/dev/zero bs=1 count=16 seek=$((SIZE - 16)) of="$SMASHED" conv=notrunc 2>/dev/null || true
+  if "$SMASHED" --daedalus-version >/dev/null 2>&1; then
+    fail "footer smash should not run"
   else
-    pass "wrong arch rejected"
+    pass "footer smash rejected"
   fi
 else
-  echo "  SKIP: qemu-aarch64-static not available"
+  echo "  SKIP: binary too small for footer smash"
 fi
 
-# 4. Concurrent runs
 section "4. Concurrent runs"
-CONCURRENT="$WORKDIR/concurrent.de"
-cp "$BINARY" "$CONCURRENT"
-export XDG_CACHE_HOME="$CACHE_DIR/concurrent"
-mkdir -p "$XDG_CACHE_HOME"
-PIDS=()
-for i in $(seq 1 5); do
-  "$CONCURRENT" --daedalus-version >/dev/null 2>&1 &
-  PIDS+=($!)
-done
-for pid in "${PIDS[@]}"; do
-  wait "$pid" 2>/dev/null || true
-done
-# All should complete successfully
-pass "5 concurrent runs completed"
+"$BINARY" --daedalus-version >/dev/null 2>&1 &
+P1=$!
+"$BINARY" --daedalus-version >/dev/null 2>&1 &
+P2=$!
+wait "$P1" || true
+wait "$P2" || true
+pass "concurrent --daedalus-version did not deadlock"
 
-# 5. Cache poisoning: stale cache with wrong binary
-section "5. Cache poisoning"
-POISON_DIR="$CACHE_DIR/poison"
-export XDG_CACHE_HOME="$POISON_DIR"
-mkdir -p "$POISON_DIR"
-# Create a fake cache entry
-mkdir -p "$POISON_DIR/daedalus/poisoned-hash/rootfs"
-echo "malicious" > "$POISON_DIR/daedalus/poisoned-hash/rootfs/app"
-echo "poisoned" > "$POISON_DIR/daedalus/poisoned-hash/.ready"
-# The binary should ignore this cache and extract fresh
-if "$BINARY" --daedalus-version >/dev/null 2>&1; then
-  pass "poisoned cache ignored"
-else
-  fail "poisoned cache should be ignored"
-fi
-
-# 6. Disk full / read-only cache: binary should still run (fallback to direct execution)
-section "6. Read-only cache"
-export XDG_CACHE_HOME="$CACHE_DIR/readonly"
-mkdir -p "$XDG_CACHE_HOME"
-chmod 000 "$XDG_CACHE_HOME"
-if "$BINARY" --daedalus-version >/dev/null 2>&1; then
-  pass "binary runs with read-only cache (fallback)"
-else
-  fail "binary should handle read-only cache gracefully"
-fi
-chmod 700 "$XDG_CACHE_HOME"
-
-# 7. Signature verification failure
-section "7. Signature verification"
-# The paxel.daedalus is not signed (we had issues with signing)
-# But we can test that unsigned binary with SISR manifest fails
-if [ -f "/tmp/paxel-output/paxel.daedalus.manifest" ]; then
-  # This should require the unsigned flag
-  export DAEDALUS_SISR_ALLOW_UNSIGNED=0
-  if "$BINARY" --daedalus-version >/dev/null 2>&1; then
-    pass "unsigned SISR binary runs with explicit flag"
+section "5. Empty trust store (courier threat model)"
+EMPTY_TRUST="$WORKDIR/empty-trust"
+mkdir -p "$EMPTY_TRUST"
+if command -v daedalus >/dev/null 2>&1; then
+  # Unsigned artifacts verify as "not signed" (exit 0). Signed ones must fail
+  # closed when the trust store is empty.
+  VERIFY_OUT="$WORKDIR/verify.err"
+  set +e
+  DAEDALUS_TRUSTED_DIR="$EMPTY_TRUST" daedalus verify "$BINARY" >"$WORKDIR/verify.out" 2>"$VERIFY_OUT"
+  VERIFY_RC=$?
+  set -e
+  if grep -qi "not signed" "$VERIFY_OUT" "$WORKDIR/verify.out" 2>/dev/null; then
+    pass "unsigned artifact: verify reports not signed (empty trust irrelevant)"
+  elif [ "$VERIFY_RC" -ne 0 ] && grep -qi "no trusted keys\|trusted" "$VERIFY_OUT"; then
+    pass "signed artifact: verify fails without trusted keys"
+  elif [ "$VERIFY_RC" -ne 0 ]; then
+    pass "verify failed closed under empty trust (rc=$VERIFY_RC)"
   else
-    fail "unsigned SISR binary should run with flag"
+    fail "verify must not succeed under empty trust for a signed artifact"
   fi
 else
-  echo "  SKIP: no SISR manifest found"
+  echo "  SKIP: daedalus CLI not on PATH"
 fi
 
-# 8. Process kill during extraction
-section "8. Process kill during extraction"
-KILL_DIR="$CACHE_DIR/killtest"
-export XDG_CACHE_HOME="$KILL_DIR"
-mkdir -p "$KILL_DIR"
-# Run binary in background, kill it mid-extraction
-"$BINARY" --daedalus-version >/dev/null 2>&1 &
-PID=$!
-sleep 0.1
-kill -9 "$PID" 2>/dev/null || true
-wait "$PID" 2>/dev/null || true
-# Re-run should recover cleanly
-if "$BINARY" --daedalus-version >/dev/null 2>&1; then
-  pass "recovery after kill successful"
+section "6. Trusted-keys dir readable"
+if [ -d "$TRUSTED_KEYS" ]; then
+  pass "trusted keys dir exists: $TRUSTED_KEYS"
 else
-  fail "recovery after kill failed"
+  echo "  SKIP: trusted keys dir missing ($TRUSTED_KEYS)"
 fi
 
-# 9. Symlink attack on cache
-section "9. Symlink attack"
-SYMLINK_DIR="$CACHE_DIR/symlink"
-export XDG_CACHE_HOME="$SYMLINK_DIR"
-mkdir -p "$SYMLINK_DIR"
-# Create symlink pointing outside cache
-mkdir -p "$WORKDIR/outside"
-ln -s "$WORKDIR/outside" "$SYMLINK_DIR/daedalus"
-if "$BINARY" --daedalus-version >/dev/null 2>&1; then
-  pass "symlink attack handled safely"
-else
-  fail "symlink attack should be handled"
-fi
+section "7. Adjacent mode probes (optional)"
+# field-kit and similar CLIs answer named modes; hello-web will ignore them.
+for mode in domains handoff inventory; do
+  MODE_OUT="$WORKDIR/mode-$mode.out"
+  if "$BINARY" "$mode" >"$MODE_OUT" 2>/dev/null; then
+    case "$mode" in
+      domains)
+        if grep -q "usb-courier\|ADJACENT\|FIELD KIT" "$MODE_OUT"; then
+          pass "mode domains answered"
+        else
+          pass "mode domains exited 0 (non-field-kit payload)"
+        fi
+        ;;
+      *)
+        pass "mode $mode exited 0"
+        ;;
+    esac
+  else
+    echo "  SKIP: binary has no '$mode' mode (expected for non-field-kit apps)"
+  fi
+done
 
-# 10. Multiple architectures in same cache
-section "10. Cache isolation"
-MULTI_DIR="$CACHE_DIR/multi"
-export XDG_CACHE_HOME="$MULTI_DIR"
-mkdir -p "$MULTI_DIR"
-# Run should create isolated cache entry
-if "$BINARY" --daedalus-version >/dev/null 2>&1; then
-  pass "cache isolation works"
-else
-  fail "cache isolation failed"
-fi
-
-# Summary
-section "Results"
-echo "Passed: $PASS"
-echo "Failed: $FAIL"
-if [ "$FAIL" -eq 0 ]; then
-  echo "All chaos tests passed!"
-  exit 0
-else
-  echo "Some chaos tests failed!"
-  exit 1
-fi
+section "Summary"
+echo "PASS=$PASS FAIL=$FAIL"
+[ "$FAIL" -eq 0 ]

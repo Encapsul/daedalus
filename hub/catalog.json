@@ -39,6 +39,17 @@
       "buildable": true
     },
     {
+      "id": "field-kit",
+      "name": "field-kit",
+      "runtime": "python",
+      "template": "application",
+      "description": "Stdlib CLI for adjacent uses: USB hand-off, classroom, air-gapped incident card. No model weights.",
+      "source": "examples/field-kit",
+      "build": ["daedalus", "build", "./examples/field-kit", "-o", "hub/dist/field-kit.de"],
+      "run": ["./field-kit.de", "domains"],
+      "buildable": true
+    },
+    {
       "id": "clinic-agent",
       "name": "clinic-agent",
       "runtime": "python",

@@ -107,7 +107,7 @@ Docker, ni le runtime, déjà installés.
 
 - **Démo 60 s** : [guide](./guides/demo-60s.md) — `examples/hello-web`. L'ancien chiffre clinic-agent (build 6,2 s, artefact 16,9 MB, Gemma) décrivait un script sans poids de modèle. Il ne faut plus le citer.
 - **Installation** : `install.sh` à la racine (Linux/macOS, sans sudo, sha256 obligatoire contre `checksums.txt`). `scripts/install.sh` est l'ancienne copie, elle refuse aussi un checksum absent. Tap Homebrew `Encapsul/homebrew-daedalus`. PyPI et crates.io : `daedalux` (le nom `daedalus` est pris), binaire `daedalus`.
-- **Hub** : [hub/catalog.json](../../hub/catalog.json). Buildables dans le repo : hello-web, hello-node, bottle-web, hello-zig, hello-dart, hello-lua, et clinic-agent (scaffold sans poids). Les lignes Express, FastAPI, Spring, Rails, Laravel, Go, Flutter sont des recettes, pas des runs CI.
+- **Hub** : [hub/catalog.json](../../hub/catalog.json). Buildables dans le repo : hello-web, hello-node, bottle-web, field-kit, hello-zig, hello-dart, hello-lua, et clinic-agent (scaffold sans poids). Linux CI smokes hello-web, bottle-web et field-kit. Les lignes Express, FastAPI, Spring, Rails, Laravel, Go, Flutter sont des recettes, pas des runs CI.
 - **Stub discovery** : `daedalus build` trouve désormais le stub natif (living next to the CLI, ou triple hôte) sans `DAEDALUS_STUB_PATH`.
 
 ## Ce qui n'est PAS prioritaire

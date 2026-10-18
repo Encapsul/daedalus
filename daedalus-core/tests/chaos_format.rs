@@ -251,6 +251,106 @@ fn footer_with_zero_sizes() {
     assert!(parsed.is_ok(), "footer with zero sizes should parse");
 }
 
+/// Bit-flip in the integrity hash field must still parse (footer parse does not
+/// re-hash) but the packed bytes must differ - documents that authenticity is
+/// enforced later by the stub, not by `Footer::read_from`.
+#[test]
+fn sha256_field_bitflip_changes_pack() {
+    let footer = Footer {
+        format_version: 3,
+        arch: 1,
+        flags: FLAG_SIGNED,
+        payload_offset: 100,
+        payload_csize: 200,
+        payload_usize: 200,
+        payload_sha256: [0x11; 32],
+        meta_offset: 300,
+        meta_size: 50,
+        sig_offset: 160,
+    };
+    let a = footer.pack();
+    let mut flipped = footer;
+    flipped.payload_sha256[0] ^= 0xFF;
+    let b = flipped.pack();
+    assert_ne!(a, b, "sha256 field must participate in the packed footer");
+    let mut cursor = Cursor::new(pack_roundtrip(&flipped));
+    assert!(Footer::read_from(&mut cursor).is_ok());
+}
+
+/// Oversized claimed `meta_size` in a crafted footer must not make `read_from`
+/// allocate unbounded buffers - parsing the footer alone stays O(1).
+#[test]
+fn huge_meta_size_still_parses_footer_only() {
+    let footer = Footer {
+        format_version: 3,
+        arch: 1,
+        flags: 0,
+        payload_offset: 0,
+        payload_csize: 0,
+        payload_usize: 0,
+        payload_sha256: [0x22; 32],
+        meta_offset: 0,
+        meta_size: u64::MAX,
+        sig_offset: 0,
+    };
+    let data = pack_roundtrip(&footer);
+    let mut cursor = Cursor::new(data);
+    let parsed = Footer::read_from(&mut cursor).expect("footer parse is O(1)");
+    assert_eq!(parsed.meta_size, u64::MAX);
+}
+
+/// Adjacent-use invariant: a v2 (unsigned) footer and a v3 (signed) footer
+/// with the same payload offsets remain distinguishable by `is_signed()`.
+#[test]
+fn signed_flag_distinguishes_courier_trust_path() {
+    let base = Footer {
+        format_version: 3,
+        arch: 1,
+        flags: 0,
+        payload_offset: 64,
+        payload_csize: 128,
+        payload_usize: 128,
+        payload_sha256: [0x33; 32],
+        meta_offset: 192,
+        meta_size: 16,
+        sig_offset: 0,
+    };
+    assert!(!base.is_signed());
+    let signed = Footer {
+        flags: FLAG_SIGNED,
+        sig_offset: 208,
+        ..base
+    };
+    assert!(signed.is_signed());
+}
+
+/// Encrypted courier path must stay orthogonal to the signed flag so air-gap
+/// kits can ship sealed + attested payloads independently.
+#[test]
+fn encrypted_flag_orthogonal_to_signed() {
+    let sealed = Footer {
+        format_version: 4,
+        arch: 1,
+        flags: FLAG_ENCRYPTED | FLAG_SIGNED,
+        payload_offset: 64,
+        payload_csize: 128,
+        payload_usize: 128,
+        payload_sha256: [0x44; 32],
+        meta_offset: 192,
+        meta_size: 16,
+        sig_offset: 208,
+    };
+    assert!(sealed.is_signed());
+    assert!(sealed.is_encrypted());
+    let only_enc = Footer {
+        flags: FLAG_ENCRYPTED,
+        sig_offset: 0,
+        ..sealed
+    };
+    assert!(!only_enc.is_signed());
+    assert!(only_enc.is_encrypted());
+}
+
 /// Every byte of the footer magic + sentinel block can be corrupted and must fail.
 #[test]
 fn every_byte_corruption_fails() {

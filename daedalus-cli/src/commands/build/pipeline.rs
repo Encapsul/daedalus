@@ -189,6 +189,12 @@ pub(crate) fn build_single_target(
         stage_rootfs(args, app_dir, verbose)?
     };
 
+    // Python third-party deps: merge .venv / vendored site-packages and, when
+    // needed, `pip install --target` into the staged rootfs (never the host).
+    if !reusing_rootfs {
+        stage_python_site_packages(plan, &rootfs)?;
+    }
+
     // ── Bundle an offline AI model (--model) into the rootfs ───────────
     // Copies the .gguf to `app/models/` and writes a `Modelfile` so the stub
     // detects the Gemma runtime and serves the weights locally (no cloud, no
@@ -222,7 +228,7 @@ pub(crate) fn build_single_target(
     let app_name = app_dir
         .file_name()
         .map_or_else(|| "app".to_string(), |n| n.to_string_lossy().into());
-    let env_pairs = build_env_map(args, plan, &app_name)?;
+    let env_pairs = build_env_map(args, plan, &app_name, &rootfs)?;
 
     let entrypoint = resolve_entrypoint_argv(
         &plan.entrypoint,
@@ -559,8 +565,16 @@ fn install_package_managers(
         eprintln!("  but pnpm is not detected. Create `pnpm-workspace.yaml` or add a lockfile.");
     }
 
-    // Detect and install all package managers (primary + secondary)
+    // Detect and install all package managers (primary + secondary).
+    // Pip is deferred to `stage_python_site_packages` so deps land in the
+    // staged rootfs (`--target app/site-packages`) instead of the host.
     for mgr in &pkgmgr::detect_all_pkgmgrs(app_dir, runtime_name) {
+        if matches!(mgr, pkgmgr::PkgMgr::Pip) {
+            if verbose {
+                eprintln!("Package manager: pip (deferred to staged site-packages)");
+            }
+            continue;
+        }
         if verbose {
             eprintln!("Package manager: {}", mgr.name());
         }
@@ -799,6 +813,103 @@ fn stage_rootfs(
     }
 
     Ok((tmp, rootfs))
+}
+
+/// Merge vendored / `.venv` site-packages into the staged rootfs, and run
+/// `pip install --target` when the app has a non-empty `requirements.txt`
+/// but no offline vendor tree yet.
+fn stage_python_site_packages(plan: &BuildPlan, rootfs: &Path) -> Result<()> {
+    if plan.runtime_name != "python" {
+        return Ok(());
+    }
+    let dest = rootfs.join("app").join("site-packages");
+    let vendored = plan.app_dir.join("site-packages");
+    let had_vendored = dir_has_entries(&vendored);
+
+    if let Some(venv_sp) = find_venv_site_packages(&plan.app_dir) {
+        copy_dir_recursive_with(&venv_sp, &dest, true)
+            .context("failed to copy .venv site-packages into rootfs")?;
+        if plan.verbose {
+            eprintln!("  app layer: site-packages from {}", venv_sp.display());
+        }
+    } else if had_vendored && plan.verbose {
+        eprintln!("  app layer: site-packages from {}", vendored.display());
+    }
+
+    if had_vendored || plan.no_install {
+        return Ok(());
+    }
+    if pkgmgr::detect_python_pkgmgr(&plan.app_dir) != Some(pkgmgr::PkgMgr::Pip) {
+        return Ok(());
+    }
+    pip_install_target(&plan.app_dir, &dest, plan.verbose)
+}
+
+/// `pip install --target <dest> -r requirements.txt` into the staged rootfs.
+fn pip_install_target(app_dir: &Path, dest: &Path, verbose: bool) -> Result<()> {
+    std::fs::create_dir_all(dest).context("failed to create staged site-packages")?;
+    let req = app_dir.join("requirements.txt");
+    let (prog, prefix) = resolve_command("pip");
+    let mut cmd = std::process::Command::new(&prog);
+    cmd.args(&prefix)
+        .args([
+            "install",
+            "--default-timeout",
+            "120",
+            "--retries",
+            "5",
+            "--target",
+        ])
+        .arg(dest)
+        .arg("-r")
+        .arg(&req)
+        .current_dir(app_dir);
+    if verbose {
+        eprintln!(
+            "[daedalus] pip install: {} → /app/site-packages",
+            req.display()
+        );
+    }
+    let status = cmd
+        .status()
+        .context("failed to run pip - is it installed?")?;
+    if !status.success() {
+        anyhow::bail!(
+            "pip install --target failed (exit {})",
+            status.code().unwrap_or(-1)
+        );
+    }
+    Ok(())
+}
+
+/// Locate `lib/pythonX.Y/site-packages` under `.venv` or `venv`.
+fn find_venv_site_packages(app_dir: &Path) -> Option<PathBuf> {
+    for venv_name in [".venv", "venv"] {
+        let lib = app_dir.join(venv_name).join("lib");
+        if !lib.is_dir() {
+            continue;
+        }
+        let mut entries: Vec<_> = std::fs::read_dir(&lib).ok()?.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("python") {
+                let sp = entry.path().join("site-packages");
+                if dir_has_entries(&sp) {
+                    return Some(sp);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn dir_has_entries(dir: &Path) -> bool {
+    dir.is_dir()
+        && std::fs::read_dir(dir)
+            .map(|mut it| it.next().is_some())
+            .unwrap_or(false)
 }
 
 /// Bundle an offline AI model into the staged rootfs so the stub can serve it
@@ -2256,6 +2367,7 @@ fn build_env_map(
     args: &BuildArgs,
     plan: &BuildPlan,
     app_name: &str,
+    rootfs: &Path,
 ) -> Result<Vec<(String, String)>> {
     let mut env_map = serde_json::Map::new();
     env_map.insert("DAEDALUS_RUNTIME".into(), plan.runtime_name.clone().into());
@@ -2265,7 +2377,7 @@ fn build_env_map(
     insert_kv_flags(&mut env_map, &args.env);
     insert_kv_flags(&mut env_map, &args.define);
 
-    inject_builtin_env(&mut env_map, args, plan, app_name)?;
+    inject_builtin_env(&mut env_map, args, plan, app_name, rootfs)?;
 
     Ok(env_map
         .iter()
@@ -2311,12 +2423,45 @@ fn inject_builtin_env(
     args: &BuildArgs,
     plan: &BuildPlan,
     app_name: &str,
+    rootfs: &Path,
 ) -> Result<()> {
     inject_xdebug_default(env_map, &plan.runtime_name, plan.verbose);
     inject_persist_dir(env_map, args.persist, app_name, plan.verbose);
     inject_health_port(env_map, args.health_port, plan.verbose);
     inject_cron_tasks(env_map, &args.cron, plan.verbose)?;
+    inject_python_site_packages_path(env_map, &plan.runtime_name, rootfs, plan.verbose);
     Ok(())
+}
+
+/// Declare `PYTHONPATH=${ROOTFS}/app/site-packages` when the staged tree has
+/// third-party deps. The stub expands `${ROOTFS}` at exec time.
+fn inject_python_site_packages_path(
+    env_map: &mut serde_json::Map<String, serde_json::Value>,
+    runtime_name: &str,
+    rootfs: &Path,
+    verbose: bool,
+) {
+    if runtime_name != "python" {
+        return;
+    }
+    let site = rootfs.join("app").join("site-packages");
+    if !dir_has_entries(&site) {
+        return;
+    }
+    let token = "${ROOTFS}/app/site-packages";
+    match env_map.get("PYTHONPATH").and_then(|v| v.as_str()) {
+        Some(existing) if !existing.is_empty() => {
+            if !existing.split(':').any(|p| p == token) {
+                env_map.insert("PYTHONPATH".into(), format!("{token}:{existing}").into());
+            }
+        }
+        _ => {
+            env_map.insert("PYTHONPATH".into(), token.into());
+        }
+    }
+    if verbose {
+        eprintln!("  env: PYTHONPATH={token}");
+    }
 }
 
 /// inject_xdebug_default - inject xdebug default.
