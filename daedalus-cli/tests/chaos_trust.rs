@@ -1,17 +1,16 @@
 //! Chaos: recipient-machine trust. Empty trust store must reject; foreign
 //! key must reject; publisher key after `trust` must accept.
 //!
-//! This is the USB / courier threat model encoded as tests.
+//! Uses a tiny fake stub so these stay in the sub-second range (no
+//! `cargo build -p daedalus-stub` per test).
 
 #![cfg(unix)]
 
 use assert_cmd::Command;
 use daedalus_core::assembly::{assemble_daedalus, AssemblyInput};
-use std::os::unix::fs::PermissionsExt;
+use ed25519_dalek::SigningKey;
+use rand::rngs::OsRng;
 use std::path::{Path, PathBuf};
-
-mod common;
-use common::locate_stub;
 
 fn daedalus() -> Command {
     let mut cmd = Command::cargo_bin("daedalus").unwrap();
@@ -19,22 +18,32 @@ fn daedalus() -> Command {
     cmd
 }
 
-fn assemble_signed_fixture(dir: &Path, stub: &Path, key: &Path) -> PathBuf {
+fn write_keypair(dir: &Path) -> (PathBuf, PathBuf) {
+    std::fs::create_dir_all(dir).unwrap();
+    let sk = SigningKey::generate(&mut OsRng);
+    let fp = hex::encode(sk.verifying_key().as_bytes());
+    let key = dir.join(format!("{fp}.key"));
+    let pubk = dir.join(format!("{fp}.pub"));
+    std::fs::write(&key, sk.to_bytes()).unwrap();
+    std::fs::write(&pubk, sk.verifying_key().as_bytes()).unwrap();
+    (key, pubk)
+}
+
+fn assemble_signed(dir: &Path, key: &Path) -> PathBuf {
     let rootfs = dir.join("rootfs");
     std::fs::create_dir_all(rootfs.join("app")).unwrap();
     std::fs::write(rootfs.join("app/app.py"), b"print('chaos-trust-ok')\n").unwrap();
-    let payload = daedalus_core::tar::create_tar_zstd_with_level(&rootfs, 3).unwrap();
+    let payload = daedalus_core::tar::create_tar_zstd_with_level(&rootfs, 1).unwrap();
     let meta = serde_json::json!({
         "name": "chaos-trust",
         "runtime": "python",
         "entrypoint": ["python3", "/app/app.py"],
     });
     let out = dir.join("app.de");
-    let stub_bytes = std::fs::read(stub).unwrap();
     assemble_daedalus(
         &out,
         &AssemblyInput {
-            stub_bytes: &stub_bytes,
+            stub_bytes: b"FAKE-STUB-CHAOS-TRUST",
             payload: &payload,
             meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
             squashfs: false,
@@ -56,61 +65,25 @@ fn assemble_signed_fixture(dir: &Path, stub: &Path, key: &Path) -> PathBuf {
         ])
         .assert()
         .success();
-    std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
     out
 }
 
-fn keygen(dir: &Path) -> (PathBuf, PathBuf) {
-    let key_dir = dir.join("keys");
-    std::fs::create_dir_all(&key_dir).unwrap();
-    daedalus()
-        .args(["keygen", "--key-dir", key_dir.to_str().unwrap()])
-        .assert()
-        .success();
-    let mut key = None;
-    let mut pubk = None;
-    for entry in std::fs::read_dir(&key_dir).unwrap() {
-        let p = entry.unwrap().path();
-        match p.extension().and_then(|e| e.to_str()) {
-            Some("key") => key = Some(p),
-            Some("pub") => pubk = Some(p),
-            _ => {}
-        }
-    }
-    (key.expect("key"), pubk.expect("pub"))
-}
-
+/// One fixture, three courier assertions — avoids repeating keygen/sign/build.
 #[test]
-fn chaos_verify_fails_with_empty_trust_store() {
-    let Some(stub) = locate_stub() else {
-        eprintln!("skipping: no stub");
-        return;
-    };
+fn chaos_courier_trust_matrix() {
     let td = tempfile::tempdir().unwrap();
-    let (key, _pub) = keygen(td.path());
-    let bin = assemble_signed_fixture(td.path(), &stub, &key);
+    let (publisher_key, publisher_pub) = write_keypair(&td.path().join("publisher"));
+    let (_, foreign_pub) = write_keypair(&td.path().join("foreign"));
+    let bin = assemble_signed(td.path(), &publisher_key);
 
-    let empty_trust = td.path().join("empty-trust");
-    std::fs::create_dir_all(&empty_trust).unwrap();
-
+    let empty = td.path().join("empty-trust");
+    std::fs::create_dir_all(&empty).unwrap();
     daedalus()
         .args(["verify", bin.to_str().unwrap()])
-        .env("DAEDALUS_TRUSTED_DIR", &empty_trust)
+        .env("DAEDALUS_TRUSTED_DIR", &empty)
         .assert()
         .failure()
         .stderr(predicates::str::contains("no trusted keys"));
-}
-
-#[test]
-fn chaos_verify_fails_under_foreign_key() {
-    let Some(stub) = locate_stub() else {
-        eprintln!("skipping: no stub");
-        return;
-    };
-    let td = tempfile::tempdir().unwrap();
-    let (publisher_key, _) = keygen(&td.path().join("publisher"));
-    let (_, foreign_pub) = keygen(&td.path().join("foreign"));
-    let bin = assemble_signed_fixture(td.path(), &stub, &publisher_key);
 
     let foreign_trust = td.path().join("foreign-trust");
     std::fs::create_dir_all(&foreign_trust).unwrap();
@@ -123,39 +96,26 @@ fn chaos_verify_fails_under_foreign_key() {
         ])
         .assert()
         .success();
-
     daedalus()
         .args(["verify", bin.to_str().unwrap()])
         .env("DAEDALUS_TRUSTED_DIR", &foreign_trust)
         .assert()
         .failure();
-}
 
-#[test]
-fn chaos_verify_ok_after_recipient_trusts_publisher() {
-    let Some(stub) = locate_stub() else {
-        eprintln!("skipping: no stub");
-        return;
-    };
-    let td = tempfile::tempdir().unwrap();
-    let (publisher_key, publisher_pub) = keygen(&td.path().join("publisher"));
-    let bin = assemble_signed_fixture(td.path(), &stub, &publisher_key);
-
-    let recipient_trust = td.path().join("recipient-trust");
-    std::fs::create_dir_all(&recipient_trust).unwrap();
+    let recipient = td.path().join("recipient-trust");
+    std::fs::create_dir_all(&recipient).unwrap();
     daedalus()
         .args([
             "trust",
             publisher_pub.to_str().unwrap(),
             "--trusted-dir",
-            recipient_trust.to_str().unwrap(),
+            recipient.to_str().unwrap(),
         ])
         .assert()
         .success();
-
     daedalus()
         .args(["verify", bin.to_str().unwrap()])
-        .env("DAEDALUS_TRUSTED_DIR", &recipient_trust)
+        .env("DAEDALUS_TRUSTED_DIR", &recipient)
         .assert()
         .success();
 }

@@ -2,15 +2,14 @@
 
 #[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
+use std::sync::OnceLock;
 
 /// Locate a runnable stub, skipping when none can be produced so CI without a
 /// full Rust/musl toolchain still passes.
 ///
-/// Returns a PRIVATE copy of the stub binary in a per-call temp dir. Multiple
-/// test threads spawn `cargo build -p daedalus-stub` concurrently; pointing
-/// `DAEDALUS_STUB_PATH` at the shared `target/debug/daedalus-stub` races with
-/// those builds replacing the binary mid-run. A private copy makes each test
-/// immune to that.
+/// Builds the stub at most once per process (`OnceLock`), then returns a
+/// private copy so concurrent tests never race on a shared target path.
 #[cfg(unix)]
 pub fn locate_stub() -> Option<PathBuf> {
     let src = locate_stub_src()?;
@@ -30,22 +29,26 @@ fn locate_stub_src() -> Option<PathBuf> {
             return Some(p);
         }
     }
-    let ok = std::process::Command::new("cargo")
-        .args(["build", "-q", "-p", "daedalus-stub"])
-        .status()
-        .ok()?
-        .success();
-    if !ok {
-        return None;
-    }
-    let target = std::env::var("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .expect("manifest dir has parent")
-                .join("target")
-        });
-    let stub = target.join("debug/daedalus-stub");
-    stub.is_file().then_some(stub)
+    static STUB: OnceLock<Option<PathBuf>> = OnceLock::new();
+    STUB.get_or_init(|| {
+        let ok = std::process::Command::new("cargo")
+            .args(["build", "-q", "-p", "daedalus-stub"])
+            .status()
+            .ok()?
+            .success();
+        if !ok {
+            return None;
+        }
+        let target = std::env::var("CARGO_TARGET_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("manifest dir has parent")
+                    .join("target")
+            });
+        let stub = target.join("debug/daedalus-stub");
+        stub.is_file().then_some(stub)
+    })
+    .clone()
 }

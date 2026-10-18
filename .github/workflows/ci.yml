@@ -66,8 +66,12 @@ jobs:
           /tmp/daedalus-stub-target/release/daedalus build examples/hello-web --isolation none -o /tmp/hello-web.daedalus
           /tmp/hello-web.daedalus &
           PID=$!
-          sleep 5
-          curl -sf http://127.0.0.1:8080 | grep -q "Hello" && echo "smoke test passed" || { echo "smoke test failed"; kill $PID; exit 1; }
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8080 | grep -q "Hello" && break
+            sleep 0.25
+            [ "$i" -eq 40 ] && { echo "smoke test failed"; kill $PID; exit 1; }
+          done
+          echo "smoke test passed"
           kill $PID || true
 
       - name: Smoke vendored deps (bottle-web)
@@ -76,8 +80,12 @@ jobs:
           /tmp/daedalus-stub-target/release/daedalus build examples/bottle-web --isolation none -o /tmp/bottle-web.de
           PORT=8081 /tmp/bottle-web.de &
           PID=$!
-          sleep 8
-          curl -sf http://127.0.0.1:8081 | grep -qi "bottle" && echo "bottle smoke passed" || { echo "bottle smoke failed"; kill $PID; exit 1; }
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8081 | grep -qi "bottle" && break
+            sleep 0.25
+            [ "$i" -eq 40 ] && { echo "bottle smoke failed"; kill $PID; exit 1; }
+          done
+          echo "bottle smoke passed"
           kill $PID || true
 
       - name: Smoke field-kit adjacent modes
