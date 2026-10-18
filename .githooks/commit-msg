@@ -1,0 +1,4 @@
+#!/bin/sh
+# Drop automated tooling trailers from the commit message body.
+tmp="$1.tmp.$$"
+grep -viE '^(Co-authored-by|Co-Authored-By):.*(cursoragent@|noreply@anthropic)|^(Made-with):' "$1" > "$tmp" && mv "$tmp" "$1"
