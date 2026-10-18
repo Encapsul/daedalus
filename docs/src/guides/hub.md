@@ -9,10 +9,11 @@ frustration of their runtime ("pip is broken again"), sees the pattern
 
 ```
 hub/
+  README.md          # short local pointer
   catalog.json       # the catalog (one entry per app)
   catalog.schema.json
   build.sh           # rebuild buildable apps into hub/dist/
-  dist/              # build output (gitignored)
+  dist/              # build output (gitignored; do not commit .de files)
 ```
 
 ## Adding an app

@@ -1,4 +1,6 @@
 #cloud-config
+# Optional ARM64 smoke host bootstrap for maintainers. Not part of the
+# end-user install path. Prefer docs/src/guides/quickstart.md for contributors.
 package_update: true
 packages:
   - musl-tools

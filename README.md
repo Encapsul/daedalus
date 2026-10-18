@@ -245,8 +245,8 @@ want before you hand the file to someone else.
   by default. `--skip-sign` opts out. `--key` selects the key.
 - **SHA-256**: the stub checks the payload hash before extraction. Release
   downloads (stub, upgrade, Homebrew, PyPI, `install.sh`) are checked against
-  `checksums.txt`. `scripts/install.sh` is the older installer. It now refuses
-  to install when that check cannot run. Prefer the root `install.sh`.
+  `checksums.txt`. Prefer the root `install.sh`. `scripts/install.sh` only
+  forwards to it.
 - **AES-256-GCM**: optional (`--encrypt`). The decryption material is in the
   file metadata, because the stub has to decrypt. It stops a casual `tar` of
   the payload. It does not hide the app from whoever can run the file.
@@ -313,16 +313,23 @@ See [CODE_STYLE.md](CODE_STYLE.md) for Rust style guidelines and [AGENTS.md](AGE
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/my-feature`)
-3. Commit with signed commits (`git commit -S -m "feat: ..."`)
-4. Push and open a pull request
+See [CONTRIBUTING.md](CONTRIBUTING.md). Short version: branch from `main`, keep
+the PR focused, run the verification loop, open against `main`.
+
+Internal agent notes live in [AGENTS.md](AGENTS.md) (`CLAUDE.md` just points
+there). Style detail is in [CODE_STYLE.md](CODE_STYLE.md).
+
+## Security
+
+Report vulnerabilities in private. See [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT - see [LICENSE](LICENSE) for details.
+MIT - [LICENSE](LICENSE).
 
 ## Community
 
-- [GitHub Issues](https://github.com/Encapsul/daedalus/issues) - report bugs or request features
-- `daedalus feedback --browser` - open the feedback page quickly
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Issues](https://github.com/Encapsul/daedalus/issues)
+- [Discussions](https://github.com/Encapsul/daedalus/discussions)
+- `daedalus feedback --browser`
