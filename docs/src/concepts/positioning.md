@@ -94,11 +94,13 @@ But shipping a local AI app is hard:
 - The binary must be signed and verified for security
 - Multiple runtimes (Python backend, Node frontend, Ollama model) must work together
 
-Shipping a local model is still the open wedge. The in-repo clinic example does
-not do it: `examples/offline-health-agri` has a `Modelfile` and no weights.
+Shipping a local model is the niche wedge. The clinic example still does not
+do it: `examples/offline-health-agri` has a `Modelfile` and no weights.
 `diagnose` prints hardcoded text, then calls Ollama on localhost if one is
-already running. A `.daedalus` contains a GGUF only when that file was in the
-project at build time.
+already running. Use `examples/local-model-kit` when you want real weights:
+`fetch_weights.sh` pulls a Gemma 3 270M Q4 GGUF from Hugging Face into
+gitignored `models/`; a `.daedalus` contains those bytes only if the file was
+present at build time. Do not call a kit without the GGUF "offline AI".
 
 What the tool can do once the weights are actually in the tree:
 

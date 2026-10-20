@@ -1,0 +1,3 @@
+# Local GGUF path (relative to this directory). Ollama creates the model from
+# these bytes - there is no registry pull at runtime when the file is present.
+FROM ./models/gemma-3-270m-it-Q4_K_M.gguf

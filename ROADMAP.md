@@ -112,7 +112,7 @@ and registry.
 |-------|--------|--------|
 | Demo / time-to-first-value | 60 s homepage demo: `daedalus build examples/hello-web` → an ELF that serves HTTP. The clinic tree is a scaffold, not the demo. | Done for hello-web. Clinic numbers (6.2 s / 16.9 MB / Gemma) withdrawn |
 | Trust (#1) | `daedalus trust <pubkey>` then `daedalus verify` on a second machine. Default dev-key auto-trust only proves the file to the builder. | Default signing done. Recipient flow documented in the README. Public security page is `docs/src/security.md` |
-| Niche wedge | Agents / local models for non-technical users. | Not started. No weights in the repo. Do not pitch it |
+| Niche wedge | Agents / local models for non-technical users. | Started: `examples/local-model-kit` + `fetch_weights.sh` (Gemma 3 270M Q4 from HF, gitignored). Pitch only when GGUF is present at build |
 | Ecosystem / network effect | `hub/catalog.json`: examples that build, plus recipes that do not. | Started. Four-plus in-repo apps build. Recipes are not verified runs |
 | Zero-friction install | `brew` / `cargo install daedalux` / `pip install daedalux` / root `install.sh` (sha256 required, no sudo). | Four channels. `scripts/install.sh` is the older copy and now also refuses a missing checksum |
 | Trap to avoid | No expert-oriented docs or format benchmarks as the lead feature - adoption comes from the first task unlocked. | - |

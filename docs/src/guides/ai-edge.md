@@ -6,16 +6,24 @@ tools for agents.
 ## Gemma via Ollama (on-device AI)
 
 daedalus detects a Gemma or Ollama layout and will pack the files that are
-actually in the project. It does not download a model for you, and the example
-in this repo does not contain one.
+actually in the project. It does not download a model for you.
 
-`examples/offline-health-agri` is a standard-library script plus a `Modelfile`
-(`FROM gemma:2b`). `diagnose` and `crop` print hardcoded notes, then POST to
-`localhost:11434` if Ollama is already up. If it is not, they print the prompt.
+`examples/offline-health-agri` is a standard-library scaffold plus a
+`Modelfile` (`FROM gemma:2b`) with **no** weights. `diagnose` / `crop` print
+hardcoded notes, then POST to `localhost:11434` if Ollama is already up.
 
-To ship weights, put a real `.gguf` under `models/` (or install the Ollama
-binary into the rootfs at build time) and build that directory. The resulting
-ELF is as large as those bytes. There is no 17 MB Gemma artifact.
+For a real GGUF in-tree, use `examples/local-model-kit`:
+
+```bash
+./examples/local-model-kit/fetch_weights.sh   # ~241 MB from Hugging Face
+daedalus build ./examples/local-model-kit -o local-model-kit.de --isolation none
+daedalus inspect local-model-kit.de           # size should be hundreds of MB
+```
+
+Host smoke (Ollama **≥ 0.40.5** for Gemma 3): `python3 app.py ask "..."`.
+Weights are gitignored; CI skips inference without the file. Without the
+GGUF at build time the `.de` is not an offline LLM. There is no 17 MB Gemma
+artifact.
 
 ```bash
 daedalus build ./examples/offline-health-agri -o clinic-agent.daedalus

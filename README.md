@@ -84,6 +84,7 @@ Evidence, as of this tree:
 - **Workspace e2e, when the toolchain exists**: Rust (`daedalus-cli/tests/rust_build.rs`, cargo is on the CI image). Java/Gradle (`java_build.rs`) skips unless `java` and Gradle ≥ 7 are installed. CI does not install them. Trust/courier chaos lives in `daedalus-cli/tests/chaos_trust.rs`.
 - **Source in `examples/`, not the CI smoke**: `hello-node`, `bottle-web-pip`, `hello-zig`, `hello-dart`, `hello-lua`.
 - **Scaffold**: `examples/offline-health-agri` is a standard-library script plus a `Modelfile`. It does not contain model weights. If Ollama is already running it queries `localhost:11434`. Otherwise it prints the prompt it would have sent.
+- **Local model kit** (weights optional): `examples/local-model-kit` — run `./fetch_weights.sh` to pull Gemma 3 270M IT Q4_K_M (~241 MB GGUF) from Hugging Face into a gitignored `models/` path, then `daedalus build`. Without that file the artifact is not an offline LLM. Host inference smoke needs Ollama ≥0.40.5.
 
 | Runtime | Detection | What the code looks for | Evidence |
 |---------|-----------|-------------------------|----------|
@@ -104,7 +105,7 @@ Evidence, as of this tree:
 | Lua | `*.lua`, `lua` in package.json | OpenResty, Neovim plugins | Example in repo |
 | Hugo | `hugo.toml`, `config.toml` | Static sites | Detection |
 | Ollama | `Modelfile`, `models/*.gguf`, `ollama` in `package.json`, or `DAEDALUS_OLLAMA=1` | `ollama serve` | Detection. Weights are whatever is in the project |
-| Gemma | `Modelfile` with a Gemma `FROM`, or `models/gemma*.gguf` | `ollama run <model-id>` | Detection. The in-repo example has no weights |
+| Gemma | `Modelfile` with a Gemma `FROM`, or `models/gemma*.gguf` | `ollama run <model-id>` | Detection. Clinic has no weights; `local-model-kit` embeds them only after `fetch_weights.sh` |
 | Wasm | `*.wasm` | WASI (wasmtime) | Detection |
 | Binary | ELF/PE executable | Any native binary | Detection |
 

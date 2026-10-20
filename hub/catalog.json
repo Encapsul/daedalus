@@ -61,6 +61,17 @@
       "buildable": true
     },
     {
+      "id": "local-model-kit",
+      "name": "local-model-kit",
+      "runtime": "python",
+      "template": "application",
+      "description": "Real Gemma 3 270M Q4 GGUF when present. Run fetch_weights.sh first (~241 MB from Hugging Face). Weights are gitignored; without them this is not offline AI. Needs Ollama >=0.40.5 for host ask smoke.",
+      "source": "examples/local-model-kit",
+      "build": ["daedalus", "build", "./examples/local-model-kit", "-o", "hub/dist/local-model-kit.de"],
+      "run": ["./local-model-kit.de", "probe"],
+      "buildable": true
+    },
+    {
       "id": "express-demo",
       "name": "Express API",
       "runtime": "node",
