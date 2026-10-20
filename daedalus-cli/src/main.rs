@@ -104,6 +104,13 @@ enum Commands {
     /// Migrate a legacy .daedalus (v1) to the SISR-enabled v2 format
     Migrate(commands::upgrade_binary::UpgradeBinaryArgs),
 
+    /// Stage SISR update media for USB / air-gapped courier delivery
+    ///
+    /// Examples:
+    ///   daedalus media stage app-v2.de -o /media/usb/update --against app-v1.de
+    ///   daedalus media stage app-v2.de -o ./usb --pubkey publisher.pub
+    Media(commands::media::MediaArgs),
+
     /// Hot-swap a layer in an existing .de binary
     Swap(commands::swap::SwapArgs),
 
@@ -276,6 +283,7 @@ fn main() -> ExitCode {
             }
             commands::upgrade_binary::run(args)
         }
+        Commands::Media(args) => commands::media::run(args),
         Commands::Publish(mut args) => {
             if cli.quiet {
                 args.verbose = false;

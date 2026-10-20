@@ -11,7 +11,7 @@ contain.
 | Domain | Why a single `.de` helps | What you must actually ship |
 |--------|--------------------------|-----------------------------|
 | USB / courier delivery | One file + one `.pub` | Signed build; recipient runs `trust` then `verify` |
-| Air-gapped ops | No registry pull at runtime | Offline install of CLI + artifact; SISR chunks on media if updating |
+| Air-gapped ops | No registry pull at runtime | `daedalus media stage` → USB `manifest`+`chunks/`; recipient trusts `.pub` then `DAEDALUS_SISR_MANIFEST=…` |
 | Classroom / lab | Same runtime on every laptop | Embedded interpreter; no student `pip install` |
 | Incident response | Tools run where outbound net is blocked | Signed kit; private key never on the USB |
 | Edge fleet | Same packaging for x64/arm builds | Per-arch artifacts (or `--universal` slices) |
@@ -29,6 +29,7 @@ contain.
 ## Demo in-repo
 
 `examples/field-kit` is a stdlib CLI with modes `handoff`, `inventory`,
-`classroom`, `incident`, `update` (SISR / air-gap card), and `domains`.
-CI and the chaos suite assert on those modes. For a vendored third-party
-dependency path, use `examples/bottle-web`.
+`classroom`, `incident`, `update` (air-gap release-train card), and `domains`.
+CI and the chaos suite assert on those modes. The documented publisher→USB
+flow is [Air-gapped deployment](../guides/airgapped.md) (`daedalus media stage`).
+For a vendored third-party dependency path, use `examples/bottle-web`.

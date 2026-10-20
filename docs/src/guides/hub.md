@@ -57,7 +57,7 @@ through `release.yml`/the registry, not committed).
 - **hello-web** - Python stdlib HTTP, zero deps.
 - **hello-node** - Node stdlib HTTP.
 - **bottle-web** - Python Bottle with vendored `site-packages` (no pip/network).
-- **field-kit** - Stdlib CLI for adjacent uses (USB hand-off, classroom, air-gap IR card). No model weights.
+- **field-kit** - Stdlib CLI for adjacent uses (USB hand-off, classroom, air-gap release-train card via `daedalus media stage`). No model weights.
 - **clinic-agent** — Python stdlib scaffold and a `Modelfile`. No model weights.
   Not the 60-second demo. See [demo-60s](./demo-60s.md) for `hello-web`.
 

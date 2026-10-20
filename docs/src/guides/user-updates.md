@@ -55,7 +55,9 @@ launcher uses TLS, though the trust anchor is the manifest signature and the
 content hashes, not the transport.
 
 The publisher is responsible for keeping `manifest` and the `chunks/` files
-in sync for the *newest* release.
+in sync for the *newest* release. For USB / air-gapped couriers, stage the
+same layout with `daedalus media stage app-v2.de -o /media/usb/update
+--against app-v1.de` (see [Air-gapped deployment](./airgapped.md)).
 
 ## 3. Update on the target
 

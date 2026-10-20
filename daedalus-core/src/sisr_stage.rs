@@ -1,11 +1,15 @@
 //! `SISR` build stage - chunk the payload, build the Merkle tree, sign, and
 //! package the embedded section and the remote manifest.
 //!
-//! Pure computation over the payload bytes: no filesystem writes here. The
-//! packager (`assembly`) consumes [`SisrArtifacts`] and injects the section
-//! into the `.daedalus`, then emits the remote manifest next to the binary.
+//! Build-time computation is pure over payload bytes. [`export_media`] is the
+//! one filesystem write helper: it stages a USB/courier update layout
+//! (`manifest` + `chunks/<hex>`) for air-gapped recipients.
 
+use std::collections::HashSet;
+use std::fs;
+use std::hash::BuildHasher;
 use std::io;
+use std::path::Path;
 
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use sha2::{Digest, Sha256};
@@ -40,6 +44,7 @@ pub struct SisrBuildConfig {
 }
 
 /// Result of the `SISR` stage, ready for injection into a `.daedalus`.
+#[derive(Debug, Clone)]
 pub struct SisrArtifacts {
     pub manifest: DeltaManifest,
     pub manifest_bytes: Vec<u8>,
@@ -269,6 +274,86 @@ pub fn verify_payload_chunks(manifest: &DeltaManifest, payload: &[u8]) -> io::Re
         return Err(err("SISR chunk table does not tile the payload exactly"));
     }
     Ok(())
+}
+
+/// How many chunks / bytes [`export_media`] wrote under `out_dir/chunks/`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MediaExportStats {
+    pub chunk_count: usize,
+    pub written_chunks: usize,
+    pub written_bytes: u64,
+    pub skipped_chunks: usize,
+}
+
+/// Stage a USB / courier update channel next to a signed remote manifest:
+///
+/// ```text
+/// out_dir/
+///   manifest              # RemoteManifest (XBMR), publisher-signed
+///   chunks/<64-hex-sha256>
+/// ```
+///
+/// Verifies the payload tiles the manifest before any write. When `reuse` is
+/// `Some`, hashes already present on the recipient are omitted (delta media).
+/// Pass `None` to seed a full channel. Never writes a private key.
+pub fn export_media<S: BuildHasher>(
+    payload: &[u8],
+    remote: &RemoteManifest,
+    out_dir: &Path,
+    reuse: Option<&HashSet<[u8; 32], S>>,
+) -> io::Result<MediaExportStats> {
+    if !remote.verify_merkle() {
+        return Err(err(
+            "remote manifest Merkle root does not match chunk table",
+        ));
+    }
+    verify_payload_chunks(&remote.manifest, payload)?;
+    let chunks_dir = out_dir.join("chunks");
+    fs::create_dir_all(&chunks_dir)?;
+    fs::write(out_dir.join("manifest"), remote.to_bytes()?)?;
+    write_chunk_files(payload, &remote.manifest, &chunks_dir, reuse)
+}
+
+/// Writes content-addressed chunk files; skips hashes listed in `reuse`.
+fn write_chunk_files<S: BuildHasher>(
+    payload: &[u8],
+    manifest: &DeltaManifest,
+    chunks_dir: &Path,
+    reuse: Option<&HashSet<[u8; 32], S>>,
+) -> io::Result<MediaExportStats> {
+    let mut stats = MediaExportStats {
+        chunk_count: manifest.chunks.len(),
+        ..MediaExportStats::default()
+    };
+    let mut pos = 0usize;
+    for chunk in &manifest.chunks {
+        let end = pos + chunk.length as usize;
+        let skip = reuse.is_some_and(|h| h.contains(&chunk.hash));
+        if skip {
+            stats.skipped_chunks = stats.skipped_chunks.saturating_add(1);
+        } else {
+            fs::write(chunks_dir.join(hex::encode(chunk.hash)), &payload[pos..end])?;
+            stats.written_chunks = stats.written_chunks.saturating_add(1);
+            stats.written_bytes = stats
+                .written_bytes
+                .checked_add(u64::from(chunk.length))
+                .ok_or_else(|| err("media export byte counter overflow"))?;
+        }
+        pos = end;
+    }
+    Ok(stats)
+}
+
+/// Chunk content hashes from an installed binary's embedded SISR table.
+///
+/// Used as the `reuse` set for [`export_media`] so USB media only carries
+/// chunks the recipient does not already have.
+pub fn embedded_chunk_hashes(bin: &Path) -> io::Result<HashSet<[u8; 32]>> {
+    let data = fs::read(bin)?;
+    let Some((_, manifest)) = crate::sisr_header::read_sisr(&mut io::Cursor::new(&data))? else {
+        return Err(err("binary has no embedded SISR section"));
+    };
+    Ok(manifest.chunks.iter().map(|c| c.hash).collect())
 }
 
 pub(crate) fn sha256_digest(data: &[u8]) -> [u8; 32] {
@@ -525,6 +610,53 @@ mod tests {
         assert!(remote.verify_any(&[other.verifying_key(), public]));
         assert!(!remote.verify_any(&[other.verifying_key()]));
         assert!(!remote.verify_any(&[]));
+    }
+
+    #[test]
+    /// USB / courier layout: signed manifest + only the chunks absent from v1.
+    fn export_media_writes_manifest_and_delta_chunks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let key = SigningKey::from_bytes(&[23u8; 32]);
+        let public = key.verifying_key();
+        let v1 = random_buf(48_000, 21);
+        let mut v2 = v1.clone();
+        v2[32_000..].copy_from_slice(&random_buf(16_000, 77));
+        let cfg = |payload: &[u8]| {
+            build_artifacts(
+                payload,
+                &SisrBuildConfig {
+                    enabled: true,
+                    chunk_target_size: 4096,
+                    signing_key: Some(key.clone()),
+                },
+            )
+            .unwrap()
+        };
+        let a1 = cfg(&v1);
+        let a2 = cfg(&v2);
+        let remote = RemoteManifest {
+            merkle_root: a2.merkle_root,
+            signature: a2.signature,
+            manifest: a2.manifest.clone(),
+        };
+        let reuse: HashSet<_> = a1.manifest.chunks.iter().map(|c| c.hash).collect();
+        let out = tmp.path().join("usb");
+        let stats = export_media(&v2, &remote, &out, Some(&reuse)).unwrap();
+        assert!(stats.written_chunks > 0);
+        assert!(stats.skipped_chunks > 0);
+        assert_eq!(
+            stats.written_chunks + stats.skipped_chunks,
+            stats.chunk_count
+        );
+        let parsed = RemoteManifest::from_bytes(&fs::read(out.join("manifest")).unwrap()).unwrap();
+        assert!(parsed.verify_signature(&public));
+        assert!(parsed.verify_merkle());
+        assert!(!parsed.verify_any(&[]));
+        assert!(!parsed.verify_any(&[SigningKey::from_bytes(&[8u8; 32]).verifying_key()]));
+        assert_eq!(
+            fs::read_dir(out.join("chunks")).unwrap().count(),
+            stats.written_chunks
+        );
     }
 
     #[test]

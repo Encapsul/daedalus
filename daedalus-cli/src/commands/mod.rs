@@ -7,6 +7,7 @@ pub mod env;
 pub mod feedback;
 pub mod inspect;
 pub mod keygen;
+pub mod media;
 pub mod publish;
 pub mod registry;
 pub mod run;
