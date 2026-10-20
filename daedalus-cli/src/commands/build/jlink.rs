@@ -200,8 +200,18 @@ fn is_fat_jar(jar: &Path) -> bool {
         zip.by_index(i)
             .ok()
             .and_then(|f| f.enclosed_name().map(|n| n.to_string_lossy().into_owned()))
-            .is_some_and(|n| n.starts_with("BOOT-INF/lib/") || n.starts_with("WEB-INF/lib/"))
+            .is_some_and(|n| is_nested_lib_entry(&n))
     })
+}
+
+/// Match `BOOT-INF/lib` / `WEB-INF/lib` as a directory or any path under them.
+/// zip 9's `enclosed_name()` drops the trailing slash on directory entries, so
+/// a bare `starts_with(".../lib/")` misses the directory itself.
+fn is_nested_lib_entry(name: &str) -> bool {
+    const MARKERS: &[&str] = &["BOOT-INF/lib", "WEB-INF/lib"];
+    MARKERS
+        .iter()
+        .any(|m| name == *m || name.starts_with(&format!("{m}/")))
 }
 
 /// Run `jlink` to slice a runtime image for `modules`, using the shared options
@@ -399,6 +409,7 @@ fn copy_ldd_deps(binary: &Path, rootfs: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn module_csv_splits_trims_and_drops_empty() {
@@ -429,6 +440,8 @@ mod tests {
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&fat).unwrap());
         let opts = zip::write::FileOptions::<()>::default();
         zip.add_directory("BOOT-INF/lib/", opts).unwrap();
+        zip.start_file("BOOT-INF/lib/dep.jar", opts).unwrap();
+        zip.write_all(b"pk").unwrap();
         zip.finish().unwrap();
         assert!(is_fat_jar(&fat));
 
@@ -437,6 +450,15 @@ mod tests {
         zip.add_directory("META-INF/", opts).unwrap();
         zip.finish().unwrap();
         assert!(!is_fat_jar(&plain));
+    }
+
+    #[test]
+    fn nested_lib_entry_matches_dir_and_children() {
+        assert!(is_nested_lib_entry("BOOT-INF/lib"));
+        assert!(is_nested_lib_entry("BOOT-INF/lib/dep.jar"));
+        assert!(is_nested_lib_entry("WEB-INF/lib/a.jar"));
+        assert!(!is_nested_lib_entry("BOOT-INF/classes/App.class"));
+        assert!(!is_nested_lib_entry("META-INF/MANIFEST.MF"));
     }
 
     #[test]
