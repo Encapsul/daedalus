@@ -213,6 +213,122 @@ fn chaos_trust_help_mentions_pubkey() {
 }
 
 #[test]
+fn chaos_trust_list_empty_store() {
+    let td = TempDir::new().unwrap();
+    let trust_dir = td.path().join("trusted");
+    std::fs::create_dir_all(&trust_dir).unwrap();
+    daedalus()
+        .args([
+            "trust",
+            "--list",
+            "--trusted-dir",
+            trust_dir.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("no trusted keys"));
+}
+
+#[test]
+fn chaos_trust_list_shows_fingerprint_after_trust() {
+    let td = TempDir::new().unwrap();
+    let trust_dir = td.path().join("trusted");
+    std::fs::create_dir_all(&trust_dir).unwrap();
+    let good = td.path().join("good.pub");
+    fs::write(&good, [0x42u8; 32]).unwrap();
+    daedalus()
+        .args([
+            "trust",
+            good.to_str().unwrap(),
+            "--trusted-dir",
+            trust_dir.to_str().unwrap(),
+            "--quiet",
+        ])
+        .assert()
+        .success();
+    let out = daedalus()
+        .args([
+            "trust",
+            "--list",
+            "--json",
+            "--trusted-dir",
+            trust_dir.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let body = String::from_utf8_lossy(&out);
+    let v: serde_json::Value = serde_json::from_str(&body).expect("list json");
+    assert_eq!(v["count"], 1);
+    assert!(v["keys"][0]["fingerprint"].as_str().is_some());
+}
+
+#[test]
+fn chaos_verify_empty_trust_mentions_list() {
+    use daedalus_core::assembly::{assemble_daedalus, AssemblyInput};
+
+    let td = TempDir::new().unwrap();
+    let meta = serde_json::json!({
+        "name": "signed-hint",
+        "runtime": "binary",
+        "entrypoint": ["/app/app"],
+    });
+    let meta_bytes = serde_json::to_vec(&meta).unwrap();
+    let payload = daedalus_core::compress::compress(b"layer").unwrap();
+    let out = td.path().join("app.de");
+    assemble_daedalus(
+        &out,
+        &AssemblyInput {
+            stub_bytes: b"FAKE-STUB",
+            payload: &payload,
+            meta_bytes: &meta_bytes,
+            squashfs: false,
+            target_arch: None,
+            sisr: None,
+            encryption: None,
+        },
+    )
+    .unwrap();
+    // Sign so verify walks the trust path (unsigned exits early).
+    let key_dir = td.path().join("keys");
+    fs::create_dir_all(&key_dir).unwrap();
+    daedalus()
+        .args(["keygen", "--key-dir", key_dir.to_str().unwrap()])
+        .assert()
+        .success();
+    let key = fs::read_dir(&key_dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.extension().and_then(|e| e.to_str()) == Some("key"))
+        .expect("key");
+    daedalus()
+        .args([
+            "sign",
+            out.to_str().unwrap(),
+            "--key",
+            key.to_str().unwrap(),
+            "--force",
+            "--no-input",
+        ])
+        .assert()
+        .success();
+
+    let empty = td.path().join("empty");
+    fs::create_dir_all(&empty).unwrap();
+    daedalus()
+        .args(["verify", out.to_str().unwrap()])
+        .env("DAEDALUS_TRUSTED_DIR", &empty)
+        .assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("no trusted keys")
+                .and(predicate::str::contains("trust --list")),
+        );
+}
+
+#[test]
 fn chaos_verify_help_mentions_trusted() {
     daedalus()
         .args(["verify", "--help"])

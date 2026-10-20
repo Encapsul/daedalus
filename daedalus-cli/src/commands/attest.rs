@@ -184,7 +184,9 @@ fn verify_attestation(path: &std::path::Path, digest_hex: &str, _footer: &Footer
     let keys = load_trusted_keys(&trust_dir)?;
     if keys.is_empty() {
         anyhow::bail!(
-            "no trusted keys in {} - add keys with: daedalus trust <pubkey_file>",
+            "no trusted keys in {} - recipient machines start empty; \
+             add the publisher .pub with: daedalus trust <pubkey_file> \
+             (inspect with: daedalus trust --list)",
             trust_dir.display()
         );
     }

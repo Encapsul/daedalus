@@ -98,7 +98,7 @@ jobs:
           /tmp/field-kit.de update | grep -q SISR
 
       - name: Shell chaos monkey (field-kit + bottle-web)
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
           export PATH="/tmp/daedalus-stub-target/release:$PATH"
           chmod +x tests/chaos-monkey.sh

@@ -206,9 +206,11 @@ fn is_fat_jar(jar: &Path) -> bool {
 
 /// Match `BOOT-INF/lib` / `WEB-INF/lib` as a directory or any path under them.
 /// zip 9's `enclosed_name()` drops the trailing slash on directory entries, so
-/// a bare `starts_with(".../lib/")` misses the directory itself.
+/// a bare `starts_with(".../lib/")` misses the directory itself. On Windows the
+/// same helper returns `\` separators — normalize before comparing.
 fn is_nested_lib_entry(name: &str) -> bool {
     const MARKERS: &[&str] = &["BOOT-INF/lib", "WEB-INF/lib"];
+    let name = name.replace('\\', "/");
     MARKERS
         .iter()
         .any(|m| name == *m || name.starts_with(&format!("{m}/")))
@@ -457,6 +459,7 @@ mod tests {
         assert!(is_nested_lib_entry("BOOT-INF/lib"));
         assert!(is_nested_lib_entry("BOOT-INF/lib/dep.jar"));
         assert!(is_nested_lib_entry("WEB-INF/lib/a.jar"));
+        assert!(is_nested_lib_entry(r"BOOT-INF\lib\dep.jar"));
         assert!(!is_nested_lib_entry("BOOT-INF/classes/App.class"));
         assert!(!is_nested_lib_entry("META-INF/MANIFEST.MF"));
     }
