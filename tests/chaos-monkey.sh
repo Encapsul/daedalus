@@ -111,10 +111,43 @@ else
 fi
 
 section "7. Adjacent mode probes (optional)"
-# field-kit and similar CLIs answer named modes; hello-web will ignore them.
+# field-kit answers named modes and exits. Server apps (bottle-web, hello-web)
+# ignore the arg and keep listening — must not block CI. Cap each probe.
+run_with_deadline() {
+  # usage: run_with_deadline <secs> <cmd> [args...]
+  local secs="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+    return $?
+  fi
+  "$@" &
+  local pid=$!
+  local i=0
+  local limit=$((secs * 10))
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$limit" ]; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    return 124
+  fi
+  wait "$pid"
+}
+
 for mode in domains handoff inventory; do
   MODE_OUT="$WORKDIR/mode-$mode.out"
-  if "$BINARY" "$mode" >"$MODE_OUT" 2>/dev/null; then
+  set +e
+  run_with_deadline 3 "$BINARY" "$mode" >"$MODE_OUT" 2>/dev/null
+  rc=$?
+  set -e
+  if [ "$rc" -eq 124 ]; then
+    echo "  SKIP: mode '$mode' did not exit (server-like payload)"
+    continue
+  fi
+  if [ "$rc" -eq 0 ]; then
     case "$mode" in
       domains)
         if grep -q "usb-courier\|ADJACENT\|FIELD KIT" "$MODE_OUT"; then
