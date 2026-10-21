@@ -345,7 +345,7 @@ fn chaos_scan_empty_dir_fails_cleanly() {
         .arg(td.path())
         .assert()
         .failure()
-        .stderr(predicate::str::contains("No .daedalus").or(predicate::str::contains("Error")));
+        .stderr(predicate::str::contains("No .de").or(predicate::str::contains("Error")));
 }
 
 #[test]

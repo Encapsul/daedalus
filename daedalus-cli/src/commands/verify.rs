@@ -28,7 +28,7 @@ fn write_json_output(value: &serde_json::Value, output: Option<&std::path::Path>
 
 #[derive(Args)]
 pub struct VerifyArgs {
-    /// Path to the .daedalus file, or `-` to read from stdin
+    /// Path to the .de file, or `-` to read from stdin
     pub file: PathBuf,
 
     /// Directory containing trusted public keys

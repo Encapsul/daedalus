@@ -21,7 +21,7 @@ use std::process::ExitCode;
     name = "daedalus",
     version,
     about = "Package any app into a single self-extracting binary",
-    long_about = "daedalus packages an app into one self-extracting Linux ELF.\nThe CLI runs on Linux, macOS, and Windows. The artifact runs on Linux\n(or WSL / a Linux VM).\n\nRuntimes are detected for Python, Deno, Node.js, Electron, Flutter, Dart,\nJava, Ruby, .NET/C#, Rust, Zig, Go, PHP, Perl, Lua, Hugo, Ollama, Gemma,\nWasm, and a raw binary. Linux CI smokes hello-web, bottle-web, and\nfield-kit. Other runtimes are detection plus whatever examples or\ntoolchain-gated tests exist.\n\nExamples:\n  daedalus build ./examples/hello-web -o hello-web.daedalus\n  daedalus run hello-web.daedalus\n  daedalus inspect hello-web.daedalus\n  daedalus keygen --key-dir ./keys\n  daedalus trust ./keys/<id>.pub\n  daedalus verify hello-web.daedalus\n  daedalus doctor\n  daedalus scan .\n  daedalus completion bash >> ~/.bashrc",
+    long_about = "daedalus packages an app into one self-extracting Linux ELF.\nThe CLI runs on Linux, macOS, and Windows. The artifact runs on Linux\n(or WSL / a Linux VM).\n\nRuntimes are detected for Python, Deno, Node.js, Electron, Flutter, Dart,\nJava, Ruby, .NET/C#, Rust, Zig, Go, PHP, Perl, Lua, Hugo, Ollama, Gemma,\nWasm, and a raw binary. Linux CI smokes hello-web, bottle-web, and\nfield-kit. Other runtimes are detection plus whatever examples or\ntoolchain-gated tests exist.\n\nExamples:\n  daedalus build ./examples/hello-web -o hello-web.de\n  daedalus run hello-web.de\n  daedalus inspect hello-web.de\n  daedalus keygen --key-dir ./keys\n  daedalus trust ./keys/<id>.pub\n  daedalus verify hello-web.de\n  daedalus doctor\n  daedalus scan .\n  daedalus completion bash >> ~/.bashrc",
     after_help = "Documentation: https://github.com/Encapsul/daedalus/blob/main/README.md\nIssues: https://github.com/Encapsul/daedalus/issues"
 )]
 #[allow(clippy::struct_excessive_bools)]
@@ -400,9 +400,9 @@ EXIT STATUS
 
        1      General error (invalid arguments, build failure, I/O error).
 
-       2      Lint or verification error (signature mismatch, corrupt file).
+       2      Lint or verification error (signature mismatch).
 
-       3      Data error (parse failure, invalid format).
+       3      Data error (parse failure, invalid or corrupt format).
 
        4      Permission error (insufficient privileges, file not writable).
 

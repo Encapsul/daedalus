@@ -7,7 +7,7 @@ use std::path::PathBuf;
 #[derive(Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct InspectArgs {
-    /// Path to the .daedalus file, or `-` to read from stdin
+    /// Path to the .de file, or `-` to read from stdin
     pub file: PathBuf,
 
     /// Output as JSON

@@ -15,11 +15,11 @@ use std::path::{Path, PathBuf};
 
 #[derive(clap::Parser, Debug)]
 #[command(
-    about = "Hot-swap a layer in an existing .daedalus binary",
-    long_about = "Replaces a named file inside the payload of a .daedalus binary and reassembles the artifact with an updated integrity hash.\n\nUsage: daedalus swap <binary> <layer-name> <new-file> [-o output]\n\nLimitations:\n- Plain zstd-tar payloads only (v2). Does not support squashfs (v5).\n- Invalidates any Ed25519 binary signature (re-sign with `daedalus sign` after swap)."
+    about = "Hot-swap a layer in an existing .de binary",
+    long_about = "Replaces a named file inside the payload of a .de binary and reassembles the artifact with an updated integrity hash.\n\nUsage: daedalus swap <binary> <layer-name> <new-file> [-o output]\n\nLimitations:\n- Plain zstd-tar payloads only (v2). Does not support squashfs (v5).\n- Invalidates any Ed25519 binary signature (re-sign with `daedalus sign` after swap)."
 )]
 pub struct SwapArgs {
-    /// Path to the .daedalus binary, or `-` to read from stdin
+    /// Path to the .de binary, or `-` to read from stdin
     #[arg()]
     pub binary: PathBuf,
 

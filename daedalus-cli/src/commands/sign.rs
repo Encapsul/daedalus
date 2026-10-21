@@ -11,7 +11,7 @@ use zeroize::Zeroizing;
 #[derive(Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct SignArgs {
-    /// Path to the .daedalus file, or `-` to read stdin and write signed bytes to stdout
+    /// Path to the .de file, or `-` to read stdin and write signed bytes to stdout
     pub file: PathBuf,
 
     /// Path to the signing key file

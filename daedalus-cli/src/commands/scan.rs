@@ -98,7 +98,7 @@ pub fn run(args: ScanArgs) -> Result<()> {
     }
 
     if files.is_empty() {
-        anyhow::bail!("No .daedalus files found");
+        anyhow::bail!("No .de files found");
     }
 
     if args.json {

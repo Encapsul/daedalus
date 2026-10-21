@@ -32,20 +32,21 @@ pub fn run(args: EnvArgs) -> Result<()> {
         });
         println!("{}", serde_json::to_string_pretty(&info)?);
     } else {
-        eprintln!("daedalus {}", env!("CARGO_PKG_VERSION"));
-        eprintln!("  arch:   {}", std::env::consts::ARCH);
-        eprintln!("  os:     {}", std::env::consts::OS);
-        eprintln!(
+        // Human result on stdout (clig.dev); diagnostics stay on stderr elsewhere.
+        println!("daedalus {}", env!("CARGO_PKG_VERSION"));
+        println!("  arch:   {}", std::env::consts::ARCH);
+        println!("  os:     {}", std::env::consts::OS);
+        println!(
             "  rustc:  {}",
             rustc_version().unwrap_or_else(|| "unknown".into())
         );
         match &stub {
-            Some(p) => eprintln!("  stub:   {}", p.display()),
-            None => eprintln!("  stub:   not found"),
+            Some(p) => println!("  stub:   {}", p.display()),
+            None => println!("  stub:   not found"),
         }
         match &crypto {
-            Some(p) => eprintln!("  crypto: {}", p.display()),
-            None => eprintln!("  crypto: not found"),
+            Some(p) => println!("  crypto: {}", p.display()),
+            None => println!("  crypto: not found"),
         }
     }
 

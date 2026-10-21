@@ -87,7 +87,57 @@ fn test_doctor_strict() {
 
 #[test]
 fn test_env_output() {
-    daedalus().arg("env").assert().success();
+    // Human result on stdout (clig.dev); not stderr.
+    daedalus()
+        .arg("env")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("daedalus"))
+        .stdout(predicate::str::contains("arch:"))
+        .stderr(predicate::str::contains("arch:").not());
+}
+
+#[test]
+fn test_env_json_on_stdout() {
+    daedalus()
+        .args(["env", "--json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"version\""))
+        .stdout(predicate::str::contains("\"arch\""));
+}
+
+#[test]
+fn test_help_examples_use_de_extension() {
+    daedalus()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("hello-web.de"))
+        .stdout(predicate::str::contains("hello-web.daedalus").not());
+}
+
+#[test]
+fn test_inspect_corrupt_file_exits_3() {
+    let dir = tempdir().unwrap();
+    let junk = dir.path().join("junk.de");
+    std::fs::write(&junk, b"not a real daedalus artifact").unwrap();
+    daedalus()
+        .arg("inspect")
+        .arg(&junk)
+        .assert()
+        .failure()
+        .code(3);
+}
+
+#[test]
+fn test_inspect_missing_file_exits_5() {
+    daedalus()
+        .arg("inspect")
+        .arg("/nonexistent/path/app.de")
+        .assert()
+        .failure()
+        .code(5);
 }
 
 #[test]

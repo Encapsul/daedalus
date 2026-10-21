@@ -5,7 +5,7 @@ use std::path::PathBuf;
 #[derive(Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct PublishArgs {
-    /// Path to the .daedalus file to publish
+    /// Path to the .de file to publish
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
 
@@ -94,7 +94,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
         file.file_name().unwrap_or_default().to_string_lossy()
     );
 
-    let content = std::fs::read(&file).context("failed to read .daedalus file")?;
+    let content = std::fs::read(&file).context("failed to read .de file")?;
 
     // Build the multipart upload request using reqwest (blocking)
     let client = reqwest::blocking::Client::builder()
@@ -111,7 +111,7 @@ pub fn run(args: PublishArgs) -> Result<()> {
         request = request.header("Authorization", format!("Bearer {t}"));
     }
 
-    let response = request.send().context("failed to upload .daedalus file")?;
+    let response = request.send().context("failed to upload .de file")?;
 
     if !response.status().is_success() {
         let status = response.status();

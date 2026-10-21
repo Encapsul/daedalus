@@ -417,8 +417,8 @@ easier by catching obvious cases automatically.
 
 ## CLI UX (clig.dev)
 
-We follow [clig.dev](https://clig.dev) for CLI design. These are the concrete
-rules we enforce in daedalus:
+We aim to follow [clig.dev](https://clig.dev) for CLI design. These are the
+concrete rules we enforce in daedalus (see the checklist below for gaps):
 
 ### Help text
 
@@ -489,20 +489,21 @@ Defined in `daedalus-cli/src/error.rs`:
 | Concise help by default | ✅ |
 | stderr for errors | ✅ |
 | stdout for output | ✅ |
-| Exit codes mapped | ✅ |
+| Exit codes mapped | ✅ 0–5 via `error.rs` (incl. data error = 3) |
 | `--force` for dangerous ops | ✅ |
 | `--quiet` / `-q` | ✅ |
 | `--no-color` + `NO_COLOR` | ✅ |
-| `--json` on structured commands | ✅ inspect, doctor, scan |
-| Man pages | ✅ |
+| `--json` on structured commands | ✅ inspect, doctor, scan, env, … |
+| Man pages | ✅ `daedalus man` |
+| Shell completions | ✅ `daedalus completion` |
 | TTY detection before prompt | ✅ |
 | No secrets in flags | ✅ |
 | `--no-input` | ✅ |
 | `--plain` for tabular output | ✅ |
-| Pager for long output | ❌ missing |
-| `-` for stdin/stdout in file ops | ❌ missing |
-| `--dry-run` / `-n` | ✅ build, clean |
-| Web docs link in help | ❌ missing |
+| Pager for long output | ✅ `pager.rs` (scan, registry list, …) |
+| `-` for stdin/stdout in file ops | ✅ run/inspect/sign/verify/swap/build |
+| `--dry-run` / `-n` | ✅ build, clean, … |
+| Web docs link in help | ✅ `after_help` (README + Issues) |
 
 ---
 

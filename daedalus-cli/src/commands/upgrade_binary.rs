@@ -9,7 +9,7 @@ use zeroize::Zeroizing;
 #[derive(Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct UpgradeBinaryArgs {
-    /// Input legacy .daedalus (built without --enable-sisr)
+    /// Input legacy .de / .daedalus (built without --enable-sisr)
     pub input: PathBuf,
 
     /// Output path for the SISR-enabled binary

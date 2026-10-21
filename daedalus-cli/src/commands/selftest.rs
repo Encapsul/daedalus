@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Args)]
 pub struct SelftestArgs {
-    /// Path to the .daedalus file to test
+    /// Path to the .de file to test
     pub file: PathBuf,
 
     /// Test mode: `auto`, `server`, or `cli`
@@ -57,7 +57,7 @@ pub fn run(args: SelftestArgs) -> Result<()> {
     // Read footer + metadata
     let mut f =
         std::fs::File::open(&path).with_context(|| format!("failed to open {}", path.display()))?;
-    let footer = Footer::read_from(&mut f).context("invalid .daedalus file")?;
+    let footer = Footer::read_from(&mut f).context("invalid .de file")?;
     let meta_bytes =
         daedalus_core::format::read_at(&mut f, footer.meta_offset, footer.meta_size as usize)
             .context("failed to read metadata")?;
