@@ -36,8 +36,11 @@ Detects which package manager an app uses (speed-based priority):
 
 | Runtime | Priority order |
 |---------|---------------|
-| Python | uv > poetry > pipenv > pip |
+| Python | uv > poetry > pipenv > pip (pip only if `requirements.txt` has real deps; comment-only = empty) |
 | Node.js | pnpm > yarn > bun > npm |
+
+Pip installs into the staged rootfs (`--target`). uv/Poetry/Pipenv mutate the
+host/project env — daedalus warns; embed via `.venv/` or `site-packages/`.
 
 ### ELF dependency resolution
 

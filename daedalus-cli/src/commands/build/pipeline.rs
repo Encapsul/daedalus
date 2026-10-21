@@ -192,7 +192,7 @@ pub(crate) fn build_single_target(
     // Python third-party deps: merge .venv / vendored site-packages and, when
     // needed, `pip install --target` into the staged rootfs (never the host).
     if !reusing_rootfs {
-        stage_python_site_packages(plan, &rootfs)?;
+        stage_python_site_packages(args, plan, &rootfs)?;
     }
 
     // ── Bundle an offline AI model (--model) into the rootfs ───────────
@@ -575,6 +575,24 @@ fn install_package_managers(
             }
             continue;
         }
+        if matches!(
+            mgr,
+            pkgmgr::PkgMgr::Uv | pkgmgr::PkgMgr::Poetry | pkgmgr::PkgMgr::Pipenv
+        ) {
+            // These tools install into a project/host env, not the staged
+            // rootfs. Packaging only picks them up via `.venv/` or a vendored
+            // `site-packages/` after install — warn so airgap builds do not
+            // silently assume deps are embedded.
+            eprintln!(
+                "[daedalus] warning: `{}` installs into the host/project environment, \
+                 not the staged rootfs",
+                mgr.name()
+            );
+            eprintln!(
+                "  for a self-contained .de, ensure `.venv/` or `site-packages/` exists \
+                 after install (or vendor deps and drop a real requirements.txt)"
+            );
+        }
         if verbose {
             eprintln!("Package manager: {}", mgr.name());
         }
@@ -816,9 +834,9 @@ fn stage_rootfs(
 }
 
 /// Merge vendored / `.venv` site-packages into the staged rootfs, and run
-/// `pip install --target` when the app has a non-empty `requirements.txt`
-/// but no offline vendor tree yet.
-fn stage_python_site_packages(plan: &BuildPlan, rootfs: &Path) -> Result<()> {
+/// `pip install --target` when the app has a real `requirements.txt` but no
+/// offline vendor tree yet.
+fn stage_python_site_packages(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path) -> Result<()> {
     if plan.runtime_name != "python" {
         return Ok(());
     }
@@ -842,28 +860,46 @@ fn stage_python_site_packages(plan: &BuildPlan, rootfs: &Path) -> Result<()> {
     if pkgmgr::detect_python_pkgmgr(&plan.app_dir) != Some(pkgmgr::PkgMgr::Pip) {
         return Ok(());
     }
-    pip_install_target(&plan.app_dir, &dest, plan.verbose)
+    pip_install_target(
+        &plan.app_dir,
+        &dest,
+        args.cross_compile.as_deref(),
+        plan.verbose,
+    )
+}
+
+/// Whether staged pip should force source builds (same rule as host Pip path).
+fn pip_target_needs_no_binary(cross_compile: Option<&str>) -> bool {
+    cross_compile.is_some_and(|c| c.split(',').any(|t| t.trim() != std::env::consts::ARCH))
 }
 
 /// `pip install --target <dest> -r requirements.txt` into the staged rootfs.
-fn pip_install_target(app_dir: &Path, dest: &Path, verbose: bool) -> Result<()> {
+fn pip_install_target(
+    app_dir: &Path,
+    dest: &Path,
+    cross_compile: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
     std::fs::create_dir_all(dest).context("failed to create staged site-packages")?;
     let req = app_dir.join("requirements.txt");
     let (prog, prefix) = resolve_command("pip");
     let mut cmd = std::process::Command::new(&prog);
-    cmd.args(&prefix)
-        .args([
-            "install",
-            "--default-timeout",
-            "120",
-            "--retries",
-            "5",
-            "--target",
-        ])
-        .arg(dest)
-        .arg("-r")
-        .arg(&req)
-        .current_dir(app_dir);
+    cmd.args(&prefix).args([
+        "install",
+        "--default-timeout",
+        "120",
+        "--retries",
+        "5",
+        "--target",
+    ]);
+    cmd.arg(dest);
+    if pip_target_needs_no_binary(cross_compile) {
+        cmd.args(["--no-binary", ":all:"]);
+        if verbose {
+            eprintln!("  pip --target: --no-binary :all: (cross-compile)");
+        }
+    }
+    cmd.arg("-r").arg(&req).current_dir(app_dir);
     if verbose {
         eprintln!(
             "[daedalus] pip install: {} → /app/site-packages",
@@ -3422,5 +3458,16 @@ mod tests {
             pubspec_display_name(dir.path().join("nope").as_path()),
             "app".to_string()
         );
+    }
+
+    #[test]
+    fn pip_target_cross_needs_no_binary() {
+        assert!(!pip_target_needs_no_binary(None));
+        assert!(!pip_target_needs_no_binary(Some(std::env::consts::ARCH)));
+        assert!(pip_target_needs_no_binary(Some("aarch64")));
+        assert!(pip_target_needs_no_binary(Some(&format!(
+            "{},riscv64",
+            std::env::consts::ARCH
+        ))));
     }
 }

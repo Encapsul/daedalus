@@ -86,6 +86,17 @@ impl PkgMgr {
     }
 }
 
+/// True when `requirements.txt` lists at least one installable requirement.
+///
+/// Blank lines, `#` comments, and whitespace-only files do **not** count — a
+/// comment-only file must not trigger a network `pip install`.
+pub fn requirements_declares_deps(contents: &str) -> bool {
+    contents.lines().any(|line| {
+        let trimmed = line.trim();
+        !trimmed.is_empty() && !trimmed.starts_with('#')
+    })
+}
+
 /// Detect the Python package manager by checking lock files.
 pub fn detect_python_pkgmgr(dir: &Path) -> Option<PkgMgr> {
     if dir.join("uv.lock").is_file() {
@@ -98,8 +109,12 @@ pub fn detect_python_pkgmgr(dir: &Path) -> Option<PkgMgr> {
         return Some(PkgMgr::Pipenv);
     }
     let req = dir.join("requirements.txt");
-    if req.is_file() && std::fs::metadata(&req).is_ok_and(|m| m.len() > 0) {
-        return Some(PkgMgr::Pip);
+    if req.is_file() {
+        if let Ok(contents) = std::fs::read_to_string(&req) {
+            if requirements_declares_deps(&contents) {
+                return Some(PkgMgr::Pip);
+            }
+        }
     }
     None
 }
@@ -312,6 +327,33 @@ pub fn detect_all_pkgmgrs(dir: &Path, runtime: &str) -> Vec<PkgMgr> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn requirements_comment_only_is_empty() {
+        assert!(!requirements_declares_deps("# bottle\n\n  # note\n"));
+        assert!(!requirements_declares_deps(""));
+        assert!(!requirements_declares_deps("   \n\t\n"));
+        assert!(requirements_declares_deps("# comment\nbottle\n"));
+        assert!(requirements_declares_deps("requests>=2\n"));
+    }
+
+    #[test]
+    fn comment_only_requirements_not_pip() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("requirements.txt"),
+            "# vendored offline - do not pip\n\n",
+        )
+        .unwrap();
+        assert_eq!(detect_python_pkgmgr(dir.path()), None);
+    }
+
+    #[test]
+    fn real_requirements_is_pip() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("requirements.txt"), "bottle\n").unwrap();
+        assert_eq!(detect_python_pkgmgr(dir.path()), Some(PkgMgr::Pip));
+    }
 
     #[test]
     /// `uv_lock` - uv lock.

@@ -119,10 +119,14 @@ the host. See [Isolation](./isolation.md).
 
 ## pip install at build time
 
-If the app has a `requirements.txt` with content (non-empty), the builder
-automatically creates a temporary venv, pip-installs dependencies, and
-embeds them as an additional site-packages entry in `PYTHONPATH`:
+If `requirements.txt` has at least one non-comment, non-blank requirement and
+no offline vendor tree (`.venv` / `site-packages/`) is present, the builder
+runs `pip install --target` into the staged rootfs and wires `PYTHONPATH`.
+Comment-only files are ignored. Cross-compile requests add `--no-binary :all:`.
 
 ```
 [daedalus] pip install: ./my_app/requirements.txt → /app/site-packages
 ```
+
+`uv` / Poetry / Pipenv install on the host; packaging only picks up a resulting
+`.venv` or vendored `site-packages/`.

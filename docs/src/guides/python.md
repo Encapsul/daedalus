@@ -73,14 +73,24 @@ daedalus build ./examples/bottle-web -o bottle-web.de
 
 ## Requirements.txt → pip install at build time
 
-If your app has a `requirements.txt` with non-empty content, the builder
-automatically creates a temporary venv, pip-installs the dependencies, and
-embeds them:
+If `requirements.txt` declares at least one installable line (blank lines and
+`#` comments do **not** count), and there is no vendored `site-packages/` /
+`.venv` yet, the builder runs `pip install --target` into the **staged**
+rootfs (`/app/site-packages`) — never into the host environment. Cross builds
+also pass `--no-binary :all:` so wheels for the build host are not embedded.
 
 ```bash
 daedalus build ./my_app -o my_app.de
 # [daedalus] pip install: ./my_app/requirements.txt → /app/site-packages
 ```
+
+Comment-only or whitespace-only `requirements.txt` files are treated as empty
+(no pip). Prefer vendoring into `site-packages/` for air-gap builds; see
+`examples/complex-python`.
+
+`uv` / Poetry / Pipenv still install into the host/project env. daedalus warns
+and only embeds what already exists under `.venv/` or `site-packages/` after
+that install.
 
 ## Current limitations
 
