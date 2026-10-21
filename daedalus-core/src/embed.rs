@@ -240,71 +240,210 @@ pub fn find_interpreter_host(name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Parse `ldd` output to find shared library paths for a binary or .node file.
+/// Parse `ldd` / `otool` output to find shared library paths for a binary.
 pub(crate) fn ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
-    // `ldd` is a Linux ELF tool. On Windows the interpreter (e.g. the official
-    // node.exe) is a self-contained PE that resolves its DLLs via PATH and the
-    // system dirs, so there is nothing to embed here. macOS Mach-O binaries
-    // resolve against the dyld shared cache, whose dylibs must not be copied.
-    // Only Linux rootfs needs these `.so` dependencies embedded. Return empty
-    // instead of aborting the whole embed on the other hosts.
-    #[cfg(not(target_os = "linux"))]
+    // Linux: `ldd`. macOS: `otool -L` for non-cache dylibs (Homebrew Node's
+    // `@rpath/libnode.*.dylib`). Windows PE resolves via PATH — nothing to copy.
+    #[cfg(target_os = "linux")]
+    {
+        linux_ldd_deps(interp_path)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        macos_otool_deps(interp_path)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let _ = interp_path;
         Ok(Vec::new())
     }
-    #[cfg(target_os = "linux")]
-    {
-        let output = Command::new("ldd")
-            .arg(interp_path)
-            .output()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ldd failed: {e}")))?;
+}
 
-        if !output.status.success() {
-            return Ok(Vec::new());
-        }
+/// Linux `ldd` dependency walk (`.so` paths the dynamic linker would load).
+#[cfg(target_os = "linux")]
+fn linux_ldd_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
+    let output = Command::new("ldd")
+        .arg(interp_path)
+        .output()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("ldd failed: {e}")))?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut deps = Vec::new();
-
-        for line in stdout.lines() {
-            let line = line.trim();
-            // Skip empty lines, vdso, and ld-linux dynamic linker (handled separately)
-            if line.is_empty() || line.starts_with("linux-vdso") {
-                continue;
-            }
-
-            let path_str = if let Some(after) = line.split("=>").nth(1) {
-                // glibc format: "libfoo.so.1 => /path/libfoo.so.1 (0x...)"
-                after.trim()
-            } else if line.starts_with('/') {
-                // musl format: "/path/libfoo.so.1" (no => prefix)
-                line
-            } else {
-                continue;
-            };
-
-            // Skip the dynamic linker (ld-linux, ld-musl) - it's not a library dep
-            let fname = path_str.rsplit('/').next().unwrap_or(path_str);
-            if fname.starts_with("ld-linux") || fname.starts_with("ld-musl") {
-                continue;
-            }
-
-            // Remove the address part: "(0x...)"
-            let path_str = if let Some(idx) = path_str.find(" (") {
-                &path_str[..idx]
-            } else {
-                path_str
-            };
-            let path_str = path_str.trim();
-            if !path_str.starts_with('/') || path_str == "not found" {
-                continue;
-            }
-            deps.push(PathBuf::from(path_str));
-        }
-
-        Ok(deps)
+    if !output.status.success() {
+        return Ok(Vec::new());
     }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut deps = Vec::new();
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        // Skip empty lines, vdso, and ld-linux dynamic linker (handled separately)
+        if line.is_empty() || line.starts_with("linux-vdso") {
+            continue;
+        }
+
+        let path_str = if let Some(after) = line.split("=>").nth(1) {
+            // glibc format: "libfoo.so.1 => /path/libfoo.so.1 (0x...)"
+            after.trim()
+        } else if line.starts_with('/') {
+            // musl format: "/path/libfoo.so.1" (no => prefix)
+            line
+        } else {
+            continue;
+        };
+
+        // Skip the dynamic linker (ld-linux, ld-musl) - it's not a library dep
+        let fname = path_str.rsplit('/').next().unwrap_or(path_str);
+        if fname.starts_with("ld-linux") || fname.starts_with("ld-musl") {
+            continue;
+        }
+
+        // Remove the address part: "(0x...)"
+        let path_str = if let Some(idx) = path_str.find(" (") {
+            &path_str[..idx]
+        } else {
+            path_str
+        };
+        let path_str = path_str.trim();
+        if !path_str.starts_with('/') || path_str == "not found" {
+            continue;
+        }
+        deps.push(PathBuf::from(path_str));
+    }
+
+    Ok(deps)
+}
+
+/// True for Apple system / dyld-shared-cache libraries that must stay on the host.
+#[cfg(any(target_os = "macos", test))]
+fn is_system_dylib(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    s.starts_with("/usr/lib/")
+        || s.starts_with("/System/")
+        || s.starts_with("/Library/Apple/")
+        || s.starts_with("/Library/Frameworks/")
+}
+
+/// Parse `otool -L` install names (skip the binary's own identity line).
+#[cfg(any(target_os = "macos", test))]
+fn parse_otool_l_names(stdout: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for (i, line) in stdout.lines().enumerate() {
+        if i == 0 {
+            continue;
+        }
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let name = line.split(" (compatibility").next().unwrap_or(line).trim();
+        if !name.is_empty() {
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
+/// Parse `path ...` entries under `LC_RPATH` from `otool -l` output.
+#[cfg(any(target_os = "macos", test))]
+fn parse_otool_rpaths(stdout: &str) -> Vec<String> {
+    let mut rpaths = Vec::new();
+    let mut in_rpath = false;
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("cmd ") && trimmed.contains("LC_RPATH") {
+            in_rpath = true;
+            continue;
+        }
+        if in_rpath {
+            if let Some(rest) = trimmed.strip_prefix("path ") {
+                let path = rest.split(" (offset").next().unwrap_or(rest).trim();
+                if !path.is_empty() {
+                    rpaths.push(path.to_string());
+                }
+                in_rpath = false;
+            } else if trimmed.starts_with("cmd ") {
+                in_rpath = false;
+            }
+        }
+    }
+    rpaths
+}
+
+/// Expand `@loader_path` / `@executable_path` prefixes against the binary dir.
+#[cfg(any(target_os = "macos", test))]
+fn expand_macho_token(path: &str, binary_dir: &Path) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("@loader_path") {
+        return binary_dir.join(rest.trim_start_matches('/'));
+    }
+    if let Some(rest) = path.strip_prefix("@executable_path") {
+        return binary_dir.join(rest.trim_start_matches('/'));
+    }
+    PathBuf::from(path)
+}
+
+/// Resolve one Mach-O install name to a host file path, if it should be embedded.
+#[cfg(any(target_os = "macos", test))]
+fn resolve_macho_dep(name: &str, binary_dir: &Path, rpaths: &[String]) -> Option<PathBuf> {
+    if let Some(rest) = name.strip_prefix("@rpath/") {
+        for rpath in rpaths {
+            let base = expand_macho_token(rpath, binary_dir);
+            let candidate = base.join(rest);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        // Homebrew Node: `@rpath/libnode.*.dylib` beside `../lib` of the binary.
+        for rel in ["../lib", "."] {
+            let candidate = binary_dir.join(rel).join(rest);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        return None;
+    }
+    let path = expand_macho_token(name, binary_dir);
+    if path.is_file() && !is_system_dylib(&path) {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+/// macOS: collect non-system dylibs via `otool` (e.g. Homebrew `libnode`).
+#[cfg(target_os = "macos")]
+fn macos_otool_deps(interp_path: &Path) -> io::Result<Vec<PathBuf>> {
+    let binary = fs::canonicalize(interp_path).unwrap_or_else(|_| interp_path.to_path_buf());
+    let Some(binary_dir) = binary.parent() else {
+        return Ok(Vec::new());
+    };
+
+    let l_out = Command::new("otool").args(["-L"]).arg(&binary).output();
+    let Ok(l_out) = l_out else {
+        return Ok(Vec::new());
+    };
+    if !l_out.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let r_out = Command::new("otool").args(["-l"]).arg(&binary).output();
+    let rpaths = r_out
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| parse_otool_rpaths(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default();
+
+    let names = parse_otool_l_names(&String::from_utf8_lossy(&l_out.stdout));
+    let mut deps = Vec::new();
+    let mut seen = HashSet::new();
+    for name in names {
+        if let Some(path) = resolve_macho_dep(&name, binary_dir, &rpaths) {
+            let key = path.to_string_lossy().into_owned();
+            if seen.insert(key) {
+                deps.push(path);
+            }
+        }
+    }
+    Ok(deps)
 }
 
 /// Extract the ELF interpreter (dynamic loader) path from a single `ldd`
@@ -1659,5 +1798,62 @@ mod tests {
         std::fs::create_dir(dir.path().join("sub")).unwrap();
         std::fs::write(dir.path().join("sub").join("b.txt"), "b").unwrap();
         assert_eq!(count_dir_files(dir.path()), 2);
+    }
+
+    #[test]
+    fn parse_otool_l_skips_identity_and_strips_compat() {
+        let stdout = "\
+/opt/homebrew/bin/node:
+\t@rpath/libnode.137.dylib (compatibility version 137.0.0, current version 137.0.0)
+\t/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1800.0.0)
+";
+        let names = parse_otool_l_names(stdout);
+        assert_eq!(
+            names,
+            vec![
+                "@rpath/libnode.137.dylib".to_string(),
+                "/usr/lib/libc++.1.dylib".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_otool_rpaths_collects_lc_rpath() {
+        let stdout = "\
+Load command 12
+          cmd LC_RPATH
+      cmdsize 32
+         path @loader_path/../lib (offset 12)
+Load command 13
+          cmd LC_LOAD_DYLIB
+";
+        assert_eq!(
+            parse_otool_rpaths(stdout),
+            vec!["@loader_path/../lib".to_string()]
+        );
+    }
+
+    #[test]
+    fn resolve_macho_dep_finds_rpath_lib_and_skips_system() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bin");
+        let lib = dir.path().join("lib");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&lib).unwrap();
+        let dylib = lib.join("libnode.137.dylib");
+        std::fs::write(&dylib, b"fake").unwrap();
+
+        let rpaths = vec!["@loader_path/../lib".to_string()];
+        let found =
+            resolve_macho_dep("@rpath/libnode.137.dylib", &bin, &rpaths).expect("rpath libnode");
+        assert_eq!(
+            fs::canonicalize(&found).unwrap(),
+            fs::canonicalize(&dylib).unwrap()
+        );
+
+        assert!(resolve_macho_dep("/usr/lib/libc++.1.dylib", &bin, &rpaths).is_none());
+        assert!(is_system_dylib(Path::new(
+            "/System/Library/Frameworks/Foo.framework/Foo"
+        )));
     }
 }
