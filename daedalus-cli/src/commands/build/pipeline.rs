@@ -3464,7 +3464,13 @@ mod tests {
     fn pip_target_cross_needs_no_binary() {
         assert!(!pip_target_needs_no_binary(None));
         assert!(!pip_target_needs_no_binary(Some(std::env::consts::ARCH)));
-        assert!(pip_target_needs_no_binary(Some("aarch64")));
+        // Pick a triple arch that is never the build host (macos-latest is often aarch64).
+        let foreign = if std::env::consts::ARCH == "aarch64" {
+            "x86_64"
+        } else {
+            "aarch64"
+        };
+        assert!(pip_target_needs_no_binary(Some(foreign)));
         assert!(pip_target_needs_no_binary(Some(&format!(
             "{},riscv64",
             std::env::consts::ARCH
