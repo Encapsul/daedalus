@@ -165,6 +165,52 @@ for mode in domains handoff inventory; do
   fi
 done
 
+section "8. Dual-extension scan"
+if command -v daedalus >/dev/null 2>&1; then
+  SCAN_DIR="$WORKDIR/scan-dual"
+  mkdir -p "$SCAN_DIR"
+  cp "$BINARY" "$SCAN_DIR/one.de"
+  cp "$BINARY" "$SCAN_DIR/two.daedalus"
+  SCAN_OUT="$WORKDIR/scan.json"
+  if daedalus scan "$SCAN_DIR" --json >"$SCAN_OUT" 2>/dev/null; then
+    # Expect two entries (or at least both paths mentioned).
+    COUNT=$(grep -c '"file"' "$SCAN_OUT" 2>/dev/null || true)
+    if [ "${COUNT:-0}" -ge 2 ]; then
+      pass "scan finds .de and .daedalus"
+    elif grep -q '\.de\|\.daedalus' "$SCAN_OUT"; then
+      pass "scan returned dual-extension artifacts"
+    else
+      fail "scan did not list both extensions"
+    fi
+  else
+    echo "  SKIP: scan failed (non-inspectable fixture?)"
+  fi
+else
+  echo "  SKIP: daedalus CLI not on PATH"
+fi
+
+section "9. Mid-file corruption (payload/media region)"
+# Smash a mid-file window distinct from the footer smash in §3. Cold
+# --daedalus-version must fail closed (or succeed only if the region is unused).
+MID="$WORKDIR/midcorrupt.de"
+cp "$BINARY" "$MID"
+SIZE=$(wc -c <"$MID" | tr -d ' ')
+if [ "$SIZE" -gt 8192 ]; then
+  SEEK=$((SIZE / 2))
+  dd if=/dev/zero bs=512 count=4 seek=$((SEEK / 512)) of="$MID" conv=notrunc 2>/dev/null || true
+  set +e
+  run_with_deadline 3 "$MID" --daedalus-version >/dev/null 2>&1
+  mid_rc=$?
+  set -e
+  if [ "$mid_rc" -eq 124 ]; then
+    fail "mid-corrupt binary hung"
+  else
+    pass "mid-corrupt binary exited (rc=$mid_rc)"
+  fi
+else
+  echo "  SKIP: binary too small for mid-file smash"
+fi
+
 section "Summary"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

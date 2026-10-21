@@ -45,16 +45,29 @@ fn stop(child: &mut Child) {
 }
 
 fn build_example(app: &Path, out: &Path, stub: &Path, data: &Path, trust: &Path) {
+    build_example_with(app, out, stub, data, trust, &[]);
+}
+
+fn build_example_with(
+    app: &Path,
+    out: &Path,
+    stub: &Path,
+    data: &Path,
+    trust: &Path,
+    extra: &[&str],
+) {
     let cli = env!("CARGO_BIN_EXE_daedalus");
+    let mut args = vec![
+        "build",
+        app.to_str().unwrap(),
+        "--isolation",
+        "none",
+        "-o",
+        out.to_str().unwrap(),
+    ];
+    args.extend_from_slice(extra);
     let build = Command::new(cli)
-        .args([
-            "build",
-            app.to_str().unwrap(),
-            "--isolation",
-            "none",
-            "-o",
-            out.to_str().unwrap(),
-        ])
+        .args(&args)
         .env("DAEDALUS_STUB_PATH", stub)
         .env("XDG_DATA_HOME", data)
         .env("DAEDALUS_TRUSTED_DIR", trust)
@@ -125,6 +138,110 @@ fn bottle_web_with_vendored_deps_builds_and_serves() {
             let _ = e.read_to_string(&mut err);
         }
         panic!("bottle-web.de did not serve HTTP with vendored bottle: {err}");
+    }
+    stop(&mut child);
+}
+
+#[test]
+fn complex_python_vendored_and_comment_requirements() {
+    let Some(stub) = locate_stub() else {
+        eprintln!("skipping: no daedalus-stub available");
+        return;
+    };
+
+    let root = workspace_root();
+    let app = root.join("examples/complex-python");
+    assert!(app.join("lib/greet.py").is_file());
+    assert!(app.join("site-packages/vendor_mark.py").is_file());
+    let req = std::fs::read_to_string(app.join("requirements.txt")).unwrap();
+    assert!(
+        !daedalus_core::pkgmgr::requirements_declares_deps(&req),
+        "fixture must stay comment-only so build never hits pip"
+    );
+
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("complex-python.de");
+    let data = tmp.path().join("data");
+    let trust = tmp.path().join("trusted");
+    let cache = tmp.path().join("cache");
+    let home = tmp.path().join("home");
+    build_example(&app, &out, &stub, &data, &trust);
+
+    let inspect = Command::new(env!("CARGO_BIN_EXE_daedalus"))
+        .args(["inspect", out.to_str().unwrap(), "--json"])
+        .output()
+        .expect("inspect");
+    let body = String::from_utf8_lossy(&inspect.stdout);
+    assert!(
+        body.contains("site-packages") || body.contains("PYTHONPATH"),
+        "inspect must surface PYTHONPATH/site-packages: {body}"
+    );
+
+    let run = Command::new(&out)
+        .env("COMPLEX_NAME", "chaos")
+        .env("XDG_CACHE_HOME", &cache)
+        .env("XDG_DATA_HOME", &data)
+        .env("HOME", &home)
+        .env("DAEDALUS_TRUSTED_DIR", &trust)
+        .output()
+        .expect("run complex-python.de");
+    assert!(
+        run.status.success(),
+        "complex-python.de failed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        stdout.contains("hello-complex:chaos"),
+        "missing local lib greeting: {stdout}"
+    );
+    assert!(
+        stdout.contains("vendor=vendored-ok"),
+        "missing vendored marker: {stdout}"
+    );
+}
+
+#[test]
+fn hello_node_builds_and_serves() {
+    let Some(stub) = locate_stub() else {
+        eprintln!("skipping: no daedalus-stub available");
+        return;
+    };
+
+    let app = workspace_root().join("examples/hello-node");
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("hello-node.de");
+    let data = tmp.path().join("data");
+    let trust = tmp.path().join("trusted");
+    let cache = tmp.path().join("cache");
+    let home = tmp.path().join("home");
+    // Stdlib-only HTTP server — skip npm to keep the smoke offline-friendly.
+    build_example_with(&app, &out, &stub, &data, &trust, &["--no-install"]);
+
+    let port = 18081u16;
+    let mut child = Command::new(&out)
+        .env("PORT", port.to_string())
+        .env("XDG_CACHE_HOME", &cache)
+        .env("XDG_DATA_HOME", &data)
+        .env("HOME", &home)
+        .env("DAEDALUS_TRUSTED_DIR", &trust)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn hello-node.de");
+
+    let ok = wait_http_ok(
+        &format!("127.0.0.1:{port}"),
+        "Hello from daedalus",
+        Duration::from_secs(20),
+    );
+    if !ok {
+        stop(&mut child);
+        let mut err = String::new();
+        if let Some(mut e) = child.stderr.take() {
+            let _ = e.read_to_string(&mut err);
+        }
+        panic!("hello-node.de did not serve HTTP: {err}");
     }
     stop(&mut child);
 }

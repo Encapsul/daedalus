@@ -2,7 +2,5 @@
   "name": "hello-node",
   "version": "1.0.0",
   "main": "app.js",
-  "dependencies": {
-    "cookie": "^2.0.1"
-  }
+  "dependencies": {}
 }

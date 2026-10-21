@@ -349,6 +349,67 @@ fn chaos_scan_empty_dir_fails_cleanly() {
 }
 
 #[test]
+fn chaos_comment_only_requirements_not_pip() {
+    let td = TempDir::new().unwrap();
+    fs::write(
+        td.path().join("requirements.txt"),
+        "# vendored offline\n\n  # still empty\n",
+    )
+    .unwrap();
+    assert_eq!(
+        daedalus_core::pkgmgr::detect_python_pkgmgr(td.path()),
+        None,
+        "comment-only requirements must not select pip"
+    );
+    assert!(!daedalus_core::pkgmgr::requirements_declares_deps(
+        "# only\n"
+    ));
+}
+
+#[test]
+fn chaos_scan_ignores_junk_keeps_dual_ext() {
+    use daedalus_core::assembly::{assemble_daedalus, AssemblyInput};
+
+    let td = TempDir::new().unwrap();
+    let meta = serde_json::json!({
+        "name": "scan-junk",
+        "runtime": "binary",
+        "entrypoint": ["/app/app"],
+    });
+    let meta_bytes = serde_json::to_vec(&meta).unwrap();
+    let payload = daedalus_core::compress::compress(b"scan-junk").unwrap();
+    for name in ["keep.de", "keep.daedalus"] {
+        assemble_daedalus(
+            &td.path().join(name),
+            &AssemblyInput {
+                stub_bytes: b"FAKE-STUB-SCAN-JUNK",
+                payload: &payload,
+                meta_bytes: &meta_bytes,
+                squashfs: false,
+                target_arch: None,
+                sisr: None,
+                encryption: None,
+            },
+        )
+        .unwrap();
+    }
+    fs::write(td.path().join("notes.txt"), b"not an artifact").unwrap();
+    fs::write(td.path().join("fake.de.bak"), b"wrong extension").unwrap();
+
+    let out = daedalus()
+        .args(["scan", td.path().to_str().unwrap(), "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let body = String::from_utf8_lossy(&out);
+    let parsed: serde_json::Value = serde_json::from_str(&body).expect("scan json");
+    let entries = parsed.as_array().expect("array");
+    assert_eq!(entries.len(), 2, "junk files must not inflate scan: {body}");
+}
+
+#[test]
 fn chaos_trust_rejects_wrong_key_length() {
     let td = TempDir::new().unwrap();
     let bad = td.path().join("bad.pub");

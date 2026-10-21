@@ -88,6 +88,29 @@ jobs:
           echo "bottle smoke passed"
           kill $PID || true
 
+      - name: Smoke hello-node (stdlib HTTP)
+        timeout-minutes: 10
+        run: |
+          /tmp/daedalus-stub-target/release/daedalus build examples/hello-node --isolation none --no-install -o /tmp/hello-node.de
+          PORT=8082 /tmp/hello-node.de &
+          PID=$!
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8082 | grep -q "Hello from daedalus" && break
+            sleep 0.25
+            [ "$i" -eq 40 ] && { echo "hello-node smoke failed"; kill $PID; exit 1; }
+          done
+          echo "hello-node smoke passed"
+          kill $PID || true
+
+      - name: Smoke complex-python (vendored + comment requirements)
+        timeout-minutes: 10
+        run: |
+          /tmp/daedalus-stub-target/release/daedalus build examples/complex-python --isolation none -o /tmp/complex-python.de
+          OUT=$(COMPLEX_NAME=ci /tmp/complex-python.de)
+          echo "$OUT" | grep -q "hello-complex:ci"
+          echo "$OUT" | grep -q "vendor=vendored-ok"
+          echo "complex-python smoke passed"
+
       - name: Smoke field-kit adjacent modes
         timeout-minutes: 10
         run: |
@@ -97,13 +120,15 @@ jobs:
           /tmp/field-kit.de inventory | grep -q "FIELD KIT: INVENTORY"
           /tmp/field-kit.de update | grep -q SISR
 
-      - name: Shell chaos monkey (field-kit + bottle-web)
+      - name: Shell chaos monkey (field-kit + bottle-web + hello-node)
         timeout-minutes: 5
         run: |
           export PATH="/tmp/daedalus-stub-target/release:$PATH"
           chmod +x tests/chaos-monkey.sh
           tests/chaos-monkey.sh /tmp/field-kit.de
           tests/chaos-monkey.sh /tmp/bottle-web.de
+          tests/chaos-monkey.sh /tmp/hello-node.de
+          tests/chaos-monkey.sh /tmp/complex-python.de
 
   windows-check:
     # Forward-looking guard: compiled+lint+test the embed/deps crates for the

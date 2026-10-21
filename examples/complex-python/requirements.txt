@@ -1,0 +1,2 @@
+# Intentionally empty of installable lines.
+# Vendored deps live in ./site-packages — do not pip install.
