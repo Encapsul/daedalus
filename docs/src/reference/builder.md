@@ -117,16 +117,22 @@ transitive resolution.
 `pivot_root`) ensures `/lib64/ld-linux` resolves *inside* the rootfs, not on
 the host. See [Isolation](./isolation.md).
 
-## pip install at build time
+## Python deps at build time (`pip install --target`)
 
-If `requirements.txt` has at least one non-comment, non-blank requirement and
-no offline vendor tree (`.venv` / `site-packages/`) is present, the builder
-runs `pip install --target` into the staged rootfs and wires `PYTHONPATH`.
-Comment-only files are ignored. Cross-compile requests add `--no-binary :all:`.
+If no offline vendor tree (`.venv` / `site-packages/`) is present, the builder
+stages deps into the rootfs and wires `PYTHONPATH`:
+
+| Marker | Path |
+|--------|------|
+| `requirements.txt` (real lines) | `pip install --target … -r requirements.txt` |
+| `uv.lock` | `uv export` → `pip install --target` |
+| `poetry.lock` | `poetry export` → `pip install --target` |
+| `Pipfile.lock` | `pipenv requirements` → `pip install --target` |
+
+Comment-only `requirements.txt` files are ignored. Cross-compile requests add
+`--no-binary :all:`. Missing exporters fail the build (no silent host install).
 
 ```
 [daedalus] pip install: ./my_app/requirements.txt → /app/site-packages
+[daedalus] uv export → /tmp/daedalus-…-req.txt
 ```
-
-`uv` / Poetry / Pipenv install on the host; packaging only picks up a resulting
-`.venv` or vendored `site-packages/`.

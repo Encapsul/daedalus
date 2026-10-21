@@ -97,6 +97,43 @@ pub fn requirements_declares_deps(contents: &str) -> bool {
     })
 }
 
+/// Managers whose deps are staged into rootfs `app/site-packages` (not host).
+pub fn stages_python_site_packages(mgr: PkgMgr) -> bool {
+    matches!(
+        mgr,
+        PkgMgr::Uv | PkgMgr::Poetry | PkgMgr::Pipenv | PkgMgr::Pip
+    )
+}
+
+/// Export argv (after the program name) that writes a requirements file to `out`.
+///
+/// - `Pip`: `None` — use `requirements.txt` directly.
+/// - `Pipenv`: `pipenv requirements` (stdout; caller redirects to `out`).
+/// - `Uv` / `Poetry`: write via `-o` / `--output`.
+pub fn python_export_argv(mgr: PkgMgr, out: &Path) -> Option<Vec<String>> {
+    let out_s = out.display().to_string();
+    match mgr {
+        PkgMgr::Uv => Some(vec![
+            "export".into(),
+            "--frozen".into(),
+            "--no-dev".into(),
+            "--no-emit-project".into(),
+            "-o".into(),
+            out_s,
+        ]),
+        PkgMgr::Poetry => Some(vec![
+            "export".into(),
+            "-f".into(),
+            "requirements.txt".into(),
+            "--without-hashes".into(),
+            "-o".into(),
+            out_s,
+        ]),
+        PkgMgr::Pipenv => Some(vec!["requirements".into()]),
+        _ => None,
+    }
+}
+
 /// Detect the Python package manager by checking lock files.
 pub fn detect_python_pkgmgr(dir: &Path) -> Option<PkgMgr> {
     if dir.join("uv.lock").is_file() {
@@ -353,6 +390,34 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("requirements.txt"), "bottle\n").unwrap();
         assert_eq!(detect_python_pkgmgr(dir.path()), Some(PkgMgr::Pip));
+    }
+
+    #[test]
+    fn python_mgrs_stage_into_site_packages() {
+        for mgr in [PkgMgr::Uv, PkgMgr::Poetry, PkgMgr::Pipenv, PkgMgr::Pip] {
+            assert!(stages_python_site_packages(mgr), "{}", mgr.name());
+        }
+        assert!(!stages_python_site_packages(PkgMgr::Npm));
+    }
+
+    #[test]
+    fn uv_and_poetry_export_argv_write_o() {
+        let out = Path::new("/tmp/daedalus-req.txt");
+        let uv = python_export_argv(PkgMgr::Uv, out).unwrap();
+        assert_eq!(uv[0], "export");
+        assert!(uv
+            .windows(2)
+            .any(|w| w[0] == "-o" && w[1] == out.display().to_string()));
+        let poetry = python_export_argv(PkgMgr::Poetry, out).unwrap();
+        assert!(poetry.iter().any(|a| a == "export"));
+        assert!(poetry
+            .windows(2)
+            .any(|w| w[0] == "-o" && w[1] == out.display().to_string()));
+        assert_eq!(
+            python_export_argv(PkgMgr::Pipenv, out),
+            Some(vec!["requirements".into()])
+        );
+        assert!(python_export_argv(PkgMgr::Pip, out).is_none());
     }
 
     #[test]

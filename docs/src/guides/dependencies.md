@@ -39,8 +39,9 @@ Detects which package manager an app uses (speed-based priority):
 | Python | uv > poetry > pipenv > pip (pip only if `requirements.txt` has real deps; comment-only = empty) |
 | Node.js | pnpm > yarn > bun > npm |
 
-Pip installs into the staged rootfs (`--target`). uv/Poetry/Pipenv mutate the
-host/project env — daedalus warns; embed via `.venv/` or `site-packages/`.
+Pip, uv, Poetry, and Pipenv all stage into the rootfs (`pip install --target`
+after export for lockfile managers). Prefer vendored `site-packages/` / `.venv/`
+for air-gap builds; missing exporters fail loudly rather than host-installing.
 
 ### ELF dependency resolution
 

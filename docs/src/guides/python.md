@@ -88,9 +88,17 @@ Comment-only or whitespace-only `requirements.txt` files are treated as empty
 (no pip). Prefer vendoring into `site-packages/` for air-gap builds; see
 `examples/complex-python`.
 
-`uv` / Poetry / Pipenv still install into the host/project env. daedalus warns
-and only embeds what already exists under `.venv/` or `site-packages/` after
-that install.
+## uv / Poetry / Pipenv → staged site-packages
+
+When `uv.lock`, `poetry.lock`, or `Pipfile.lock` is present and there is no
+vendored `site-packages/` / `.venv` yet, the builder **exports** a requirements
+file (`uv export`, `poetry export`, or `pipenv requirements`) and runs
+`pip install --target` into the staged rootfs — same destination as Pip, never
+a silent host-only install. Cross builds still pass `--no-binary :all:`.
+
+If the exporter is missing from `PATH`, or export fails (e.g. Poetry without
+`poetry-plugin-export`), the build **errors** with a clear message. Vendor
+`site-packages/` or commit a `.venv/` for air-gap builds without those tools.
 
 ## Current limitations
 

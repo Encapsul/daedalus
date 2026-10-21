@@ -367,6 +367,23 @@ fn chaos_comment_only_requirements_not_pip() {
 }
 
 #[test]
+fn chaos_uv_and_poetry_stage_into_site_packages() {
+    use daedalus_core::pkgmgr::{
+        detect_python_pkgmgr, python_export_argv, stages_python_site_packages, PkgMgr,
+    };
+    let td = TempDir::new().unwrap();
+    fs::write(td.path().join("uv.lock"), "version = 1\n").unwrap();
+    assert_eq!(detect_python_pkgmgr(td.path()), Some(PkgMgr::Uv));
+    assert!(stages_python_site_packages(PkgMgr::Uv));
+    assert!(stages_python_site_packages(PkgMgr::Poetry));
+    assert!(stages_python_site_packages(PkgMgr::Pipenv));
+    let out = td.path().join("req.txt");
+    let argv = python_export_argv(PkgMgr::Uv, &out).expect("uv export argv");
+    assert!(argv.iter().any(|a| a == "export"));
+    assert!(argv.windows(2).any(|w| w[0] == "-o"));
+}
+
+#[test]
 fn chaos_scan_ignores_junk_keeps_dual_ext() {
     use daedalus_core::assembly::{assemble_daedalus, AssemblyInput};
 

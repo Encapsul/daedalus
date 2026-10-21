@@ -566,32 +566,17 @@ fn install_package_managers(
     }
 
     // Detect and install all package managers (primary + secondary).
-    // Pip is deferred to `stage_python_site_packages` so deps land in the
-    // staged rootfs (`--target app/site-packages`) instead of the host.
+    // Python managers are deferred to `stage_python_site_packages` so deps
+    // land in the staged rootfs (`--target app/site-packages`), not the host.
     for mgr in &pkgmgr::detect_all_pkgmgrs(app_dir, runtime_name) {
-        if matches!(mgr, pkgmgr::PkgMgr::Pip) {
+        if pkgmgr::stages_python_site_packages(*mgr) {
             if verbose {
-                eprintln!("Package manager: pip (deferred to staged site-packages)");
+                eprintln!(
+                    "Package manager: {} (deferred to staged site-packages)",
+                    mgr.name()
+                );
             }
             continue;
-        }
-        if matches!(
-            mgr,
-            pkgmgr::PkgMgr::Uv | pkgmgr::PkgMgr::Poetry | pkgmgr::PkgMgr::Pipenv
-        ) {
-            // These tools install into a project/host env, not the staged
-            // rootfs. Packaging only picks them up via `.venv/` or a vendored
-            // `site-packages/` after install — warn so airgap builds do not
-            // silently assume deps are embedded.
-            eprintln!(
-                "[daedalus] warning: `{}` installs into the host/project environment, \
-                 not the staged rootfs",
-                mgr.name()
-            );
-            eprintln!(
-                "  for a self-contained .de, ensure `.venv/` or `site-packages/` exists \
-                 after install (or vendor deps and drop a real requirements.txt)"
-            );
         }
         if verbose {
             eprintln!("Package manager: {}", mgr.name());
@@ -833,19 +818,41 @@ fn stage_rootfs(
     Ok((tmp, rootfs))
 }
 
-/// Merge vendored / `.venv` site-packages into the staged rootfs, and run
-/// `pip install --target` when the app has a real `requirements.txt` but no
-/// offline vendor tree yet.
+/// Merge vendored / `.venv` site-packages into the staged rootfs, and install
+/// Python deps via `pip install --target` (direct requirements, or export from
+/// uv / Poetry / Pipenv) when no offline vendor tree is present yet.
 fn stage_python_site_packages(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path) -> Result<()> {
     if plan.runtime_name != "python" {
         return Ok(());
     }
     let dest = rootfs.join("app").join("site-packages");
+    let had_vendored = copy_python_vendor_tree(plan, &dest)?;
+    // Prefer an existing vendor / `.venv` tree; never host-install for airgap.
+    if had_vendored || plan.no_install || dir_has_entries(&dest) {
+        return Ok(());
+    }
+    let Some(mgr) = pkgmgr::detect_python_pkgmgr(&plan.app_dir) else {
+        return Ok(());
+    };
+    if !pkgmgr::stages_python_site_packages(mgr) {
+        return Ok(());
+    }
+    stage_python_mgr_target(
+        mgr,
+        &plan.app_dir,
+        &dest,
+        args.cross_compile.as_deref(),
+        plan.verbose,
+    )
+}
+
+/// Copy `.venv` or note vendored `site-packages/`. Returns whether vendored dir
+/// already had entries (caller skips network install in that case).
+fn copy_python_vendor_tree(plan: &BuildPlan, dest: &Path) -> Result<bool> {
     let vendored = plan.app_dir.join("site-packages");
     let had_vendored = dir_has_entries(&vendored);
-
     if let Some(venv_sp) = find_venv_site_packages(&plan.app_dir) {
-        copy_dir_recursive_with(&venv_sp, &dest, true)
+        copy_dir_recursive_with(&venv_sp, dest, true)
             .context("failed to copy .venv site-packages into rootfs")?;
         if plan.verbose {
             eprintln!("  app layer: site-packages from {}", venv_sp.display());
@@ -853,18 +860,101 @@ fn stage_python_site_packages(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path)
     } else if had_vendored && plan.verbose {
         eprintln!("  app layer: site-packages from {}", vendored.display());
     }
+    Ok(had_vendored)
+}
 
-    if had_vendored || plan.no_install {
+/// Export (when needed) then `pip install --target` for one Python manager.
+fn stage_python_mgr_target(
+    mgr: pkgmgr::PkgMgr,
+    app_dir: &Path,
+    dest: &Path,
+    cross_compile: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if mgr == pkgmgr::PkgMgr::Pip {
+        let req = app_dir.join("requirements.txt");
+        return pip_install_requirements(app_dir, dest, &req, cross_compile, verbose);
+    }
+    let tmp = tempfile::Builder::new()
+        .prefix("daedalus-")
+        .suffix("-req.txt")
+        .tempfile()
+        .context("failed to create temp requirements for export")?;
+    let req_path = tmp.path().to_path_buf();
+    export_python_requirements(mgr, app_dir, &req_path, verbose)?;
+    pip_exported_requirements(mgr, app_dir, dest, &req_path, cross_compile, verbose)
+}
+
+/// Install from an exported requirements file, or skip when empty.
+fn pip_exported_requirements(
+    mgr: pkgmgr::PkgMgr,
+    app_dir: &Path,
+    dest: &Path,
+    req_path: &Path,
+    cross_compile: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    let contents =
+        std::fs::read_to_string(req_path).context("failed to read exported requirements")?;
+    if !pkgmgr::requirements_declares_deps(&contents) {
+        if verbose {
+            eprintln!(
+                "  {}: export had no installable lines (skip pip --target)",
+                mgr.name()
+            );
+        }
         return Ok(());
     }
-    if pkgmgr::detect_python_pkgmgr(&plan.app_dir) != Some(pkgmgr::PkgMgr::Pip) {
+    pip_install_requirements(app_dir, dest, req_path, cross_compile, verbose)
+}
+
+/// Run `uv export` / `poetry export` / `pipenv requirements` into `out`.
+fn export_python_requirements(
+    mgr: pkgmgr::PkgMgr,
+    app_dir: &Path,
+    out: &Path,
+    verbose: bool,
+) -> Result<()> {
+    let name = mgr.name();
+    ensure_python_exporter(name)?;
+    let argv = pkgmgr::python_export_argv(mgr, out)
+        .ok_or_else(|| anyhow::anyhow!("internal: `{name}` has no requirements export command"))?;
+    let (prog, prefix) = resolve_command(name);
+    let mut cmd = std::process::Command::new(&prog);
+    cmd.args(&prefix).args(&argv).current_dir(app_dir);
+    if mgr == pkgmgr::PkgMgr::Pipenv {
+        let file = std::fs::File::create(out).context("failed to create pipenv requirements")?;
+        cmd.stdout(file);
+    }
+    if verbose {
+        eprintln!("[daedalus] {name} export → {}", out.display());
+    }
+    run_python_export(&mut cmd, name)
+}
+
+fn ensure_python_exporter(name: &str) -> Result<()> {
+    if is_command_available(name) {
         return Ok(());
     }
-    pip_install_target(
-        &plan.app_dir,
-        &dest,
-        args.cross_compile.as_deref(),
-        plan.verbose,
+    anyhow::bail!(
+        "`{name}` not found on PATH; cannot export deps into staged \
+         site-packages. Install `{name}`, vendor `site-packages/`, or \
+         commit a `.venv/`"
+    )
+}
+
+fn run_python_export(cmd: &mut std::process::Command, name: &str) -> Result<()> {
+    let status = cmd
+        .status()
+        .with_context(|| format!("failed to run `{name}` export"))?;
+    if status.success() {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "`{name}` export failed (exit {}). For Poetry, install \
+         poetry-plugin-export. Or vendor `site-packages/` / `.venv/` \
+         for air-gap builds.",
+        status.code().unwrap_or(-1)
     )
 }
 
@@ -873,42 +963,24 @@ fn pip_target_needs_no_binary(cross_compile: Option<&str>) -> bool {
     cross_compile.is_some_and(|c| c.split(',').any(|t| t.trim() != std::env::consts::ARCH))
 }
 
-/// `pip install --target <dest> -r requirements.txt` into the staged rootfs.
-fn pip_install_target(
+/// `pip install --target <dest> -r <requirements>` into the staged rootfs.
+fn pip_install_requirements(
     app_dir: &Path,
     dest: &Path,
+    req: &Path,
     cross_compile: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
     std::fs::create_dir_all(dest).context("failed to create staged site-packages")?;
-    let req = app_dir.join("requirements.txt");
-    let (prog, prefix) = resolve_command("pip");
-    let mut cmd = std::process::Command::new(&prog);
-    cmd.args(&prefix).args([
-        "install",
-        "--default-timeout",
-        "120",
-        "--retries",
-        "5",
-        "--target",
-    ]);
-    cmd.arg(dest);
-    if pip_target_needs_no_binary(cross_compile) {
-        cmd.args(["--no-binary", ":all:"]);
-        if verbose {
-            eprintln!("  pip --target: --no-binary :all: (cross-compile)");
-        }
-    }
-    cmd.arg("-r").arg(&req).current_dir(app_dir);
+    let mut cmd = pip_target_command(dest, req, cross_compile, verbose)?;
+    cmd.current_dir(app_dir);
     if verbose {
         eprintln!(
             "[daedalus] pip install: {} → /app/site-packages",
             req.display()
         );
     }
-    let status = cmd
-        .status()
-        .context("failed to run pip - is it installed?")?;
+    let status = cmd.status().context("failed to run pip")?;
     if !status.success() {
         anyhow::bail!(
             "pip install --target failed (exit {})",
@@ -916,6 +988,52 @@ fn pip_install_target(
         );
     }
     Ok(())
+}
+
+fn pip_target_command(
+    dest: &Path,
+    req: &Path,
+    cross_compile: Option<&str>,
+    verbose: bool,
+) -> Result<std::process::Command> {
+    let (prog, mut prefix) = resolve_pip_invocation()?;
+    prefix.extend([
+        "install".into(),
+        "--default-timeout".into(),
+        "120".into(),
+        "--retries".into(),
+        "5".into(),
+        "--target".into(),
+    ]);
+    let mut cmd = std::process::Command::new(&prog);
+    cmd.args(&prefix);
+    cmd.arg(dest);
+    if pip_target_needs_no_binary(cross_compile) {
+        cmd.args(["--no-binary", ":all:"]);
+        if verbose {
+            eprintln!("  pip --target: --no-binary :all: (cross-compile)");
+        }
+    }
+    cmd.arg("-r").arg(req);
+    Ok(cmd)
+}
+
+/// Prefer `pip`, then `pip3`, then `python3 -m pip` (macOS often has no `pip`).
+fn resolve_pip_invocation() -> Result<(String, Vec<String>)> {
+    for name in ["pip", "pip3"] {
+        if is_command_available(name) {
+            return Ok(resolve_command(name));
+        }
+    }
+    for py in ["python3", "python"] {
+        if !is_command_available(py) {
+            continue;
+        }
+        let (prog, mut prefix) = resolve_command(py);
+        prefix.extend(["-m".into(), "pip".into()]);
+        return Ok((prog, prefix));
+    }
+    anyhow::bail!("pip not found on PATH (tried pip, pip3, python3 -m pip)")
 }
 
 /// Locate `lib/pythonX.Y/site-packages` under `.venv` or `venv`.

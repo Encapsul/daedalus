@@ -1,0 +1,2 @@
+# Minimal lock stub for detect_python_pkgmgr (poetry). Real exports are mocked in tests.
+# This file intentionally has no package tables.

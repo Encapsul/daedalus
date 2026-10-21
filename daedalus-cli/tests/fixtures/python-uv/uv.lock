@@ -1,0 +1,2 @@
+# Minimal lock stub for detect_python_pkgmgr (uv). Real exports are mocked in tests.
+version = 1
