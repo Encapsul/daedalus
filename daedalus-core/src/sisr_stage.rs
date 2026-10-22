@@ -285,6 +285,15 @@ pub struct MediaExportStats {
     pub skipped_chunks: usize,
 }
 
+/// Result of [`verify_media`]: signature + on-disk chunk coverage.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MediaVerifyStats {
+    pub chunk_count: usize,
+    pub present_chunks: usize,
+    pub reused_chunks: usize,
+    pub present_bytes: u64,
+}
+
 /// Stage a USB / courier update channel next to a signed remote manifest:
 ///
 /// ```text
@@ -354,6 +363,99 @@ pub fn embedded_chunk_hashes(bin: &Path) -> io::Result<HashSet<[u8; 32]>> {
         return Err(err("binary has no embedded SISR section"));
     };
     Ok(manifest.chunks.iter().map(|c| c.hash).collect())
+}
+
+/// Offline check of a USB / courier media root before apply.
+///
+/// Validates the signed `manifest`, Merkle root, and every `chunks/<hex>`
+/// file. Chunks listed in `reuse` (from `--against`) may be absent - the
+/// recipient already has them. Fails closed on empty trust, a foreign key,
+/// a bad hash, or a missing non-reused chunk. Never reads a private key.
+pub fn verify_media<S: BuildHasher>(
+    media_dir: &Path,
+    publics: &[VerifyingKey],
+    reuse: Option<&HashSet<[u8; 32], S>>,
+) -> io::Result<MediaVerifyStats> {
+    let remote = load_media_manifest(media_dir)?;
+    ensure_media_trust(&remote, publics)?;
+    check_media_chunks(media_dir, &remote.manifest, reuse)
+}
+
+fn load_media_manifest(media_dir: &Path) -> io::Result<RemoteManifest> {
+    let path = media_dir.join("manifest");
+    let bytes = fs::read(&path)
+        .map_err(|e| io::Error::new(e.kind(), format!("failed to read {}: {e}", path.display())))?;
+    RemoteManifest::from_bytes(&bytes)
+}
+
+fn ensure_media_trust(remote: &RemoteManifest, publics: &[VerifyingKey]) -> io::Result<()> {
+    if remote.signature == [0u8; 64] {
+        return Err(err("unsigned media manifest refused"));
+    }
+    if publics.is_empty() {
+        return Err(err(
+            "no trusted keys - trust the publisher .pub before verifying media",
+        ));
+    }
+    if !remote.verify_merkle() {
+        return Err(err("media manifest Merkle root does not match chunk table"));
+    }
+    if !remote.verify_any(publics) {
+        return Err(err(
+            "media manifest signature does not match any trusted key",
+        ));
+    }
+    Ok(())
+}
+
+fn check_media_chunks<S: BuildHasher>(
+    media_dir: &Path,
+    manifest: &DeltaManifest,
+    reuse: Option<&HashSet<[u8; 32], S>>,
+) -> io::Result<MediaVerifyStats> {
+    let chunks_dir = media_dir.join("chunks");
+    let mut stats = MediaVerifyStats {
+        chunk_count: manifest.chunks.len(),
+        ..MediaVerifyStats::default()
+    };
+    for chunk in &manifest.chunks {
+        let path = chunks_dir.join(hex::encode(chunk.hash));
+        if path.is_file() {
+            verify_chunk_file(&path, chunk)?;
+            stats.present_chunks = stats.present_chunks.saturating_add(1);
+            stats.present_bytes = stats
+                .present_bytes
+                .checked_add(u64::from(chunk.length))
+                .ok_or_else(|| err("media verify byte counter overflow"))?;
+        } else if reuse.is_some_and(|h| h.contains(&chunk.hash)) {
+            stats.reused_chunks = stats.reused_chunks.saturating_add(1);
+        } else {
+            return Err(err(&format!(
+                "missing media chunk {} (not in --against reuse set)",
+                hex::encode(chunk.hash)
+            )));
+        }
+    }
+    Ok(stats)
+}
+
+fn verify_chunk_file(path: &Path, chunk: &ChunkEntry) -> io::Result<()> {
+    let bytes = fs::read(path)?;
+    let expect = usize::try_from(chunk.length).map_err(|_| err("chunk length overflow"))?;
+    if bytes.len() != expect {
+        return Err(err(&format!(
+            "media chunk {} has length {}, expected {expect}",
+            path.display(),
+            bytes.len()
+        )));
+    }
+    if !ct_eq_hash(&sha256_digest(&bytes), &chunk.hash) {
+        return Err(err(&format!(
+            "media chunk {} failed SHA-256 verification",
+            path.display()
+        )));
+    }
+    Ok(())
 }
 
 pub(crate) fn sha256_digest(data: &[u8]) -> [u8; 32] {
@@ -657,6 +759,48 @@ mod tests {
             fs::read_dir(out.join("chunks")).unwrap().count(),
             stats.written_chunks
         );
+        let ok = verify_media(&out, &[public], Some(&reuse)).unwrap();
+        assert_eq!(ok.present_chunks, stats.written_chunks);
+        assert_eq!(ok.reused_chunks, stats.skipped_chunks);
+        assert!(verify_media(&out, &[], Some(&reuse)).is_err());
+        assert!(verify_media(
+            &out,
+            &[SigningKey::from_bytes(&[8u8; 32]).verifying_key()],
+            Some(&reuse)
+        )
+        .is_err());
+        // Full channel (no reuse) must refuse a delta tree missing reused chunks.
+        assert!(verify_media(&out, &[public], None::<&HashSet<[u8; 32]>>).is_err());
+    }
+
+    #[test]
+    fn verify_media_rejects_tampered_chunk_bytes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let key = SigningKey::from_bytes(&[24u8; 32]);
+        let public = key.verifying_key();
+        let payload = random_buf(12_000, 3);
+        let artifacts = build_artifacts(
+            &payload,
+            &SisrBuildConfig {
+                enabled: true,
+                chunk_target_size: 4096,
+                signing_key: Some(key),
+            },
+        )
+        .unwrap();
+        let remote = RemoteManifest {
+            merkle_root: artifacts.merkle_root,
+            signature: artifacts.signature,
+            manifest: artifacts.manifest.clone(),
+        };
+        let out = tmp.path().join("usb");
+        export_media(&payload, &remote, &out, None::<&HashSet<[u8; 32]>>).unwrap();
+        let first = artifacts.manifest.chunks[0].hash;
+        let path = out.join("chunks").join(hex::encode(first));
+        let mut bytes = fs::read(&path).unwrap();
+        bytes[0] ^= 0xFF;
+        fs::write(&path, bytes).unwrap();
+        assert!(verify_media(&out, &[public], None::<&HashSet<[u8; 32]>>).is_err());
     }
 
     #[test]

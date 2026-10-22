@@ -76,6 +76,7 @@ Swift, Kotlin, OCaml, Elm, R, Elixir remain out of scope.
 | Cross-compile stubs | Done (`daedalus build --universal`, polyglot shell launcher) |
 | SISR delta updates | Done |
 | Air-gap media stage (`daedalus media stage` → USB manifest+chunks) | Done |
+| Air-gap media verify + SISR-aware `daedalus verify` | Done |
 | Encryption (AES-256-GCM) | Done |
 | Ed25519 signing | Done |
 | Squashfs payload | Done |

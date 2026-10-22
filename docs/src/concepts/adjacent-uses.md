@@ -11,7 +11,7 @@ contain.
 | Domain | Why a single `.de` helps | What you must actually ship |
 |--------|--------------------------|-----------------------------|
 | USB / courier delivery | One file + one `.pub` | Signed build; recipient runs `trust` then `verify` |
-| Air-gapped ops | No registry pull at runtime | `daedalus media stage` → USB `manifest`+`chunks/`; recipient trusts `.pub` then `DAEDALUS_SISR_MANIFEST=…` |
+| Air-gapped ops | No registry pull at runtime | `daedalus media stage` → `media verify` → USB `manifest`+`chunks/`; recipient trusts `.pub` then `DAEDALUS_SISR_MANIFEST=…` |
 | Classroom / lab | Same runtime on every laptop | Embedded interpreter; no student `pip install` |
 | Incident response | Tools run where outbound net is blocked | Signed kit; private key never on the USB |
 | Edge fleet | Same packaging for x64/arm builds | Per-arch artifacts (or `--universal` slices) |

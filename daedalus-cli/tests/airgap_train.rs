@@ -10,7 +10,8 @@ use daedalus_core::format::Footer;
 use daedalus_core::sisr::engine::{DirectoryChunkFetcher, SisrEngine};
 use daedalus_core::sisr_header::read_sisr;
 use daedalus_core::sisr_stage::{
-    build_artifacts, export_media, verify_embedded_sisr, RemoteManifest, SisrBuildConfig,
+    build_artifacts, export_media, verify_embedded_sisr, verify_media, RemoteManifest,
+    SisrBuildConfig,
 };
 use ed25519_dalek::SigningKey;
 use predicates::prelude::*;
@@ -79,6 +80,88 @@ fn payload_of(bin: &Path) -> Vec<u8> {
     data[start..end].to_vec()
 }
 
+fn stage_cli_media(v2: &Path, v1: &Path, out: &Path) {
+    daedalus()
+        .args([
+            "media",
+            "stage",
+            v2.to_str().unwrap(),
+            "-o",
+            out.to_str().unwrap(),
+            "--against",
+            v1.to_str().unwrap(),
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"written_chunks\""));
+}
+
+fn assert_sisr_and_media_verify(
+    v1: &Path,
+    usb: &Path,
+    usb_cli: &Path,
+    reuse: &HashSet<[u8; 32]>,
+    public: &ed25519_dalek::VerifyingKey,
+    work: &Path,
+) {
+    let pub_path = work.join("publisher.pub");
+    std::fs::write(&pub_path, public.as_bytes()).unwrap();
+    let trust = work.join("trust");
+    std::fs::create_dir_all(&trust).unwrap();
+    daedalus()
+        .args([
+            "trust",
+            pub_path.to_str().unwrap(),
+            "--trusted-dir",
+            trust.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    daedalus()
+        .args(["verify", v1.to_str().unwrap(), "--json"])
+        .env("DAEDALUS_TRUSTED_DIR", &trust)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"scheme\": \"sisr\""))
+        .stdout(predicate::str::contains("\"verified\": true"));
+    let empty = work.join("empty-trust");
+    std::fs::create_dir_all(&empty).unwrap();
+    daedalus()
+        .args(["verify", v1.to_str().unwrap()])
+        .env("DAEDALUS_TRUSTED_DIR", &empty)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no trusted keys"));
+    assert!(verify_media(usb, &[], Some(reuse)).is_err());
+    daedalus()
+        .args([
+            "media",
+            "verify",
+            usb_cli.to_str().unwrap(),
+            "--against",
+            v1.to_str().unwrap(),
+            "--trusted-dir",
+            trust.to_str().unwrap(),
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"verified\": true"));
+    daedalus()
+        .args([
+            "media",
+            "verify",
+            usb.to_str().unwrap(),
+            "--against",
+            v1.to_str().unwrap(),
+            "--trusted-dir",
+            empty.to_str().unwrap(),
+        ])
+        .assert()
+        .failure();
+}
+
 /// Publisher builds v1+v2, stages USB against v1, recipient verifies trust then applies.
 #[test]
 fn airgap_train_usb_stage_trust_matrix_and_apply() {
@@ -90,15 +173,24 @@ fn airgap_train_usb_stage_trust_matrix_and_apply() {
     let v1 = random_buf(48_000, 21);
     let mut v2 = v1.clone();
     v2[32_000..].copy_from_slice(&random_buf(16_000, 77));
-    let meta = br#"{"name":"airgap-train","version":"1"}"#;
-    let stub = b"STUB_AIRGAP_TRAIN__________";
-
     let a1 = signed_artifacts(&v1, &key);
     let a2 = signed_artifacts(&v2, &key);
     let v1_bin = tmp.path().join("app-v1.de");
     let v2_bin = tmp.path().join("app-v2.de");
-    assemble_sisr(&v1_bin, stub, &v1, meta, &a1);
-    assemble_sisr(&v2_bin, stub, &v2, meta, &a2);
+    assemble_sisr(
+        &v1_bin,
+        b"STUB_AIRGAP_TRAIN__________",
+        &v1,
+        br#"{"name":"airgap-train","version":"1"}"#,
+        &a1,
+    );
+    assemble_sisr(
+        &v2_bin,
+        b"STUB_AIRGAP_TRAIN__________",
+        &v2,
+        br#"{"name":"airgap-train","version":"1"}"#,
+        &a2,
+    );
 
     let remote = RemoteManifest {
         merkle_root: a2.merkle_root,
@@ -107,37 +199,20 @@ fn airgap_train_usb_stage_trust_matrix_and_apply() {
     };
     assert!(remote.verify_signature(&public));
     assert!(!remote.verify_any(&[]), "empty trust must fail closed");
-    assert!(
-        !remote.verify_any(&[foreign.verifying_key()]),
-        "foreign key must fail closed"
-    );
+    assert!(!remote.verify_any(&[foreign.verifying_key()]));
 
     let reuse: HashSet<_> = a1.manifest.chunks.iter().map(|c| c.hash).collect();
     let usb = tmp.path().join("usb");
     let stats = export_media(&v2, &remote, &usb, Some(&reuse)).unwrap();
     assert!(stats.written_chunks > 0 && stats.skipped_chunks > 0);
-    assert!(usb.join("manifest").is_file());
     assert_eq!(
         std::fs::read_dir(usb.join("chunks")).unwrap().count(),
         stats.written_chunks
     );
 
-    // CLI media stage must reproduce the same layout against v1.
     let usb_cli = tmp.path().join("usb-cli");
-    daedalus()
-        .args([
-            "media",
-            "stage",
-            v2_bin.to_str().unwrap(),
-            "-o",
-            usb_cli.to_str().unwrap(),
-            "--against",
-            v1_bin.to_str().unwrap(),
-            "--json",
-        ])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("\"written_chunks\""));
+    stage_cli_media(&v2_bin, &v1_bin, &usb_cli);
+    assert_sisr_and_media_verify(&v1_bin, &usb, &usb_cli, &reuse, &public, tmp.path());
 
     let installed = tmp.path().join("installed.de");
     std::fs::copy(&v1_bin, &installed).unwrap();
@@ -145,17 +220,13 @@ fn airgap_train_usb_stage_trust_matrix_and_apply() {
     let (updated, apply_stats) = SisrEngine
         .apply_update_with_stats(&installed, &remote.manifest, &fetcher, &remote.signature)
         .unwrap();
-    assert!(apply_stats.fetched_chunks > 0);
-    assert!(apply_stats.reused_chunks > 0);
+    assert!(apply_stats.fetched_chunks > 0 && apply_stats.reused_chunks > 0);
     assert_eq!(payload_of(&updated), v2);
 
     let data = std::fs::read(&updated).unwrap();
     let (ext, manifest) = read_sisr(&mut Cursor::new(&data)).unwrap().unwrap();
     verify_embedded_sisr(&ext, &manifest, &payload_of(&updated), &[public]).unwrap();
-    assert!(
-        verify_embedded_sisr(&ext, &manifest, &payload_of(&updated), &[]).is_err(),
-        "post-apply empty trust must fail closed"
-    );
+    assert!(verify_embedded_sisr(&ext, &manifest, &payload_of(&updated), &[]).is_err());
 }
 
 /// `media stage --pubkey` copies only a 32-byte `.pub`; refuses non-.pub paths.
@@ -221,6 +292,7 @@ fn media_help_mentions_stage_and_usb() {
         .assert()
         .success()
         .stdout(predicate::str::contains("stage"))
+        .stdout(predicate::str::contains("verify"))
         .stdout(predicate::str::contains("USB").or(predicate::str::contains("air-gapped")));
 }
 

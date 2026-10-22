@@ -1,4 +1,4 @@
-//! Stage SISR update media for USB / air-gapped courier delivery.
+//! Stage and verify SISR update media for USB / air-gapped courier delivery.
 //!
 //! Publisher keeps the private key offline. Media carries `manifest` +
 //! `chunks/<hex>` (+ optional `.pub`). Recipients trust the pub, then apply
@@ -8,10 +8,13 @@
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use daedalus_core::format::Footer;
+use daedalus_core::paths::trusted_keys_dir;
 use daedalus_core::sisr_header::read_sisr;
 use daedalus_core::sisr_stage::{
-    embedded_chunk_hashes, export_media, MediaExportStats, RemoteManifest,
+    embedded_chunk_hashes, export_media, verify_media, MediaExportStats, MediaVerifyStats,
+    RemoteManifest,
 };
+use ed25519_dalek::VerifyingKey;
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -26,6 +29,8 @@ pub struct MediaArgs {
 pub enum MediaCommand {
     /// Write `manifest` + `chunks/` for a SISR-enabled `.de` (USB / courier)
     Stage(StageArgs),
+    /// Check a staged media root (signature, Merkle, chunk files) offline
+    Verify(VerifyMediaArgs),
 }
 
 #[derive(Args)]
@@ -63,10 +68,42 @@ pub struct StageArgs {
     pub no_input: bool,
 }
 
+#[derive(Args)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct VerifyMediaArgs {
+    /// Media root containing `manifest` and `chunks/`
+    pub media: PathBuf,
+
+    /// Directory of trusted public keys (default: system trust store)
+    #[arg(long)]
+    pub trusted_dir: Option<PathBuf>,
+
+    /// Extra publisher `.pub` to accept for this check (never a private key)
+    #[arg(long)]
+    pub pubkey: Option<PathBuf>,
+
+    /// Prior installed binary: allow chunks omitted from a delta stage
+    #[arg(long)]
+    pub against: Option<PathBuf>,
+
+    /// Suppress non-error output
+    #[arg(short, long)]
+    pub quiet: bool,
+
+    /// Machine-readable result
+    #[arg(long)]
+    pub json: bool,
+
+    /// Disable interactive prompts
+    #[arg(long, global = true)]
+    pub no_input: bool,
+}
+
 /// Dispatch `daedalus media …`.
 pub fn run(args: MediaArgs) -> Result<()> {
     match args.command {
         MediaCommand::Stage(stage) => stage_run(stage),
+        MediaCommand::Verify(verify) => verify_run(verify),
     }
 }
 
@@ -74,21 +111,77 @@ fn stage_run(args: StageArgs) -> Result<()> {
     prepare_output(&args.output, args.force)?;
     let payload = read_payload(&args.binary)?;
     let remote = load_remote_manifest(&args.binary)?;
-    let reuse = match &args.against {
-        Some(prev) => Some(embedded_chunk_hashes(prev).with_context(|| {
-            format!(
-                "failed to read SISR chunk table from --against {}",
-                prev.display()
-            )
-        })?),
-        None => None,
-    };
+    let reuse = against_hashes(args.against.as_deref())?;
     let stats = export_media(&payload, &remote, &args.output, reuse.as_ref())
         .context("failed to stage SISR update media")?;
     if let Some(pub_path) = &args.pubkey {
         copy_pubkey(pub_path, &args.output)?;
     }
     report_stage(&args, &stats)
+}
+
+fn verify_run(args: VerifyMediaArgs) -> Result<()> {
+    let publics = load_verify_keys(&args)?;
+    let reuse = against_hashes(args.against.as_deref())?;
+    let stats = verify_media(&args.media, &publics, reuse.as_ref())
+        .with_context(|| format!("media verify failed for {}", args.media.display()))?;
+    report_verify(&args, &stats)
+}
+
+fn against_hashes(against: Option<&Path>) -> Result<Option<std::collections::HashSet<[u8; 32]>>> {
+    match against {
+        Some(prev) => Ok(Some(embedded_chunk_hashes(prev).with_context(|| {
+            format!(
+                "failed to read SISR chunk table from --against {}",
+                prev.display()
+            )
+        })?)),
+        None => Ok(None),
+    }
+}
+
+fn load_verify_keys(args: &VerifyMediaArgs) -> Result<Vec<VerifyingKey>> {
+    let trusted_dir = args.trusted_dir.clone().unwrap_or_else(trusted_keys_dir);
+    let mut keys = crate::commands::verify::load_trusted_keys(&trusted_dir)?;
+    if let Some(pub_path) = &args.pubkey {
+        keys.push((pub_path.clone(), read_pubkey(pub_path)?));
+    }
+    // Also accept a `.pub` sitting next to the media (courier package).
+    keys.extend(media_sidecar_pubs(&args.media)?);
+    Ok(keys.into_iter().map(|(_, vk)| vk).collect())
+}
+
+fn media_sidecar_pubs(media: &Path) -> Result<Vec<(PathBuf, VerifyingKey)>> {
+    let mut out = Vec::new();
+    let Ok(entries) = fs::read_dir(media) else {
+        return Ok(out);
+    };
+    for entry in entries {
+        let path = entry?.path();
+        if path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("pub"))
+        {
+            out.push((path.clone(), read_pubkey(&path)?));
+        }
+    }
+    Ok(out)
+}
+
+fn read_pubkey(path: &Path) -> Result<VerifyingKey> {
+    if !path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("pub"))
+    {
+        anyhow::bail!("--pubkey must be a .pub file (private keys must never ride on media)");
+    }
+    let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+    if bytes.len() != 32 {
+        anyhow::bail!("public key must be 32 bytes, got {}", bytes.len());
+    }
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&bytes);
+    VerifyingKey::from_bytes(&arr).context("invalid Ed25519 public key")
 }
 
 fn prepare_output(dir: &Path, force: bool) -> Result<()> {
@@ -145,17 +238,7 @@ fn copy_pubkey(pub_path: &Path, out_dir: &Path) -> Result<()> {
     let name = pub_path
         .file_name()
         .context("--pubkey path has no file name")?;
-    if !pub_path
-        .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("pub"))
-    {
-        anyhow::bail!("--pubkey must be a .pub file (private keys must never ride on media)");
-    }
-    let bytes =
-        fs::read(pub_path).with_context(|| format!("failed to read {}", pub_path.display()))?;
-    if bytes.len() != 32 {
-        anyhow::bail!("--pubkey must be 32 raw Ed25519 bytes, got {}", bytes.len());
-    }
+    let bytes = *read_pubkey(pub_path)?.as_bytes();
     fs::write(out_dir.join(name), bytes)
         .with_context(|| format!("failed to copy pubkey into {}", out_dir.display()))?;
     Ok(())
@@ -188,8 +271,33 @@ fn report_stage(args: &StageArgs, stats: &MediaExportStats) -> Result<()> {
             stats.written_bytes
         );
         eprintln!(
-            "Recipient: trust the .pub, then DAEDALUS_SISR_MANIFEST={}/manifest ./app.de",
+            "Check: daedalus media verify {} --against <v1.de>; then trust .pub and apply",
             args.output.display()
+        );
+    }
+    Ok(())
+}
+
+fn report_verify(args: &VerifyMediaArgs, stats: &MediaVerifyStats) -> Result<()> {
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "media": args.media.display().to_string(),
+                "verified": true,
+                "chunk_count": stats.chunk_count,
+                "present_chunks": stats.present_chunks,
+                "reused_chunks": stats.reused_chunks,
+                "present_bytes": stats.present_bytes,
+                "against": args.against.as_ref().map(|p| p.display().to_string()),
+            }))?
+        );
+        return Ok(());
+    }
+    if !args.quiet {
+        eprintln!(
+            "OK: media verified ({} chunks on media, {} reused via --against, {} bytes)",
+            stats.present_chunks, stats.reused_chunks, stats.present_bytes
         );
     }
     Ok(())

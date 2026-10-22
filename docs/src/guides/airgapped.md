@@ -64,11 +64,27 @@ Layout written:
 `--pubkey` refuses non-`.pub` paths so a private key cannot be copied by
 mistake.
 
+Before the courier leaves (or on the recipient machine), check the tree
+offline:
+
+```bash
+# Delta media: pass the same --against used at stage time
+daedalus media verify /media/usb/update \
+  --against app-v1.de \
+  --pubkey ./keys/<fingerprint>.pub
+```
+
+Empty trust / foreign key / missing chunk / bad hash → exit 1. A `.pub` in
+the media root is accepted for this check (still never a `.key`).
+
 ## 3. Recipient: trust, then apply
 
 ```bash
 # Fails closed until the publisher pub is trusted
 daedalus trust /media/usb/update/<fingerprint>.pub
+
+# SISR-signed .de (no trailing v3 block): verify still authenticates the manifest
+daedalus verify app-v1.de
 
 # Local apply (no network): point the installed v1 binary at the media root
 DAEDALUS_SISR_MANIFEST=/media/usb/update/manifest ./app-v1.de
@@ -118,5 +134,5 @@ from a packaged `.de`.
 
 | Code | Meaning |
 |------|---------|
-| `0` | Media staged / update applied / verify ok |
+| `0` | Media staged / media verified / update applied / binary verify ok |
 | `1` | Trust failure, bad signature, missing chunk, or staging error |

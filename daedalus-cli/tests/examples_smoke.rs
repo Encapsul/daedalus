@@ -271,7 +271,10 @@ fn field_kit_adjacent_modes_run_offline() {
         ("inventory", &["FIELD KIT: INVENTORY", "stdlib only"][..]),
         ("classroom", &["CLASSROOM"][..]),
         ("incident", &["INCIDENT", "private key OFF the USB"][..]),
-        ("update", &["media stage", "apply chunks offline"][..]),
+        (
+            "update",
+            &["media stage", "media verify", "apply chunks offline"][..],
+        ),
     ] {
         let run = Command::new(&out)
             .arg(mode)
