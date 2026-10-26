@@ -1,9 +1,9 @@
 //! .de binary format fuzzing target.
 
 use crate::{FuzzTarget, MutationStrategy};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use arbitrary::Unstructured;
-use daedalus_core::format::{Footer, V3_FOOTER_SIZE};
+use daedalus_core::format::Footer;
 
 pub struct FormatFuzzTarget;
 
@@ -68,12 +68,14 @@ impl FuzzTarget for FormatFuzzTarget {
         Ok(out)
     }
     fn execute(&self, input: &[u8]) -> Result<()> {
-        if input.len() < V3_FOOTER_SIZE as usize {
+        // Bad magic / truncated footers must return Err without panicking.
+        // Counting those as harness "crashes" made fuzz-smoke fail on noise.
+        let Ok(footer) = Footer::read_from(&mut std::io::Cursor::new(input)) else {
             return Ok(());
-        }
-        let mut cursor = std::io::Cursor::new(input);
-        let _footer = Footer::read_from(&mut cursor)
-            .map_err(|e| anyhow!("footer read_from failed: {}", e))?;
+        };
+        let _ = (footer.footer_size(), footer.is_signed(), footer.has_sisr());
+        let packed = footer.pack();
+        let _ = Footer::read_from(&mut std::io::Cursor::new(packed));
         Ok(())
     }
 }

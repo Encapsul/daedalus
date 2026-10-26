@@ -71,8 +71,11 @@ impl FuzzTarget for StubFuzzTarget {
         self.mutate_extraction(input, unstructured)
     }
     fn execute(&self, input: &[u8]) -> Result<()> {
-        let _scenario: ExtractionScenario = serde_json::from_slice(input)?;
-        // Execution would run stub - skip in fuzzing
+        // Bit-flipped JSON that fails to deserialize is not a stub bug.
+        let Ok(_scenario) = serde_json::from_slice::<ExtractionScenario>(input) else {
+            return Ok(());
+        };
+        // Full stub extract/exec is out of scope for the smoke harness.
         Ok(())
     }
 }

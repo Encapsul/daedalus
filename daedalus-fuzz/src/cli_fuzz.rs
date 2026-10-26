@@ -63,7 +63,10 @@ impl FuzzTarget for CliFuzzTarget {
         Ok(serde_json::to_vec(&seed)?)
     }
     fn execute(&self, input: &[u8]) -> Result<()> {
-        let seed: serde_json::Value = serde_json::from_slice(input)?;
+        // Mutated seeds often stop being JSON; that is not a CLI crash.
+        let Ok(seed) = serde_json::from_slice::<serde_json::Value>(input) else {
+            return Ok(());
+        };
         let argv: Vec<String> = seed
             .get("argv")
             .and_then(|v| v.as_array())

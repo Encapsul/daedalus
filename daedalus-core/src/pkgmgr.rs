@@ -88,13 +88,28 @@ impl PkgMgr {
 
 /// True when `requirements.txt` lists at least one installable requirement.
 ///
-/// Blank lines, `#` comments, and whitespace-only files do **not** count — a
-/// comment-only file must not trigger a network `pip install`.
+/// Blank lines, `#` comments, whitespace-only, and pip *option-only* files do
+/// **not** count — they must not trigger a network `pip install`.
+///
+/// `-e` / `-r` / `-c` still count (editable, include, constraints). Pure flags
+/// like `--index-url` or `-i` alone do not.
 pub fn requirements_declares_deps(contents: &str) -> bool {
-    contents.lines().any(|line| {
-        let trimmed = line.trim();
-        !trimmed.is_empty() && !trimmed.starts_with('#')
-    })
+    contents.lines().any(requirements_line_declares_dep)
+}
+
+fn requirements_line_declares_dep(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return false;
+    }
+    if trimmed.starts_with("--") {
+        return false;
+    }
+    if let Some(rest) = trimmed.strip_prefix('-') {
+        // Short pip options: only -e / -r / -c introduce install work.
+        return matches!(rest.chars().next(), Some('e' | 'r' | 'c'));
+    }
+    true
 }
 
 /// Managers whose deps are staged into rootfs `app/site-packages` (not host).
@@ -372,6 +387,21 @@ mod tests {
         assert!(!requirements_declares_deps("   \n\t\n"));
         assert!(requirements_declares_deps("# comment\nbottle\n"));
         assert!(requirements_declares_deps("requests>=2\n"));
+    }
+
+    #[test]
+    fn requirements_options_only_is_empty() {
+        assert!(!requirements_declares_deps(
+            "--index-url https://pypi.org/simple\n--trusted-host pypi.org\n"
+        ));
+        assert!(!requirements_declares_deps("-i https://pypi.org/simple\n"));
+        assert!(!requirements_declares_deps("-f ./wheels\n"));
+        assert!(requirements_declares_deps("-e ./local_dep\n"));
+        assert!(requirements_declares_deps("-r more.txt\n"));
+        assert!(requirements_declares_deps("-c constraints.txt\n"));
+        assert!(requirements_declares_deps(
+            "--index-url https://pypi.org/simple\nbottle\n"
+        ));
     }
 
     #[test]
