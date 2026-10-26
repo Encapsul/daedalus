@@ -33,7 +33,11 @@ fn copy_dir(src: &Path, dest: &Path) {
     }
 }
 
-/// Fake `uv`/`poetry` that honors `-o <path>` and writes `./local_dep`.
+/// Fake `uv`/`poetry` that honors `-o <path>` and writes a local **wheel**.
+///
+/// Path deps (`./local_dep` + setup.py) force pip to fetch setuptools from
+/// PyPI under build isolation — that fails on offline macOS CI. A purelib
+/// wheel installs with `PIP_NO_INDEX=1`.
 fn write_export_shim(bin_dir: &Path, tool: &str) {
     fs::create_dir_all(bin_dir).unwrap();
     let path = bin_dir.join(tool);
@@ -49,7 +53,7 @@ if [ -z "$out" ]; then
   echo "shim: missing -o" >&2
   exit 1
 fi
-printf '%s\n' "./local_dep" > "$out"
+printf '%s\n' "./local_dep/markpkg-0.0.1-py3-none-any.whl" > "$out"
 "#;
     fs::write(&path, script).unwrap();
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
@@ -92,6 +96,9 @@ fn build_with_env(
         .env("DAEDALUS_STUB_PATH", stub)
         .env("XDG_DATA_HOME", data)
         .env("DAEDALUS_TRUSTED_DIR", trust)
+        // Staging tests must not touch PyPI (macOS runners have flaky DNS).
+        .env("PIP_NO_INDEX", "1")
+        .env("PIP_DISABLE_PIP_VERSION_CHECK", "1")
         .output()
         .expect("spawn build")
 }
