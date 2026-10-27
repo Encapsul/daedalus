@@ -4,23 +4,26 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.7.1-green.svg)](https://github.com/Encapsul/daedalus/releases)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/artifact-linux%20ELF-lightgrey.svg)]()
+[![Platform](https://img.shields.io/badge/artifact-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 [![Runtimes](https://img.shields.io/badge/runtimes%20detected-20-purple.svg)](#supported-runtimes)
 
 ## What it is
 
-daedalus packages an app into one self-extracting Linux ELF. The file carries
-a launcher, the app, and a runtime when the build embedded one. On Linux you
-run that file. The CI smoke that proves this is `examples/hello-web`: a Python
-standard-library HTTP server, built and curled on every Linux run.
+daedalus packages an app into one self-extracting binary. The file carries a
+launcher stub, the app, and a runtime when the build embedded one. You run that
+file on the target OS — no Docker daemon, no separate runtime install for the
+end user.
 
-The CLI itself builds on Linux, macOS, and Windows. The artifact does not.
-Running it on macOS or Windows takes WSL or a Linux VM.
+The CLI and the stub both build for Linux, macOS, and Windows. CI smoke-tests
+`examples/hello-web` on all three (`.de` on Unix, `.exe` on Windows). Cross
+targets verified in CI: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
+`win-x64` (`win-arm64` is accepted but not built by CI).
 
-On every launch the stub reads the footer, checks SHA-256, extracts into
-`~/.cache/daedalus/<hash>/`, then execs the entrypoint. That extract is why
-the first start is slower than AppImage or pkg. One measured pass of a 312-byte
-Node server (`benchmarks/comparison/results/codespaces-ba69ea`, Node 24):
+On every launch the stub reads the footer, checks SHA-256, extracts into the
+daedalus cache (`~/.cache/daedalus/<hash>/` on Unix), then execs the entrypoint.
+That extract is why the first start is slower than AppImage or pkg. One measured
+pass of a 312-byte Node server
+(`benchmarks/comparison/results/codespaces-ba69ea`, Node 24):
 
 | Packager | Artifact | On disk after launch | Cold start |
 |----------|----------|----------------------|------------|
@@ -29,8 +32,9 @@ Node server (`benchmarks/comparison/results/codespaces-ba69ea`, Node 24):
 | daedalus | 44.0 MiB | 122.6 MiB | 2.1 s |
 | Docker | 76.7 MiB | 76.7 MiB | 6.1 s |
 
-daedalus warm start on that pass was 96 ms. Docker needs a daemon. Mounting a
-SquashFS without extracting is not implemented. Details and how to reproduce:
+daedalus warm start on that pass was 96 ms (Linux comparison bench). Docker
+needs a daemon. Mounting a SquashFS without extracting is not implemented.
+Details and how to reproduce:
 [benchmarks/comparison](benchmarks/comparison/README.md).
 
 Signing is on by default with a dev key generated on the build machine and
@@ -58,18 +62,20 @@ brew install encapsul/daedalus/daedalus
 pip install daedalux
 curl -fsSL https://raw.githubusercontent.com/Encapsul/daedalus/main/install.sh | sh
 
-# Package the app the CI actually smokes. Default output name is app.de.
-# The build copies python3 from this machine into the file.
-daedalus build ./examples/hello-web -o hello-web.de
+# Package the app the CI smokes on Linux, macOS, and Windows.
+# Default output name is app.de; use .exe on Windows so the OS runs it directly.
+daedalus build ./examples/hello-web -o hello-web.de   # Unix
+# Windows CI: daedalus.exe build examples\hello-web -o hello-web.exe
 
-# Run it on Linux. The CI smoke does this on the same runner that has Python.
-./hello-web.de
+./hello-web.de    # Linux / macOS
+# .\hello-web.exe # Windows
 ```
 
 `cargo install daedalux` ships only the CLI; on first `daedalus build` it downloads
-the matching stub from the GitHub release (SHA-256 verified against `checksums.txt`)
-and caches it under `~/.cache/daedalus/stubs/`. The Homebrew tap and PyPI package
-ship the CLI, stub, and crypto tools together.
+the matching stub for the host (or `--target`) from the GitHub release (SHA-256
+verified against `checksums.txt`) and caches it under the daedalus cache
+(`~/.cache/daedalus/stubs/` on Unix, `%LOCALAPPDATA%\daedalus\…` on Windows).
+The Homebrew tap and PyPI package ship the CLI, stub, and crypto tools together.
 
 ## Supported runtimes
 
@@ -80,7 +86,7 @@ framework listed in the third column has a passing end-to-end test in CI.
 
 Evidence, as of this tree:
 
-- **CI smoke** (Linux): `examples/hello-web` (stdlib HTTP), `examples/bottle-web` (vendored `site-packages`, HTTP), `examples/field-kit` (adjacent-domain modes on stdout). macOS/Windows smoke `hello-web`.
+- **CI smoke**: `examples/hello-web` on Linux, macOS, and Windows (stdlib HTTP). Linux also smokes `examples/bottle-web` (vendored `site-packages`, HTTP) and `examples/field-kit` (adjacent-domain modes on stdout).
 - **Workspace e2e, when the toolchain exists**: Rust (`daedalus-cli/tests/rust_build.rs`, cargo is on the CI image). Java/Gradle (`java_build.rs`) skips unless `java` and Gradle ≥ 7 are installed. CI does not install them. Trust/courier chaos lives in `daedalus-cli/tests/chaos_trust.rs`.
 - **Source in `examples/`, not the CI smoke**: `hello-node`, `bottle-web-pip`, `hello-zig`, `hello-dart`, `hello-lua`.
 - **Scaffold**: `examples/offline-health-agri` is a standard-library script plus a `Modelfile`. It does not contain model weights. If Ollama is already running it queries `localhost:11434`. Otherwise it prints the prompt it would have sent.
@@ -115,9 +121,10 @@ Evidence, as of this tree:
 [stub][payload][metadata][footer]
 ```
 
-- **Stub**: statically-linked launcher (Linux ELF; musl, so it owns no dynamic
-  dependencies - the only host dependency is the Linux kernel). It reads its own
-  binary, verifies integrity, extracts the payload, and `execvp`s the entrypoint
+- **Stub**: platform launcher prepended to the payload (Linux musl ELF, macOS Mach-O,
+  Windows PE). It reads its own binary, verifies integrity, extracts the payload,
+  and starts the entrypoint (`execvp` on Unix; process spawn on Windows). Linux
+  musl stubs avoid host libc; isolation extras (namespaces / seccomp) are Linux-only
 - **Payload**: zstd-compressed tar archive (or squashfs) of the application + runtime
 - **Metadata**: JSON with runtime info, entrypoint, layers, capabilities
 - **Footer**: magic `0xBEEF_CAFE`, format magic `DAE\x01`, format version, integrity SHA-256 hash
@@ -204,8 +211,8 @@ cargo build --release
 | Crate | Purpose |
 |-------|---------|
 | `daedalux-core` | Shared library: format, compression, detection, signing, assembly (published crates.io as `daedalux-core`) |
-| `daedalus-stub` | Self-extracting launcher (Linux ELF only today; not published to crates.io) |
-| `daedalux` | CLI tool (cross-platform; published crates.io as `daedalux`, installs the `daedalus` binary) |
+| `daedalus-stub` | Self-extracting launcher for Linux / macOS / Windows (not published to crates.io) |
+| `daedalux` | CLI tool (same platforms; published crates.io as `daedalux`, installs the `daedalus` binary) |
 
 ## Configuration
 
