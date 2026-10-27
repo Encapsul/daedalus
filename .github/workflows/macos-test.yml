@@ -23,8 +23,9 @@ jobs:
       - name: Cache cargo
         uses: actions/cache@v4
         with:
+          # Do not cache ~/.cargo/bin — restoring it can clobber rustup's
+          # cargo/rustc and break nested `cargo` spawns from tests.
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/

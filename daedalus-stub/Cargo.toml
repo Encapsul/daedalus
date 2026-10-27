@@ -32,11 +32,11 @@ rand = "0.8"
 num_cpus = "1.13"
 libc = "0.2"
 zeroize = "1"           # secure memory zeroization for keys and secrets
-backhand = { version = "0.25", default-features = false, features = ["gzip", "lz4", "zstd"] }  # squashfs extraction
+backhand = { version = "0.25.5", default-features = false, features = ["gzip", "lz4", "zstd"] }  # squashfs extraction
 hex = "0.4"               # hex encoding for cache keys
 # ureq moved to target-specific section below (Linux-only)
 tempfile = "3"            # temp files for macOS sandbox profiles
-zstd = { version = "0.13", features = ["zstdmt"] }  # multithreaded zstd decompression for cold start
+zstd = { version = "0.14.3", features = ["zstdmt"] }  # multithreaded zstd decompression for cold start
 walkdir = "2"               # recursive directory scan for native libs
 aes-gcm = "0.10"            # AES-256-GCM payload decryption
 hkdf = "0.12"               # HKDF-SHA256 key derivation for decryption
@@ -53,16 +53,15 @@ ureq = { version = "3", default-features = false }
 daedalux-core = { version = "0.7.1", path = "../daedalus-core" }
 tempfile = "3"
 tar = "0.4"
-zstd = { version = "0.13", features = ["zstdmt"] }
+zstd = { version = "0.14.3", features = ["zstdmt"] }
 hex = "0.4"
 sha2 = "0.10"
 ed25519-dalek = { version = "2.1", default-features = false, features = ["alloc", "std", "rand_core"] }  # >= 2.1.0: CVE-2023-48022
 
-# zstd-sys 2.0.x compiles an x86_64-only assembly file unconditionally
-# (zstd-sys build.rs:144). Disable it on every other arch so cross-builds
-# (aarch64, arm, riscv64, ppc64le, …) can link. Scalar decompression path only.
+# zstd-sys used to compile an x86_64-only assembly file unconditionally.
+# Keep `no_asm` on non-x86_64 so cross-builds can link (scalar path only).
 [target.'cfg(not(target_arch = "x86_64"))'.dependencies]
-zstd-sys = { version = "2.0.16", features = ["no_asm"] }
+zstd-sys = { version = "2.1.2", features = ["no_asm"] }
 
 [lints]
 workspace = true

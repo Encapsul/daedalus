@@ -22,6 +22,17 @@ use super::sign::sign_macos_binary;
 use super::sisr::{build_sisr_config, report_sisr_bandwidth};
 use super::stub::{find_stub, read_existing_hashes};
 
+/// Prepend `dir` to a PATH string using the OS **list** separator (`:` / `;`).
+///
+/// Using [`std::path::MAIN_SEPARATOR`] here is wrong: on Unix it glues
+/// `/cargo/bin` + `/` + `/usr/bin:...` into one bogus entry, so child
+/// `cargo`/`go` lookups fail with ENOENT (seen on native macOS CI).
+fn prepend_to_path(dir: &Path, current: impl AsRef<std::ffi::OsStr>) -> std::ffi::OsString {
+    let mut entries = vec![dir.to_path_buf()];
+    entries.extend(std::env::split_paths(current.as_ref()));
+    std::env::join_paths(entries).unwrap_or_else(|_| dir.as_os_str().to_owned())
+}
+
 /// Warn when `--seccomp`/`--landlock` are requested but the stub will not
 /// enforce them (they only apply at isolation >= 2, on the `pivot_root` path).
 pub(crate) fn warn_sandbox_noops(isolation_num: u32, seccomp: bool, landlock: bool) {
@@ -612,13 +623,9 @@ fn install_pkgmgr_deps(
         .args(&full_args)
         .current_dir(app_dir);
 
-    let path_sep = std::path::MAIN_SEPARATOR_STR;
     if let Some(ref bin_dir) = node_bin_dir {
-        let current = std::env::var("PATH").unwrap_or_default();
-        command.env(
-            "PATH",
-            format!("{}{}{}", bin_dir.display(), path_sep, current),
-        );
+        let current = std::env::var_os("PATH").unwrap_or_default();
+        command.env("PATH", prepend_to_path(bin_dir, current));
     }
 
     if *mgr == pkgmgr::PkgMgr::Bundler {
@@ -1107,16 +1114,8 @@ fn build_go_binary(
     let verbose = plan.verbose;
 
     let go_bin_dir = ensure_go(target, verbose)?;
-    let prev_path = std::env::var("PATH").unwrap_or_default();
-    std::env::set_var(
-        "PATH",
-        format!(
-            "{}{}{}",
-            go_bin_dir.display(),
-            std::path::MAIN_SEPARATOR,
-            prev_path
-        ),
-    );
+    let prev_path = std::env::var_os("PATH").unwrap_or_default();
+    std::env::set_var("PATH", prepend_to_path(&go_bin_dir, prev_path));
 
     // Cross-compilation: set GOOS/GOARCH from --target
     if let Some(target_str) = target {
@@ -1196,12 +1195,8 @@ fn build_rust_binary(
     }
     cmd.current_dir(app_dir);
     cmd.env_remove("CARGO_TARGET_DIR");
-    let path_sep = std::path::MAIN_SEPARATOR_STR;
-    let current = std::env::var("PATH").unwrap_or_default();
-    cmd.env(
-        "PATH",
-        format!("{}{}{}", cargo_bin_dir.display(), path_sep, current),
-    );
+    let current = std::env::var_os("PATH").unwrap_or_default();
+    cmd.env("PATH", prepend_to_path(&cargo_bin_dir, current));
     if verbose {
         eprintln!("  cargo build --release...");
     }
@@ -3144,6 +3139,22 @@ mod tests {
     use super::*;
     use crate::commands::build::args::default_build_args;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn prepend_to_path_uses_list_separator_not_slash() {
+        let dir = Path::new("/opt/cargo/bin");
+        let joined = prepend_to_path(dir, "/usr/bin:/bin");
+        let joined = joined.to_string_lossy();
+        // Must be two PATH entries, not "/opt/cargo/bin/usr/bin".
+        assert!(
+            joined.starts_with("/opt/cargo/bin:"),
+            "expected PATH list sep, got {joined}"
+        );
+        assert!(
+            !joined.starts_with("/opt/cargo/bin/usr"),
+            "MAIN_SEPARATOR glue regresses cargo lookup: {joined}"
+        );
+    }
 
     /// dir_with_cargo_toml - dir with cargo toml.
     /// @content: content

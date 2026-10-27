@@ -29,7 +29,7 @@ num_cpus = "1.13"
 hex = "0.4"
 chrono = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "multipart"] }
-zip = "9"
+zip = "9.1.2"
 anyhow = "1"
 human-panic = "2"
 clap_complete = "4"
@@ -46,7 +46,7 @@ lru = "0.16.4"
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
-zstd = "0.13"
+zstd = "0.14.3"
 tar = "0.4"
 
 [lints]

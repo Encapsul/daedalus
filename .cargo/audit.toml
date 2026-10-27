@@ -1,0 +1,13 @@
+# cargo-audit config (picked up by `cargo audit` in CI).
+#
+# Direct zstd usage in daedalus-core / daedalux / daedalus-stub is on
+# zstd 0.14.3 + zstd-safe 8.2.0. The ignores below are only for the
+# transitive backhand 0.25 → zstd 0.13 / zstd-safe 7.x line until upstream
+# lands a bump (see wcampbell0x2a/backhand#783).
+
+[advisories]
+ignore = [
+    "RUSTSEC-2026-0391", # zstd 0.13 stream reuse leak (via backhand)
+    "RUSTSEC-2026-0398", # zstd-safe 7 Seekable::decompress (via backhand)
+    "RUSTSEC-2026-0403", # zstd-safe 7 legacy-frame uninit (via backhand)
+]
