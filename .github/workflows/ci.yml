@@ -10,6 +10,9 @@ on:
 env:
   CARGO_TARGET_DIR: /tmp/daedalus-stub-target
   RUSTFLAGS: "-D warnings"
+  # The CLI must be allowed to use the freshly built workspace stub; /tmp is
+  # otherwise never searched by find_stub().
+  DAEDALUS_ALLOW_WORKSPACE_STUB: "1"
 
 jobs:
   build-and-test:

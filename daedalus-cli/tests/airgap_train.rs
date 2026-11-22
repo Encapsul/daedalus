@@ -7,10 +7,11 @@
 use assert_cmd::Command;
 use daedalus_core::assembly::{assemble_daedalus, AssemblyInput};
 use daedalus_core::format::Footer;
+use daedalus_core::manifest::ManifestIdentity;
 use daedalus_core::sisr::engine::{DirectoryChunkFetcher, SisrEngine};
 use daedalus_core::sisr_header::read_sisr;
 use daedalus_core::sisr_stage::{
-    build_artifacts, export_media, verify_embedded_sisr, verify_media, RemoteManifest,
+    build_artifacts_bound, export_media, verify_embedded_sisr_bound, verify_media, RemoteManifest,
     SisrBuildConfig,
 };
 use ed25519_dalek::SigningKey;
@@ -38,16 +39,41 @@ fn random_buf(len: usize, seed: u64) -> Vec<u8> {
     out
 }
 
-fn signed_artifacts(payload: &[u8], key: &SigningKey) -> daedalus_core::sisr_stage::SisrArtifacts {
-    build_artifacts(
+fn signed_artifacts(
+    payload: &[u8],
+    key: &SigningKey,
+    stub: &[u8],
+    meta: &[u8],
+    sequence: u64,
+) -> daedalus_core::sisr_stage::SisrArtifacts {
+    let name = meta_name(meta);
+    let version = meta_version(meta);
+    let identity = ManifestIdentity::new(sequence, &name, &version, stub, meta, payload);
+    build_artifacts_bound(
         payload,
         &SisrBuildConfig {
             enabled: true,
             chunk_target_size: 4096,
             signing_key: Some(key.clone()),
         },
+        identity,
     )
     .unwrap()
+}
+
+fn meta_field(meta: &[u8], field: &str) -> String {
+    serde_json::from_slice::<serde_json::Value>(meta)
+        .ok()
+        .and_then(|v| v.get(field).and_then(|s| s.as_str()).map(str::to_string))
+        .unwrap_or_default()
+}
+
+fn meta_name(meta: &[u8]) -> String {
+    meta_field(meta, "name")
+}
+
+fn meta_version(meta: &[u8]) -> String {
+    meta_field(meta, "version")
 }
 
 fn assemble_sisr(
@@ -173,8 +199,10 @@ fn airgap_train_usb_stage_trust_matrix_and_apply() {
     let v1 = random_buf(48_000, 21);
     let mut v2 = v1.clone();
     v2[32_000..].copy_from_slice(&random_buf(16_000, 77));
-    let a1 = signed_artifacts(&v1, &key);
-    let a2 = signed_artifacts(&v2, &key);
+    let stub = b"STUB_AIRGAP_TRAIN__________";
+    let meta = br#"{"name":"airgap-train","version":"1"}"#;
+    let a1 = signed_artifacts(&v1, &key, stub, meta, 1);
+    let a2 = signed_artifacts(&v2, &key, stub, meta, 2);
     let v1_bin = tmp.path().join("app-v1.de");
     let v2_bin = tmp.path().join("app-v2.de");
     assemble_sisr(
@@ -225,8 +253,9 @@ fn airgap_train_usb_stage_trust_matrix_and_apply() {
 
     let data = std::fs::read(&updated).unwrap();
     let (ext, manifest) = read_sisr(&mut Cursor::new(&data)).unwrap().unwrap();
-    verify_embedded_sisr(&ext, &manifest, &payload_of(&updated), &[public]).unwrap();
-    assert!(verify_embedded_sisr(&ext, &manifest, &payload_of(&updated), &[]).is_err());
+    let ctx = daedalus_core::sisr_stage::SisrVerifyContext::new("airgap-train", "1", stub, meta);
+    verify_embedded_sisr_bound(&ext, &manifest, &payload_of(&updated), &[public], &ctx).unwrap();
+    assert!(verify_embedded_sisr_bound(&ext, &manifest, &payload_of(&updated), &[], &ctx).is_err());
 }
 
 /// `media stage --pubkey` copies only a 32-byte `.pub`; refuses non-.pub paths.
@@ -235,7 +264,13 @@ fn media_stage_copies_pubkey_refuses_private_key_name() {
     let tmp = tempdir().unwrap();
     let key = SigningKey::from_bytes(&[43u8; 32]);
     let payload = random_buf(12_000, 9);
-    let artifacts = signed_artifacts(&payload, &key);
+    let artifacts = signed_artifacts(
+        &payload,
+        &key,
+        b"STUB________________________",
+        br#"{"n":1}"#,
+        1,
+    );
     let bin = tmp.path().join("app.de");
     assemble_sisr(
         &bin,

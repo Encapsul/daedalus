@@ -1,11 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use daedalus_core::format::{Footer, SIG_BLOCK_SIZE, SIG_LEN};
+use daedalus_core::format::{signature_digest, Footer, SIG_BLOCK_SIZE, SIG_LEN};
 use daedalus_core::paths::trusted_keys_dir;
 use daedalus_core::sisr_header::read_sisr;
-use daedalus_core::sisr_stage::verify_embedded_sisr;
+use daedalus_core::sisr_stage::verify_embedded_sisr_bound;
 use ed25519_dalek::VerifyingKey;
-use sha2::{Digest, Sha256};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
@@ -98,13 +97,18 @@ fn open_source(file: &Path) -> Result<Cursor<Vec<u8>>> {
 fn report_unsigned(args: &VerifyArgs, display_name: &str) -> Result<()> {
     if args.json {
         write_json_output(
-            &serde_json::json!({"file": display_name, "signed": false}),
+            &serde_json::json!({
+                "file": display_name,
+                "signed": false,
+                "verified": false,
+                "error": "file is not signed",
+            }),
             args.output.as_deref(),
         )?;
-    } else {
-        eprintln!("file is not signed");
     }
-    Ok(())
+    // Fail closed: CI gates and `f && ./f` must not treat an unsigned file
+    // as verified. The JSON report is still emitted before the error.
+    anyhow::bail!("file is not signed")
 }
 
 fn require_trusted_keys(trusted_dir: &Path) -> Result<Vec<(PathBuf, VerifyingKey)>> {
@@ -140,12 +144,9 @@ fn verify_trailing(
     )?;
     let meta =
         daedalus_core::format::read_at(source, footer.meta_offset, footer.meta_size as usize)?;
-    // Footer is hashed so a format_version / FLAG_SIGNED downgrade invalidates the sig.
-    let mut hasher = Sha256::new();
-    hasher.update(&payload);
-    hasher.update(&meta);
-    hasher.update(footer.pack_full());
-    let hash = hasher.finalize();
+    // The footer is hashed (and, in v6+, the stub) so downgrades and stub
+    // swaps invalidate the signature.
+    let hash = signature_digest(source, footer, &payload, &meta)?;
     let keys = require_trusted_keys(trusted_dir)?;
     let sig = ed25519_dalek::Signature::from_slice(signature_bytes)?;
     let verified_key = keys.iter().find_map(|(key_path, vk)| {
@@ -176,9 +177,24 @@ fn verify_sisr(
         footer.payload_offset,
         footer.payload_csize as usize,
     )?;
+    let meta =
+        daedalus_core::format::read_at(source, footer.meta_offset, footer.meta_size as usize)?;
+    let stub = daedalus_core::format::read_at(
+        source,
+        0,
+        usize::try_from(footer.payload_offset).context("payload offset overflow")?,
+    )?;
+    let meta_json: serde_json::Value =
+        serde_json::from_slice(&meta).context("invalid metadata JSON")?;
+    let name = meta_json.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let version = meta_json
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let ctx = daedalus_core::sisr_stage::SisrVerifyContext::new(name, version, &stub, &meta);
     let keys = require_trusted_keys(trusted_dir)?;
     let publics: Vec<VerifyingKey> = keys.iter().map(|(_, vk)| *vk).collect();
-    verify_embedded_sisr(ext, manifest, &payload, &publics)
+    verify_embedded_sisr_bound(ext, manifest, &payload, &publics, &ctx)
         .context("embedded SISR signature verification failed")?;
     let verified_key = keys
         .iter()
@@ -215,12 +231,12 @@ fn finish_verify(
             }),
             args.output.as_deref(),
         )?;
-        return Ok(());
     }
+    // `verified:false` must never be a successful CI gate.
     if !verified {
         anyhow::bail!("signature does not match any trusted key");
     }
-    if !args.quiet {
+    if !args.quiet && !args.json {
         eprintln!("OK: signature verified ({scheme})");
     }
     Ok(())

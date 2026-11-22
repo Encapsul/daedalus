@@ -97,7 +97,7 @@ fn bad_magic_rejected() {
 fn unsupported_version_rejected() {
     let mut sha = [0u8; 32];
     sha.fill(0xCD);
-    for version in [6, 7, 42, 100, 200, 255] {
+    for version in [7, 42, 100, 200, 255] {
         let footer = Footer {
             format_version: version,
             arch: 1,

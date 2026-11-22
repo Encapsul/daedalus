@@ -128,8 +128,9 @@ Nous ne créons pas un nouveau standard. Le format `.daedalus` est :
 - Des **signatures Ed25519 standards** - vérifiables avec la librarie crypto standard
 - Un **rootfs POSIX** - pas de kernel features propriétaires
 
-Le format existe depuis v2 (plain) → v3 (signed) → v4 (encrypted) → v5 (squashfs),
-et lit les versions anciennes. Nous ne forkons jamais le format.
+Le format existe depuis v2 (plain) → v3 (signed) → v4 (encrypted) → v5 (squashfs)
+→ v6 (signature qui couvre aussi le stub), et lit les versions anciennes.
+Nous ne forkons jamais le format.
 
 ## Ce daedalus n'est PAS
 

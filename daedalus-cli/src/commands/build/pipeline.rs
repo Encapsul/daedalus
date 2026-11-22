@@ -2917,6 +2917,43 @@ fn load_encryption_key(path: &Path) -> Result<[u8; 32]> {
     Ok(key)
 }
 
+/// Builds the v2 SISR artifacts whose signed identity binds this artifact to
+/// the app name, version, launcher, metadata and payload. The sequence comes
+/// from the previous manifest so replaying an older update is detectable.
+fn build_bound_artifacts(
+    args: &BuildArgs,
+    plan: &BuildPlan,
+    output: &Path,
+    prev_manifest_bytes: Option<&[u8]>,
+    inputs: &AssembleInputs<'_>,
+) -> Result<daedalus_core::sisr_stage::SisrArtifacts> {
+    if let Some(artifacts) = &inputs.sisr_artifacts {
+        return Ok(artifacts.clone());
+    }
+    let sisr_config = build_sisr_config(&args.key)?;
+    let previous_sequence = prev_manifest_bytes
+        .and_then(|bytes| {
+            daedalus_core::sisr_stage::RemoteManifest::from_bytes(bytes)
+                .ok()
+                .and_then(|m| m.manifest.identity.map(|id| id.sequence))
+        })
+        .unwrap_or(0);
+    let app_name = plan
+        .app_dir
+        .file_name()
+        .map_or_else(|| "app".to_string(), |n| n.to_string_lossy().into_owned());
+    let identity = daedalus_core::manifest::ManifestIdentity::new(
+        previous_sequence.saturating_add(1),
+        &app_name,
+        plan.version_info.as_deref().unwrap_or(""),
+        inputs.stub_bytes,
+        inputs.meta_bytes,
+        inputs.payload,
+    );
+    daedalus_core::sisr_stage::build_artifacts_bound(inputs.payload, &sisr_config, identity)
+        .context("SISR stage failed during build")
+}
+
 /// Assemble the final `.daedalus` artifact, warn about unsigned SISR artifacts
 /// and re-sign on macOS targets.
 /// Returns the artifact size in bytes.
@@ -2929,6 +2966,15 @@ fn assemble_and_sign(
 ) -> Result<u64> {
     eprintln!("Assembling {}...", output.display());
 
+    if args.enable_sisr && args.encrypt.is_some() {
+        anyhow::bail!(
+            "--enable-sisr cannot be combined with --encrypt: the SISR signature covers the \
+             stored payload bytes, which encryption would replace, so the at-rest identity \
+             could not be verified. Package the plaintext artifact with SISR and encrypt the \
+             transport channel instead."
+        );
+    }
+
     // Save previous SISR manifest before assembly (for bandwidth reporting)
     let prev_manifest_bytes: Option<Vec<u8>> = if args.update && args.enable_sisr {
         let mut prev_manifest_path = output.to_path_buf();
@@ -2939,12 +2985,8 @@ fn assemble_and_sign(
     };
 
     let size = if args.enable_sisr {
-        let sisr_config = build_sisr_config(&args.key)?;
-        let artifacts = match inputs.sisr_artifacts {
-            Some(a) => a,
-            None => daedalus_core::sisr_stage::build_artifacts(inputs.payload, &sisr_config)
-                .context("SISR stage failed during build")?,
-        };
+        let artifacts =
+            build_bound_artifacts(args, plan, output, prev_manifest_bytes.as_deref(), &inputs)?;
         let (encrypted_payload, encryption) = args
             .encrypt
             .as_ref()

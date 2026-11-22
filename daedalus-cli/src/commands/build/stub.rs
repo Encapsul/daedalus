@@ -8,11 +8,13 @@ use crate::release;
 ///
 /// Search order:
 /// 1. `DAEDALUS_STUB_PATH` env var (explicit override)
-/// 2. `target/<triple>/release/daedalus-stub` (workspace build)
-/// 3. `/tmp/daedalus-stub-target/<triple>/release/daedalus-stub` (AGENTS.md path)
-/// 4. `stub/target/<triple>/release/daedalus-stub` (legacy layout)
-/// 5. next to the running `daedalus` binary (installed distributions)
-/// 6. `which daedalus-stub` (system install, with warning)
+/// 2. next to the running `daedalus` binary (installed distributions)
+/// 3. workspace target dirs, only with `DAEDALUS_ALLOW_WORKSPACE_STUB=1`
+/// 4. `which daedalus-stub` (system install, with warning)
+/// 5. checksum-verified release download
+///
+/// `/tmp` is deliberately never searched: any local user can plant a stub
+/// there, and `daedalus build` would sign it with the victim's key.
 ///
 /// Without a `--target`, the native host triple is used so a plain
 /// `daedalus build` finds the stub that runs on this machine (macOS and
@@ -25,47 +27,8 @@ pub(crate) fn find_stub(target: Option<&str>) -> Result<PathBuf> {
         }
     }
 
-    let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
-
-    let is_windows = target.is_some_and(|t| parse_target(t).1 == "windows");
-
-    let arch_suffix = match target.map(parse_target) {
-        Some((arch, os)) if os == "linux" => format!("{arch}-unknown-linux-musl"),
-        Some((arch, os)) if os == "darwin" => format!("{arch}-apple-darwin"),
-        Some((arch, os)) if os == "windows" => format!("{arch}-pc-windows-gnu"),
-        Some((arch, _)) => format!("{arch}-unknown-linux-musl"),
-        None => native_arch_suffix(),
-    };
-
-    let stub_name = if is_windows {
-        "daedalus-stub.exe"
-    } else {
-        "daedalus-stub"
-    };
-
-    let mut candidates = vec![
-        PathBuf::from(&target_dir)
-            .join(&arch_suffix)
-            .join("release")
-            .join(stub_name),
-        PathBuf::from("/tmp/daedalus-stub-target")
-            .join(&arch_suffix)
-            .join("release")
-            .join(stub_name),
-        PathBuf::from("stub/target")
-            .join(&arch_suffix)
-            .join("release")
-            .join(stub_name),
-    ];
-
-    // Installed distributions ship daedalus-stub next to the daedalus binary.
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(dir.join(stub_name));
-        }
-    }
-
-    for candidate in &candidates {
+    let (arch_suffix, stub_name) = stub_names(target);
+    for candidate in &candidate_stubs(&arch_suffix, stub_name) {
         if candidate.exists() {
             return Ok(candidate.clone());
         }
@@ -87,6 +50,39 @@ pub(crate) fn find_stub(target: Option<&str>) -> Result<PathBuf> {
         // mistaken for a missing build artifact.
         Err(e) => anyhow::bail!("daedalus-stub not found locally and download failed: {e:#}"),
     }
+}
+
+fn stub_names(target: Option<&str>) -> (String, &'static str) {
+    let arch_suffix = match target.map(parse_target) {
+        Some((arch, os)) if os == "linux" => format!("{arch}-unknown-linux-musl"),
+        Some((arch, os)) if os == "darwin" => format!("{arch}-apple-darwin"),
+        Some((arch, os)) if os == "windows" => format!("{arch}-pc-windows-gnu"),
+        Some((arch, _)) => format!("{arch}-unknown-linux-musl"),
+        None => native_arch_suffix(),
+    };
+    let name = if target.is_some_and(|t| parse_target(t).1 == "windows") {
+        "daedalus-stub.exe"
+    } else {
+        "daedalus-stub"
+    };
+    (arch_suffix, name)
+}
+
+/// Installed stubs win over workspace paths; `/tmp` is never searched.
+fn candidate_stubs(arch_suffix: &str, stub_name: &str) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(stub_name));
+        }
+    }
+    if std::env::var_os("DAEDALUS_ALLOW_WORKSPACE_STUB").is_some() {
+        let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
+        for dir in [PathBuf::from(target_dir), PathBuf::from("stub/target")] {
+            candidates.push(dir.join(arch_suffix).join("release").join(stub_name));
+        }
+    }
+    candidates
 }
 
 /// Native stub triple for the host, so no-`--target` builds resolve the stub
@@ -229,6 +225,28 @@ mod tests {
     fn find_stub_windows_suffix() {
         let result = find_stub(Some("win-x64"));
         assert!(result.is_err() || result.is_ok(), "should not panic");
+    }
+
+    #[test]
+    fn candidate_stubs_never_search_world_writable_tmp() {
+        let candidates = candidate_stubs("x86_64-unknown-linux-musl", "daedalus-stub");
+        #[cfg(unix)]
+        {
+            let planted = PathBuf::from("/tmp/daedalus-stub-target")
+                .join("x86_64-unknown-linux-musl")
+                .join("release")
+                .join("daedalus-stub");
+            assert!(
+                !candidates.contains(&planted),
+                "the world-writable /tmp candidate must never be used"
+            );
+        }
+        // An installed CLI prefers the stub shipped beside it.
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                assert_eq!(candidates.first(), Some(&parent.join("daedalus-stub")));
+            }
+        }
     }
 
     #[test]

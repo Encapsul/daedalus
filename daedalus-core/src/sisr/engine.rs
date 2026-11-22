@@ -159,11 +159,14 @@ impl SisrEngine {
         let index = build_reuse_index(&mut exe, &footer)?;
         checked_payload_len(manifest)?;
 
+        let mut payload_hasher = Sha256::new();
         let mut hasher = Sha256::new();
         for chunk in &manifest.chunks {
             let (bytes, _) = resolve_chunk_bytes(&mut exe, &index, chunk, fetcher)?;
+            payload_hasher.update(&bytes);
             hasher.update(&bytes);
         }
+        check_signed_payload_digest(manifest, &payload_hasher)?;
         hasher.update(&meta_bytes);
         Ok(hasher.finalize().into())
     }
@@ -211,19 +214,22 @@ impl SisrEngine {
         let mut w = AtomicWriter::new(parent, "app.daedalus.sisr")?;
         w.file_mut().write_all(&read_at(&mut exe, 0, stub_len)?)?;
 
+        let mut payload_hasher = Sha256::new();
         let mut hasher = Sha256::new();
         let mut stats = SisrUpdateStats::default();
+        let mut ctx = ChunkWriteCtx {
+            exe: &mut exe,
+            index: &index,
+            fetcher,
+            w: w.file_mut(),
+            payload_hasher: &mut payload_hasher,
+            hasher: &mut hasher,
+            stats: &mut stats,
+        };
         for chunk in &manifest.chunks {
-            write_chunk(
-                &mut exe,
-                &index,
-                chunk,
-                fetcher,
-                w.file_mut(),
-                &mut hasher,
-                &mut stats,
-            )?;
+            write_chunk(&mut ctx, chunk)?;
         }
+        check_signed_payload_digest(manifest, &payload_hasher)?;
         hasher.update(&meta_bytes);
         let payload_sha256: [u8; 32] = hasher.finalize().into();
         w.file_mut().write_all(&meta_bytes)?;
@@ -309,19 +315,31 @@ fn checked_payload_len(manifest: &DeltaManifest) -> io::Result<u64> {
     Ok(sum)
 }
 
+/// Mutable state shared across chunk writes in one SISR update.
+struct ChunkWriteCtx<'a> {
+    exe: &'a mut File,
+    index: &'a HashMap<[u8; 32], (u64, usize)>,
+    fetcher: &'a dyn ChunkFetcher,
+    w: &'a mut File,
+    payload_hasher: &'a mut Sha256,
+    hasher: &'a mut Sha256,
+    stats: &'a mut SisrUpdateStats,
+}
+
 /// Writes one chunk, reusing it from the current binary when its bytes verify,
 /// otherwise fetching and hash-verifying it. The mandatory check before any
 /// write: `SHA-256(bytes) == chunk.hash`.
-fn write_chunk(
-    exe: &mut File,
-    index: &HashMap<[u8; 32], (u64, usize)>,
-    chunk: &crate::manifest::ChunkEntry,
-    fetcher: &dyn ChunkFetcher,
-    w: &mut File,
-    hasher: &mut Sha256,
-    stats: &mut SisrUpdateStats,
-) -> io::Result<()> {
-    let (bytes, reused) = resolve_chunk_bytes(exe, index, chunk, fetcher)?;
+fn write_chunk(ctx: &mut ChunkWriteCtx<'_>, chunk: &crate::manifest::ChunkEntry) -> io::Result<()> {
+    let ChunkWriteCtx {
+        exe,
+        index,
+        fetcher,
+        w,
+        payload_hasher,
+        hasher,
+        stats,
+    } = ctx;
+    let (bytes, reused) = resolve_chunk_bytes(exe, index, chunk, *fetcher)?;
     if reused {
         stats.reused_chunks += 1;
         stats.reused_bytes = stats.reused_bytes.saturating_add(bytes.len() as u64);
@@ -329,8 +347,26 @@ fn write_chunk(
         stats.fetched_chunks += 1;
         stats.fetched_bytes = stats.fetched_bytes.saturating_add(bytes.len() as u64);
     }
+    payload_hasher.update(&bytes);
     hasher.update(&bytes);
     w.write_all(&bytes)
+}
+
+/// A v2 manifest carries a signed digest of the reconstructed payload. Check
+/// it before any footer/signature is written so a mismatched chunk table
+/// cannot produce a binary that looks authentic to the launcher.
+fn check_signed_payload_digest(
+    manifest: &DeltaManifest,
+    payload_hasher: &Sha256,
+) -> io::Result<()> {
+    let Some(identity) = &manifest.identity else {
+        return Ok(());
+    };
+    let digest: [u8; 32] = payload_hasher.clone().finalize().into();
+    if !ct_eq_hash(&digest, &identity.payload_sha256) {
+        return Err(err("reconstructed payload does not match signed identity"));
+    }
+    Ok(())
 }
 
 /// The bytes for one chunk, verified against its manifest hash: reused from
@@ -601,6 +637,7 @@ mod tests {
             version: crate::manifest::VERSION,
             payload_len: chunks.iter().map(|c| u64::from(c.length)).sum(),
             chunks,
+            identity: None,
         };
 
         let engine = SisrEngine;
@@ -651,6 +688,7 @@ mod tests {
                 hash: sha256_of(b"unavailable"),
                 length: 512,
             }],
+            identity: None,
         };
         let fetcher = MapFetcher::new();
         assert!(SisrEngine
@@ -690,6 +728,7 @@ mod tests {
                 hash: want_hash,
                 length: "tampered-content".len() as u32,
             }],
+            identity: None,
         };
 
         let res = SisrEngine.apply_update(&cur, &target, &fetcher, &UNSIGNED);
@@ -711,6 +750,7 @@ mod tests {
             version: crate::manifest::VERSION,
             payload_len: 9999,
             chunks: vec![],
+            identity: None,
         };
         assert!(SisrEngine
             .apply_update(&cur, &bad, &MapFetcher::new(), &UNSIGNED)
@@ -753,6 +793,7 @@ mod tests {
                 hash,
                 length: payload.len() as u32,
             }],
+            identity: None,
         };
         let (updated, stats) = SisrEngine
             .apply_update_with_stats(&out, &target, &fetcher, &UNSIGNED)
@@ -786,6 +827,7 @@ mod tests {
                 hash: sha256_of(&payload),
                 length: payload.len() as u32,
             }],
+            identity: None,
         };
         fetcher.put(sha256_of(&payload), payload.clone());
         let (updated, _) = SisrEngine
@@ -828,6 +870,7 @@ mod tests {
             version: crate::manifest::VERSION,
             payload_len: chunks.iter().map(|c| u64::from(c.length)).sum(),
             chunks,
+            identity: None,
         };
 
         let before = fs::read(&cur).unwrap();

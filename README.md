@@ -129,7 +129,7 @@ Evidence, as of this tree:
 - **Metadata**: JSON with runtime info, entrypoint, layers, capabilities
 - **Footer**: magic `0xBEEF_CAFE`, format magic `DAE\x01`, format version, integrity SHA-256 hash
 
-Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs).
+Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs), v6 (stub-bound signature). Older versions remain readable and verifiable.
 
 ## CLI commands
 

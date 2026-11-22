@@ -500,7 +500,7 @@ fn chaos_verify_unsigned_assembled_file_reports_not_signed() {
         .args(["verify", out.to_str().unwrap()])
         .env("DAEDALUS_TRUSTED_DIR", &empty_trust)
         .assert()
-        .success()
+        .failure()
         .stderr(predicate::str::contains("not signed"));
 }
 

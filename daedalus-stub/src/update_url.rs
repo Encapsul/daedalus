@@ -35,7 +35,9 @@ pub fn resolve_update_url(args: &[OsString], idx: usize, meta: &Metadata) -> io:
     ))
 }
 
-/// Strips trailing slashes and rejects non-http(s) schemes.
+/// Strips trailing slashes and rejects non-http(s) schemes. Plain HTTP is
+/// limited to loopback: an on-path attacker could otherwise swap an update
+/// manifest in flight. HTTPS has transport authentication and remains allowed.
 pub fn normalize_base_url(url: &str) -> io::Result<String> {
     let base = url.trim().trim_end_matches('/').to_string();
     if base.is_empty() || !(base.starts_with("http://") || base.starts_with("https://")) {
@@ -44,7 +46,24 @@ pub fn normalize_base_url(url: &str) -> io::Result<String> {
             "update URL must be http(s)://<host>/<path>",
         ));
     }
+    if base.starts_with("http://") && !is_loopback_authority(&base[7..]) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "plain HTTP update URLs are allowed only for loopback; use HTTPS",
+        ));
+    }
     Ok(base)
+}
+
+fn is_loopback_authority(rest: &str) -> bool {
+    let authority = rest.split('/').next().unwrap_or("");
+    let host_port = authority.rsplit('@').next().unwrap_or(authority);
+    let host = if let Some(end) = host_port.find(']') {
+        &host_port[..=end]
+    } else {
+        host_port.split(':').next().unwrap_or("")
+    };
+    matches!(host, "localhost" | "127.0.0.1" | "[::1]")
 }
 
 #[cfg(test)]
@@ -69,6 +88,21 @@ mod tests {
         assert_eq!(
             normalize_base_url("  https://x.example  ").unwrap(),
             "https://x.example"
+        );
+    }
+
+    #[test]
+    fn normalize_base_url_rejects_plain_http_off_loopback() {
+        assert!(normalize_base_url("http://updates.example.com/app").is_err());
+        assert!(normalize_base_url("http://192.168.1.10:8080/app").is_err());
+        assert!(normalize_base_url("http://localhost.evil/app").is_err());
+        assert_eq!(
+            normalize_base_url("http://127.0.0.1:8080/app").unwrap(),
+            "http://127.0.0.1:8080/app"
+        );
+        assert_eq!(
+            normalize_base_url("http://[::1]:8080/app").unwrap(),
+            "http://[::1]:8080/app"
         );
     }
 

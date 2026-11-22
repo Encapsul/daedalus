@@ -19,10 +19,11 @@ EOF - 92    │   FOOTER (92 bytes)     │  ← read backwards by launcher
 
 The format is versioned (`format_version` in the footer). v1 uses a single
 monolithic payload; v2 splits the payload into layers; v3 adds Ed25519
-signatures; v4 adds AES-256-GCM encryption; v5 adds SquashFS layer support.
-The launcher reads all versions.
+signatures; v4 adds AES-256-GCM encryption; v5 adds SquashFS layer support;
+v6 binds the launcher bytes into the Ed25519 signature. The launcher reads all
+versions.
 
-## Footer layout (v3/v4/v5, 92 bytes)
+## Footer layout (v3-v6, 92 bytes)
 
 All integers are little-endian. The v3 footer is a 92-byte block: an 8-byte
 prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
@@ -31,7 +32,7 @@ prefix (`sig_offset`) followed by the 84-byte v2-compatible core.
 |------------------|--------|-------|------|----------------------------------------------|
 | `sig_offset`     | 0      | u64   | 8    | absolute offset of signature block (0 if unsigned) |
 | `magic`          | 8      | bytes | 5    | `"DAE\x01\x00"`                                 |
-| `format_version` | 13     | u8    | 1    | format version (3, 4, or 5)                  |
+| `format_version` | 13     | u8    | 1    | format version (3 through 6)                 |
 | `arch`           | 14     | u8    | 1    | `0x01`=x86_64, `0x02`=aarch64                |
 | `flags`          | 15     | u8    | 1    | bit0=signed, bit1=encrypted                 |
 | `payload_offset` | 16     | u64   | 8    | absolute offset of payload                   |
@@ -103,23 +104,34 @@ The launcher recomputes this hash on every cold start and compares it to the
 stored value **before** extracting anything. On mismatch: `exit(1)`, nothing
 written to disk.
 
-For signed files (v3+), the digest the signature covers also includes the
-footer's full on-disk form (the 8-byte `sig_offset` prefix + the 84-byte core):
+For signed files, the digest the signature covers also includes the footer's
+full on-disk form (the 8-byte `sig_offset` prefix + the 84-byte core). v3-v5
+keep the legacy message forever so existing signed artifacts stay verifiable:
 
 ```
-Ed25519_sign(SHA-256(payload ‖ metadata ‖ footer_bytes), private_key)
+Ed25519_sign(SHA-256(payload ‖ metadata ‖ footer_bytes), private_key)   # v3-v5
+```
+
+v6 adds the launcher bytes, which the kernel executes before any payload is
+inspected:
+
+```
+Ed25519_sign(SHA-256(stub ‖ payload ‖ metadata ‖ footer_bytes), private_key)  # v6+
 ```
 
 The footer must be covered because it decides whether the signature is ever
 consulted: a signature over `payload ‖ metadata` alone would let an attacker
 downgrade the file to v2, clear `FLAG_SIGNED`, and recompute the SHA-256 -
-the signature would be silently skipped. The launcher also rejects
+the signature would be silently skipped. The stub must be covered for the same
+reason at a different layer: swapping only the launcher would execute attacker
+code while leaving every signed byte intact. The launcher also rejects
 inconsistent states (sig block without the flag, or the flag without a block)
-and v2 files carrying a leftover signature block.
+and v2 files carrying a leftover signature block. `daedalus sign` upgrades a
+file to v6, so re-signing an older artifact upgrades its trust guarantees.
 
 See [Security](../security.md) for why SHA-256 alone is insufficient.
 
-## Signature block (v3, 68 bytes)
+## Signature block (v3+, 68 bytes)
 
 Inserted between metadata and footer when `flags & FLAG_SIGNED`:
 
@@ -221,6 +233,7 @@ $ ./old-daedalus new-format.daedalus
 | v3      | Ed25519 signatures (92-byte footer with sig_offset) |
 | v4      | AES-256-GCM payload encryption (crypto_suite in footer) |
 | v5      | SquashFS layer support (payload_format in metadata) |
+| v6      | Signature binds stub bytes (legacy v3-v5 digests unchanged) |
 
 Reserved fields (`flags`, `sig_offset`) allow extension without breaking
 compatibility. Ed25519 signatures are inserted between metadata and footer

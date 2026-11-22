@@ -7,6 +7,9 @@ DIST_DIR := dist
 # Cargo target dir - override to keep builds off a full root fs, e.g.
 #   make dist CARGO_TARGET_DIR=/tmp/daedalus-release-target
 export CARGO_TARGET_DIR := $(or $(CARGO_TARGET_DIR),$(CURDIR)/target)
+# Developer builds intentionally trust the stub they just compiled. The CLI
+# never searches world-writable /tmp unless this opt-in is set.
+export DAEDALUS_ALLOW_WORKSPACE_STUB := 1
 
 STUB    := $(TOOLS)/$(TARGET)/release/daedalus-stub
 CRYPTO  := $(TOOLS)/$(TARGET)/release/daedalus-crypto
@@ -50,7 +53,7 @@ stub:
 
 # Build the Rust CLI.
 cli:
-	cargo build --release -p daedalus-cli
+	cargo build --release -p daedalux
 	@if [ -f $(CLI) ]; then \
 		echo "cli:    $$(ls -la $(CLI) | awk '{print $$5}') bytes"; \
 	else \
@@ -60,7 +63,7 @@ cli:
 # Hybrid install: tries system-wide, falls back to user-level
 install:
 	@printf "\nBuilding daedalus (this may take a minute)...\n"
-	cargo build --release -p daedalus-cli
+	cargo build --release -p daedalux
 	@if sudo test -w /usr/local/bin 2>/dev/null; then \
 		printf "\nInstalling to /usr/local/bin...\n"; \
 		sudo cp target/release/daedalus /usr/local/bin/daedalus; \

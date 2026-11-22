@@ -1,13 +1,19 @@
 //! `.daedalus` format parser - see docs/src/reference/format.md.
 //!
 //! Shared between the launcher (stub) and the build tool.
-//! Footer versions: v1-v5. See format docs for layout details.
+//! Footer versions: v1-v6. See format docs for layout details.
 
 use std::io::{self, Read, Seek, SeekFrom};
 
+use sha2::{Digest, Sha256};
+
 pub const MAGIC: &[u8; 5] = b"DAE\x01\x00";
 pub const FOOTER_MAGIC: u32 = 0xBEEF_CAFE;
-pub const FORMAT_VERSION: u8 = 5;
+pub const FORMAT_VERSION: u8 = 6;
+
+/// First format version whose trailing signature also covers the launcher
+/// bytes. Older versions keep the legacy digest for backward compatibility.
+pub const SIGNATURE_WITH_STUB_VERSION: u8 = 6;
 
 pub const V2_FOOTER_SIZE: u64 = 84;
 pub const V3_FOOTER_SIZE: u64 = 92;
@@ -214,6 +220,29 @@ fn u64_le(b: &[u8]) -> io::Result<u64> {
     ))
 }
 
+/// Canonical Ed25519 message digest for a trailing binary signature.
+///
+/// v3-v5 hash `payload ‖ meta ‖ footer` (legacy files stay verifiable).
+/// v6+ prepends the stub bytes: the kernel executes the stub, so leaving it
+/// unsigned lets a byte-for-byte-valid signature authorize arbitrary code.
+pub fn signature_digest<R: Read + Seek>(
+    source: &mut R,
+    footer: &Footer,
+    payload: &[u8],
+    meta_bytes: &[u8],
+) -> io::Result<[u8; 32]> {
+    let mut hasher = Sha256::new();
+    if footer.format_version >= SIGNATURE_WITH_STUB_VERSION {
+        let stub_len = usize::try_from(footer.payload_offset)
+            .map_err(|_| err("payload offset exceeds addressable size"))?;
+        hasher.update(read_at(source, 0, stub_len)?);
+    }
+    hasher.update(payload);
+    hasher.update(meta_bytes);
+    hasher.update(footer.pack_full());
+    Ok(hasher.finalize().into())
+}
+
 pub fn read_at<R: Read + Seek>(f: &mut R, off: u64, len: usize) -> io::Result<Vec<u8>> {
     // `off` and `len` originate from a `.daedalus` footer (untrusted input). A
     // malicious footer can set `len` to `u64::MAX`, which the call sites fold to
@@ -333,9 +362,71 @@ mod tests {
     fn constants_are_correct() {
         assert_eq!(MAGIC, b"DAE\x01\x00");
         assert_eq!(FOOTER_MAGIC, 0xBEEF_CAFE);
-        assert_eq!(FORMAT_VERSION, 5);
+        assert_eq!(FORMAT_VERSION, 6);
         assert_eq!(V2_FOOTER_SIZE, 84);
         assert_eq!(V3_FOOTER_SIZE, 92);
+    }
+
+    #[test]
+    fn signature_digest_v6_binds_stub_bytes() {
+        let mut footer = test_footer(3);
+        let payload = b"payload";
+        let meta = b"meta";
+        let mut file = test_file(b"stub-one", payload, meta, &footer);
+        let legacy = signature_digest(&mut file, &footer, payload, meta).unwrap();
+
+        footer.format_version = 6;
+        let mut file = test_file(b"stub-one", payload, meta, &footer);
+        let bound = signature_digest(&mut file, &footer, payload, meta).unwrap();
+        assert_ne!(legacy, bound, "v6 must hash more than the legacy message");
+
+        let mut file = test_file(b"stub-two", payload, meta, &footer);
+        let tampered = signature_digest(&mut file, &footer, payload, meta).unwrap();
+        assert_ne!(bound, tampered, "v6 digest must cover the launcher bytes");
+    }
+
+    #[test]
+    fn signature_digest_v3_ignores_stub_bytes() {
+        let footer = test_footer(3);
+        let first = signature_digest(
+            &mut test_file(b"stub-one", b"payload", b"meta", &footer),
+            &footer,
+            b"payload",
+            b"meta",
+        )
+        .unwrap();
+        let second = signature_digest(
+            &mut test_file(b"stub-two", b"payload", b"meta", &footer),
+            &footer,
+            b"payload",
+            b"meta",
+        )
+        .unwrap();
+        assert_eq!(first, second, "legacy signatures must remain verifiable");
+    }
+
+    fn test_footer(version: u8) -> Footer {
+        Footer {
+            format_version: version,
+            arch: ARCH_X86_64,
+            flags: FLAG_SIGNED,
+            payload_offset: 8,
+            payload_csize: 7,
+            payload_usize: 7,
+            payload_sha256: [0xAB; 32],
+            meta_offset: 15,
+            meta_size: 4,
+            sig_offset: 19,
+        }
+    }
+
+    fn test_file(stub: &[u8], payload: &[u8], meta: &[u8], footer: &Footer) -> Cursor<Vec<u8>> {
+        let mut file = Vec::new();
+        file.extend_from_slice(stub);
+        file.extend_from_slice(payload);
+        file.extend_from_slice(meta);
+        file.extend_from_slice(&footer.pack_full());
+        Cursor::new(file)
     }
 
     #[test]

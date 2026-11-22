@@ -11,7 +11,7 @@ use daedalus_core::format::Footer;
 use daedalus_core::paths::trusted_keys_dir;
 use daedalus_core::sisr_header::read_sisr;
 use daedalus_core::sisr_stage::{
-    embedded_chunk_hashes, export_media, verify_media, MediaExportStats, MediaVerifyStats,
+    embedded_chunk_hashes, export_media, verify_media_bound, MediaExportStats, MediaVerifyStats,
     RemoteManifest,
 };
 use ed25519_dalek::VerifyingKey;
@@ -122,10 +122,68 @@ fn stage_run(args: StageArgs) -> Result<()> {
 
 fn verify_run(args: VerifyMediaArgs) -> Result<()> {
     let publics = load_verify_keys(&args)?;
-    let reuse = against_hashes(args.against.as_deref())?;
-    let stats = verify_media(&args.media, &publics, reuse.as_ref())
-        .with_context(|| format!("media verify failed for {}", args.media.display()))?;
+    let current = args.against.as_deref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "--against <current binary> is required: v2 media must be bound to the app, \
+             launcher, metadata and sequence of the artifact being updated"
+        )
+    })?;
+    let (name, version, stub, meta, current_manifest) = current_identity(current)?;
+    let ctx = daedalus_core::sisr_stage::SisrVerifyContext::new(&name, &version, &stub, &meta);
+    let reuse = against_hashes(Some(current))?;
+    let stats = verify_media_bound(
+        &args.media,
+        &publics,
+        reuse.as_ref(),
+        &ctx,
+        Some(&current_manifest),
+    )
+    .with_context(|| format!("media verify failed for {}", args.media.display()))?;
     report_verify(&args, &stats)
+}
+
+/// Builds the v2 verification context from the currently installed binary.
+#[allow(clippy::type_complexity)]
+fn current_identity(
+    path: &Path,
+) -> Result<(
+    String,
+    String,
+    Vec<u8>,
+    Vec<u8>,
+    daedalus_core::manifest::DeltaManifest,
+)> {
+    let data = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let footer = Footer::read_from(&mut Cursor::new(&data)).context("failed to parse footer")?;
+    let stub_len = usize::try_from(footer.payload_offset).context("payload offset overflow")?;
+    let meta_start = usize::try_from(footer.meta_offset).context("meta offset overflow")?;
+    let meta_end = meta_start
+        .checked_add(usize::try_from(footer.meta_size).context("meta size overflow")?)
+        .context("metadata range overflow")?;
+    let stub = data
+        .get(..stub_len)
+        .context("stub range out of bounds")?
+        .to_vec();
+    let meta = data
+        .get(meta_start..meta_end)
+        .context("metadata range out of bounds")?
+        .to_vec();
+    let meta_json: serde_json::Value =
+        serde_json::from_slice(&meta).context("invalid metadata JSON")?;
+    let name = meta_json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let version = meta_json
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let manifest = read_sisr(&mut Cursor::new(&data))?
+        .map(|(_, m)| m)
+        .context("current binary has no embedded SISR section")?;
+    Ok((name, version, stub, meta, manifest))
 }
 
 fn against_hashes(against: Option<&Path>) -> Result<Option<std::collections::HashSet<[u8; 32]>>> {
@@ -146,26 +204,9 @@ fn load_verify_keys(args: &VerifyMediaArgs) -> Result<Vec<VerifyingKey>> {
     if let Some(pub_path) = &args.pubkey {
         keys.push((pub_path.clone(), read_pubkey(pub_path)?));
     }
-    // Also accept a `.pub` sitting next to the media (courier package).
-    keys.extend(media_sidecar_pubs(&args.media)?);
+    // A `.pub` riding with the media is untrusted data: it can only be
+    // promoted into the trust store by an explicit `daedalus trust` step.
     Ok(keys.into_iter().map(|(_, vk)| vk).collect())
-}
-
-fn media_sidecar_pubs(media: &Path) -> Result<Vec<(PathBuf, VerifyingKey)>> {
-    let mut out = Vec::new();
-    let Ok(entries) = fs::read_dir(media) else {
-        return Ok(out);
-    };
-    for entry in entries {
-        let path = entry?.path();
-        if path
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("pub"))
-        {
-            out.push((path.clone(), read_pubkey(&path)?));
-        }
-    }
-    Ok(out)
 }
 
 fn read_pubkey(path: &Path) -> Result<VerifyingKey> {

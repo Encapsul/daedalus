@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
 use crate::chunker::{Chunker, FastCDC};
-use crate::manifest::{self, ChunkEntry, DeltaManifest};
+use crate::manifest::{self, ChunkEntry, DeltaManifest, ManifestIdentity, CURRENT_VERSION};
 
 /// Ed25519 private key used to sign the `SISR` manifest during the build.
 ///
@@ -31,6 +31,10 @@ pub const REMOTE_VERSION: u8 = 1;
 /// Fixed bytes before the embedded manifest in a remote manifest file:
 /// magic (4) + version (1) + reserved (3) + merkle root (32) + signature (64).
 pub const REMOTE_HEADER_SIZE: usize = 104;
+/// Domain separator for v2 signatures. v1 keeps the legacy message so already
+/// shipped binaries stay verifiable; v2 adds this prefix to prevent a v1
+/// signature from being reinterpreted under the hardened schema.
+pub const SIGNING_DOMAIN_V2: &[u8] = b"daedalus-sisr-v2\0";
 
 /// Build options for the `SISR` stage.
 #[derive(Debug, Clone)]
@@ -58,6 +62,41 @@ pub struct RemoteManifest {
     pub merkle_root: [u8; 32],
     pub signature: [u8; 64],
     pub manifest: DeltaManifest,
+}
+
+/// The bytes a v2 manifest is bound to on the receiving machine.
+///
+/// The sequence is deliberately not part of this context: at-rest verification
+/// cannot know the build number without trusting mutable metadata, while update
+/// verification checks monotonicity against the currently installed manifest.
+#[derive(Debug, Clone, Copy)]
+pub struct SisrVerifyContext<'a> {
+    pub app: &'a str,
+    pub app_version: &'a str,
+    pub stub: &'a [u8],
+    pub meta: &'a [u8],
+}
+
+impl<'a> SisrVerifyContext<'a> {
+    pub fn new(app: &'a str, app_version: &'a str, stub: &'a [u8], meta: &'a [u8]) -> Self {
+        Self {
+            app,
+            app_version,
+            stub,
+            meta,
+        }
+    }
+
+    /// Checks every signed digest except `payload_sha256`, which is verified
+    /// against the reconstructed payload by the caller.
+    pub fn matches_identity(&self, id: &ManifestIdentity) -> bool {
+        let expected =
+            ManifestIdentity::new(0, self.app, self.app_version, self.stub, self.meta, &[]);
+        ct_eq_hash(&expected.app_sha256, &id.app_sha256)
+            & ct_eq_hash(&expected.app_version_sha256, &id.app_version_sha256)
+            & ct_eq_hash(&expected.stub_sha256, &id.stub_sha256)
+            & ct_eq_hash(&expected.meta_sha256, &id.meta_sha256)
+    }
 }
 
 impl SisrBuildConfig {
@@ -128,13 +167,36 @@ impl RemoteManifest {
     }
 }
 
-/// Runs the whole `SISR` stage over the payload.
+/// Runs the `SISR` stage over the payload using the legacy v1 schema.
+///
+/// Retained for readers/tests that exercise backward compatibility. New
+/// artifacts should use [`build_artifacts_bound`].
 pub fn build_artifacts(payload: &[u8], config: &SisrBuildConfig) -> io::Result<SisrArtifacts> {
+    build_artifacts_with(payload, config, manifest::VERSION, None)
+}
+
+/// Builds a v2 artifact whose signed identity binds the artifact to the app,
+/// version, launcher, metadata and payload bytes.
+pub fn build_artifacts_bound(
+    payload: &[u8],
+    config: &SisrBuildConfig,
+    identity: ManifestIdentity,
+) -> io::Result<SisrArtifacts> {
+    build_artifacts_with(payload, config, CURRENT_VERSION, Some(identity))
+}
+
+fn build_artifacts_with(
+    payload: &[u8],
+    config: &SisrBuildConfig,
+    version: u8,
+    identity: Option<ManifestIdentity>,
+) -> io::Result<SisrArtifacts> {
     let chunks = chunk_payload(payload, config.chunk_target_size)?;
     let manifest = DeltaManifest {
-        version: manifest::VERSION,
+        version,
         payload_len: payload.len() as u64,
         chunks,
+        identity,
     };
     let manifest_bytes = manifest.serialize()?;
     let merkle_root = merkle_root_of(&manifest);
@@ -234,8 +296,34 @@ pub fn verify_embedded_sisr(
     payload: &[u8],
     publics: &[VerifyingKey],
 ) -> io::Result<()> {
+    verify_embedded_sisr_inner(ext, manifest, payload, publics, None)
+}
+
+/// v2 at-rest verification: in addition to the signature and chunk table, the
+/// identity block must match the actual app name, version, launcher bytes and
+/// metadata, and its signed payload digest must match the payload being run.
+pub fn verify_embedded_sisr_bound(
+    ext: &crate::sisr_header::SisrFooterExt,
+    manifest: &DeltaManifest,
+    payload: &[u8],
+    publics: &[VerifyingKey],
+    ctx: &SisrVerifyContext<'_>,
+) -> io::Result<()> {
+    verify_embedded_sisr_inner(ext, manifest, payload, publics, Some(ctx))
+}
+
+fn verify_embedded_sisr_inner(
+    ext: &crate::sisr_header::SisrFooterExt,
+    manifest: &DeltaManifest,
+    payload: &[u8],
+    publics: &[VerifyingKey],
+    ctx: Option<&SisrVerifyContext<'_>>,
+) -> io::Result<()> {
     if ext.signature == [0u8; 64] {
         return Err(err("unsigned SISR section refused at rest"));
+    }
+    if publics.is_empty() {
+        return Err(err("no trusted keys - refuse SISR binary at rest"));
     }
     if merkle_root_of(manifest) != ext.merkle_root {
         return Err(err("embedded SISR Merkle root does not match chunk table"));
@@ -247,7 +335,80 @@ pub fn verify_embedded_sisr(
     {
         return Err(err("embedded SISR signature verification failed"));
     }
+    if let Some(identity) = &manifest.identity {
+        let ctx = ctx.ok_or_else(|| err("v2 SISR manifest requires bound verification"))?;
+        if !ctx.matches_identity(identity) {
+            return Err(err("v2 SISR identity does not match this binary"));
+        }
+        if !ct_eq_hash(&sha256_digest(payload), &identity.payload_sha256) {
+            return Err(err("v2 SISR payload digest does not match signed identity"));
+        }
+    }
     verify_payload_chunks(manifest, payload)
+}
+
+/// Authenticates a remote (update/media) manifest before any chunk is fetched.
+///
+/// v1 manifests are valid only for at-rest verification of already installed
+/// binaries. An update must use v2 so the publisher's signature binds the app
+/// identity, launcher, metadata, payload and a monotonic sequence number.
+pub fn verify_update_manifest(
+    remote: &RemoteManifest,
+    current: Option<&DeltaManifest>,
+    publics: &[VerifyingKey],
+    ctx: &SisrVerifyContext<'_>,
+) -> io::Result<()> {
+    if remote.signature == [0u8; 64] {
+        return Err(err("unsigned update manifest refused"));
+    }
+    if publics.is_empty() {
+        return Err(err("no trusted keys - refuse update manifest"));
+    }
+    if remote.manifest.version < CURRENT_VERSION {
+        return Err(err("legacy v1 manifest is not accepted as an update"));
+    }
+    let Some(identity) = &remote.manifest.identity else {
+        return Err(err("v2 update manifest requires an identity block"));
+    };
+    if identity.sequence == 0 {
+        return Err(err("update manifest sequence must be greater than zero"));
+    }
+    if let Some(current) = current {
+        if let Some(current_id) = &current.identity {
+            if identity.sequence <= current_id.sequence {
+                return Err(err(
+                    "update sequence is not newer than the installed version",
+                ));
+            }
+        }
+    }
+    if !remote.verify_merkle() {
+        return Err(err(
+            "update manifest Merkle root does not match chunk table",
+        ));
+    }
+    if !remote.verify_any(publics) {
+        return Err(err(
+            "update manifest signature does not match any trusted key",
+        ));
+    }
+    if !ctx.matches_identity(identity) {
+        return Err(err("update manifest identity does not match this artifact"));
+    }
+    if !chunk_lengths_match_payload_len(&remote.manifest) {
+        return Err(err(
+            "update manifest chunk table does not match payload_len",
+        ));
+    }
+    Ok(())
+}
+
+fn chunk_lengths_match_payload_len(manifest: &DeltaManifest) -> bool {
+    manifest
+        .chunks
+        .iter()
+        .try_fold(0u64, |acc, c| acc.checked_add(u64::from(c.length)))
+        == Some(manifest.payload_len)
 }
 
 /// Binds `payload` to the signed chunk table: exact tiling plus a
@@ -381,6 +542,20 @@ pub fn verify_media<S: BuildHasher>(
     check_media_chunks(media_dir, &remote.manifest, reuse)
 }
 
+/// Verifies update media with the same v2 identity and replay checks as a
+/// network update. `current` is the manifest of the binary being updated.
+pub fn verify_media_bound<S: BuildHasher>(
+    media_dir: &Path,
+    publics: &[VerifyingKey],
+    reuse: Option<&HashSet<[u8; 32], S>>,
+    ctx: &SisrVerifyContext<'_>,
+    current: Option<&DeltaManifest>,
+) -> io::Result<MediaVerifyStats> {
+    let remote = load_media_manifest(media_dir)?;
+    verify_update_manifest(&remote, current, publics, ctx)?;
+    check_media_chunks(media_dir, &remote.manifest, reuse)
+}
+
 fn load_media_manifest(media_dir: &Path) -> io::Result<RemoteManifest> {
     let path = media_dir.join("manifest");
     let bytes = fs::read(&path)
@@ -469,15 +644,15 @@ pub(crate) fn ct_eq_hash(a: &[u8; 32], b: &[u8; 32]) -> bool {
     a.ct_eq(b).into()
 }
 
-/// `signing_message` - signing message.
-/// `@merkle_root`: merkle root
-/// `@manifest_bytes`: manifest bytes
-///
-/// Description:
-///
-/// Return: vector of Vec<u8>
+/// Domain-separated signing message. The version byte is read from the
+/// serialized manifest so callers cannot accidentally sign a v2 manifest with
+/// the legacy message.
 fn signing_message(merkle_root: &[u8; 32], manifest_bytes: &[u8]) -> Vec<u8> {
-    let mut msg = Vec::with_capacity(32 + manifest_bytes.len());
+    let v2 = manifest_bytes.get(4).is_some_and(|v| *v >= CURRENT_VERSION);
+    let mut msg = Vec::with_capacity(SIGNING_DOMAIN_V2.len() + 32 + manifest_bytes.len());
+    if v2 {
+        msg.extend_from_slice(SIGNING_DOMAIN_V2);
+    }
     msg.extend_from_slice(merkle_root);
     msg.extend_from_slice(manifest_bytes);
     msg
@@ -520,6 +695,7 @@ mod tests {
                     length: 4096,
                 })
                 .collect(),
+            identity: None,
         }
     }
 
@@ -617,6 +793,119 @@ mod tests {
         let sig = sign(&manifest_bytes, &root, &key);
         assert!(verify(&manifest_bytes, &root, &sig, &public));
         assert!(!verify(&manifest_bytes, &[4u8; 32], &sig, &public));
+    }
+
+    fn bound_artifacts(
+        payload: &[u8],
+        key: &SigningKey,
+        sequence: u64,
+    ) -> (SisrArtifacts, SisrVerifyContext<'static>, RemoteManifest) {
+        let cfg = SisrBuildConfig {
+            enabled: true,
+            chunk_target_size: 4096,
+            signing_key: Some(key.clone()),
+        };
+        let id = ManifestIdentity::new(
+            sequence,
+            "app",
+            "1.0",
+            b"stub",
+            b"{\"name\":\"app\"}",
+            payload,
+        );
+        let artifacts = build_artifacts_bound(payload, &cfg, id).unwrap();
+        let remote = RemoteManifest {
+            merkle_root: artifacts.merkle_root,
+            signature: artifacts.signature,
+            manifest: artifacts.manifest.clone(),
+        };
+        let ctx = SisrVerifyContext::new("app", "1.0", b"stub", b"{\"name\":\"app\"}");
+        (artifacts, ctx, remote)
+    }
+
+    #[test]
+    fn v2_signatures_are_domain_separated_from_v1() {
+        let key = SigningKey::from_bytes(&[31u8; 32]);
+        let public = key.verifying_key();
+        let payload = random_buf(8_000, 41);
+        let (artifacts, _, _) = bound_artifacts(&payload, &key, 1);
+        assert!(verify(
+            &artifacts.manifest_bytes,
+            &artifacts.merkle_root,
+            &artifacts.signature,
+            &public
+        ));
+        // The same bytes tagged as v1 produce a different signed message.
+        let mut legacy_bytes = artifacts.manifest_bytes.clone();
+        legacy_bytes[4] = manifest::VERSION;
+        let v2_msg = signing_message(&artifacts.merkle_root, &artifacts.manifest_bytes);
+        let legacy_msg = signing_message(&artifacts.merkle_root, &legacy_bytes);
+        assert_ne!(v2_msg, legacy_msg);
+    }
+
+    #[test]
+    fn update_manifest_requires_v2_identity_and_monotonic_sequence() {
+        let key = SigningKey::from_bytes(&[32u8; 32]);
+        let public = key.verifying_key();
+        let payload = random_buf(8_000, 42);
+        let (current_artifacts, _, _) = bound_artifacts(&payload, &key, 1);
+        let (_, ctx, remote) = bound_artifacts(&payload, &key, 2);
+        let current = current_artifacts.manifest.clone();
+        verify_update_manifest(&remote, Some(&current), &[public], &ctx).unwrap();
+
+        let replay = RemoteManifest {
+            merkle_root: remote.merkle_root,
+            signature: remote.signature,
+            manifest: DeltaManifest {
+                identity: Some(ManifestIdentity {
+                    sequence: 1,
+                    ..remote.manifest.identity.clone().unwrap()
+                }),
+                ..remote.manifest.clone()
+            },
+        };
+        assert!(verify_update_manifest(&replay, Some(&current), &[public], &ctx).is_err());
+
+        let wrong_app = SisrVerifyContext::new("other", "1.0", b"stub", b"{\"name\":\"app\"}");
+        assert!(verify_update_manifest(&remote, Some(&current), &[public], &wrong_app).is_err());
+
+        let legacy = build_artifacts(
+            &payload,
+            &SisrBuildConfig {
+                enabled: true,
+                chunk_target_size: 4096,
+                signing_key: Some(key),
+            },
+        )
+        .unwrap();
+        let legacy_remote = RemoteManifest {
+            merkle_root: legacy.merkle_root,
+            signature: legacy.signature,
+            manifest: legacy.manifest,
+        };
+        assert!(verify_update_manifest(&legacy_remote, None, &[public], &ctx).is_err());
+    }
+
+    #[test]
+    fn embedded_v2_verification_binds_payload_to_identity() {
+        let key = SigningKey::from_bytes(&[33u8; 32]);
+        let public = key.verifying_key();
+        let payload = random_buf(8_000, 43);
+        let (artifacts, ctx, _) = bound_artifacts(&payload, &key, 3);
+        let ext = crate::sisr_header::SisrFooterExt {
+            sisr_version: crate::sisr_header::SISR_VERSION,
+            chunk_table_offset: 0,
+            chunk_table_len: artifacts.manifest_bytes.len() as u32,
+            merkle_root: artifacts.merkle_root,
+            signature: artifacts.signature,
+        };
+        verify_embedded_sisr_bound(&ext, &artifacts.manifest, &payload, &[public], &ctx).unwrap();
+        assert!(verify_embedded_sisr(&ext, &artifacts.manifest, &payload, &[public]).is_err());
+        let mut wrong = payload.clone();
+        wrong[0] ^= 0xFF;
+        assert!(
+            verify_embedded_sisr_bound(&ext, &artifacts.manifest, &wrong, &[public], &ctx).is_err()
+        );
     }
 
     #[test]

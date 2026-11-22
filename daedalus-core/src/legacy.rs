@@ -84,7 +84,30 @@ pub fn upgrade_binary(
     }
 
     let payload = &data[payload_start..payload_end];
-    let artifacts = sisr_stage::build_artifacts(payload, config)?;
+    let meta = &data[meta_start..meta_end];
+    let meta_json: serde_json::Value = serde_json::from_slice(meta).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("bad metadata JSON: {e}"),
+        )
+    })?;
+    let name = meta_json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("app");
+    let version = meta_json
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let identity = crate::manifest::ManifestIdentity::new(
+        1,
+        name,
+        version,
+        &data[..payload_start],
+        meta,
+        payload,
+    );
+    let artifacts = sisr_stage::build_artifacts_bound(payload, config, identity)?;
     let chunk_count = artifacts.manifest.chunks.len();
 
     let manifest_offset = footer.meta_offset + footer.meta_size;

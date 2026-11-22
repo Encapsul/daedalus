@@ -6,12 +6,13 @@ set -euo pipefail
 
 export CARGO_TARGET_DIR="/tmp/daedalus-stub-target"
 export RUSTFLAGS="-D warnings"
+export DAEDALUS_ALLOW_WORKSPACE_STUB=1
 
 echo "=== Building stub (musl) ==="
 make stub
 
 echo "=== Building CLI ==="
-cargo build --release -p daedalus-cli
+cargo build --release -p daedalux
 
 echo "=== Running tests ==="
 cargo test --workspace

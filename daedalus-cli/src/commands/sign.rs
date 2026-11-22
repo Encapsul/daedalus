@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use daedalus_core::format::{Footer, FLAG_SIGNED, SIG_BLOCK_SIZE, SIG_LEN};
+use daedalus_core::format::{
+    signature_digest, Footer, FLAG_SIGNED, FORMAT_VERSION, SIG_BLOCK_SIZE, SIG_LEN,
+};
 use daedalus_core::paths::{default_key_dir, trusted_keys_dir};
 use ed25519_dalek::{Signer, SigningKey};
-use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
@@ -149,8 +150,14 @@ pub fn sign_bytes(original: &[u8], key_bytes: &[u8]) -> Result<Vec<u8>> {
     let payload_start = footer.payload_offset as usize;
     let payload_end = payload_start + footer.payload_csize as usize;
 
-    let payload = original[payload_start..payload_end].to_vec();
-    let meta = original[meta_start..meta_end].to_vec();
+    let payload = original
+        .get(payload_start..payload_end)
+        .context("payload region exceeds file size")?
+        .to_vec();
+    let meta = original
+        .get(meta_start..meta_end)
+        .context("metadata region exceeds file size")?
+        .to_vec();
 
     // Mutate the footer to its final on-disk form FIRST: the digest covers
     // the footer itself (via `pack_full`, incl. the sig_offset prefix),
@@ -161,15 +168,11 @@ pub fn sign_bytes(original: &[u8], key_bytes: &[u8]) -> Result<Vec<u8>> {
     let new_sig_offset = footer.meta_offset + footer.meta_size;
     footer.sig_offset = new_sig_offset;
     footer.flags |= FLAG_SIGNED;
-    if footer.format_version < 3 {
-        footer.format_version = 3;
-    }
+    // v6 binds the launcher bytes too; older files remain verifiable with
+    // their original digest and are upgraded when re-signed.
+    footer.format_version = FORMAT_VERSION;
 
-    let mut hasher = Sha256::new();
-    hasher.update(&payload);
-    hasher.update(&meta);
-    hasher.update(footer.pack_full());
-    let hash = hasher.finalize();
+    let hash = signature_digest(&mut cursor, &footer, &payload, &meta)?;
 
     let signature = signing_key.sign(&hash);
 

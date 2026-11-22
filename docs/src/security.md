@@ -2,7 +2,7 @@
 
 A tool that distributes and executes code needs security built into its architecture. This page documents each attack surface, the naive flaw, and the current defense.
 
-Status: SHA-256 integrity, atomic extraction, Ed25519 signatures (strict verification, **signing on by default**), user namespaces + pivot_root, seccomp-bpf denylist, and AES-256-GCM encryption are all implemented.
+Status: SHA-256 integrity, atomic extraction, Ed25519 signatures (strict verification, **signing on by default**, launcher bytes bound in v6), user namespaces + pivot_root, seccomp-bpf denylist, and AES-256-GCM encryption are all implemented.
 
 ## 1. Authenticity - Ed25519 signatures
 
@@ -37,6 +37,19 @@ be spoofed in sandboxed or elevated (`sudo`/setuid) contexts.
 
 Signature verification is **strict** (`ed25519_dalek::verify_strict`): small-order
 (weak) public keys and signatures - ZIP-215 malleability - are rejected.
+
+v6 signatures cover the launcher bytes as well as payload, metadata and footer.
+Without that binding, replacing only the stub would run attacker-controlled code
+while the signed payload still validates. Legacy v3-v5 signatures keep their
+original digest rule and remain verifiable. `daedalus verify` exits non-zero for
+unsigned files and whenever no trusted key verifies the signature; a JSON
+report with `"verified": false` is never a successful CI gate.
+
+Build-time stub discovery is also part of this trust boundary: the CLI accepts
+an explicit `DAEDALUS_STUB_PATH`, a stub installed beside the CLI, or workspace
+build directories only when `DAEDALUS_ALLOW_WORKSPACE_STUB=1` is set. World-writable
+`/tmp` candidates are never searched, so another local user cannot plant a
+stub that the victim then signs with their key.
 
 ```bash
 # Trust a key
@@ -86,6 +99,15 @@ three threats:
    is rejected. The engine assembles a candidate version, verifies the full
    result matches the signed `target_sha256`, and only then commits it
    atomically.
+
+**Manifest v2 hardening.** Update manifests are schema v2: their signed identity
+binds the monotonic sequence, app name/version, launcher bytes, metadata bytes
+and payload digest using a domain-separated Ed25519 message. A valid v1
+manifest is accepted only for at-rest verification of an already installed
+binary; remote updates, local staging and USB media verification reject v1 and
+require a strictly newer sequence than the installed binary. Plain HTTP update
+URLs are limited to loopback, and media `.pub` sidecars are never trusted
+implicitly.
 
 **Non-negotiable verification order (every reconstruction):**
 
@@ -137,17 +159,18 @@ $ daedalus verify my_app.daedalus
 SHA-256 alone protects against corruption, not against an attacker who modifies the payload and recomputes the hash. This is why signatures exist - the hash is signed:
 
 ```
-Ed25519_sign(SHA-256(payload ‖ metadata ‖ footer), private_key)
+Ed25519_sign(SHA-256(payload ‖ metadata ‖ footer), private_key)        # v3-v5
+Ed25519_sign(SHA-256(stub ‖ payload ‖ metadata ‖ footer), private_key) # v6+
 ```
 
 The footer is part of the digest because it decides whether the signature is
 consulted at all (`format_version >= 3` + `FLAG_SIGNED`). A signature over
 `payload ‖ metadata` alone would let an attacker downgrade the file to v2,
 clear the flag, and recompute the SHA-256 - the signature would be silently
-skipped. Covering the footer makes any such tampering invalidate the
-signature; the launcher additionally rejects inconsistent states (sig block
-present without `FLAG_SIGNED`, or flag set without a block) and v2 files that
-still carry a leftover signature block from a downgrade.
+skipped. v6 additionally covers the stub because the kernel executes it before
+the payload is ever parsed. The launcher additionally rejects inconsistent
+states (sig block present without `FLAG_SIGNED`, or flag set without a block)
+and v2 files that still carry a leftover signature block from a downgrade.
 
 Without the private key, forging a valid signature is computationally infeasible (2^128 operations for Ed25519).
 

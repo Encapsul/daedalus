@@ -165,6 +165,29 @@ original .daedalus  ── Ed25519 ──►  owner signing key  ── delegate
 - The monotonic index is part of the **signed** region, so it cannot be
   lowered by editing the file.
 
+#### Implementation note: manifest v2
+
+The shipped `XBMD` manifest has schema version 2. Its signed `identity` block
+binds the monotonic `sequence` together with SHA-256 digests of the app name,
+app version, launcher bytes, metadata bytes and reconstructed payload. Signing
+uses a v2 domain-separated message (`"daedalus-sisr-v2" ‖ merkle_root ‖
+manifest_bytes`); v1 signatures keep the original message form so existing
+signed binaries remain verifiable.
+
+Update paths (`--daedalus-update`, `DAEDALUS_SISR_MANIFEST`, `media verify`)
+accept **only v2** manifests and require `sequence` to be strictly greater
+than the installed manifest's sequence. Legacy v1 manifests remain readable for
+at-rest verification of already installed binaries, but are rejected as remote
+updates. Plain `http://` update URLs are accepted only for loopback hosts; all
+other update channels must use HTTPS.
+
+A `.pub` sidecar staged on USB media is never promoted to a trusted key
+automatically: `daedalus media verify` requires `--against <current binary>`
+and verifies the bound identity, while trust must be established explicitly via
+`daedalus trust` or `--trusted-dir`. `--enable-sisr` cannot be combined with
+`--encrypt` because encrypted storage bytes cannot be bound to the signed
+payload identity.
+
 ### 5.3 Engine isolation
 
 - The SISR engine runs **before** the application payload is ever exposed to

@@ -168,12 +168,15 @@ mod tests {
     }
 
     #[test]
-    /// `detect_gpu_defaults_to_none` - no-accelerator host fallback.
-    ///
-    /// Description:
-    ///
-    /// Return: nothing
-    fn detect_gpu_defaults_to_none() {
-        assert!(detect_gpu().backend.is_none());
+    /// Detection must be self-consistent on hosts with and without an
+    /// accelerator (CI runners and developer workstations differ).
+    fn detect_gpu_reports_consistent_devices() {
+        let info = detect_gpu();
+        if info.backend.is_none() {
+            assert_eq!(info.device_count, 0);
+            assert_eq!(info.devices, Vec::<std::path::PathBuf>::new());
+        } else {
+            assert_ne!(info.devices, Vec::<std::path::PathBuf>::new());
+        }
     }
 }

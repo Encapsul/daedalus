@@ -47,7 +47,8 @@ cargo test --workspace
 Layout: `[stub][payload][metadata][footer]`
 - Footer magic: `0xBEEF_CAFE`, format magic: `DAE\x01`
 - Integrity hash: `SHA-256(payload || meta_bytes)` - computed at build, verified at runtime
-- Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs)
+- Signature digest: v3-v5 `SHA-256(payload || meta || footer)`, v6+ prepends `stub`
+- Format versions: v2 (plain), v3 (signed), v4 (encrypted), v5 (squashfs), v6 (stub-bound signature)
 
 ### Stub launcher (`stub/src/main.rs`)
 

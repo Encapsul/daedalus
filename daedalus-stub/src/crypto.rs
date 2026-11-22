@@ -9,9 +9,10 @@ use ed25519_dalek::Signature;
 use sha2::{Digest, Sha256};
 
 use crate::Footer;
-use daedalus_core::format::{SIG_BLOCK_SIZE, SIG_LEN};
+use daedalus_core::format::{signature_digest, SIG_BLOCK_SIZE, SIG_LEN};
 
-/// Verify Ed25519 signature: `Ed25519_verify(SHA256(payload‖meta‖footer), sig, public_key)`.
+/// Verify Ed25519 signature: `Ed25519_verify(SHA256(stub‖payload‖meta‖footer), sig, key)`
+/// for v6+ (legacy v3-v5 files keep `SHA256(payload‖meta‖footer)`).
 ///
 /// Trusted public keys are read from `~/.daedalus/trusted-keys/` (or `$DAEDALUS_TRUSTED_DIR`).
 /// The launcher accepts the file if **any** trusted key verifies the signature.
@@ -34,15 +35,9 @@ pub fn verify_ed25519<R: std::io::Read + std::io::Seek>(
         .try_into()
         .map_err(|_| crate::err("invalid signature block size"))?;
 
-    // The digest covers the footer (pack_full) as well as payload‖meta: the
-    // footer's format_version and FLAG_SIGNED decide whether the signature is
-    // consulted at all, so omitting it would let an attacker downgrade the
-    // file to v2 and have the signature silently skipped.
-    let mut hasher = Sha256::new();
-    hasher.update(payload);
-    hasher.update(meta_bytes);
-    hasher.update(footer.pack_full());
-    let hash = hasher.finalize();
+    // v6+ also hashes the stub bytes: they are what the kernel executes.
+    // `signature_digest` keeps the legacy message for v3-v5 files.
+    let hash = signature_digest(exe, footer, payload, meta_bytes)?;
 
     // Parse signature once.
     let sig = Signature::from_bytes(sig_bytes);

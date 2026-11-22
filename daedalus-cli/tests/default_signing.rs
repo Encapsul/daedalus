@@ -198,11 +198,11 @@ fn skip_sign_produces_unsigned_binary() {
         .assert()
         .success();
 
-    // `verify` must report the artifact is not signed (informational, exit 0).
+    // `verify` must fail closed on unsigned artifacts (CI gates rely on exit code).
     isolated(home.path(), &trust_dir)
         .args(["verify", out.to_str().unwrap(), "--no-input"])
         .assert()
-        .success()
+        .failure()
         .stderr(predicates::str::contains("not signed"));
 }
 

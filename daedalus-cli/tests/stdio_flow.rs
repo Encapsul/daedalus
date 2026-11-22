@@ -187,8 +187,8 @@ fn verify_unsigned_stdin_reports_not_signed() {
         .output()
         .unwrap();
     assert!(
-        out.status.success(),
-        "verify of an unsigned stdin reader should exit cleanly"
+        !out.status.success(),
+        "verify of an unsigned stdin reader must fail closed"
     );
     assert!(String::from_utf8_lossy(&out.stderr).contains("not signed"));
 }

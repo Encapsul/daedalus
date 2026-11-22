@@ -687,11 +687,19 @@ fn run() -> io::Result<()> {
         ));
     }
 
+    // The stub bytes are also needed by the remote-update flag path, which
+    // authenticates an update manifest against this exact launcher.
+    let update_stub = read_at(
+        &mut exe,
+        0,
+        usize::try_from(footer.payload_offset).map_err(|_| err("payload offset overflow"))?,
+    )?;
+
     // Intercept daedalus-reserved runtime flags (`--daedalus-update`, `--daedalus-version`)
     // before they could reach the host app. Handled modes are terminal: the
     // process exits here without ever exec'ing the app, so the flags are never
     // forwarded.
-    handle_runtime_flags(&meta)?;
+    handle_runtime_flags(&meta, &meta_bytes, &update_stub)?;
 
     // Canonical on-disk path - the file the update engine swaps in place.
     // Kept separate from the running image path because the kernel can pin
@@ -700,7 +708,7 @@ fn run() -> io::Result<()> {
 
     // SISR self-update: rebuild the binary in place from a signed delta before
     // reading the payload, so this run executes the new version.
-    if let Some(updated) = maybe_apply_sisr_update()? {
+    if let Some(updated) = maybe_apply_sisr_update(&meta, &meta_bytes, &update_stub)? {
         if verbose {
             eprintln!("[daedalus] SISR update applied: {}", updated.display());
         }
@@ -836,7 +844,24 @@ fn run() -> io::Result<()> {
         let (ext, sisr_manifest) = daedalus_core::sisr_header::read_sisr(&mut exe)?
             .ok_or_else(|| err("SISR flag set but section unreadable"))?;
         let keys = crypto::load_trusted_keys()?;
-        daedalus_core::sisr_stage::verify_embedded_sisr(&ext, &sisr_manifest, &payload, &keys)?;
+        let stub_bytes = read_at(
+            &mut exe,
+            0,
+            usize::try_from(footer.payload_offset).map_err(|_| err("payload offset overflow"))?,
+        )?;
+        let ctx = daedalus_core::sisr_stage::SisrVerifyContext::new(
+            &meta.name,
+            meta.version.as_deref().unwrap_or(""),
+            &stub_bytes,
+            &meta_bytes,
+        );
+        daedalus_core::sisr_stage::verify_embedded_sisr_bound(
+            &ext,
+            &sisr_manifest,
+            &payload,
+            &keys,
+            &ctx,
+        )?;
         if verbose {
             eprintln!("[daedalus] SISR section verified (at-rest)");
         }
@@ -1063,6 +1088,12 @@ fn priority_files(meta: &Metadata) -> Vec<PathBuf> {
 // SISR self-update
 // ---------------------------------------------------------------------------
 
+/// Reads the embedded SISR manifest of the binary being replaced, if present.
+fn read_sisr_manifest(path: &Path) -> io::Result<Option<daedalus_core::manifest::DeltaManifest>> {
+    let mut file = File::open(path)?;
+    Ok(daedalus_core::sisr_header::read_sisr(&mut file)?.map(|(_, manifest)| manifest))
+}
+
 /// Applies a SISR delta update when `$DAEDALUS_SISR_MANIFEST` points at a signed
 /// remote manifest; returns the canonical path of the replaced binary, or
 /// `None` when no update was requested.
@@ -1072,7 +1103,11 @@ fn priority_files(meta: &Metadata) -> Vec<PathBuf> {
 /// the engine writes a single byte. Every chunk the engine fetches is
 /// additionally hash-verified, and the swap is atomic - any failure leaves the
 /// running binary intact.
-fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
+fn maybe_apply_sisr_update(
+    meta: &Metadata,
+    meta_bytes: &[u8],
+    stub_bytes: &[u8],
+) -> io::Result<Option<PathBuf>> {
     let Some(manifest_path) = std::env::var_os("DAEDALUS_SISR_MANIFEST") else {
         return Ok(None);
     };
@@ -1080,15 +1115,21 @@ fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
     let remote_bytes = fs::read(&manifest_path)?;
     let remote = daedalus_core::sisr_stage::RemoteManifest::from_bytes(&remote_bytes)?;
 
+    let current = self_exe()?;
+    let current_manifest = read_sisr_manifest(&current)?;
     let keys = crypto::load_trusted_keys()?;
-    if !remote.verify_any(&keys) {
-        return Err(err("update manifest signature verification failed"));
-    }
-    if !remote.verify_merkle() {
-        return Err(err(
-            "update manifest Merkle root does not match chunk table",
-        ));
-    }
+    let ctx = daedalus_core::sisr_stage::SisrVerifyContext::new(
+        &meta.name,
+        meta.version.as_deref().unwrap_or(""),
+        stub_bytes,
+        meta_bytes,
+    );
+    daedalus_core::sisr_stage::verify_update_manifest(
+        &remote,
+        current_manifest.as_ref(),
+        &keys,
+        &ctx,
+    )?;
 
     let chunks_root = manifest_path
         .parent()
@@ -1096,7 +1137,6 @@ fn maybe_apply_sisr_update() -> io::Result<Option<PathBuf>> {
         .join("chunks");
     let fetcher = daedalus_core::sisr::engine::DirectoryChunkFetcher::new(&chunks_root);
 
-    let current = self_exe()?;
     let store = HealthStore::new(&health_store_dir()?);
     refuse_quarantined_target(&store, &current, &remote.manifest, &fetcher)?;
 
@@ -1511,7 +1551,7 @@ fn exec_again(bin_path: &Path) -> io::Result<()> {
 ///
 /// Because both paths call `process::exit`, these flags never reach the host
 /// app's `argv`. When neither flag is present this is a no-op.
-fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
+fn handle_runtime_flags(meta: &Metadata, meta_bytes: &[u8], stub_bytes: &[u8]) -> io::Result<()> {
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
 
     if args.iter().any(|a| a == "--daedalus-version") {
@@ -1527,7 +1567,7 @@ fn handle_runtime_flags(meta: &Metadata) -> io::Result<()> {
         s == "--daedalus-update" || s.starts_with("--daedalus-update=")
     }) {
         let base = resolve_update_url(&args, idx, meta)?;
-        remote_update(&base)?;
+        remote_update(&base, meta, meta_bytes, stub_bytes)?;
         exit(0);
     }
 
@@ -1548,25 +1588,35 @@ fn resolve_update_url(
 /// keys + Merkle root, then streams the changed chunks from `<base>/chunks/<hex>`
 /// through the engine. Progress and reuse/fetch stats go to stderr; the
 /// process exits after the atomic swap.
-fn remote_update(base: &str) -> io::Result<()> {
+fn remote_update(
+    base: &str,
+    meta: &Metadata,
+    meta_bytes: &[u8],
+    stub_bytes: &[u8],
+) -> io::Result<()> {
     eprintln!("[daedalus] update: fetching manifest from {base}/manifest");
     let manifest_bytes = http_get_bytes(&format!("{base}/manifest"))?;
     let remote = daedalus_core::sisr_stage::RemoteManifest::from_bytes(&manifest_bytes)?;
 
+    let current = self_exe()?;
+    let current_manifest = read_sisr_manifest(&current)?;
     let keys = crypto::load_trusted_keys()?;
-    if !remote.verify_any(&keys) {
-        return Err(err("update manifest signature verification failed"));
-    }
-    if !remote.verify_merkle() {
-        return Err(err(
-            "update manifest Merkle root does not match chunk table",
-        ));
-    }
+    let ctx = daedalus_core::sisr_stage::SisrVerifyContext::new(
+        &meta.name,
+        meta.version.as_deref().unwrap_or(""),
+        stub_bytes,
+        meta_bytes,
+    );
+    daedalus_core::sisr_stage::verify_update_manifest(
+        &remote,
+        current_manifest.as_ref(),
+        &keys,
+        &ctx,
+    )?;
 
     let total = remote.manifest.chunks.len();
     eprintln!("[daedalus] update: manifest verified ({total} chunks)");
 
-    let current = self_exe()?;
     let store = HealthStore::new(&health_store_dir()?);
     let fetcher = HttpChunkFetcher::new(&format!("{base}/chunks"), total);
     refuse_quarantined_target(&store, &current, &remote.manifest, &fetcher)?;

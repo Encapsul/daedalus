@@ -55,7 +55,7 @@ fn untrusted_signature_is_refused() {
     let out = run_update(&e);
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     assert!(!out.status.success(), "untrusted signature must fail");
-    assert_refused(&e, &stderr, "signature verification failed");
+    assert_refused(&e, &stderr, "signature does not match any trusted key");
 }
 
 /// An unsigned remote manifest (all-zeros signature - what a build without
@@ -74,7 +74,7 @@ fn unsigned_remote_manifest_is_refused() {
     let out = run_update(&e);
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     assert!(!out.status.success(), "unsigned manifest must fail");
-    assert_refused(&e, &stderr, "signature");
+    assert_refused(&e, &stderr, "unsigned update manifest refused");
 }
 
 /// Garbage at `/manifest` must be rejected before any write.

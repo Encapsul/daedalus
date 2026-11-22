@@ -38,7 +38,7 @@ Docker, ni le runtime, déjà installés.
 
 ## Phase 1 - MVP universal packaging ✅
 
-- [x] `.daedalus` format défini et stable (v2-v5 : plain, signed, encrypted, squashfs)
+- [x] `.daedalus` format défini et stable (v2-v6 : plain, signed, encrypted, squashfs, stub-bound signature)
 - [x] Stub ELF statique (musl), SHA-256 integrity verification, execvp entrypoint
 - [x] Extraction atomique via `rename()` avec `flock()` pour concurrence
 - [x] Python runtime detection + rootfs construction (Flask/FastAPI/Django)
