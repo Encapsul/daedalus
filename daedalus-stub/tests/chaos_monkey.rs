@@ -18,13 +18,18 @@ use tempfile::tempdir;
 fn build_fixture(dir: &Path, _payload_bytes: &[u8]) -> std::path::PathBuf {
     let rootfs = dir.join("rootfs");
     std::fs::create_dir_all(rootfs.join("app")).unwrap();
-    std::fs::write(rootfs.join("app/app.py"), b"print('hi')").unwrap();
+    let app = rootfs.join("app/app");
+    std::fs::write(&app, b"#!/bin/sh\necho hi\n").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&app, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
     let payload = daedalus_core::tar::create_tar_zstd_with_level(&rootfs, 3).unwrap();
 
     let meta = serde_json::json!({
         "name": "chaos",
-        "runtime": "python3",
-        "entrypoint": ["/app/app.py"],
+        "runtime": "binary",
+        "entrypoint": ["/app/app"],
     });
     let out = dir.join("app.de");
 
@@ -240,6 +245,82 @@ fn chaos_cache_poisoning_ignored() {
     .unwrap();
 
     let _ = run_stub(&bin, "--daedalus-version");
+}
+
+// A ready marker and a forgeable size/mtime manifest must never substitute
+// for authenticating the artifact on a warm start. Tamper a payload byte,
+// rewrite `.source` to match the tampered file, and require refusal at the
+// warm gate rather than execution of the cached rootfs.
+#[test]
+fn warm_cache_hit_reverifies_source_integrity() {
+    let dir = tempdir().unwrap();
+    let bin = build_fixture(dir.path(), b"PAYLOAD");
+    let cache_base = dir.path().join("cache");
+    std::fs::create_dir_all(&cache_base).unwrap();
+
+    let footer = {
+        let mut f = std::fs::File::open(&bin).unwrap();
+        Footer::read_from(&mut f).unwrap()
+    };
+    let hash = footer.sha256_hex();
+
+    let live = dir.path().join("live.de");
+    std::fs::copy(&bin, &live).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&live, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let first = Command::new(&live)
+        .env("XDG_CACHE_HOME", &cache_base)
+        .env_remove("DAEDALUS_SISR_ALLOW_UNSIGNED")
+        .output()
+        .unwrap();
+    assert!(
+        first.status.success(),
+        "cold run failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let cache_root = cache_base.join("daedalus").join(&hash);
+    assert!(
+        cache_root.join(".ready").is_file(),
+        "cache was not populated"
+    );
+
+    // Flip one payload byte; size stays identical so only the digest detects it.
+    let mut bytes = std::fs::read(&live).unwrap();
+    let off = usize::try_from(footer.payload_offset).unwrap() + 10;
+    bytes[off] ^= 0x01;
+    std::fs::write(&live, &bytes).unwrap();
+
+    // Forge the cache hint so the warm path is actually entered.
+    let md = std::fs::metadata(&live).unwrap();
+    let source = serde_json::json!({
+        "size": md.len(),
+        "mtime_ns": md
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+    });
+    std::fs::write(cache_root.join(".source"), source.to_string()).unwrap();
+
+    let second = Command::new(&live)
+        .env("XDG_CACHE_HOME", &cache_base)
+        .env_remove("DAEDALUS_SISR_ALLOW_UNSIGNED")
+        .output()
+        .unwrap();
+    assert!(
+        !second.status.success(),
+        "tampered warm artifact was executed: {}",
+        String::from_utf8_lossy(&second.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&second.stderr);
+    assert!(
+        stderr.contains("integrity") || stderr.contains("SHA-256") || stderr.contains("signature"),
+        "unexpected refusal reason: {stderr}"
+    );
 }
 
 // ── Concurrent runs ─────────────────────────────────────────────────────

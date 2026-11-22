@@ -319,6 +319,46 @@ fn commit_cache_dir(tmp: &Path, cache_root: &Path) -> io::Result<bool> {
     }
 }
 
+/// Open a persistent lock file without following a symlink at the final path
+/// component. A symlinked lock could point an exclusive flock at a foreign
+/// file, defeating the mutual exclusion that protects cache extraction.
+#[cfg(unix)]
+pub(crate) fn open_lock_file(path: &Path) -> io::Result<File> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .mode(0o600)
+        .open(path)?;
+    // fstat the opened descriptor: no TOCTOU window with the path lookup.
+    let md = file.metadata()?;
+    if !md.file_type().is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "lock path is not a regular file",
+        ));
+    }
+    if md.mode() & 0o022 != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "lock file is writable by group or others",
+        ));
+    }
+    Ok(file)
+}
+
+/// Windows fallback: no flock is taken there, so symlink redirection of the
+/// placeholder lock file has no security consequence.
+#[cfg(not(unix))]
+pub(crate) fn open_lock_file(path: &Path) -> io::Result<File> {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(path)
+}
+
 /// Extract zstd-compressed tar blobs lazily: priority files first, then
 /// background-extract the rest.
 ///
@@ -614,6 +654,23 @@ mod tests {
     fn write_app(tmp_rootfs: &Path) -> io::Result<()> {
         fs::create_dir_all(tmp_rootfs.join("app"))?;
         fs::write(tmp_rootfs.join("app/app.py"), b"print('hi')")
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lock_file_opening_rejects_symlinks() {
+        let dir = TempDir::new().unwrap();
+        let sentinel = dir.path().join("sentinel");
+        fs::write(&sentinel, b"untouched").unwrap();
+
+        let link = dir.path().join("linked.lock");
+        std::os::unix::fs::symlink(&sentinel, &link).unwrap();
+        assert!(open_lock_file(&link).is_err());
+        assert_eq!(fs::read(&sentinel).unwrap(), b"untouched");
+
+        let good = dir.path().join("good.lock");
+        assert!(open_lock_file(&good).is_ok());
+        assert!(good.is_file());
     }
 
     #[test]

@@ -748,6 +748,17 @@ fn run() -> io::Result<()> {
             if verbose {
                 eprintln!("[daedalus] warm start: cache hit {}", hash);
             }
+            // `.ready` plus a matching size/mtime is only a cache hint: both
+            // are forgeable by anyone who can write the binary. Authenticate
+            // the artifact bytes again before either terminal exec branch.
+            let _payload = load_and_verify_payload(
+                &mut exe,
+                &footer,
+                &meta_bytes,
+                &meta,
+                decrypt_key.as_deref(),
+                verbose,
+            )?;
             if maybe_run_mcp(&meta, &rootfs)? {
                 return Ok(());
             }
@@ -766,109 +777,19 @@ fn run() -> io::Result<()> {
         eprintln!("[daedalus] cold start: extracting {}", meta.name);
     }
 
-    let payload = read_at(
+    // Read, decrypt and cryptographically verify the payload. The same helper
+    // is used on warm cache hits so no exec path can skip authentication.
+    let payload = load_and_verify_payload(
         &mut exe,
-        footer.payload_offset,
-        footer.payload_csize as usize,
+        &footer,
+        &meta_bytes,
+        &meta,
+        decrypt_key.as_deref(),
+        verbose,
     )?;
 
-    let (payload, meta_bytes) = if let Some(ref enc) = meta.encryption {
-        let key = decrypt_key.as_ref().ok_or_else(|| {
-            err("payload is encrypted - pass --decrypt-key <32-byte-hex-keyfile> to decrypt")
-        })?;
-        let key_bytes =
-            hex::decode(key).map_err(|e| err(format!("invalid decrypt key hex: {e}")))?;
-        if key_bytes.len() != 32 {
-            return Err(err(format!(
-                "decrypt key must be 32 bytes, got {}",
-                key_bytes.len()
-            )));
-        }
-        let mut key_array = [0u8; 32];
-        key_array.copy_from_slice(&key_bytes);
-        let salt =
-            hex::decode(&enc.salt).map_err(|e| err(format!("bad encryption salt hex: {e}")))?;
-        let nonce =
-            hex::decode(&enc.nonce).map_err(|e| err(format!("bad encryption nonce hex: {e}")))?;
-        if salt.len() != 32 || nonce.len() != 12 {
-            return Err(err("encryption metadata has invalid salt/nonce length"));
-        }
-        let mut salt_array = [0u8; 32];
-        let mut nonce_array = [0u8; 12];
-        salt_array.copy_from_slice(&salt);
-        nonce_array.copy_from_slice(&nonce);
-        let plaintext = decrypt_payload(&payload, &key_array, &nonce_array, &salt_array)
-            .map_err(|e| err(format!("decryption failed: {e}")))?;
-        if verbose {
-            eprintln!("[daedalus] payload decrypted ({} bytes)", plaintext.len());
-        }
-        // Recompute metadata hash with decrypted payload
-        let new_meta = meta_bytes.clone();
-        (plaintext, new_meta)
-    } else {
-        (payload, meta_bytes)
-    };
-
-    // Verify Ed25519 signature. Enforce a consistent signature state first:
-    // a sig block must exist iff FLAG_SIGNED is set - a flag without a block
-    // (or a block without the flag) is a tampered file. The signature covers
-    // the footer itself, so rewriting format_version/flags to skip it breaks
-    // the signature; a v2 file that still carries the leftover sig block from
-    // a downgraded v3+ file is rejected outright.
-    let has_sig_block = footer.format_version >= 3 && footer.sig_offset != 0;
-    let signed_flag = footer.flags & format::FLAG_SIGNED != 0;
-    if has_sig_block != signed_flag {
-        return Err(err("inconsistent signature state (flag/offset mismatch)"));
-    }
-    if has_sig_block {
-        crypto::verify_ed25519(&footer, &mut exe, &payload, &meta_bytes)?;
-        if verbose {
-            eprintln!("[daedalus] Ed25519 signature verified");
-        }
-    } else if footer.format_version < 3 && !footer.has_sisr() {
-        reject_downgraded_sig_block(&mut exe, &footer)?;
-    }
-
-    // Verify SHA-256 integrity (hash = SHA-256(payload || meta_bytes)).
-    // Stream the two slices into the hasher instead of cloning payload,
-    // avoiding a 2× memory spike at cold start.
-    crypto::verify_sha256_parts(&payload, &meta_bytes, &footer.payload_sha256)?;
-
-    // At-rest authenticity for SISR binaries (roadmap #45): the embedded
-    // delta manifest must carry a valid publisher signature and its chunk
-    // table must bind every byte of the payload. Updates keep this property
-    // because the engine carries over the remote manifest's verified
-    // signature. `DAEDALUS_SISR_ALLOW_UNSIGNED` is the explicit escape hatch for
-    // legacy unsigned builds - fail closed otherwise.
-    if footer.has_sisr() && std::env::var_os("DAEDALUS_SISR_ALLOW_UNSIGNED").is_none() {
-        let (ext, sisr_manifest) = daedalus_core::sisr_header::read_sisr(&mut exe)?
-            .ok_or_else(|| err("SISR flag set but section unreadable"))?;
-        let keys = crypto::load_trusted_keys()?;
-        let stub_bytes = read_at(
-            &mut exe,
-            0,
-            usize::try_from(footer.payload_offset).map_err(|_| err("payload offset overflow"))?,
-        )?;
-        let ctx = daedalus_core::sisr_stage::SisrVerifyContext::new(
-            &meta.name,
-            meta.version.as_deref().unwrap_or(""),
-            &stub_bytes,
-            &meta_bytes,
-        );
-        daedalus_core::sisr_stage::verify_embedded_sisr_bound(
-            &ext,
-            &sisr_manifest,
-            &payload,
-            &keys,
-            &ctx,
-        )?;
-        if verbose {
-            eprintln!("[daedalus] SISR section verified (at-rest)");
-        }
-    }
-
     // Extract atomically.
-    let lock = File::create(base.join(format!("{hash}.lock")))?;
+    let lock = extraction::open_lock_file(&base.join(format!("{hash}.lock")))?;
     flock_exclusive(&lock)?;
 
     let mut lazy_bg: Option<std::thread::JoinHandle<()>> = None;
@@ -954,6 +875,125 @@ fn run() -> io::Result<()> {
     } else {
         exec::exec_app(&meta, &rootfs, &app_config)
     }
+}
+
+/// Read the embedded payload, decrypt it if required, and run every
+/// cryptographic check before either extraction or a warm-cache exec.
+fn load_and_verify_payload(
+    exe: &mut File,
+    footer: &Footer,
+    meta_bytes: &[u8],
+    meta: &Metadata,
+    decrypt_key: Option<&str>,
+    verbose: bool,
+) -> io::Result<Vec<u8>> {
+    let raw = read_at(exe, footer.payload_offset, footer.payload_csize as usize)?;
+    let payload = maybe_decrypt_payload(raw, meta, decrypt_key, verbose)?;
+    verify_artifact(exe, footer, &payload, meta_bytes, meta, verbose)?;
+    Ok(payload)
+}
+
+/// Decrypt the on-disk payload when the artifact declares encryption.
+fn maybe_decrypt_payload(
+    payload: Vec<u8>,
+    meta: &Metadata,
+    decrypt_key: Option<&str>,
+    verbose: bool,
+) -> io::Result<Vec<u8>> {
+    let Some(enc) = &meta.encryption else {
+        return Ok(payload);
+    };
+    let key = decrypt_key.ok_or_else(|| {
+        err("payload is encrypted - pass --decrypt-key <32-byte-hex-keyfile> to decrypt")
+    })?;
+    let key_bytes = hex::decode(key).map_err(|e| err(format!("invalid decrypt key hex: {e}")))?;
+    let key_array: [u8; 32] = key_bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| err("decrypt key must be 32 bytes"))?;
+    let salt = hex::decode(&enc.salt).map_err(|e| err(format!("bad encryption salt hex: {e}")))?;
+    let nonce =
+        hex::decode(&enc.nonce).map_err(|e| err(format!("bad encryption nonce hex: {e}")))?;
+    let salt_array: [u8; 32] = salt
+        .as_slice()
+        .try_into()
+        .map_err(|_| err("encryption metadata has invalid salt length"))?;
+    let nonce_array: [u8; 12] = nonce
+        .as_slice()
+        .try_into()
+        .map_err(|_| err("encryption metadata has invalid nonce length"))?;
+    let plaintext = decrypt_payload(&payload, &key_array, &nonce_array, &salt_array)
+        .map_err(|e| err(format!("decryption failed: {e}")))?;
+    if verbose {
+        eprintln!("[daedalus] payload decrypted ({} bytes)", plaintext.len());
+    }
+    Ok(plaintext)
+}
+
+/// Enforce consistency of the trailing signature state, then verify the
+/// signature, the payload digest and (when present) the at-rest SISR proof.
+fn verify_artifact(
+    exe: &mut File,
+    footer: &Footer,
+    payload: &[u8],
+    meta_bytes: &[u8],
+    meta: &Metadata,
+    verbose: bool,
+) -> io::Result<()> {
+    // A sig block must exist iff FLAG_SIGNED is set - a flag without a block
+    // (or a block without the flag) is a tampered file. The signature covers
+    // the footer itself, so rewriting format_version/flags to skip it breaks
+    // the signature; a v2 file with a leftover block is rejected outright.
+    let has_sig_block = footer.format_version >= 3 && footer.sig_offset != 0;
+    let signed_flag = footer.flags & format::FLAG_SIGNED != 0;
+    if has_sig_block != signed_flag {
+        return Err(err("inconsistent signature state (flag/offset mismatch)"));
+    }
+    if has_sig_block {
+        crypto::verify_ed25519(footer, exe, payload, meta_bytes)?;
+        if verbose {
+            eprintln!("[daedalus] Ed25519 signature verified");
+        }
+    } else if footer.format_version < 3 && !footer.has_sisr() {
+        reject_downgraded_sig_block(exe, footer)?;
+    }
+    // Stream both slices into the hasher instead of cloning the payload.
+    crypto::verify_sha256_parts(payload, meta_bytes, &footer.payload_sha256)?;
+    verify_sisr_at_rest(exe, footer, payload, meta_bytes, meta, verbose)
+}
+
+/// Verify an embedded SISR delta manifest against the trusted keys, binding
+/// every payload byte and the identity of this artifact.
+fn verify_sisr_at_rest(
+    exe: &mut File,
+    footer: &Footer,
+    payload: &[u8],
+    meta_bytes: &[u8],
+    meta: &Metadata,
+    verbose: bool,
+) -> io::Result<()> {
+    if !footer.has_sisr() || std::env::var_os("DAEDALUS_SISR_ALLOW_UNSIGNED").is_some() {
+        return Ok(());
+    }
+    let (ext, manifest) = daedalus_core::sisr_header::read_sisr(exe)?
+        .ok_or_else(|| err("SISR flag set but section unreadable"))?;
+    let keys = crypto::load_trusted_keys()?;
+    let stub = read_at(
+        exe,
+        0,
+        usize::try_from(footer.payload_offset).map_err(|_| err("payload offset overflow"))?,
+    )?;
+    let ctx = daedalus_core::sisr_stage::SisrVerifyContext::new(
+        &meta.name,
+        meta.version.as_deref().unwrap_or(""),
+        &stub,
+        meta_bytes,
+    );
+    daedalus_core::sisr_stage::verify_embedded_sisr_bound(&ext, &manifest, payload, &keys, &ctx)?;
+    if verbose {
+        eprintln!("[daedalus] SISR section verified (at-rest)");
+    }
+    Ok(())
 }
 
 /// If the app carries MCP tools and runs in MCP mode (`DAEDALUS_MCP=1`),
@@ -1835,7 +1875,7 @@ impl GcLock {
     /// Return: Result containing `io::Result<Option<GcLock>>`
     fn acquire(base: &Path) -> io::Result<Option<GcLock>> {
         fs::create_dir_all(base)?;
-        let file = fs::File::create(base.join(".gc.lock"))?;
+        let file = extraction::open_lock_file(&base.join(".gc.lock"))?;
         #[cfg(unix)]
         {
             // SAFETY: flock(2) is advisory and the fd is valid + owned. LOCK_NB
