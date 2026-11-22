@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use daedalus_core::registry::LayerRegistry;
+use subtle::ConstantTimeEq;
 
 /// Request heads (headers + first line) are capped to bound memory and the
 /// cost of re-scanning a fragmented request head that never terminates.
@@ -40,9 +41,13 @@ pub struct ServeStartArgs {
     #[arg(short, long, default_value = "~/.daedalus/registry")]
     pub dir: PathBuf,
 
-    /// Authentication token (Bearer token)
+    /// Authentication token (Bearer token). Writes fail closed when this is unset.
     #[arg(long, env = "DAEDALUS_TOKEN")]
     pub token: Option<String>,
+
+    /// Explicitly allow unauthenticated writes (local development only).
+    #[arg(long)]
+    pub allow_anonymous_writes: bool,
 
     /// Verbose output
     #[arg(short, long)]
@@ -99,12 +104,17 @@ fn run_start(args: ServeStartArgs) -> Result<()> {
         match stream {
             Ok(stream) => {
                 let token = args.token.clone();
+                let allow_anonymous_writes = args.allow_anonymous_writes;
                 let verbose = args.verbose;
                 let reg = Arc::clone(&reg);
                 thread::spawn(move || {
-                    if let Err(e) =
-                        handle_connection(stream, &mut reg.lock().unwrap(), token, verbose)
-                    {
+                    if let Err(e) = handle_connection(
+                        stream,
+                        &mut reg.lock().unwrap(),
+                        token,
+                        allow_anonymous_writes,
+                        verbose,
+                    ) {
                         eprintln!("[daedalus] error: {e}");
                     }
                 });
@@ -130,6 +140,7 @@ fn handle_connection(
     mut stream: TcpStream,
     reg: &mut LayerRegistry,
     token: Option<String>,
+    allow_anonymous_writes: bool,
     verbose: bool,
 ) -> Result<()> {
     stream.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
@@ -170,7 +181,11 @@ fn handle_connection(
     }
 
     let method = parts[0];
-    let path = parts[1];
+    // Strip both query and fragment before routing/auth decisions: neither
+    // changes which handler a request reaches, so neither may change whether
+    // it is treated as a write.
+    let target = parts[1].split('#').next().unwrap_or(parts[1]);
+    let (path, query) = split_path_query(target);
 
     if verbose {
         eprintln!("[daedalus] {} {}", method, path);
@@ -180,14 +195,18 @@ fn handle_connection(
     // (duplicate with differing values, non-numeric, absurdly large) gets a
     // reject rather than an over-read or a worker thread parked on a liar.
     let declared = content_length(&head_str);
-    let is_write =
-        (method == "POST" || method == "PUT") && (path == "/push" || path.starts_with("/artifact"));
+    let is_write = is_state_changing(method, path);
     let body = if is_write {
         // Authenticate before trusting any body bytes: an anonymous client
         // must not park a worker thread on a huge declared body, force us to
         // read data that will be discarded, or probe storage with forged
         // writes. Unauthenticated mutations get a 401 without a byte read.
-        if !require_write_auth(&mut stream, &head_str, token.as_deref())? {
+        if !require_write_auth(
+            &mut stream,
+            &head_str,
+            token.as_deref(),
+            allow_anonymous_writes,
+        )? {
             return Ok(());
         }
         let Some(len) = declared else {
@@ -220,8 +239,6 @@ fn handle_connection(
         body_prefix
     };
 
-    let (path, query) = split_path_query(path);
-
     match (method, path) {
         ("GET", "/list") => handle_list(&mut stream, reg)?,
         ("GET", "/artifacts") => handle_artifacts(&mut stream, reg)?,
@@ -241,23 +258,98 @@ fn handle_connection(
     Ok(())
 }
 
-/// require_write_auth - reject mutating requests unless a server token is
-/// either unset or matched by an `Authorization: Bearer <token>` header.
-///
-/// Return: whether to continue handling the request
-fn require_write_auth(stream: &mut TcpStream, head: &str, token: Option<&str>) -> Result<bool> {
-    let Some(expect) = token else {
-        return Ok(true);
+/// Routes that mutate registry state. The path must already have its query
+/// string stripped: `/push?x=1` mutates the same state as `/push`.
+fn is_state_changing(method: &str, path: &str) -> bool {
+    matches!(method, "POST" | "PUT") && (path == "/push" || path == "/artifact")
+}
+
+/// All values of a header; duplicates are returned so callers can reject
+/// ambiguous security headers instead of picking a favourable one.
+fn header_values<'a>(head: &'a str, name: &str) -> Vec<&'a str> {
+    head.lines()
+        .filter_map(|line| {
+            let (found, value) = line.split_once(':')?;
+            found
+                .trim()
+                .eq_ignore_ascii_case(name)
+                .then(|| value.trim())
+        })
+        .collect()
+}
+
+/// Parse a single `Authorization: Bearer <token>` header. The scheme is
+/// case-insensitive per RFC 7235, but the token secret never is.
+fn bearer_token(head: &str) -> Option<&str> {
+    let values = header_values(head, "authorization");
+    let [value] = values.as_slice() else {
+        return None;
     };
-    let authorized = head.lines().any(|line| {
-        let line = line.trim();
-        let Some((name, value)) = line.split_once(':') else {
+    let (scheme, token) = value.split_once(char::is_whitespace)?;
+    if !scheme.eq_ignore_ascii_case("bearer") {
+        return None;
+    }
+    let token = token.trim();
+    (!token.is_empty()).then_some(token)
+}
+
+/// Browser-driven writes must not be usable as a cross-site CSRF primitive.
+/// CLI clients send neither `Origin` nor `Sec-Fetch-Site`; when a browser does
+/// send them, require a same-origin request whose origin matches `Host`.
+fn write_origin_allowed(head: &str) -> bool {
+    let sites = header_values(head, "sec-fetch-site");
+    if let Some(site) = sites.first() {
+        if matches!(
+            site.to_ascii_lowercase().as_str(),
+            "cross-site" | "same-site"
+        ) {
             return false;
-        };
-        let value = value.trim();
-        name.trim().eq_ignore_ascii_case("authorization")
-            && value.eq_ignore_ascii_case(&format!("Bearer {expect}"))
-    });
+        }
+    }
+    let origins = header_values(head, "origin");
+    if origins.is_empty() {
+        return true;
+    }
+    let [origin] = origins.as_slice() else {
+        return false;
+    };
+    let hosts = header_values(head, "host");
+    let [host] = hosts.as_slice() else {
+        return false;
+    };
+    let Some(authority) = origin.split_once("://").map(|(_, rest)| rest) else {
+        return false;
+    };
+    let authority = authority.split('/').next().unwrap_or("");
+    !authority.is_empty() && authority.eq_ignore_ascii_case(host)
+}
+
+/// Writes fail closed unless a token is configured or anonymous writes were
+/// explicitly enabled for local development.
+fn require_write_auth(
+    stream: &mut TcpStream,
+    head: &str,
+    token: Option<&str>,
+    allow_anonymous_writes: bool,
+) -> Result<bool> {
+    if !write_origin_allowed(head) {
+        send_response(stream, 403, "Forbidden", "cross-origin write refused")?;
+        return Ok(false);
+    }
+    let Some(expected) = token else {
+        if allow_anonymous_writes {
+            return Ok(true);
+        }
+        send_response(
+            stream,
+            503,
+            "Service Unavailable",
+            "writes require --token or --allow-anonymous-writes",
+        )?;
+        return Ok(false);
+    };
+    let authorized = bearer_token(head)
+        .is_some_and(|provided| bool::from(provided.as_bytes().ct_eq(expected.as_bytes())));
     if authorized {
         return Ok(true);
     }
@@ -514,4 +606,52 @@ fn expand_tilde(path: &Path) -> PathBuf {
         }
     }
     path.to_path_buf()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_changing_routes_are_classified_after_normalization() {
+        // Query/fragment stripping happens before is_state_changing so a
+        // `/push?x=1` request cannot dodge the write gate.
+        for raw in ["/push", "/push?x=1", "/push#frag"] {
+            let target = raw.split('#').next().unwrap_or(raw);
+            let (path, _) = split_path_query(target);
+            assert!(is_state_changing("POST", path), "raw target {raw}");
+        }
+        let (path, _) = split_path_query("/artifact?name=app&tag=1");
+        assert!(is_state_changing("PUT", path));
+        assert!(!is_state_changing("GET", "/push"));
+        assert!(!is_state_changing("POST", "/artifacts"));
+        assert!(!is_state_changing("POST", "/pull/aa"));
+    }
+
+    #[test]
+    fn bearer_scheme_is_case_insensitive_but_token_is_not() {
+        let head = "POST /push HTTP/1.1\r\nHost: x\r\nAuthorization: bearer S3CR3T\r\n";
+        assert_eq!(bearer_token(head), Some("S3CR3T"));
+        let wrong_case = "Authorization: Bearer s3cr3t\r\n";
+        assert_ne!(bearer_token(wrong_case), Some("S3CR3T"));
+        assert_eq!(bearer_token("Authorization: Basic S3CR3T\r\n"), None);
+        assert_eq!(bearer_token("Authorization: Bearer\r\n"), None);
+    }
+
+    #[test]
+    fn duplicate_auth_headers_are_rejected() {
+        let head = "Authorization: Bearer S3CR3T\r\nAuthorization: Bearer S3CR3T\r\n";
+        assert_eq!(bearer_token(head), None);
+    }
+
+    #[test]
+    fn cross_site_writes_are_refused() {
+        let cross = "Origin: https://evil.example\r\nHost: localhost:8080\r\n";
+        assert!(!write_origin_allowed(cross));
+        let sec_fetch = "Sec-Fetch-Site: cross-site\r\nHost: localhost:8080\r\n";
+        assert!(!write_origin_allowed(sec_fetch));
+        let same = "Origin: http://localhost:8080\r\nHost: localhost:8080\r\n";
+        assert!(write_origin_allowed(same));
+        assert!(write_origin_allowed("Host: localhost:8080\r\n"));
+    }
 }

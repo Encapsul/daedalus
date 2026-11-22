@@ -242,6 +242,79 @@ fn finish_verify(
     Ok(())
 }
 
+/// Authenticate an artifact that arrived from a registry or URL before it is
+/// written to disk or executed. Both schemes are checked against the local
+/// trust store; unsigned artifacts fail closed.
+pub(crate) fn verify_artifact_bytes(bytes: &[u8], trusted_dir: &Path) -> Result<String> {
+    let mut source = Cursor::new(bytes.to_vec());
+    let footer = Footer::read_from(&mut source).context("invalid daedalus footer")?;
+    let has_sig_block = footer.format_version >= 3 && footer.sig_offset != 0;
+    if has_sig_block != footer.is_signed() {
+        anyhow::bail!("inconsistent signature state (flag/offset mismatch)");
+    }
+    let keys = require_trusted_keys(trusted_dir)?;
+    let publics: Vec<VerifyingKey> = keys.iter().map(|(_, vk)| *vk).collect();
+
+    if has_sig_block {
+        let sig_data =
+            daedalus_core::format::read_at(&mut source, footer.sig_offset, SIG_BLOCK_SIZE)?;
+        let sig_size = u32::from_le_bytes([sig_data[0], sig_data[1], sig_data[2], sig_data[3]]);
+        if sig_size != SIG_LEN as u32 {
+            anyhow::bail!("unexpected sig_size {sig_size} (expected {SIG_LEN})");
+        }
+        let sig = ed25519_dalek::Signature::from_slice(&sig_data[4..SIG_BLOCK_SIZE])?;
+        let payload = daedalus_core::format::read_at(
+            &mut source,
+            footer.payload_offset,
+            footer.payload_csize as usize,
+        )?;
+        let meta = daedalus_core::format::read_at(
+            &mut source,
+            footer.meta_offset,
+            footer.meta_size as usize,
+        )?;
+        let digest = signature_digest(&mut source, &footer, &payload, &meta)?;
+        if !publics
+            .iter()
+            .any(|vk| vk.verify_strict(&digest, &sig).is_ok())
+        {
+            anyhow::bail!("signature does not match any trusted key");
+        }
+        return Ok("trailing".to_string());
+    }
+
+    if let Some((ext, manifest)) = read_sisr(&mut source).context("failed to read SISR section")? {
+        if ext.signature != [0u8; 64] {
+            let payload = daedalus_core::format::read_at(
+                &mut source,
+                footer.payload_offset,
+                footer.payload_csize as usize,
+            )?;
+            let meta = daedalus_core::format::read_at(
+                &mut source,
+                footer.meta_offset,
+                footer.meta_size as usize,
+            )?;
+            let stub_len =
+                usize::try_from(footer.payload_offset).context("payload offset overflow")?;
+            let stub = daedalus_core::format::read_at(&mut source, 0, stub_len)?;
+            let meta_json: serde_json::Value =
+                serde_json::from_slice(&meta).context("invalid metadata JSON")?;
+            let name = meta_json.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let version = meta_json
+                .get("version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let ctx =
+                daedalus_core::sisr_stage::SisrVerifyContext::new(name, version, &stub, &meta);
+            verify_embedded_sisr_bound(&ext, &manifest, &payload, &publics, &ctx)
+                .context("embedded SISR signature verification failed")?;
+            return Ok("sisr".to_string());
+        }
+    }
+    anyhow::bail!("artifact is unsigned")
+}
+
 /// Load all trusted Ed25519 public keys from a directory.
 pub(crate) fn load_trusted_keys(dir: &PathBuf) -> Result<Vec<(PathBuf, VerifyingKey)>> {
     let mut keys = Vec::new();

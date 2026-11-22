@@ -1,10 +1,25 @@
 use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use serde_json;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use crate::commands::verify::verify_artifact_bytes;
 use daedalus_core::layer::SerializableLayer;
-use daedalus_core::registry::LayerRegistry;
+use daedalus_core::registry::{content_hash, format_hex, parse_hex, LayerRegistry};
+
+/// Layers are small JSON blobs; a larger response is treated as hostile.
+const MAX_LAYER_BYTES: usize = 64 << 20;
+
+/// Validate a content address before it is used in a URL or as a filename.
+fn validate_hash(hash: &str) -> Result<String> {
+    let bytes = parse_hex(hash).context("hash must be 64 hex characters")?;
+    let canonical = format_hex(&bytes);
+    if canonical != hash {
+        anyhow::bail!("hash must be lowercase canonical hex");
+    }
+    Ok(canonical)
+}
 
 #[derive(Args)]
 pub struct RegistryArgs {
@@ -100,6 +115,10 @@ pub struct RegistryPullArgs {
     /// Authentication token
     #[arg(long, env = "DAEDALUS_TOKEN")]
     pub token: Option<String>,
+
+    /// Allow pulling an unsigned runnable artifact (local development only)
+    #[arg(long)]
+    pub allow_unsigned: bool,
 
     /// Verbose output
     #[arg(short, long)]
@@ -427,6 +446,7 @@ fn run_pull(args: RegistryPullArgs) -> Result<()> {
             args.output
         };
         let out_ref = &out_file;
+        let trusted_dir = daedalus_core::paths::trusted_keys_dir();
 
         match (&args.local, &args.registry) {
             (Some(local_dir), None) => {
@@ -434,6 +454,7 @@ fn run_pull(args: RegistryPullArgs) -> Result<()> {
                 let bytes = reg
                     .artifact_binary(&name, &tag)?
                     .ok_or_else(|| anyhow::anyhow!("artifact '{name}:{tag}' not found"))?;
+                check_pulled_binary(&bytes, &trusted_dir, args.allow_unsigned, args.verbose)?;
                 write_pulled_binary(&bytes, out_ref, &name, &tag, args.verbose)?;
             }
             (None, Some(registry_url)) => {
@@ -444,9 +465,13 @@ fn run_pull(args: RegistryPullArgs) -> Result<()> {
                     registry_url,
                     &name,
                     &tag,
-                    out_ref,
-                    args.token.as_deref(),
-                    args.verbose,
+                    &PullBinaryOptions {
+                        out_file: out_ref,
+                        token: args.token.as_deref(),
+                        trusted_dir: &trusted_dir,
+                        allow_unsigned: args.allow_unsigned,
+                        verbose: args.verbose,
+                    },
                 )?;
             }
             (None, None) => {
@@ -463,6 +488,10 @@ fn run_pull(args: RegistryPullArgs) -> Result<()> {
         .hash
         .as_deref()
         .expect("registry pull requires a hash or --name");
+    // A hash is a content address, never a path. Reject traversal and force
+    // canonical lowercase hex before it reaches a URL or the filesystem.
+    let hash = validate_hash(hash)?;
+    let hash = hash.as_str();
 
     std::fs::create_dir_all(&args.output).context("failed to create output directory")?;
 
@@ -493,6 +522,28 @@ fn run_pull(args: RegistryPullArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Authenticate a pulled artifact before it becomes an executable file.
+fn check_pulled_binary(
+    bytes: &[u8],
+    trusted_dir: &Path,
+    allow_unsigned: bool,
+    verbose: bool,
+) -> Result<()> {
+    match verify_artifact_bytes(bytes, trusted_dir) {
+        Ok(scheme) => {
+            if verbose {
+                eprintln!("[daedalus] pulled artifact verified ({scheme})");
+            }
+            Ok(())
+        }
+        Err(e) if allow_unsigned => {
+            eprintln!("[daedalus] warning: accepting unsigned artifact: {e}");
+            Ok(())
+        }
+        Err(e) => Err(e).context("refusing to write unverified pulled artifact"),
+    }
 }
 
 /// write_pulled_binary - write fetched binary bytes to an output file.
@@ -549,14 +600,28 @@ fn write_pulled_binary(
 /// Downloads and writes the binary, returning its length.
 ///
 /// Return: Result containing Result<()>
+/// Options for pulling a runnable artifact from an HTTP registry.
+struct PullBinaryOptions<'a> {
+    out_file: &'a Path,
+    token: Option<&'a str>,
+    trusted_dir: &'a Path,
+    allow_unsigned: bool,
+    verbose: bool,
+}
+
 fn pull_binary_remote(
     base: &str,
     name: &str,
     tag: &str,
-    out_file: &Path,
-    token: Option<&str>,
-    verbose: bool,
+    opts: &PullBinaryOptions<'_>,
 ) -> Result<()> {
+    let PullBinaryOptions {
+        out_file,
+        token,
+        trusted_dir,
+        allow_unsigned,
+        verbose,
+    } = *opts;
     let base = base.trim_end_matches('/');
     let base = base.strip_suffix("/artifact").unwrap_or(base);
     let url = format!("{base}/artifact/{name}:{tag}");
@@ -583,6 +648,7 @@ fn pull_binary_remote(
         );
     }
     let content = response.bytes().context("failed to read response body")?;
+    check_pulled_binary(&content, trusted_dir, allow_unsigned, verbose)?;
     write_pulled_binary(&content, out_file, name, tag, verbose)
 }
 
@@ -797,8 +863,26 @@ fn pull_from_remote(
         );
     }
 
-    let content = response.bytes().context("failed to read response body")?;
-    let out_file = output.join(hash);
+    // Content-addressability is the trust anchor: never write bytes that do
+    // not hash to the requested value, and bound the buffered size.
+    let expected = parse_hex(hash).context("invalid layer hash")?;
+    let mut content = Vec::new();
+    response
+        .take(MAX_LAYER_BYTES as u64 + 1)
+        .read_to_end(&mut content)
+        .context("failed to read response body")?;
+    if content.len() > MAX_LAYER_BYTES {
+        anyhow::bail!("layer exceeds {MAX_LAYER_BYTES} bytes");
+    }
+    let actual = content_hash(&content);
+    if actual != expected {
+        anyhow::bail!(
+            "layer hash mismatch: expected {}, got {}",
+            format_hex(&expected),
+            format_hex(&actual)
+        );
+    }
+    let out_file = output.join(format_hex(&actual));
     std::fs::write(&out_file, &content).context("failed to write pulled content")?;
     if json {
         println!(
@@ -904,4 +988,26 @@ fn expand_tilde(path: &Path) -> PathBuf {
         }
     }
     path.to_path_buf()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_validation_rejects_traversal_and_noncanonical_forms() {
+        let good = "ab".repeat(32);
+        assert_eq!(validate_hash(&good).unwrap(), good);
+        let bad: Vec<String> = vec![
+            "../../etc/passwd".to_string(),
+            "/etc/passwd".to_string(),
+            String::new(),
+            "a".repeat(63),
+            "a".repeat(66),
+            "AB".repeat(32),
+        ];
+        for bad in bad {
+            assert!(validate_hash(&bad).is_err(), "accepted bad hash {bad}");
+        }
+    }
 }

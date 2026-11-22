@@ -26,6 +26,10 @@ pub struct RunArgs {
     #[arg(short, long)]
     pub verbose: bool,
 
+    /// Allow running an unsigned artifact fetched from a URL (development only)
+    #[arg(long)]
+    pub allow_unsigned: bool,
+
     /// Output result as JSON
     #[arg(long)]
     pub json: bool,
@@ -43,7 +47,7 @@ pub struct RunArgs {
 pub fn run(args: RunArgs) -> Result<()> {
     let path_arg = args.file.to_string_lossy();
     let file = if is_remote_url(&path_arg) {
-        fetch_from_url(&path_arg, args.verbose)?
+        fetch_from_url(&path_arg, args.allow_unsigned, args.verbose)?
     } else if crate::stdio::is_dash(&path_arg) {
         // `run -` executes a .de streamed in on stdin. The stub reads its own
         // `/proc/self/exe`, so the bytes must live on disk with the exec bit:
@@ -145,7 +149,7 @@ fn is_remote_url(s: &str) -> bool {
 /// run and re-downloaded if corrupt.
 ///
 /// Return: the cached .de path
-fn fetch_from_url(raw_url: &str, verbose: bool) -> Result<PathBuf> {
+fn fetch_from_url(raw_url: &str, allow_unsigned: bool, verbose: bool) -> Result<PathBuf> {
     let http_url = if let Some(rest) = raw_url.strip_prefix("registry://") {
         format!("http://{rest}")
     } else {
@@ -159,6 +163,7 @@ fn fetch_from_url(raw_url: &str, verbose: bool) -> Result<PathBuf> {
     let cache_path = cache_dir.join(format!("{key}.de"));
 
     if cache_path.exists() && verify_de(&cache_path) {
+        check_remote_artifact(&cache_path, allow_unsigned, verbose)?;
         if verbose {
             eprintln!("[daedalus] using cached {}", cache_path.display());
         }
@@ -219,6 +224,10 @@ fn fetch_from_url(raw_url: &str, verbose: bool) -> Result<PathBuf> {
         let _ = std::fs::remove_file(&tmp);
         anyhow::bail!("downloaded bytes from {http_url} are not a valid .de");
     }
+    if let Err(e) = check_remote_artifact(&tmp, allow_unsigned, verbose) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
 
     // Executing the cached file needs the exec bit; downloads default to 0644.
     #[cfg(unix)]
@@ -227,6 +236,36 @@ fn fetch_from_url(raw_url: &str, verbose: bool) -> Result<PathBuf> {
 
     std::fs::rename(&tmp, &cache_path).context("failed to finalize cached download")?;
     Ok(cache_path)
+}
+
+/// Authenticate a downloaded artifact against the local trust store before
+/// executing it. Remote sources are untrusted: a valid footer alone only
+/// proves the file is shaped like a `.de`, not that it came from a trusted
+/// signer.
+fn check_remote_artifact(
+    path: &std::path::Path,
+    allow_unsigned: bool,
+    verbose: bool,
+) -> Result<()> {
+    let mut f =
+        std::fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    let mut bytes = Vec::new();
+    f.read_to_end(&mut bytes)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    let trusted_dir = daedalus_core::paths::trusted_keys_dir();
+    match super::verify::verify_artifact_bytes(&bytes, &trusted_dir) {
+        Ok(scheme) => {
+            if verbose {
+                eprintln!("[daedalus] remote artifact verified ({scheme})");
+            }
+            Ok(())
+        }
+        Err(e) if allow_unsigned => {
+            eprintln!("[daedalus] warning: running unsigned remote artifact: {e}");
+            Ok(())
+        }
+        Err(e) => Err(e).context("refusing to run unverified downloaded artifact"),
+    }
 }
 
 /// verify_de - check that a file carries a valid `.de` footer.

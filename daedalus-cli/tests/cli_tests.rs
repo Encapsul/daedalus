@@ -687,6 +687,7 @@ fn test_registry_push_pull_binary_by_name_local() {
             "ollama:latest",
             "--local",
             registry_dir.to_str().unwrap(),
+            "--allow-unsigned",
             "-o",
             out.to_str().unwrap(),
         ])
@@ -719,6 +720,8 @@ fn test_registry_serve_artifact_endpoints() {
             &format!("127.0.0.1:{port}"),
             "--dir",
             registry_dir.to_str().unwrap(),
+            "--token",
+            "test-token",
         ])
         .spawn()
         .unwrap();
@@ -739,7 +742,7 @@ fn test_registry_serve_artifact_endpoints() {
     let blob: Vec<u8> = (0..=255u8).rev().cycle().take(8192).collect();
     let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).unwrap();
     let head = format!(
-        "POST /artifact?name=gemma&tag=2b HTTP/1.1\r\nHost: {base}\r\nContent-Length: {}\r\n\r\n",
+        "POST /artifact?name=gemma&tag=2b HTTP/1.1\r\nHost: {base}\r\nAuthorization: Bearer test-token\r\nContent-Length: {}\r\n\r\n",
         blob.len()
     );
     stream.write_all(head.as_bytes()).unwrap();
@@ -790,6 +793,103 @@ fn test_registry_serve_artifact_endpoints() {
     let header = String::from_utf8_lossy(&resp);
     assert!(header.starts_with("HTTP/1.1 404"), "expected 404: {header}");
 
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
+
+fn raw_http(port: u16, request: &str) -> String {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    stream.write_all(request.as_bytes()).unwrap();
+    stream.flush().unwrap();
+    let mut resp = Vec::new();
+    stream.read_to_end(&mut resp).unwrap();
+    String::from_utf8_lossy(&resp).into_owned()
+}
+
+fn spawn_serve(port: u16, dir: &std::path::Path, extra: &[&str]) -> std::process::Child {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_daedalus"));
+    cmd.args([
+        "serve",
+        "start",
+        "--bind",
+        &format!("127.0.0.1:{port}"),
+        "--dir",
+        dir.to_str().unwrap(),
+    ]);
+    cmd.args(extra);
+    cmd.spawn().unwrap()
+}
+
+#[test]
+fn test_serve_write_auth_fails_closed() {
+    use std::time::Duration;
+    let tmp = tempdir().unwrap();
+    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+    let mut child = spawn_serve(
+        port,
+        &tmp.path().join("registry"),
+        &["--token", "test-token"],
+    );
+    for _ in 0..100 {
+        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // Query strings must not bypass the write gate.
+    let resp = raw_http(
+        port,
+        "POST /push?x=1 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n",
+    );
+    assert!(resp.starts_with("HTTP/1.1 401"), "query bypass: {resp}");
+    // The token secret is case-sensitive even though the scheme is not.
+    let resp = raw_http(
+        port,
+        "POST /artifact?name=x HTTP/1.1\r\nHost: localhost\r\nAuthorization: bearer TEST-TOKEN\r\nContent-Length: 0\r\n\r\n",
+    );
+    assert!(
+        resp.starts_with("HTTP/1.1 401"),
+        "case-insensitive token: {resp}"
+    );
+    // A browser cross-site POST with a valid token is still CSRF.
+    let resp = raw_http(
+        port,
+        "POST /artifact?name=x HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer test-token\r\nOrigin: https://evil.example\r\nContent-Length: 0\r\n\r\n",
+    );
+    assert!(resp.starts_with("HTTP/1.1 403"), "CSRF not refused: {resp}");
+    // Reads remain public.
+    let resp = raw_http(port, "GET /list HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    assert!(resp.starts_with("HTTP/1.1 200"), "read failed: {resp}");
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
+
+#[test]
+fn test_serve_without_token_refuses_writes() {
+    use std::time::Duration;
+    let tmp = tempdir().unwrap();
+    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+    let mut child = spawn_serve(port, &tmp.path().join("registry"), &[]);
+    for _ in 0..100 {
+        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let resp = raw_http(
+        port,
+        "POST /push HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n",
+    );
+    assert!(
+        resp.starts_with("HTTP/1.1 503"),
+        "anonymous write allowed: {resp}"
+    );
     child.kill().unwrap();
     child.wait().unwrap();
 }
