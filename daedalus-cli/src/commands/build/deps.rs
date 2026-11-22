@@ -1,9 +1,28 @@
 use anyhow::{Context, Result};
 use daedalus_core::paths::cache_dir;
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use super::args::parse_target;
+
+/// Reject tar members that could escape the install directory or create
+/// links/devices. Tool distributions only need regular files and directories.
+fn reject_unsafe_tar_entry<R: std::io::Read>(entry: &tar::Entry<'_, R>) -> Result<()> {
+    let kind = entry.header().entry_type();
+    if !matches!(kind, tar::EntryType::Regular | tar::EntryType::Directory) {
+        anyhow::bail!("refusing tar entry of type {kind:?}");
+    }
+    let path = entry.path()?.into_owned();
+    if path.components().any(|c| {
+        matches!(
+            c,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        anyhow::bail!("refusing tar entry with traversal path: {}", path.display());
+    }
+    Ok(())
+}
 
 /// Resolve `name` to an executable invocation that works on all platforms.
 ///
@@ -237,6 +256,7 @@ fn ensure_node_download(
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create directory {}", parent.display()))?;
             }
+            reject_unsafe_tar_entry(&entry)?;
             entry
                 .unpack(&target)
                 .with_context(|| format!("failed to unpack {}", stripped.display()))?;
@@ -461,28 +481,16 @@ fn ensure_python_download(
 
     let extract_dir =
         tempfile::tempdir().context("failed to create temp dir for python extraction")?;
-    let tarball_path = extract_dir.path().join("..").join("python.tar.gz");
+    // Keep the archive inside the temp dir and use the same guarded extractor
+    // as every other tool tarball; Python's extractall would honour traversal
+    // and device entries from a compromised download.
+    let tarball_path = extract_dir.path().join("python.tar.gz");
     std::fs::write(&tarball_path, &tarball_bytes)
         .context("failed to write python tarball to disk")?;
-
-    let output = std::process::Command::new("python3")
-        .args([
-            "-c",
-            "import tarfile,sys; \
-            t=tarfile.open(sys.argv[1],'r:gz'); \
-            t.extractall(sys.argv[2]); \
-            print('extracted', len(t.getmembers()), 'members')",
-            tarball_path.to_str().unwrap(),
-            extract_dir.path().to_str().unwrap(),
-        ])
-        .output()
-        .context("failed to run python3 for python tarball extraction")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "python3 extraction failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
+    let file =
+        std::fs::File::open(&tarball_path).context("failed to open downloaded python tarball")?;
+    daedalus_core::tar::extract_tar_gz(file, extract_dir.path())
+        .context("failed to safely extract python tarball")?;
 
     let top_level = std::fs::read_dir(extract_dir.path())?
         .next()
@@ -995,6 +1003,7 @@ fn ensure_go_download(
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create directory {}", parent.display()))?;
             }
+            reject_unsafe_tar_entry(&entry)?;
             entry
                 .unpack(&target)
                 .with_context(|| format!("failed to unpack {}", stripped.display()))?;
@@ -1188,6 +1197,7 @@ fn ensure_deno_download(tools_dir: &Path, target_arch: Option<&str>, verbose: bo
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create directory {}", parent.display()))?;
             }
+            reject_unsafe_tar_entry(&entry)?;
             entry
                 .unpack(&target)
                 .with_context(|| format!("failed to unpack {}", stripped.display()))?;
@@ -1361,6 +1371,7 @@ fn ensure_hugo_download(tools_dir: &Path, target_arch: Option<&str>, verbose: bo
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create directory {}", parent.display()))?;
         }
+        reject_unsafe_tar_entry(&entry)?;
         entry
             .unpack(&target)
             .with_context(|| format!("failed to unpack {}", target.display()))?;
@@ -1488,6 +1499,7 @@ fn ensure_wasmtime_download(
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create directory {}", target.display()))?;
         }
+        reject_unsafe_tar_entry(&entry)?;
         entry
             .unpack(&target)
             .with_context(|| format!("failed to unpack {}", target.display()))?;
@@ -1909,6 +1921,7 @@ fn ensure_electron_download(
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create directory {}", target.display()))?;
             }
+            reject_unsafe_tar_entry(&entry)?;
             entry
                 .unpack(&target)
                 .with_context(|| format!("failed to unpack {}", target.display()))?;
@@ -2100,6 +2113,7 @@ fn ensure_zig_download(tools_dir: PathBuf, verbose: bool) -> Result<PathBuf> {
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create directory {}", parent.display()))?;
             }
+            reject_unsafe_tar_entry(&entry)?;
             entry
                 .unpack(&target)
                 .with_context(|| format!("failed to unpack {}", stripped.display()))?;
@@ -2349,6 +2363,42 @@ fn extract_dart_zip<R: std::io::Read + std::io::Seek>(reader: R, tools_dir: &Pat
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn tar_guard_rejects_links_and_traversal() {
+        fn classify(entries: &[(&str, tar::EntryType)]) -> Vec<bool> {
+            entries
+                .iter()
+                .map(|(path, kind)| {
+                    let mut builder = tar::Builder::new(Vec::new());
+                    let mut header = tar::Header::new_gnu();
+                    header.set_size(0);
+                    header.set_entry_type(*kind);
+                    // Write hostile paths straight into the header: tar-rs's
+                    // builder API refuses them before we can test our guard.
+                    let raw = path.as_bytes();
+                    header.as_mut_bytes()[..raw.len()].copy_from_slice(raw);
+                    header.set_cksum();
+                    builder.append(&header, &b""[..]).unwrap();
+                    let bytes = builder.into_inner().unwrap();
+                    let mut archive = tar::Archive::new(&bytes[..]);
+                    let entry = archive.entries().unwrap().next().unwrap().unwrap();
+                    reject_unsafe_tar_entry(&entry).is_ok()
+                })
+                .collect()
+        }
+        let results = classify(&[
+            ("tool/bin/tool", tar::EntryType::Regular),
+            ("tool/bin/", tar::EntryType::Directory),
+            ("../escape", tar::EntryType::Regular),
+            ("/absolute", tar::EntryType::Regular),
+            ("tool/link", tar::EntryType::Symlink),
+            ("tool/hard", tar::EntryType::Link),
+        ]);
+        assert_eq!(results, vec![true, true, false, false, false, false]);
+    }
+
     use super::*;
 
     #[test]

@@ -343,7 +343,7 @@ pub(crate) fn build_single_target(
             pid_limit: plan.pid_limit,
             app_hash: Some(new_app_hash.clone()),
             rt_deps_hash: Some(new_rt_hash.clone()),
-            update_url: args.update_url.clone(),
+            update_url: args.update_url.as_deref().map(super::payload::redact_urls),
             pre_hooks,
             post_hooks,
             layers: Some(layers),
@@ -529,6 +529,7 @@ fn build_layers(
     if config_path.exists() {
         let config_data = std::fs::read_to_string(&config_path)
             .ok()
+            .map(|content| super::payload::redact_urls(&content))
             .and_then(|content| {
                 toml::from_str::<toml::Value>(&content)
                     .ok()
@@ -2452,7 +2453,7 @@ fn reuse_rootfs_from_binary(
     // Decompress zstd payload into tar bytes, then extract tar
     let tar_bytes = daedalus_core::compress::decompress(&payload)?;
     let mut archive = tar::Archive::new(&tar_bytes[..]);
-    archive.unpack(&rootfs)?;
+    daedalus_core::tar::extract_tar_guarded(&mut archive, &rootfs)?;
 
     // Overlay new app files with tree-shake/minify/includes
     let app_dest = rootfs.join("app");
@@ -2493,6 +2494,9 @@ fn compress_payload(args: &BuildArgs, plan: &BuildPlan, rootfs: &Path) -> Result
     // flipped the metadata's payload_format while the payload stayed a
     // zstd+tar stream - the stub's squashfs extractor would fail on it.
     eprintln!("Creating payload...");
+    // Provenance files and lockfiles can carry private index credentials;
+    // scrub them before the tree is compressed into the artifact.
+    super::payload::redact_private_urls(rootfs).context("failed to redact staged rootfs")?;
     let t0 = std::time::Instant::now();
     let payload = if plan.squashfs {
         create_squashfs_payload(rootfs, plan.verbose)

@@ -73,13 +73,47 @@ pub fn create_tar_streaming<W: io::Write>(root: &Path, writer: W) -> io::Result<
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
 
+/// Extract a tar archive, rejecting hostile member paths and link/device
+/// entries. Tool tarballs and previously built artifacts are untrusted input.
+pub fn extract_tar_guarded<R: io::Read>(
+    archive: &mut tar::Archive<R>,
+    dest: &Path,
+) -> io::Result<()> {
+    std::fs::create_dir_all(dest)?;
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let kind = entry.header().entry_type();
+        if !matches!(kind, tar::EntryType::Regular | tar::EntryType::Directory) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("refusing tar entry of type {kind:?}"),
+            ));
+        }
+        let path = entry.path()?.into_owned();
+        if path.components().any(|c| {
+            matches!(
+                c,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        }) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("refusing tar entry with traversal path: {}", path.display()),
+            ));
+        }
+        // unpack_in re-checks containment; the explicit checks above also
+        // reject link types that tar-rs would otherwise materialise.
+        entry.unpack_in(dest)?;
+    }
+    Ok(())
+}
+
 /// Extract a .tar.gz archive into a directory. Pure Rust - no external
 /// `tar` process required.
 pub fn extract_tar_gz<R: io::Read>(reader: R, dest: &Path) -> io::Result<()> {
     let decoder = GzDecoder::new(reader);
     let mut archive = tar::Archive::new(decoder);
-    archive.unpack(dest)?;
-    Ok(())
+    extract_tar_guarded(&mut archive, dest)
 }
 
 /// Recursively collect relative paths of all files and directories.
@@ -250,6 +284,31 @@ fn is_executable_file(path: &Path) -> bool {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn guarded_extract_rejects_hostile_members() {
+        fn unpack(path: &str, kind: tar::EntryType) -> io::Result<()> {
+            let dir = tempfile::tempdir().unwrap();
+            let mut builder = tar::Builder::new(Vec::new());
+            let mut header = tar::Header::new_gnu();
+            header.set_size(0);
+            header.set_entry_type(kind);
+            // Hostile paths are written into the header directly so the
+            // tar-rs builder does not reject them before our guard runs.
+            let raw = path.as_bytes();
+            header.as_mut_bytes()[..raw.len()].copy_from_slice(raw);
+            header.set_cksum();
+            builder.append(&header, &b""[..]).unwrap();
+            let bytes = builder.into_inner().unwrap();
+            let mut archive = tar::Archive::new(&bytes[..]);
+            extract_tar_guarded(&mut archive, &dir.path().join("dest"))
+        }
+        assert!(unpack("safe/file", tar::EntryType::Regular).is_ok());
+        assert!(unpack("../escape", tar::EntryType::Regular).is_err());
+        assert!(unpack("/absolute", tar::EntryType::Regular).is_err());
+        assert!(unpack("link", tar::EntryType::Symlink).is_err());
+        assert!(unpack("hard", tar::EntryType::Link).is_err());
+    }
 
     #[test]
     /// `create_tar_from_empty_dir` - create tar from empty dir.

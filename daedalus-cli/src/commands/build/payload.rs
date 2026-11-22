@@ -167,9 +167,119 @@ pub(crate) fn create_squashfs_payload(rootfs: &Path, verbose: bool) -> Result<Ve
     std::fs::read(&image).context("failed to read squashfs image")
 }
 
+/// Apply URL-userinfo redaction to an arbitrary text blob.
+pub(crate) fn redact_urls(text: &str) -> String {
+    text.split_inclusive('\n')
+        .map(redact_url_userinfo)
+        .collect()
+}
+
+/// Strip credentials embedded in URL userinfo (`https://user:token@host/...`).
+/// The scheme and host stay intact so public-index installs keep working.
+fn redact_url_userinfo(line: &str) -> String {
+    let Some(scheme) = line.find("://") else {
+        return line.to_string();
+    };
+    let auth_start = scheme + 3;
+    let rest = &line[auth_start..];
+    let auth_end = rest
+        .find(['/', '?', '#', ' ', '\t', '"', '\'', '\n', '\r'])
+        .unwrap_or(rest.len());
+    let authority = &rest[..auth_end];
+    let Some(at) = authority.rfind('@') else {
+        return line.to_string();
+    };
+    if at == 0 {
+        return line.to_string();
+    }
+    let mut out = String::with_capacity(line.len());
+    out.push_str(&line[..auth_start]);
+    out.push_str("***@");
+    out.push_str(&authority[at + 1..]);
+    out.push_str(&rest[auth_end..]);
+    out
+}
+
+/// Whether a staged file may carry dependency URLs worth redacting.
+fn redactable_manifest(path: &Path) -> bool {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let lower = name.to_ascii_lowercase();
+    lower == "pipfile"
+        || lower.starts_with("requirements")
+        || [
+            ".txt", ".toml", ".lock", ".cfg", ".ini", ".json", ".yaml", ".yml",
+        ]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
+}
+
+/// Remove pip's provenance files and scrub private URL credentials before the
+/// staged tree is embedded. `direct_url.json` often records the original
+/// authenticated index URL, and lockfiles can contain the same token.
+pub(crate) fn redact_private_urls(root: &Path) -> Result<()> {
+    let max_size = 4 << 20;
+    for entry in walkdir::WalkDir::new(root).follow_links(false) {
+        let entry = entry.map_err(|e| anyhow::anyhow!("failed to walk staged rootfs: {e}"))?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name == "direct_url.json" {
+            std::fs::remove_file(path)
+                .with_context(|| format!("failed to remove {}", path.display()))?;
+            continue;
+        }
+        if !redactable_manifest(path) || std::fs::metadata(path)?.len() > max_size {
+            continue;
+        }
+        let Ok(original) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let redacted = redact_urls(&original);
+        if redacted != original {
+            std::fs::write(path, redacted)
+                .with_context(|| format!("failed to redact {}", path.display()))?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redaction_strips_userinfo_but_keeps_public_urls() {
+        let input = "https://alice:s3cr3t@private.example/simple \\\n    --index-url https://user:token@pypi.example/simple\nhttps://pypi.org/simple\n";
+        let out = redact_urls(input);
+        assert!(!out.contains("s3cr3t"));
+        assert!(!out.contains("user:token"));
+        assert!(out.contains("https://***@private.example/simple"));
+        assert!(out.contains("https://pypi.org/simple"));
+    }
+
+    #[test]
+    fn redaction_removes_direct_url_provenance_files() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let dist = dir.path().join("site-packages/foo-1.0.dist-info");
+        std::fs::create_dir_all(&dist).unwrap();
+        std::fs::write(
+            dist.join("direct_url.json"),
+            b"{\"url\":\"https://u:p@x/\"}",
+        )
+        .unwrap();
+        std::fs::write(
+            dist.join("requirements.txt"),
+            "https://u:p@private.example/a.whl\n",
+        )
+        .unwrap();
+        redact_private_urls(dir.path()).unwrap();
+        assert!(!dist.join("direct_url.json").exists());
+        let req = std::fs::read_to_string(dist.join("requirements.txt")).unwrap();
+        assert!(!req.contains("u:p@"));
+        assert!(req.contains("https://***@private.example/a.whl"));
+    }
 
     #[test]
     /// include_points_to_env_matches_only_explicit_env - include points to env matches only explicit env.
