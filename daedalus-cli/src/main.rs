@@ -46,6 +46,10 @@ struct Cli {
     #[arg(long, global = true)]
     plain: bool,
 
+    /// Enable experimental commands (also `DAEDALUS_EXPERIMENTAL=1`)
+    #[arg(long, global = true)]
+    experimental: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -77,7 +81,16 @@ enum Commands {
     /// Create or verify a signed SBOM attestation for a .de file
     Attest(commands::attest::AttestArgs),
 
-    /// Verify a .de file's signature
+    /// Verify a .de file's signature, or its full at-rest state with --all
+    ///
+    /// `--all` reports the signature scheme (trailing/SISR), stub coverage,
+    /// integrity hash, metadata and the SISR manifest/identity binding in one
+    /// pass, while keeping legacy artifacts verifiable.
+    ///
+    /// Examples:
+    ///   daedalus verify hello-web.de
+    ///   daedalus verify hello-web.de --all
+    ///   daedalus verify hello-web.de --all --json
     Verify(commands::verify::VerifyArgs),
 
     /// Trust a public key
@@ -182,6 +195,8 @@ fn main() -> ExitCode {
     }
 
     let effective_verbose = cli.verbose && !cli.quiet;
+    let experimental =
+        cli.experimental || std::env::var("DAEDALUS_EXPERIMENTAL").as_deref() == Ok("1");
 
     let result = match cli.command {
         Commands::Build(args) => commands::build::run(*args, effective_verbose),
@@ -256,7 +271,8 @@ fn main() -> ExitCode {
             }
             commands::clean::run(args)
         }
-        Commands::Dashboard(args) => commands::dashboard::run(&args),
+        Commands::Dashboard(args) => experimental_guard(experimental, "dashboard")
+            .and_then(|()| commands::dashboard::run(&args)),
         Commands::Selftest(mut args) => {
             if cli.quiet {
                 args.verbose = false;
@@ -366,6 +382,14 @@ fn main() -> ExitCode {
             error::exit_code_for_error(&err)
         }
     }
+}
+
+/// Keep peripheral, attack-surface-heavy commands out of the default path.
+fn experimental_guard(enabled: bool, name: &str) -> anyhow::Result<()> {
+    if enabled {
+        return Ok(());
+    }
+    anyhow::bail!("`{name}` is experimental; pass --experimental or set DAEDALUS_EXPERIMENTAL=1")
 }
 
 /// generate_man_pages - generate man pages for daedalus and all subcommands.

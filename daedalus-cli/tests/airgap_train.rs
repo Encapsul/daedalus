@@ -151,6 +151,17 @@ fn assert_sisr_and_media_verify(
         .success()
         .stdout(predicate::str::contains("\"scheme\": \"sisr\""))
         .stdout(predicate::str::contains("\"verified\": true"));
+    // `--all` reports the SISR manifest, its identity binding and the
+    // at-rest integrity hash in the same single output.
+    daedalus()
+        .args(["verify", v1.to_str().unwrap(), "--all", "--json"])
+        .env("DAEDALUS_TRUSTED_DIR", &trust)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"mode\": \"all\""))
+        .stdout(predicate::str::contains("\"scheme\": \"sisr\""))
+        .stdout(predicate::str::contains("\"integrity_ok\": true"))
+        .stdout(predicate::str::contains("\"identity\": true"));
     let empty = work.join("empty-trust");
     std::fs::create_dir_all(&empty).unwrap();
     daedalus()

@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use daedalus_core::format::{signature_digest, Footer, SIG_BLOCK_SIZE, SIG_LEN};
+use daedalus_core::format::{read_at, signature_digest, Footer, SIG_BLOCK_SIZE, SIG_LEN};
+use daedalus_core::manifest::DeltaManifest;
 use daedalus_core::paths::trusted_keys_dir;
-use daedalus_core::sisr_header::read_sisr;
-use daedalus_core::sisr_stage::verify_embedded_sisr_bound;
+use daedalus_core::sisr_header::{read_sisr, SisrFooterExt};
+use daedalus_core::sisr_stage::{verify_embedded_sisr_bound, SisrVerifyContext};
 use ed25519_dalek::VerifyingKey;
+use sha2::{Digest, Sha256};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
@@ -21,6 +23,9 @@ fn write_json_output(value: &serde_json::Value, output: Option<&Path>) -> Result
     Ok(())
 }
 
+// CLI flags stay independent booleans so `clap` keeps a flat, scriptable
+// surface; grouping them into enums would change the command line.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Args)]
 pub struct VerifyArgs {
     /// Path to the .de file, or `-` to read from stdin
@@ -42,6 +47,11 @@ pub struct VerifyArgs {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
+    /// Verify the full at-rest artifact in one pass: signature scheme, stub
+    /// coverage, integrity hash, metadata and SISR manifest/identity binding
+    #[arg(long)]
+    pub all: bool,
+
     /// Disable all interactive prompts (for CI/scripts)
     #[arg(long, global = true)]
     pub no_input: bool,
@@ -49,6 +59,9 @@ pub struct VerifyArgs {
 
 /// Verify trailing Ed25519 (v3+) or embedded SISR manifest signature.
 pub fn run(args: VerifyArgs) -> Result<()> {
+    if args.all {
+        return run_all(&args);
+    }
     let trusted_dir = args.trusted_dir.clone().unwrap_or_else(trusted_keys_dir);
     let display_name = display_name_of(&args.file);
     let mut source = open_source(&args.file)?;
@@ -91,6 +104,257 @@ fn open_source(file: &Path) -> Result<Cursor<Vec<u8>>> {
         let bytes =
             std::fs::read(file).with_context(|| format!("failed to open {}", file.display()))?;
         Ok(Cursor::new(bytes))
+    }
+}
+
+/// Facts read once from the artifact, shared by every `--all` check.
+struct AtRest {
+    footer: Footer,
+    payload: Vec<u8>,
+    meta: Vec<u8>,
+    stub: Vec<u8>,
+    meta_json: Option<serde_json::Value>,
+    sisr: Option<(SisrFooterExt, DeltaManifest)>,
+    has_sig_block: bool,
+}
+
+impl AtRest {
+    fn name(&self) -> &str {
+        self.meta_json
+            .as_ref()
+            .and_then(|v| v.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    fn version(&self) -> &str {
+        self.meta_json
+            .as_ref()
+            .and_then(|v| v.get("version"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    /// The footer records SHA-256(payload || metadata) at build time.
+    fn integrity_ok(&self) -> bool {
+        let mut hasher = Sha256::new();
+        hasher.update(&self.payload);
+        hasher.update(&self.meta);
+        hasher.finalize().as_slice() == self.footer.payload_sha256
+    }
+}
+
+fn read_at_rest(file: &Path) -> Result<(AtRest, Cursor<Vec<u8>>)> {
+    let mut source = open_source(file)?;
+    let footer = Footer::read_from(&mut source).context("failed to read daedalus footer")?;
+    let has_sig_block = footer.format_version >= 3 && footer.sig_offset != 0;
+    if has_sig_block != footer.is_signed() {
+        anyhow::bail!("inconsistent signature state (flag/offset mismatch)");
+    }
+    let payload = read_at(
+        &mut source,
+        footer.payload_offset,
+        footer.payload_csize as usize,
+    )?;
+    let meta = read_at(&mut source, footer.meta_offset, footer.meta_size as usize)?;
+    let stub_len = usize::try_from(footer.payload_offset).context("payload offset overflow")?;
+    let stub = read_at(&mut source, 0, stub_len)?;
+    let meta_json = serde_json::from_slice(&meta).ok();
+    let sisr = read_sisr(&mut source).context("failed to read SISR section")?;
+    Ok((
+        AtRest {
+            footer,
+            payload,
+            meta,
+            stub,
+            meta_json,
+            sisr,
+            has_sig_block,
+        },
+        source,
+    ))
+}
+
+fn at_rest_report(display_name: &str, at: &AtRest) -> serde_json::Value {
+    serde_json::json!({
+        "file": display_name,
+        "mode": "all",
+        "format_version": at.footer.format_version,
+        "signed": at.footer.is_signed(),
+        "encrypted": at.footer.is_encrypted(),
+        "has_sisr": at.footer.has_sisr(),
+        "stub_bytes": at.footer.payload_offset,
+        "stub_bound_signature": at.footer.format_version >= 6,
+        "integrity_sha256": at.footer.sha256_hex(),
+        "integrity_ok": at.integrity_ok(),
+        "metadata": at.meta_json.clone(),
+        "sisr": at.sisr.as_ref().map(|(ext, manifest)| serde_json::json!({
+            "manifest_version": manifest.version,
+            "chunks": manifest.chunks.len(),
+            "payload_len": manifest.payload_len,
+            "identity": manifest.identity.is_some(),
+            "sequence": manifest.identity.as_ref().map(|i| i.sequence),
+            "merkle_root": hex::encode(ext.merkle_root),
+            "signed": ext.signature != [0u8; 64],
+        })),
+    })
+}
+
+/// `--all`: verify the signature scheme and report every at-rest binding.
+fn run_all(args: &VerifyArgs) -> Result<()> {
+    let display_name = display_name_of(&args.file);
+    let (at, mut source) = read_at_rest(&args.file)?;
+    let mut report = at_rest_report(&display_name, &at);
+
+    if !at.integrity_ok() {
+        report["verified"] = serde_json::json!(false);
+        emit_all(args, &report)?;
+        anyhow::bail!("integrity hash mismatch: payload or metadata were modified");
+    }
+
+    let trusted_dir = args.trusted_dir.clone().unwrap_or_else(trusted_keys_dir);
+    match verify_at_rest_signature(&mut source, &at, &trusted_dir) {
+        Ok((scheme, key)) => {
+            let verified = key.is_some();
+            report["scheme"] = serde_json::json!(scheme);
+            report["verified"] = serde_json::json!(verified);
+            report["key"] = serde_json::json!(key);
+            emit_all(args, &report)?;
+            if !verified {
+                anyhow::bail!("signature does not match any trusted key");
+            }
+            Ok(())
+        }
+        Err(err) => {
+            report["verified"] = serde_json::json!(false);
+            report["error"] = serde_json::json!(err.to_string());
+            emit_all(args, &report)?;
+            Err(err)
+        }
+    }
+}
+
+fn verify_at_rest_signature(
+    source: &mut Cursor<Vec<u8>>,
+    at: &AtRest,
+    trusted_dir: &Path,
+) -> Result<(String, Option<String>)> {
+    if at.has_sig_block {
+        let key = verify_trailing_signature(source, at, trusted_dir)?;
+        return Ok(("trailing".to_string(), key));
+    }
+    if let Some((ext, manifest)) = &at.sisr {
+        if ext.signature != [0u8; 64] {
+            let key = verify_sisr_signature(ext, manifest, at, trusted_dir)?;
+            return Ok(("sisr".to_string(), key));
+        }
+    }
+    anyhow::bail!("file is not signed")
+}
+
+fn verify_trailing_signature(
+    source: &mut Cursor<Vec<u8>>,
+    at: &AtRest,
+    trusted_dir: &Path,
+) -> Result<Option<String>> {
+    let sig_data = read_at(source, at.footer.sig_offset, SIG_BLOCK_SIZE)?;
+    let sig_size = u32::from_le_bytes([sig_data[0], sig_data[1], sig_data[2], sig_data[3]]);
+    if sig_size != SIG_LEN as u32 {
+        anyhow::bail!("unexpected sig_size {sig_size} (expected {SIG_LEN} for ed25519)");
+    }
+    let signature_bytes = &sig_data[4..SIG_BLOCK_SIZE];
+    let hash = signature_digest(source, &at.footer, &at.payload, &at.meta)?;
+    let keys = require_trusted_keys(trusted_dir)?;
+    let sig = ed25519_dalek::Signature::from_slice(signature_bytes)?;
+    Ok(keys.iter().find_map(|(key_path, vk)| {
+        // `verify_strict` rejects small-order keys/sigs (ZIP-215); same as stub.
+        vk.verify_strict(&hash, &sig)
+            .ok()
+            .map(|()| key_path.display().to_string())
+    }))
+}
+
+fn verify_sisr_signature(
+    ext: &SisrFooterExt,
+    manifest: &DeltaManifest,
+    at: &AtRest,
+    trusted_dir: &Path,
+) -> Result<Option<String>> {
+    let keys = require_trusted_keys(trusted_dir)?;
+    let publics: Vec<VerifyingKey> = keys.iter().map(|(_, vk)| *vk).collect();
+    let ctx = SisrVerifyContext::new(at.name(), at.version(), &at.stub, &at.meta);
+    verify_embedded_sisr_bound(ext, manifest, &at.payload, &publics, &ctx)
+        .context("embedded SISR signature verification failed")?;
+    Ok(keys
+        .iter()
+        .find(|(_, vk)| {
+            manifest.serialize().is_ok_and(|bytes| {
+                daedalus_core::sisr_stage::verify(&bytes, &ext.merkle_root, &ext.signature, vk)
+            })
+        })
+        .map(|(p, _)| p.display().to_string()))
+}
+
+fn emit_all(args: &VerifyArgs, report: &serde_json::Value) -> Result<()> {
+    if args.json {
+        return write_json_output(report, args.output.as_deref());
+    }
+    if !args.quiet {
+        print_at_rest(report);
+    }
+    Ok(())
+}
+
+fn print_at_rest(report: &serde_json::Value) {
+    let s = |k: &str| report.get(k).and_then(|v| v.as_str()).unwrap_or("?");
+    let n = |k: &str| report.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+    let b = |k: &str| report.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+    eprintln!("OK: at-rest verification — {}", s("file"));
+    eprintln!("  scheme:    {}", s("scheme"));
+    if let Some(key) = report.get("key").and_then(|v| v.as_str()) {
+        eprintln!("  key:       {key}");
+    }
+    eprintln!("  format:    v{}", n("format_version"));
+    eprintln!(
+        "  stub:      {} byte(s){}",
+        n("stub_bytes"),
+        if b("stub_bound_signature") {
+            " (bound by the signature)"
+        } else {
+            " (not covered: pre-v6 format)"
+        }
+    );
+    eprintln!(
+        "  integrity: sha256:{} ({})",
+        s("integrity_sha256"),
+        if b("integrity_ok") { "ok" } else { "MISMATCH" }
+    );
+    if let Some(meta) = report.get("metadata").filter(|v| v.is_object()) {
+        let name = meta.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+        let version = meta.get("version").and_then(|v| v.as_str()).unwrap_or("?");
+        eprintln!("  metadata:  {name} {version}");
+    } else {
+        eprintln!("  metadata:  unreadable");
+    }
+    if let Some(sisr) = report.get("sisr").filter(|v| v.is_object()) {
+        eprintln!(
+            "  sisr:      manifest v{}, {} chunk(s), sequence {}, {}{}",
+            sisr.get("manifest_version")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            sisr.get("chunks").and_then(|v| v.as_u64()).unwrap_or(0),
+            sisr.get("sequence").and_then(|v| v.as_u64()).unwrap_or(0),
+            if sisr.get("identity") == Some(&serde_json::Value::Bool(true)) {
+                "bound identity"
+            } else {
+                "legacy identity"
+            },
+            if sisr.get("signed") == Some(&serde_json::Value::Bool(true)) {
+                ", signed"
+            } else {
+                ", unsigned"
+            }
+        );
     }
 }
 
