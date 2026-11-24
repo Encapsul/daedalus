@@ -16,51 +16,34 @@ use std::process::Command;
 use tempfile::tempdir;
 
 fn build_fixture(dir: &Path, _payload_bytes: &[u8]) -> std::path::PathBuf {
+    build_fixture_with_script(dir, b"#!/bin/sh\necho hi\n")
+}
+
+fn build_fixture_with_script(dir: &Path, script: &[u8]) -> std::path::PathBuf {
     let rootfs = dir.join("rootfs");
     std::fs::create_dir_all(rootfs.join("app")).unwrap();
     let app = rootfs.join("app/app");
-    std::fs::write(&app, b"#!/bin/sh\necho hi\n").unwrap();
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&app, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-    let payload = daedalus_core::tar::create_tar_zstd_with_level(&rootfs, 3).unwrap();
+    std::fs::write(&app, script).unwrap();
+    set_executable(&app);
 
+    let payload = daedalus_core::tar::create_tar_zstd_with_level(&rootfs, 3).unwrap();
     let meta = serde_json::json!({
         "name": "chaos",
         "runtime": "binary",
         "entrypoint": ["/app/app"],
     });
     let out = dir.join("app.de");
+    assemble_fixture(&out, &payload, &meta);
+    out
+}
 
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
-    let workspace_root = std::path::Path::new(&manifest_dir)
-        .parent()
-        .unwrap_or(std::path::Path::new("."));
-
-    let stub_bytes = if let Ok(path) = std::env::var("DAEDALUS_STUB_PATH") {
-        std::fs::read(&path).expect("failed to read stub from DAEDALUS_STUB_PATH")
-    } else {
-        let candidates = [
-            workspace_root.join("target/x86_64-unknown-linux-musl/release/daedalus-stub"),
-            std::path::PathBuf::from(
-                "/tmp/daedalus-stub-target/x86_64-unknown-linux-musl/release/daedalus-stub",
-            ),
-            workspace_root.join("target/release/daedalus-stub"),
-        ];
-        let path = candidates
-            .iter()
-            .find(|p| p.exists())
-            .expect("daedalus-stub binary not found; build it with: cargo build --release -p daedalus-stub --target x86_64-unknown-linux-musl");
-        std::fs::read(path).expect("failed to read stub binary")
-    };
-
+fn assemble_fixture(out: &Path, payload: &[u8], meta: &serde_json::Value) {
     assemble_daedalus(
-        &out,
+        out,
         &AssemblyInput {
-            stub_bytes: &stub_bytes,
-            payload: &payload,
-            meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
+            stub_bytes: &stub_bytes_for(),
+            payload,
+            meta_bytes: serde_json::to_vec(meta).unwrap().as_slice(),
             squashfs: false,
             target_arch: None,
             sisr: None,
@@ -68,42 +51,52 @@ fn build_fixture(dir: &Path, _payload_bytes: &[u8]) -> std::path::PathBuf {
         },
     )
     .unwrap();
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-
-    out
+    set_executable(out);
 }
 
 fn run_stub(bin: &Path, arg: &str) -> std::process::Output {
-    run_stub_retry(bin, arg).expect("failed to run stub")
+    run_stub_result(bin, arg).expect("failed to run stub")
 }
 
 fn run_stub_result(bin: &Path, arg: &str) -> Result<std::process::Output, std::io::Error> {
-    run_stub_retry(bin, arg)
+    run_stub_retry(bin, Some(arg), None)
 }
 
-// Retry transient `exec` failures (e.g. ETXTBSY on a freshly written temp
-// copy) so chaos tests never trip on a one-off "Text file busy" race.
-fn run_stub_retry(bin: &Path, arg: &str) -> Result<std::process::Output, std::io::Error> {
-    let bin = copy_to_temp_exec(bin);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Err(e) = std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)) {
-            eprintln!(
-                "Warning: could not set permissions on {}: {}",
-                bin.display(),
-                e
-            );
-        }
-    }
+/// Run the packaged app itself: `--daedalus-version` exits before the
+/// integrity check, so it cannot be used as a fail-closed oracle.
+fn run_stub_exec(bin: &Path) -> Result<std::process::Output, std::io::Error> {
+    run_stub_retry(bin, None, None)
+}
+
+fn run_stub_cached(
+    bin: &Path,
+    arg: Option<&str>,
+    cache: &Path,
+) -> Result<std::process::Output, std::io::Error> {
+    run_stub_retry(bin, arg, Some(cache))
+}
+
+// Each case gets its own copy and cache root: shared /tmp paths made cache
+// interference impossible to distinguish from a product bug.
+fn run_stub_retry(
+    bin: &Path,
+    arg: Option<&str>,
+    cache: Option<&Path>,
+) -> Result<std::process::Output, std::io::Error> {
+    let tmp = tempdir()?;
+    let copy = tmp.path().join("case.de");
+    std::fs::copy(bin, &copy)?;
+    set_executable(&copy);
+    let cache_dir = cache
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| tmp.path().join("cache"));
     let mut last_err = None;
     for attempt in 0..3 {
-        match Command::new(&bin).arg(arg).output() {
+        let mut cmd = Command::new(&copy);
+        if let Some(arg) = arg {
+            cmd.arg(arg);
+        }
+        match cmd.env("XDG_CACHE_HOME", &cache_dir).output() {
             Ok(output) => return Ok(output),
             Err(e) if attempt < 2 => {
                 last_err = Some(e);
@@ -115,24 +108,38 @@ fn run_stub_retry(bin: &Path, arg: &str) -> Result<std::process::Output, std::io
     Err(last_err.unwrap())
 }
 
-fn copy_to_temp_exec(bin: &Path) -> std::path::PathBuf {
-    let tmp_dir = std::env::temp_dir().join(format!("daedalus-chaos-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&tmp_dir);
-    let dst = tmp_dir.join(format!(
-        "{}-{}.de",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    std::fs::copy(bin, &dst).unwrap();
+fn set_executable(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755));
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
     }
-    dst
+    #[cfg(not(unix))]
+    let _ = path;
+}
+
+fn assert_no_panic(output: &std::process::Output, label: &str) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("panicked")
+            && !stderr.contains("SIGSEGV")
+            && !stderr.contains("core dumped"),
+        "{label}: crash marker in stderr: {stderr}"
+    );
+}
+
+fn assert_fail_closed(result: Result<std::process::Output, std::io::Error>, label: &str) {
+    match result {
+        // execve refusing a non-ELF file is a clean rejection.
+        Err(_) => {}
+        Ok(output) => {
+            assert!(
+                !output.status.success(),
+                "{label}: corrupted bundle ran successfully"
+            );
+            assert_no_panic(&output, label);
+        }
+    }
 }
 
 // ── Hostile input ───────────────────────────────────────────────────────
@@ -147,14 +154,12 @@ fn chaos_truncated_binary_fails_without_touching_output() {
         let broken = dir.path().join(format!("cut-{cut}.de"));
         std::fs::write(&broken, &original[..cut]).unwrap();
 
+        assert_fail_closed(
+            run_stub_result(&broken, "--daedalus-version"),
+            &format!("truncated-{cut}"),
+        );
         let out = dir.path().join("out.de");
-        let _ = std::fs::remove_file(&out);
-        let _result = run_stub_result(&broken, "--daedalus-version");
-        if !out.exists() {
-            continue;
-        }
-        Footer::read_from(&mut Cursor::new(std::fs::read(&out).unwrap()))
-            .expect("output of a successful run must parse");
+        assert!(!out.exists(), "truncated run wrote {out:?}");
     }
 }
 
@@ -170,14 +175,20 @@ fn chaos_random_byte_corruption_never_panics() {
     };
 
     let data = std::fs::read(&bin).unwrap();
+    let footer = Footer::read_from(&mut Cursor::new(data.clone())).unwrap();
+    // The integrity hash covers payload || metadata; flipping an inert stub
+    // byte is legitimate and would be a false positive.
+    let start = usize::try_from(footer.payload_offset).unwrap();
+    let end = usize::try_from(footer.meta_offset + footer.meta_size).unwrap();
+    assert!(end <= data.len() && start < end);
     for step in 0..40u64 {
+        let pos = start + ((step * 137 + 13) as usize) % (end - start);
         let mut corrupted = data.clone();
-        let pos = ((step * 137 + 13) as usize) % data.len();
         corrupted[pos] = flip(pos);
         let bad = dir.path().join("bad.de");
         std::fs::write(&bad, &corrupted).unwrap();
 
-        let _result = run_stub_result(&bad, "--daedalus-version");
+        assert_fail_closed(run_stub_exec(&bad), &format!("flip-{step}@{pos}"));
     }
 }
 
@@ -205,10 +216,15 @@ fn chaos_garbage_file_refused_cleanly() {
 #[test]
 fn chaos_traversal_targets_rejected() {
     let dir = tempdir().unwrap();
-    let bin = build_fixture(dir.path(), b"P");
+    let bin = build_fixture_with_script(dir.path(), b"#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
 
+    // The stub must forward hostile-looking args verbatim, never interpret
+    // them as paths of its own.
     for evil in ["../escape.bin", "/etc/passwd", "a/../../b", ".."] {
-        let _ = run_stub(&bin, evil);
+        let output = run_stub(&bin, evil);
+        assert!(output.status.success(), "app did not run for {evil:?}");
+        assert_no_panic(&output, "traversal");
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), evil);
     }
 }
 
@@ -244,7 +260,13 @@ fn chaos_cache_poisoning_ignored() {
     )
     .unwrap();
 
-    let _ = run_stub(&bin, "--daedalus-version");
+    let result = run_stub_cached(&bin, None, &cache_dir).expect("poisoned cache run failed");
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        result.status.success() && stdout.contains("hi") && !stdout.contains("malicious"),
+        "poisoned cache was used: {stdout}"
+    );
+    assert_no_panic(&result, "cache-poisoning");
 }
 
 // A ready marker and a forgeable size/mtime manifest must never substitute
@@ -323,6 +345,25 @@ fn warm_cache_hit_reverifies_source_integrity() {
     );
 }
 
+#[test]
+fn chaos_footer_and_metadata_corruption_rejected() {
+    let dir = tempdir().unwrap();
+    let bin = build_fixture(dir.path(), b"PAYLOAD");
+    let original = std::fs::read(&bin).unwrap();
+    let footer = Footer::read_from(&mut Cursor::new(original.clone())).unwrap();
+    let cases = [
+        ("footer-magic", original.len() - 1),
+        ("metadata", usize::try_from(footer.meta_offset).unwrap() + 2),
+    ];
+    for (name, offset) in cases {
+        let mut corrupted = original.clone();
+        corrupted[offset] ^= 0xFF;
+        let bad = dir.path().join(format!("{name}.de"));
+        std::fs::write(&bad, &corrupted).unwrap();
+        assert_fail_closed(run_stub_exec(&bad), name);
+    }
+}
+
 // ── Concurrent runs ─────────────────────────────────────────────────────
 
 #[test]
@@ -337,7 +378,13 @@ fn chaos_concurrent_runs_complete() {
         children.push(std::thread::spawn(move || {
             let thread_bin = dir_path.join(format!("concurrent-{i}.de"));
             std::fs::copy(&bin_path, &thread_bin).unwrap();
-            let _ = run_stub_result(&thread_bin, "--daedalus-version");
+            let result = run_stub_exec(&thread_bin).expect("concurrent run failed");
+            assert!(
+                result.status.success() && String::from_utf8_lossy(&result.stdout).contains("hi"),
+                "concurrent run {i} failed: {}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert_no_panic(&result, "concurrent");
         }));
     }
     for c in children {
@@ -378,7 +425,12 @@ fn chaos_successful_run_keeps_binary_valid() {
     let dir = tempdir().unwrap();
     let bin = build_fixture(dir.path(), b"OLD-PAYLOAD");
 
-    let _ = run_stub(&bin, "--daedalus-version");
+    let result = run_stub_exec(&bin).expect("valid fixture failed to run");
+    assert!(
+        result.status.success() && String::from_utf8_lossy(&result.stdout).contains("hi"),
+        "valid fixture did not run: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
 
     let footer = Footer::read_from(&mut Cursor::new(std::fs::read(&bin).unwrap())).unwrap();
     let mut cursor = Cursor::new(std::fs::read(&bin).unwrap());
@@ -413,24 +465,7 @@ fn build_hugo_fixture(dir: &Path) -> std::path::PathBuf {
         "entrypoint": ["hugo", "server"],
     });
     let out = dir.join("app.de");
-    assemble_daedalus(
-        &out,
-        &AssemblyInput {
-            stub_bytes: &stub_bytes_for(),
-            payload: &payload,
-            meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
-            squashfs: false,
-            target_arch: None,
-            sisr: None,
-            encryption: None,
-        },
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    assemble_fixture(&out, &payload, &meta);
     out
 }
 
@@ -446,24 +481,7 @@ fn build_electron_fixture(dir: &Path) -> std::path::PathBuf {
         "entrypoint": ["electron", "/app/main.js"],
     });
     let out = dir.join("app.de");
-    assemble_daedalus(
-        &out,
-        &AssemblyInput {
-            stub_bytes: &stub_bytes_for(),
-            payload: &payload,
-            meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
-            squashfs: false,
-            target_arch: None,
-            sisr: None,
-            encryption: None,
-        },
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    assemble_fixture(&out, &payload, &meta);
     out
 }
 
@@ -479,28 +497,14 @@ fn build_wasm_fixture(dir: &Path) -> std::path::PathBuf {
         "entrypoint": ["wasmtime", "/app/index.wasm"],
     });
     let out = dir.join("app.de");
-    assemble_daedalus(
-        &out,
-        &AssemblyInput {
-            stub_bytes: &stub_bytes_for(),
-            payload: &payload,
-            meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
-            squashfs: false,
-            target_arch: None,
-            sisr: None,
-            encryption: None,
-        },
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    assemble_fixture(&out, &payload, &meta);
     out
 }
 
 fn stub_bytes_for() -> Vec<u8> {
+    if let Ok(path) = std::env::var("DAEDALUS_STUB_PATH") {
+        return std::fs::read(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
+    }
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
     let workspace_root = std::path::Path::new(&manifest_dir)
         .parent()
@@ -530,7 +534,10 @@ fn chaos_hugo_truncated_binary_fails_cleanly() {
     for cut in [0usize, 1, 10, 50, original.len() - 1] {
         let broken = dir.path().join(format!("cut-{cut}.de"));
         std::fs::write(&broken, &original[..cut]).unwrap();
-        let _ = run_stub_result(&broken, "--daedalus-version");
+        assert_fail_closed(
+            run_stub_result(&broken, "--daedalus-version"),
+            &format!("truncated-{cut}"),
+        );
     }
 }
 
@@ -560,7 +567,10 @@ fn chaos_electron_truncated_binary_fails_cleanly() {
     for cut in [0usize, 1, original.len() / 2, original.len() - 1] {
         let broken = dir.path().join(format!("cut-{cut}.de"));
         std::fs::write(&broken, &original[..cut]).unwrap();
-        let _ = run_stub_result(&broken, "--daedalus-version");
+        assert_fail_closed(
+            run_stub_result(&broken, "--daedalus-version"),
+            &format!("truncated-{cut}"),
+        );
     }
 }
 
@@ -575,7 +585,10 @@ fn chaos_wasm_truncated_binary_fails_cleanly() {
     for cut in [0usize, 1, original.len() / 2, original.len() - 1] {
         let broken = dir.path().join(format!("cut-{cut}.de"));
         std::fs::write(&broken, &original[..cut]).unwrap();
-        let _ = run_stub_result(&broken, "--daedalus-version");
+        assert_fail_closed(
+            run_stub_result(&broken, "--daedalus-version"),
+            &format!("truncated-{cut}"),
+        );
     }
 }
 
@@ -595,29 +608,15 @@ fn chaos_deno_truncated_binary_fails_cleanly() {
         "entrypoint": ["deno", "run", "--allow-all", "/app/main.ts"],
     });
     let out = dir.path().join("app.de");
-    assemble_daedalus(
-        &out,
-        &AssemblyInput {
-            stub_bytes: &stub_bytes_for(),
-            payload: &payload,
-            meta_bytes: serde_json::to_vec(&meta).unwrap().as_slice(),
-            squashfs: false,
-            target_arch: None,
-            sisr: None,
-            encryption: None,
-        },
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    assemble_fixture(&out, &payload, &meta);
 
     let original = std::fs::read(&out).unwrap();
     for cut in [0usize, 1, original.len() / 2, original.len() - 1] {
         let broken = dir.path().join(format!("cut-{cut}.de"));
         std::fs::write(&broken, &original[..cut]).unwrap();
-        let _ = run_stub_result(&broken, "--daedalus-version");
+        assert_fail_closed(
+            run_stub_result(&broken, "--daedalus-version"),
+            &format!("truncated-{cut}"),
+        );
     }
 }
