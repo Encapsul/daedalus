@@ -15,7 +15,7 @@ and reuses.
 The cache key is the **SHA-256 of the compressed payload**. Two `.daedalus` with
 identical content share the same cache; changing a single byte produces a new
 key. (`.lock` for concurrent access and `last_used` for LRU cleanup are
-planned - see [Roadmap](../roadmap.md).)
+planned.)
 
 ## Atomic extraction (anti-TOCTOU)
 

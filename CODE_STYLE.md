@@ -380,16 +380,16 @@ and ask:
 
 | What you're tempted to do | What you actually do |
 |---|---|
-| "The roadmap is messy, I'll create ROADMAP-CONSOLIDATED.md" | Fix ROADMAP.md in place. Delete the mess. |
+| "The docs are messy, I'll create DOCS-CONSOLIDATED.md" | Fix the existing doc in place. Delete the mess. |
 | "I'll keep the old MISSION_LOG.md for reference" | Delete it. Git is the archive. |
-| "docs/src/roadmap.md needs its own copy of the content" | docs/src/roadmap.md includes ROADMAP.md. No copy-paste. |
+| "docs/src/introduction.md needs its own copy of the README" | Link to the README. No copy-paste. |
 | "I'll add a new ARCHITECTURE.md to be thorough" | Check if an existing doc already covers architecture. |
 | "I'll create a -v2 suffix once this changes" | Edit the existing file. Versions live in git, not filenames. |
 
 ### Why this matters
 
 Competing standards fragment knowledge. When two files claim to be "the
-roadmap", no one knows which to trust. When architecture is split across
+spec", no one knows which to trust. When architecture is split across
 ARCHITECTURE.md, DESIGN.md, and TECH-STACK.md, they drift apart and become
 wrong in different ways. The cognitive overhead of knowing which file is
 current exceeds the cost of maintaining a single canonical one.

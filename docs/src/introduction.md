@@ -84,7 +84,7 @@ jump straight to a language guide: [Python](./guides/python.md),
 ## Project status
 
 Version 0.7.1. CI builds `examples/hello-web`, runs the ELF, and curls it.
-Other runtimes are detected. See the [Roadmap](./roadmap.md). SquashFS is
+Other runtimes are detected; CI runs only the Python example. SquashFS is
 extracted, not mounted. Cold start still pays for that extract.
 
 ## Optional extension: SISR (self-updates)

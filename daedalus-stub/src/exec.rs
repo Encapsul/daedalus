@@ -1218,7 +1218,7 @@ fn runtime_interpreter(runtime: &str) -> Option<&'static str> {
 /// Resolve the entrypoint program and interpreter for `meta`, validated against
 /// the supported runtime list. `None` from `Runtime::from_name` means the
 /// metadata carries a runtime the stub never heard of - fail loudly instead of
-/// silently launching under bash (upstream fix for roadmap #40).
+/// silently launching under bash (upstream fix).
 ///
 /// The runtime name and argv template come from `Metadata::effective_runtime` /
 /// `Metadata::effective_entrypoint`: the layer system when `entrypoint_layer`

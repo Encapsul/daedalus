@@ -174,7 +174,7 @@ impl SisrEngine {
     /// Like [`Self::apply_update`], but also returns reuse/fetch statistics
     /// (used to verify the bandwidth-reduction property in tests).
     ///
-    /// # Authenticity at rest (roadmap #45)
+    /// # Authenticity at rest
     ///
     /// `manifest_sig` must be the Ed25519 signature over
     /// `merkle_root ‖ manifest_bytes` from the [`RemoteManifest`] the caller

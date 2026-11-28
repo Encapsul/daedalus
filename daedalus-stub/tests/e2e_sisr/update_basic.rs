@@ -98,7 +98,7 @@ fn updated_binary_runs_the_new_payload() {
     );
 }
 
-/// Roadmap #45 anchor at e2e level: the binary rebuilt by a REAL update
+/// End-to-end check: the binary rebuilt by a REAL update
 /// carries the remote manifest's verified signature, so it stays verifiable
 /// at rest instead of degrading to integrity-only.
 #[test]

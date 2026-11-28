@@ -673,7 +673,7 @@ fn run() -> io::Result<()> {
     let (mut exe, mut footer, mut meta_bytes, mut meta) = read_from(&self_exe()?)?;
 
     // Reject crafted metadata with an unknown runtime before doing any
-    // extraction/update work (roadmap #40 - unknown runtime used to silently
+    // extraction/update work (unknown runtime used to silently
     // map to bash). Validation goes through `effective_runtime()` so a binary
     // whose entrypoint lives in a layer is checked against THAT layer's
     // runtime, not the legacy flat field.
@@ -1186,7 +1186,7 @@ fn maybe_apply_sisr_update(
             &remote.manifest,
             &fetcher,
             // Carried into the rebuilt binary's SISR extension so the
-            // updated binary keeps its at-rest authenticity (roadmap #45).
+            // updated binary keeps its at-rest authenticity.
             &remote.signature,
         )
     })?;
@@ -1666,7 +1666,7 @@ fn remote_update(
             path,
             &remote.manifest,
             &fetcher,
-            // Publisher-signed link embedded in the rebuilt binary (roadmap #45).
+            // Publisher-signed link embedded in the rebuilt binary.
             &remote.signature,
         )?;
         eprintln!(

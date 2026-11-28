@@ -1,4 +1,4 @@
-//! Hidden-dependency analysis ("AI analyzer" in the roadmap sense).
+//! Hidden-dependency analysis.
 //!
 //! Detects external executables an app invokes at runtime through
 //! subprocess/exec/dlopen calls. Such dependencies are invisible to static

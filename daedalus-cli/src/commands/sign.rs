@@ -228,7 +228,7 @@ pub fn sign_file(file: &PathBuf, key_bytes: &[u8], quiet: bool) -> Result<()> {
 ///
 /// and copies the public key into `trusted_keys_dir()` so the stub/`verify`
 /// trust anchor knows it. Generating a fresh key per machine keeps the signing
-/// key out of the binary and out of VCS - the ROADMAP's "sign by default with
+/// key out of the binary and out of VCS - the "sign by default with
 /// the dev key".
 pub fn ensure_dev_key() -> Result<PathBuf> {
     ensure_dev_key_in(&default_key_dir(), &trusted_keys_dir())

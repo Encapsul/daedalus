@@ -99,7 +99,6 @@
 # Project
 
 - [Changelog](./CHANGELOG.md)
-- [Roadmap](./roadmap.md)
 - [Security](./security.md)
 - [Comparison](./comparison.md)
 
