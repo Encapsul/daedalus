@@ -119,21 +119,40 @@ pub fn run(args: SwapArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// has_executable_extension - check whether a filename has an executable extension.
-/// @path: file or directory path
+/// append_normalized - re-append a tar entry with deterministic ownership
+/// while preserving its original type, mode, and symlink/hardlink target.
 ///
-/// Description:
-/// True for .py, .sh, .rb, .pl, .php, .js, and .exe extensions (case-insensitive).
-///
-/// Return: true or false
-fn has_executable_extension(path: &str) -> bool {
-    path.eq_ignore_ascii_case(".py")
-        || path.eq_ignore_ascii_case(".sh")
-        || path.eq_ignore_ascii_case(".rb")
-        || path.eq_ignore_ascii_case(".pl")
-        || path.eq_ignore_ascii_case(".php")
-        || path.eq_ignore_ascii_case(".js")
-        || path.eq_ignore_ascii_case(".exe")
+/// Normalizes mtime/uid/gid/uname/gname (reproducible payloads) but keeps the
+/// entry kind intact, so directories stay directories and links stay links -
+/// coercing everything to a regular file corrupts the rootfs tree.
+fn append_normalized<W: std::io::Write>(
+    builder: &mut tar::Builder<W>,
+    path: &str,
+    original: &tar::Header,
+    data: &[u8],
+) -> anyhow::Result<()> {
+    let mut header = original.clone();
+    header.set_mtime(0);
+    header.set_uid(0);
+    header.set_gid(0);
+    header.set_username("")?;
+    header.set_groupname("")?;
+
+    let kind = header.entry_type();
+    if kind.is_symlink() || kind.is_hard_link() {
+        let link = header
+            .link_name()?
+            .ok_or_else(|| anyhow::anyhow!("link entry {path} has no target"))?
+            .into_owned();
+        header.set_size(0);
+        builder.append_link(&mut header, path, &link)?;
+    } else {
+        let size = if kind.is_file() { data.len() as u64 } else { 0 };
+        header.set_size(size);
+        let body = if kind.is_file() { data } else { &[][..] };
+        builder.append_data(&mut header, path, body)?;
+    }
+    Ok(())
 }
 
 /// swap_layer_bytes - replace a file in a .daedalus tar payload and reassemble.
@@ -179,13 +198,20 @@ fn swap_layer_bytes(
     let mut tar_reader = Cursor::new(payload_decompressed);
     let mut archive = Archive::new(&mut tar_reader);
 
-    let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
+    // Preserve each entry's original header (type, mode, symlink target),
+    // not just its bytes. Coercing every entry to a regular file turns the
+    // payload's directories and symlinks into empty 0-byte files, which makes
+    // the launcher fail to unpack anything nested under them.
+    let mut entries: Vec<(String, tar::Header, Vec<u8>)> = Vec::new();
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?.to_string_lossy().to_string();
+        let header = entry.header().clone();
         let mut buf = Vec::new();
-        entry.read_to_end(&mut buf)?;
-        entries.push((path, buf));
+        if header.entry_type().is_file() {
+            entry.read_to_end(&mut buf)?;
+        }
+        entries.push((path, header, buf));
     }
 
     let file_name = new_file_path
@@ -196,7 +222,7 @@ fn swap_layer_bytes(
         vec![format!("app/{}", file_name), format!("app/./{}", file_name)];
 
     let mut found = false;
-    for (path, data) in &mut entries {
+    for (path, _header, data) in &mut entries {
         if target_rel_paths.contains(path) {
             *data = new_file_data.to_vec();
             found = true;
@@ -205,7 +231,7 @@ fn swap_layer_bytes(
     }
 
     if !found {
-        let all_paths: Vec<_> = entries.iter().map(|(p, _)| p.clone()).collect();
+        let all_paths: Vec<_> = entries.iter().map(|(p, _, _)| p.clone()).collect();
         anyhow::bail!(
             "file '{}' not found in payload. Payload contains: {}",
             file_name,
@@ -218,27 +244,8 @@ fn swap_layer_bytes(
         let mut builder = tar::Builder::new(&mut tar_buf);
         let mut sorted_entries = entries.clone();
         sorted_entries.sort_by(|a, b| a.0.cmp(&b.0));
-        for (path, data) in sorted_entries {
-            let mut header = tar::Header::new_gnu();
-            header.set_mtime(0);
-            header.set_uid(0);
-            header.set_gid(0);
-            header
-                .set_username("")
-                .with_context(|| format!("set username for {}", path))?;
-            header
-                .set_groupname("")
-                .with_context(|| format!("set groupname for {}", path))?;
-            header.set_entry_type(tar::EntryType::Regular);
-            let mode = if has_executable_extension(&path) {
-                0o755
-            } else {
-                0o644
-            };
-            header.set_mode(mode);
-            header.set_size(data.len() as u64);
-            builder
-                .append_data(&mut header, &path, data.as_slice())
+        for (path, header, data) in sorted_entries {
+            append_normalized(&mut builder, &path, &header, &data)
                 .with_context(|| format!("append {} to tar", path))?;
         }
         builder
@@ -269,7 +276,17 @@ fn assemble_daedalus_bytes(stub: &[u8], payload: &[u8], meta: &[u8]) -> anyhow::
         2u8
     };
 
-    let payload_sha256: [u8; 32] = Sha256::digest(payload).into();
+    // Integrity hash MUST be SHA-256(payload || metadata), matching the
+    // canonical assembler (daedalus-core::assembly::sha2_hash) and the
+    // launcher's runtime check (crypto::verify_sha256_parts). Hashing the
+    // payload alone makes the reassembled binary fail its own integrity
+    // gate at cold start with "payload integrity check failed".
+    let payload_sha256: [u8; 32] = {
+        let mut hasher = Sha256::new();
+        hasher.update(payload);
+        hasher.update(meta);
+        hasher.finalize().into()
+    };
     let meta_offset = stub.len() as u64 + payload.len() as u64;
     let footer = Footer {
         format_version,
@@ -302,6 +319,74 @@ fn assemble_daedalus_bytes(stub: &[u8], payload: &[u8], meta: &[u8]) -> anyhow::
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// Regression guard for the two swap round-trip bugs:
+    /// (1) the footer integrity hash must be SHA-256(payload || meta), the same
+    ///     value the launcher recomputes - hashing the payload alone made the
+    ///     reassembled binary reject itself at cold start;
+    /// (2) directory entries must survive reassembly as directories, not be
+    ///     flattened into empty regular files.
+    #[test]
+    fn swap_roundtrip_preserves_integrity_and_tree() {
+        use daedalus_core::compress::{compress, decompress};
+        use daedalus_core::format::Footer;
+        use sha2::{Digest, Sha256};
+        use std::io::{Cursor, Read};
+
+        // Build a tar with an explicit directory entry and a nested file.
+        let mut tar_buf = Vec::new();
+        {
+            let mut b = tar::Builder::new(&mut tar_buf);
+            let mut dir = tar::Header::new_gnu();
+            dir.set_entry_type(tar::EntryType::Directory);
+            dir.set_mode(0o755);
+            dir.set_size(0);
+            b.append_data(&mut dir, "app/", &[][..]).unwrap();
+            let mut f = tar::Header::new_gnu();
+            f.set_entry_type(tar::EntryType::Regular);
+            f.set_mode(0o644);
+            f.set_size(5);
+            b.append_data(&mut f, "app/app.py", &b"hello"[..]).unwrap();
+            b.finish().unwrap();
+        }
+        let payload = compress(&tar_buf).unwrap();
+        let meta = br#"{"name":"t","runtime":"python","layers":[]}"#;
+        let binary = assemble_daedalus_bytes(b"STUB", &payload, meta).unwrap();
+
+        let new = b"print('swapped')\n";
+        let swapped = swap_layer_bytes(&binary, new, "app", Path::new("app.py")).unwrap();
+
+        // (1) footer hash == SHA-256(payload || meta) over the swapped slices.
+        let footer = Footer::read_from(&mut Cursor::new(&swapped)).unwrap();
+        let p = &swapped[footer.payload_offset as usize
+            ..footer.payload_offset as usize + footer.payload_csize as usize];
+        let m = &swapped
+            [footer.meta_offset as usize..footer.meta_offset as usize + footer.meta_size as usize];
+        let mut h = Sha256::new();
+        h.update(p);
+        h.update(m);
+        assert_eq!(<[u8; 32]>::from(h.finalize()), footer.payload_sha256);
+
+        // (2) the directory entry is still a directory and the file was swapped.
+        let raw = decompress(p).unwrap();
+        let mut ar = tar::Archive::new(Cursor::new(raw));
+        let (mut saw_dir, mut saw_new) = (false, false);
+        for e in ar.entries().unwrap() {
+            let mut e = e.unwrap();
+            let path = e.path().unwrap().to_string_lossy().to_string();
+            if path == "app/" {
+                assert!(e.header().entry_type().is_dir());
+                saw_dir = true;
+            } else if path == "app/app.py" {
+                let mut buf = Vec::new();
+                e.read_to_end(&mut buf).unwrap();
+                assert_eq!(buf, new);
+                saw_new = true;
+            }
+        }
+        assert!(saw_dir, "directory entry was flattened");
+        assert!(saw_new, "swapped file missing");
+    }
 
     #[test]
     /// swap_args_parses_minimal - swap args parses minimal.
